@@ -22,3 +22,10 @@ def setup_logging(debug: bool = False) -> None:
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+    # Force SQLAlchemy loggers to use the root logger's JSON handler
+    # instead of their own plain-text handlers
+    for name in ("sqlalchemy.engine", "sqlalchemy.pool", "sqlalchemy.dialects"):
+        sa_logger = logging.getLogger(name)
+        sa_logger.handlers.clear()
+        sa_logger.propagate = True

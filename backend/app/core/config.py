@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Elevare API"
     app_version: str = "0.1.0"
-    debug: bool = False
+    debug: bool = True
     environment: str = "development"
 
     # Database
@@ -19,6 +19,11 @@ class Settings(BaseSettings):
 
     # Security (populated in Phase 2)
     secret_key: str
+
+    # JWT
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 30
+    algorithm: str = "HS256"
 
 
 settings = Settings()
