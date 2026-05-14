@@ -25,5 +25,8 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     algorithm: str = "HS256"
 
+    # Cookies
+    cookie_secure: bool = False
+
 
 settings = Settings()

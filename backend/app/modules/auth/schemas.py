@@ -140,17 +140,6 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
 
-
-class RefreshRequest(BaseModel):
-    """Payload for refreshing an access token using a refresh token.
-
-    Attributes:
-        refresh_token: The JWT refresh token issued during login.
-
-    """
-    refresh_token: str
-
-
 # ---------------------------------------------------------------------------
 # Response schemas
 # ---------------------------------------------------------------------------
@@ -195,7 +184,6 @@ class UserResponse(BaseModel):
 class AuthResponse(BaseModel):
     user: UserResponse
     access_token: str
-    refresh_token: str
     token_type: str
 
 

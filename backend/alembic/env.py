@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.core.model_registry  # noqa: F401 — registers all models with Base.metadata
 from alembic import context
 from app.core.config import settings
 from app.core.database import Base

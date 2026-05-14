@@ -13,9 +13,11 @@ issues during initialization.
 """
 
 from app.modules.auth.models import RefreshToken
+from app.modules.jobs.models import Job
 from app.modules.users.models import User
 
 __all__ = [
     "RefreshToken",
-    "User"
+    "Job",
+    "User",
 ]

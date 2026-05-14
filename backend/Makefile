@@ -1,4 +1,4 @@
-.PHONY: install run migrate migration test lint format shell clean
+.PHONY: install run migrate migration test lint format shell clean seed
 
 install:
 	docker-compose build
@@ -36,6 +36,9 @@ format:
 shell:
 	docker-compose exec api python -c "import asyncio; from app.core.database import engine; print('DB connected')"
 
+seed:
+	docker-compose exec api python scripts/seed_jobs.py
+
 clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -name "*.pyc" -delete
+	docker-compose exec api find . -type d -name __pycache__ -exec rm -rf {} +
+	docker-compose exec api find . -name "*.pyc" -delete

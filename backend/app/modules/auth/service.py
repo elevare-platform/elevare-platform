@@ -2,14 +2,17 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from fastapi import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import (
     AccountBannedException,
+    AccountDeactivatedException,
     AccountSuspendedException,
     AlreadyExistsException,
     InvalidCredentialsException,
+    RefreshTokenMissing,
     RevokedTokenException,
     TokenExpiredException,
     TokenInvalidException,
@@ -40,7 +43,7 @@ class AuthService:
         self._user_repo = UserRepository(db)
         self._auth_repo = AuthRepository(db)
 
-    async def register_user(self, data: RegisterRequest):
+    async def register_user(self, data: RegisterRequest, response: Response):
         """Register a new user and return an auth response with token pair.
 
         Raises:
@@ -66,12 +69,15 @@ class AuthService:
             raise AlreadyExistsException(message="Phone number already exist")
 
         # Hash password and build user data
+        # TODO Phase 3.5: change account_status to PENDING_VERIFICATION
+        # when email verification endpoint is implemented
         user = await self._user_repo.create_user({
             "first_name": data.first_name,
             "last_name": data.last_name,
             "email": data.email,
             "phone_number": data.phone_number,
             "password_hash": hash_password(data.password),
+            "account_status": AccountStatus.ACTIVE.value,
         })
 
         logger.info(f"User registered successfully with email: {user.email}")
@@ -79,6 +85,16 @@ class AuthService:
         # TODO: SEND VERIFICATION EMAIL
 
         token_pair = create_token_pair(user.id, user.role)
+
+        # set cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=token_pair["refresh_token"],
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite="lax",
+            max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        )
 
         # Store refresh token
         await self._auth_repo.create_refresh_token(
@@ -100,11 +116,10 @@ class AuthService:
                 account_status=user.account_status
             ),
             access_token=token_pair["access_token"],
-            refresh_token=token_pair["refresh_token"],
             token_type=token_pair["token_type"]
         )
 
-    async def login_user(self, data: LoginRequest):
+    async def login_user(self, data: LoginRequest, response: Response):
         """Authenticate a user and return an auth response with a fresh token pair.
 
         Raises:
@@ -126,11 +141,24 @@ class AuthService:
         if user.account_status == AccountStatus.BANNED.value:
             raise AccountBannedException()
 
+        if user.account_status == AccountStatus.DEACTIVATED.value:
+            raise AccountDeactivatedException()
+
         user.last_login_at = datetime.now(UTC)
 
         token_pair = create_token_pair(
             user.id,
             user.role
+        )
+
+        # set cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=token_pair["refresh_token"],
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite="lax",
+            max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
         )
 
         await self._auth_repo.create_refresh_token(
@@ -152,7 +180,6 @@ class AuthService:
                 account_status=user.account_status,
             ),
             access_token=token_pair["access_token"],
-            refresh_token=token_pair["refresh_token"],
             token_type=token_pair["token_type"],
         )
 
@@ -165,6 +192,9 @@ class AuthService:
             TokenExpiredException: If the token's expiry has passed.
 
         """
+        if not token:
+            raise RefreshTokenMissing()
+
         token_record = await self._auth_repo.get_refresh_token(token)
 
         if not token_record:

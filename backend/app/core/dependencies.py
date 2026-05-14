@@ -16,10 +16,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import (
+    AccountBannedException,
+    AccountDeactivatedException,
+    AccountSetupIncompleteException,
+    AccountSuspendedException,
+    EmailVerificationRequiredException,
     PermissionDeniedException,
     UserNotFoundException,
 )
 from app.modules.auth.jwt_handler import decode_access_token
+from app.modules.users.enums import AccountStatus
 from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -62,6 +68,19 @@ async def get_current_user(
 
     if user is None:
         raise UserNotFoundException()
+
+    # Enforce account status — every protected endpoint inherits this check
+    status = user.account_status
+    if status == AccountStatus.PENDING_VERIFICATION.value:
+        raise EmailVerificationRequiredException()
+    if status == AccountStatus.INVITED.value:
+        raise AccountSetupIncompleteException()
+    if status == AccountStatus.SUSPENDED.value:
+        raise AccountSuspendedException()
+    if status == AccountStatus.BANNED.value:
+        raise AccountBannedException()
+    if status == AccountStatus.DEACTIVATED.value:
+        raise AccountDeactivatedException()
 
     return user
 

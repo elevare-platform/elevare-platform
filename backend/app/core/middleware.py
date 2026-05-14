@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        # Skip logging for CORS preflight requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
 
         logger.info(

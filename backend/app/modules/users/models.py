@@ -1,10 +1,13 @@
+"""SQLAlchemy ORM models for the users module."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, DateTime, ForeignKey, String
+import sqlalchemy as sa
+from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
@@ -13,9 +16,12 @@ from .enums import AccountStatus, UserRole
 
 if TYPE_CHECKING:
     from app.modules.auth.models import RefreshToken
+    from app.modules.jobs.models import Job
 
 
 class User(BaseModel):
+    """Core user account — stores credentials, role, and account lifecycle state."""
+
     __tablename__ = "users"
 
     first_name: Mapped[str] = mapped_column(
@@ -45,14 +51,20 @@ class User(BaseModel):
     account_status: Mapped[AccountStatus] = mapped_column(
         String(20),
         nullable=False,
-        default=AccountStatus.ACTIVE.value,
-        server_default=AccountStatus.ACTIVE.value
+        default=AccountStatus.PENDING_VERIFICATION.value,
+        server_default=AccountStatus.PENDING_VERIFICATION.value
     )
     role: Mapped[UserRole] = mapped_column(
         String(20),
         nullable=False,
-        default=UserRole.GUEST.value,
-        server_default=UserRole.GUEST.value
+        default=UserRole.CANDIDATE.value,
+        server_default=UserRole.CANDIDATE.value
+    )
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.false(),
     )
     last_login_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -66,13 +78,24 @@ class User(BaseModel):
         back_populates="user",
         uselist=False
     )
+    employer_profile: Mapped[EmployerProfile] = relationship(
+        "EmployerProfile",
+        back_populates="user",
+        uselist=False,
+    )
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         "RefreshToken",
         back_populates="user",
     )
+    jobs: Mapped[list[Job]] = relationship(
+        "Job",
+        back_populates="employer",
+    )
 
 
 class UserProfile(BaseModel):
+    """Optional candidate profile — avatar and location details."""
+
     __tablename__ = "user_profiles"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -93,5 +116,41 @@ class UserProfile(BaseModel):
     user: Mapped[User] = relationship(
         "User",
         back_populates="profile"
+    )
+
+
+class EmployerProfile(BaseModel):
+    """Company profile for employer accounts.
+
+    Created when an employer registers. Fields are nullable until the
+    employer completes their profile. ``is_profile_complete`` is flipped
+    to True by the service layer when required fields are filled.
+    """
+
+    __tablename__ = "employer_profiles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    company_name: Mapped[str] = mapped_column(String(255), nullable=True)
+    company_logo_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    industry: Mapped[str] = mapped_column(String(100), nullable=True)
+    company_size: Mapped[str] = mapped_column(String(20), nullable=True)
+    website: Mapped[str] = mapped_column(String(500), nullable=True)
+    is_profile_complete: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.false(),
+    )
+
+    # relationships
+    user: Mapped[User] = relationship(
+        "User",
+        back_populates="employer_profile",
     )
 

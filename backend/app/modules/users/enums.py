@@ -1,15 +1,22 @@
+"""Enumerations for user account state and roles."""
+
 from enum import Enum
 
 
 class AccountStatus(str, Enum):
+    """Possible lifecycle states for a user account."""
+
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"
     ACTIVE = "ACTIVE"
-    INACTIVE = "INACTIVE"
+    INVITED = "INVITED"
     SUSPENDED = "SUSPENDED"
     BANNED = "BANNED"
+    DEACTIVATED = "DEACTIVATED"
 
 
 class UserRole(str, Enum):
-    USER = "USER"
+    """Role assigned to a user, controlling access to platform features."""
+
     ADMIN = "ADMIN"
-    GUEST = "GUEST"
     EMPLOYER = "EMPLOYER"
+    CANDIDATE = "CANDIDATE"
