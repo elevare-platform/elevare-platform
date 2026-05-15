@@ -46,6 +46,7 @@ jobs:
         run: alembic upgrade head
         env:
           DATABASE_URL: postgresql+asyncpg://elevare:elevare_dev@localhost:5432/elevare_db
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
 
       - name: Ruff lint
         run: ruff check .
@@ -59,7 +60,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://elevare:elevare_dev@localhost:5432/elevare_db
           DEBUG: "true"
           ENVIRONMENT: "test"
-          SECRET_KEY: "test-secret-key"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
           EMAIL_STUB_MODE: "true"
           EMAIL_VERIFICATION_TOKEN_EXPIRY: "24"
           INVITE_EXPIRY: "3"
