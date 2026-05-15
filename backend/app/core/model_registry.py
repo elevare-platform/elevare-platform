@@ -12,11 +12,13 @@ Import order generally follows dependency hierarchy to avoid resolution
 issues during initialization.
 """
 
-from app.modules.auth.models import RefreshToken
+from app.modules.auth.models import EmailVerificationToken, InviteToken, RefreshToken
 from app.modules.jobs.models import Job
 from app.modules.users.models import User
 
 __all__ = [
+    "EmailVerificationToken",
+    "InviteToken",
     "RefreshToken",
     "Job",
     "User",
