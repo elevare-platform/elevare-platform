@@ -13,6 +13,21 @@ jobs:
       run:
         working-directory: backend
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: elevare
+          POSTGRES_PASSWORD: elevare_dev
+          POSTGRES_DB: elevare_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U elevare -d elevare_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,6 +42,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run migrations
+        run: alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://elevare:elevare_dev@localhost:5432/elevare_db
+
       - name: Ruff lint
         run: ruff check .
 
@@ -40,3 +60,10 @@ jobs:
           DEBUG: "true"
           ENVIRONMENT: "test"
           SECRET_KEY: "test-secret-key"
+          EMAIL_STUB_MODE: "true"
+          EMAIL_VERIFICATION_TOKEN_EXPIRY: "24"
+          INVITE_EXPIRY: "3"
+          COOKIE_SECURE: "false"
+          ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+          REFRESH_TOKEN_EXPIRE_DAYS: "30"
+          ALGORITHM: "HS256"
