@@ -15,7 +15,7 @@ from app.core.database import BaseModel
 from .enums import AccountStatus, UserRole
 
 if TYPE_CHECKING:
-    from app.modules.auth.models import RefreshToken
+    from app.modules.auth.models import RefreshToken, InviteToken, EmailVerificationToken
     from app.modules.jobs.models import Job
 
 
@@ -90,6 +90,14 @@ class User(BaseModel):
     jobs: Mapped[list[Job]] = relationship(
         "Job",
         back_populates="employer",
+    )
+    email_verification_tokens: Mapped[list["EmailVerificationToken"]] = relationship(
+        "EmailVerificationToken",
+        back_populates="user"
+    )
+    invite_tokens: Mapped[list["InviteToken"]] = relationship(
+        "InviteToken",
+        back_populates="inviter"
     )
 
 

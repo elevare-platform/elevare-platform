@@ -42,3 +42,61 @@ class RefreshToken(BaseModel):
 
     # Relationship resolved at runtime via the model registry — no direct import needed
     user: Mapped[User] = relationship("User", back_populates="refresh_tokens")
+
+
+class EmailVerificationToken(BaseModel):
+    __tablename__ = "email_verification_tokens"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    is_used: Mapped[bool] = mapped_column(
+        default=False, server_default=sa.false()
+    )
+
+    # Relationship
+    user: Mapped["User"] = relationship(
+        "User",
+        back_populates="email_verification_tokens"
+    )
+
+
+class InviteToken(BaseModel):
+    __tablename__ = "invite_tokens"
+
+    email: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    role: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    is_used: Mapped[bool] = mapped_column(
+        default=False, server_default=sa.false()
+    )
+    invited_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Relationship — points to the admin who sent the invite, not the invitee
+    inviter: Mapped["User"] = relationship(
+        "User",
+        back_populates="invite_tokens",
+        foreign_keys=[invited_by]
+    )
+
