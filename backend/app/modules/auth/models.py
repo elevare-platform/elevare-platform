@@ -62,7 +62,7 @@ class EmailVerificationToken(BaseModel):
     )
 
     # Relationship
-    user: Mapped["User"] = relationship(
+    user: Mapped[User] = relationship(
         "User",
         back_populates="email_verification_tokens"
     )
@@ -94,7 +94,7 @@ class InviteToken(BaseModel):
     )
 
     # Relationship — points to the admin who sent the invite, not the invitee
-    inviter: Mapped["User"] = relationship(
+    inviter: Mapped[User] = relationship(
         "User",
         back_populates="invite_tokens",
         foreign_keys=[invited_by]
