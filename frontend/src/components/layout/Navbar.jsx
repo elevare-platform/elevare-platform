@@ -9,14 +9,14 @@ import ElevareLogo from '@/components/ui/ElevareLogo'
 // ─── Dropdown data ────────────────────────────────────────────────────────────
 
 const EMPLOYERS_ITEMS = [
-  { label: 'Post a Job', href: '#' },
+  { label: 'Post a Job', href: '/employer/jobs/new' },
   { label: 'How It Works', href: '#' },
   { label: 'Pricing', href: '#' },
   { label: 'Contact Sales', href: '#' },
 ]
 
 const CANDIDATES_ITEMS = [
-  { label: 'Browse Jobs', href: '#' },
+  { label: 'Browse Jobs', href: '/jobs' },
   { label: 'How It Works', href: '#' },
   { label: 'Career Resources', href: '#' },
   { label: 'Create Profile', href: '#' },
@@ -35,14 +35,14 @@ function DropdownPanel({ items }) {
       role="menu"
     >
       {items.map((item) => (
-        <a
+        <Link
           key={item.label}
-          href={item.href}
+          to={item.href}
           className="block px-4 py-2 text-sm text-text hover:bg-surface-muted hover:text-brand-blue transition-colors focus:outline-none focus-visible:bg-surface-muted focus-visible:text-brand-blue"
           role="menuitem"
         >
           {item.label}
-        </a>
+        </Link>
       ))}
     </motion.div>
   )

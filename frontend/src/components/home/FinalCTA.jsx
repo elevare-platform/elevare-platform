@@ -53,7 +53,7 @@ export default function FinalCTA() {
           </Link>
 
           {/* White outlined "Find a Job" */}
-          <Link to="/register">
+          <Link to="/jobs">
             <Button
               size="lg"
               className="bg-transparent border border-white text-white hover:bg-white/10 transition-transform duration-200 hover:scale-[1.02]"

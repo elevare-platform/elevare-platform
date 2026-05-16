@@ -21,13 +21,28 @@ def register_payload(**overrides) -> dict:
 
 
 async def register_and_get_tokens(client, **overrides) -> tuple[str, str, dict]:
-    """Register a user and return (access_token, refresh_token_cookie, payload)."""
+    """Register a user, verify their email, and return (access_token, refresh_token_cookie, payload)."""
     payload = register_payload(**overrides)
     reg = await client.post("/api/v1/auth/register", json=payload)
     assert reg.status_code == 201
-    access_token = reg.json()["access_token"]
-    # httpx stores cookies on the client automatically after set-cookie headers
-    refresh_token = reg.cookies.get("refresh_token")
+
+    # Verify email using the stub token so account becomes ACTIVE
+    verification_token = reg.json().get("verification_token")
+    if verification_token:
+        verify = await client.post(
+            "/api/v1/auth/verify-email",
+            params={"token": verification_token},
+        )
+        assert verify.status_code == 200
+
+    # Log in to get a fresh token with ACTIVE status embedded
+    login = await client.post("/api/v1/auth/login", json={
+        "email": payload["email"],
+        "password": payload["password"],
+    })
+    assert login.status_code == 200
+    access_token = login.json()["access_token"]
+    refresh_token = login.cookies.get("refresh_token")
     return access_token, refresh_token, payload
 
 
@@ -37,7 +52,7 @@ async def register_and_get_tokens(client, **overrides) -> tuple[str, str, dict]:
 
 @pytest.mark.asyncio
 async def test_register_success(client):
-    """POST /register returns 201 with access token, user info, and sets cookie."""
+    """POST /register returns 201 with access token, PENDING_VERIFICATION status, and stub token."""
     payload = register_payload()
     response = await client.post("/api/v1/auth/register", json=payload)
 
@@ -46,7 +61,8 @@ async def test_register_success(client):
     assert body["access_token"]
     assert body["token_type"] == "bearer"
     assert body["user"]["email"] == payload["email"]
-    # refresh token must be in cookie, not response body
+    assert body["user"]["account_status"] == "PENDING_VERIFICATION"
+    assert body["verification_token"]  # stub mode returns token
     assert "refresh_token" not in body
     assert response.cookies.get("refresh_token")
 
@@ -82,7 +98,12 @@ async def test_register_missing_field_returns_422(client):
 async def test_login_success(client):
     """POST /login with valid credentials returns 200 with access token and sets cookie."""
     payload = register_payload()
-    await client.post("/api/v1/auth/register", json=payload)
+    reg = await client.post("/api/v1/auth/register", json=payload)
+
+    # Verify email first so login works cleanly
+    verification_token = reg.json().get("verification_token")
+    if verification_token:
+        await client.post("/api/v1/auth/verify-email", params={"token": verification_token})
 
     response = await client.post("/api/v1/auth/login", json={
         "email": payload["email"],
@@ -222,3 +243,73 @@ async def test_logout_revokes_refresh_token(client):
         cookies={"refresh_token": refresh_token},
     )
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Email verification flow
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_register_sets_pending_verification(client):
+    """Registration sets account_status to PENDING_VERIFICATION."""
+    payload = register_payload()
+    response = await client.post("/api/v1/auth/register", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["user"]["account_status"] == "PENDING_VERIFICATION"
+
+
+@pytest.mark.asyncio
+async def test_verify_email_activates_account(client):
+    """POST /verify-email with valid token sets account to ACTIVE."""
+    payload = register_payload()
+    reg = await client.post("/api/v1/auth/register", json=payload)
+    token = reg.json()["verification_token"]
+
+    response = await client.post("/api/v1/auth/verify-email", params={"token": token})
+
+    assert response.status_code == 200
+    assert "verified" in response.json()["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_verify_email_with_invalid_token_returns_401(client):
+    """POST /verify-email with unknown token returns 401."""
+    response = await client.post(
+        "/api/v1/auth/verify-email",
+        params={"token": "completely_invalid_token"},
+    )
+    assert response.status_code == 401
+    assert response.json()["code"] == "TOKEN_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_verify_email_already_used_returns_400(client):
+    """POST /verify-email with an already-used token returns 400."""
+    payload = register_payload()
+    reg = await client.post("/api/v1/auth/register", json=payload)
+    token = reg.json()["verification_token"]
+
+    # Use it once
+    await client.post("/api/v1/auth/verify-email", params={"token": token})
+
+    # Use it again
+    response = await client.post("/api/v1/auth/verify-email", params={"token": token})
+    assert response.status_code == 400
+    assert response.json()["code"] == "TOKEN_ALREADY_USED"
+
+
+@pytest.mark.asyncio
+async def test_pending_verification_user_blocked_on_protected_route(client):
+    """A PENDING_VERIFICATION user cannot access protected endpoints."""
+    payload = register_payload()
+    reg = await client.post("/api/v1/auth/register", json=payload)
+    token = reg.json()["access_token"]
+
+    # Do NOT verify email — account stays PENDING_VERIFICATION
+    response = await client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+    assert response.json()["code"] == "EMAIL_VERIFICATION_REQUIRED"

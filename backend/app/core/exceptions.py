@@ -191,6 +191,33 @@ class EmailVerificationRequiredException(PlatformError):
         super().__init__(message, code, status_code, details)
 
 
+class TokenAlreadyUsedException(PlatformError):
+    """Raised when a verification or invite token has already been consumed."""
+
+    def __init__(
+        self,
+        message: str = "Token has already been used",
+        code: str = "TOKEN_ALREADY_USED",
+        status_code: int = 400,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
+class VerificationTokenExpiredException(PlatformError):
+    """Raised when a verification or invite token has passed its expiry time."""
+
+    def __init__(
+        self,
+        message: str = "Verification token has expired",
+        code: str = "VERIFICATION_TOKEN_EXPIRED",
+        status_code: int = 400,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
+
 # ---------------------------------------------------------------------------
 # Authorization  (HTTP 403)
 # ---------------------------------------------------------------------------

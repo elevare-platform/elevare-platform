@@ -18,6 +18,27 @@ from pydantic import (
     model_validator,
 )
 
+from app.modules.users.enums import UserRole
+
+
+def validate_phone_digits(v: str) -> str:
+    """Validate that the phone number is a valid Nigerian mobile number.
+
+    Args:
+        v: The raw phone number string.
+
+    Returns:
+        The phone number string if it matches the expected pattern.
+
+    Raises:
+        ValueError: If the number does not match the Nigerian format.
+
+    """
+    pattern = r"^(\+234|0)[789]\d{9}$"
+    if not re.match(pattern, v):
+        raise ValueError("Invalid Nigerian phone number")
+    return v
+
 
 def validate_password_strength(v: str) -> str:
     """Validate that a password meets the platform's strength requirements.
@@ -77,6 +98,29 @@ class RegisterRequest(BaseModel):
     phone_number: str = Field(..., min_length=8, max_length=15)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., exclude=True)
+    role: UserRole
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: UserRole) -> UserRole:
+        """Ensure the role is one of the allowed values.
+
+        Args:
+            v: The role string from the request.
+
+        Returns:
+            The validated role enum value.
+
+        Raises:
+            ValueError: If the role is not in the allowed list.
+
+        """
+        allowed_role = [value for value in list(UserRole) if value != 'ADMIN']
+        if v not in UserRole:
+            raise ValueError(f"Invalid role. Must be one of {allowed_role}")
+        if v == UserRole.ADMIN:
+            raise ValueError("Cannot self-register as ADMIN")
+        return v
 
     @field_validator("phone_number")
     @classmethod
@@ -93,10 +137,7 @@ class RegisterRequest(BaseModel):
             ValueError: If the number does not match the Nigerian format.
 
         """
-        pattern = r"^(\+234|0)[789]\d{9}$"
-        if not re.match(pattern, v):
-            raise ValueError("Invalid Nigerian phone number")
-        return v
+        return validate_phone_digits(v)
 
 
     @field_validator("password")
@@ -140,6 +181,47 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
 
+
+class AcceptInviteRequest(BaseModel):
+    """Payload for completing registration via an admin invite link."""
+
+    first_name: str = Field(..., min_length=2, max_length=100)
+    last_name: str = Field(..., min_length=2, max_length=100)
+    phone_number: str = Field(..., min_length=8, max_length=15)
+    password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, v: str) -> str:
+        """Validate that the phone number is a valid Nigerian mobile number.
+
+        Args:
+            v: The raw phone number string.
+
+        Returns:
+            The phone number string if it matches the expected pattern.
+
+        Raises:
+            ValueError: If the number does not match the Nigerian format.
+
+        """
+        return validate_phone_digits(v)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str):
+        """Validate password strength."""
+        return validate_password_strength(v)
+
+    @model_validator(mode="after")
+    def password_match(self) -> "AcceptInviteRequest":
+        """Ensure password and confirm_password are identical."""
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+
 # ---------------------------------------------------------------------------
 # Response schemas
 # ---------------------------------------------------------------------------
@@ -177,16 +259,22 @@ class UserResponse(BaseModel):
     email: EmailStr
     role: str
     account_status: str
+    is_profile_complete: bool | None = None  # only populated for EMPLOYER role
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class AuthResponse(BaseModel):
+    """Full authentication response returned after register, login, or invite accept."""
+
     user: UserResponse
     access_token: str
     token_type: str
+    verification_token: str | None = None  # only present in stub mode
 
 
 class MessageResponse(BaseModel):
+    """Generic message response for operations that return no data."""
+
     message: str
 

@@ -19,6 +19,7 @@ from app.modules.jobs.schemas import (
     JobUpdateRequest,
 )
 from app.modules.users.models import User
+from app.modules.users.repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,16 @@ class JobService:
     def __init__(self, db: AsyncSession):
         self._db = db
         self._repo = JobRepository(db)
+        self._user_repo = UserRepository(db)
 
     async def create_job(self, data: JobCreateRequest, employer: User) -> JobResponse:
         """Create a draft job owned by the authenticated employer."""
+        employer = await self._user_repo.get_user_by_id(employer.id)
+
+        if not employer.employer_profile or not employer.employer_profile.is_profile_complete:
+            raise PermissionDeniedException(
+                message="Employer profile must be complete to post jobs"
+            )
         job = await self._repo.create(data, employer_id=employer.id)
         await self._db.commit()
         return JobResponse.from_job(job)
@@ -109,6 +117,7 @@ class JobService:
             items=[JobResponse.from_job(j) for j in result["items"]],
             next_cursor=result["next_cursor"],
             count=result["count"],
+            total=result["total"],
         )
 
     async def list_employer_jobs(
@@ -123,6 +132,7 @@ class JobService:
             items=[JobResponse.from_job(j) for j in result["items"]],
             next_cursor=result["next_cursor"],
             count=result["count"],
+            total=result["total"],
         )
 
     async def admin_list_jobs(
@@ -136,6 +146,7 @@ class JobService:
             items=[JobResponse.from_job(j) for j in result["items"]],
             next_cursor=result["next_cursor"],
             count=result["count"],
+            total=result["total"],
         )
 
     # ---------------------------------------------------------------------------

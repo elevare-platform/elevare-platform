@@ -19,7 +19,7 @@ from sqlalchemy import select
 import app.core.model_registry  # noqa: F401
 from app.core.database import AsyncSessionLocal
 from app.modules.auth.security import hash_password
-from app.modules.jobs.enums import ContractType, JobStatus, WorkModel
+from app.modules.jobs.enums import ContractType, JobStatus, WorkLocation, WorkModel
 from app.modules.jobs.models import Job
 from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import EmployerProfile, User
@@ -37,6 +37,7 @@ EMPLOYERS = [
         "password_hash": hash_password("Seed@1234"),
         "role": UserRole.EMPLOYER.value,
         "account_status": AccountStatus.ACTIVE.value,
+        "email_verified": True,
     },
     {
         "first_name": "Emeka",
@@ -46,6 +47,7 @@ EMPLOYERS = [
         "password_hash": hash_password("Seed@1234"),
         "role": UserRole.EMPLOYER.value,
         "account_status": AccountStatus.ACTIVE.value,
+        "email_verified": True,
     },
 ]
 
@@ -445,6 +447,13 @@ async def seed() -> None:
         for job_data in JOBS:
             employer_email = job_data.pop("employer_email")
             employer = employer_map[employer_email]
+            # Default work_location to INTERNATIONAL for REMOTE jobs, LOCAL otherwise
+            if "work_location" not in job_data:
+                job_data["work_location"] = (
+                    WorkLocation.INTERNATIONAL.value
+                    if job_data.get("work_model") == WorkModel.REMOTE.value
+                    else WorkLocation.LOCAL.value
+                )
             job = Job(**job_data, employer_id=employer.id)
             session.add(job)
 

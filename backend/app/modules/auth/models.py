@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 
 
 class RefreshToken(BaseModel):
+    """Stores a hashed refresh token used to issue new access tokens."""
+
     __tablename__ = "refresh_tokens"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -45,6 +47,8 @@ class RefreshToken(BaseModel):
 
 
 class EmailVerificationToken(BaseModel):
+    """One-time token sent to a user's email to verify their address."""
+
     __tablename__ = "email_verification_tokens"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -69,6 +73,12 @@ class EmailVerificationToken(BaseModel):
 
 
 class InviteToken(BaseModel):
+    """Admin-issued invite token that allows a new employer to register.
+
+    The token is single-use and expires after ``settings.invite_expiry`` days.
+    ``invited_by`` points to the admin who created the invite.
+    """
+
     __tablename__ = "invite_tokens"
 
     email: Mapped[str] = mapped_column(
@@ -87,6 +97,12 @@ class InviteToken(BaseModel):
     is_used: Mapped[bool] = mapped_column(
         default=False, server_default=sa.false()
     )
+
+    used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
     invited_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

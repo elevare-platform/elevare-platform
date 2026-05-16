@@ -1,3 +1,5 @@
+"""Business logic for authentication — registration, login, tokens, invites."""
+
 import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -14,8 +16,10 @@ from app.core.exceptions import (
     InvalidCredentialsException,
     RefreshTokenMissing,
     RevokedTokenException,
+    TokenAlreadyUsedException,
     TokenExpiredException,
     TokenInvalidException,
+    VerificationTokenExpiredException,
 )
 from app.modules.auth.jwt_handler import (
     _create_access_token,
@@ -26,10 +30,16 @@ from app.modules.auth.repository import AuthRepository
 from app.modules.auth.schemas import (
     AuthResponse,
     LoginRequest,
+    MessageResponse,
     RegisterRequest,
     UserResponse,
 )
-from app.modules.auth.security import hash_password, verify_password
+from app.modules.auth.security import (
+    generate_token,
+    hash_password,
+    hash_token,
+    verify_password,
+)
 from app.modules.users.enums import AccountStatus
 from app.modules.users.repository import UserRepository
 
@@ -68,21 +78,22 @@ class AuthService:
         if user:
             raise AlreadyExistsException(message="Phone number already exist")
 
-        # Hash password and build user data
-        # TODO Phase 3.5: change account_status to PENDING_VERIFICATION
-        # when email verification endpoint is implemented
+        # Hash password and build user data — account starts as PENDING_VERIFICATION
         user = await self._user_repo.create_user({
             "first_name": data.first_name,
             "last_name": data.last_name,
             "email": data.email,
             "phone_number": data.phone_number,
             "password_hash": hash_password(data.password),
-            "account_status": AccountStatus.ACTIVE.value,
+            "role": data.role.value,
         })
 
         logger.info(f"User registered successfully with email: {user.email}")
 
-        # TODO: SEND VERIFICATION EMAIL
+        # Generate verification token — returned in response in stub mode, emailed in production
+        verification_token = await self.create_verification_token(user.id)
+        if settings.email_stub_mode:
+            logger.info(f"Verification token (stub mode): {verification_token}")
 
         token_pair = create_token_pair(user.id, user.role)
 
@@ -113,10 +124,11 @@ class AuthService:
                 last_name=user.last_name,
                 email=user.email,
                 role=user.role,
-                account_status=user.account_status
+                account_status=user.account_status,
             ),
             access_token=token_pair["access_token"],
-            token_type=token_pair["token_type"]
+            token_type=token_pair["token_type"],
+            verification_token=verification_token if settings.email_stub_mode else None,
         )
 
     async def login_user(self, data: LoginRequest, response: Response):
@@ -244,3 +256,180 @@ class AuthService:
 
         await self._db.commit()
 
+    async def create_verification_token(self, user_id: UUID) -> str:
+        """Generate, hash, and store a new email verification token for the user.
+
+        Invalidates any existing unused tokens before creating the new one.
+
+        Returns:
+            The raw (unhashed) token string to include in the verification link.
+
+        """
+        raw_token = generate_token()
+        hashed_token = hash_token(raw_token)
+        await self._auth_repo.create_verification_token(
+            user_id,
+            hashed_token,
+            datetime.now(UTC) + timedelta(hours=settings.email_verification_token_expiry),
+        )
+        await self._db.commit()
+        return raw_token
+
+    async def get_verification_token(self, raw_token: str):
+        """Look up and validate a verification token by its raw value."""
+        hashed = hash_token(raw_token)
+        token_record = await self._auth_repo.get_verification_token(hashed)
+        if not token_record:
+            raise TokenInvalidException()
+
+        if token_record.is_used:
+            raise TokenAlreadyUsedException()
+
+        if token_record.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+            raise VerificationTokenExpiredException()
+
+        return token_record
+
+    async def mark_token_used(self, token) -> None:
+        """Mark a verification token as used. Caller is responsible for committing."""
+        await self._auth_repo.mark_token_used(token)
+
+    async def verify_email(self, token: str) -> MessageResponse:
+        """Verify a user's email using the raw token from the verification link."""
+        token_record = await self.get_verification_token(token)
+
+        await self.mark_token_used(token_record)
+
+        user = await self._user_repo.get_user_by_id(token_record.user_id)
+        user.account_status = AccountStatus.ACTIVE.value
+        user.email_verified = True
+        user.email_verified_at = datetime.now(UTC)
+
+        await self._db.commit()
+
+        return MessageResponse(message="Email verified successfully")
+
+    async def create_invite(self, email: str, role: str, admin_id: UUID) -> str:
+        """Create an invite token for a new employer account.
+
+        Raises:
+            AlreadyExistsException: If a user with that email already exists.
+
+        """
+        user = await self._user_repo.get_user_by_email(email)
+        if user:
+            raise AlreadyExistsException(message="A user with this email already exists")
+
+        raw_token = generate_token()
+        hashed_token = hash_token(raw_token)
+
+        await self._auth_repo.create_invite(
+            email=email,
+            role=role,
+            hashed_token=hashed_token,
+            expires_at=datetime.now(UTC) + timedelta(days=settings.invite_expiry),
+            admin_id=admin_id,
+        )
+
+        await self._db.commit()
+
+        if settings.email_stub_mode:
+            logger.info(f"Invite token (stub mode): {raw_token}")
+
+        return raw_token
+
+    async def resend_invite(self, token: str, admin_id: UUID) -> str:
+        """Invalidate an existing invite and issue a new one.
+
+        Raises:
+            TokenInvalidException: If the token does not exist.
+
+        """
+        old_invite = await self._auth_repo.get_invite_token(token)
+        if not old_invite:
+            raise TokenInvalidException()
+
+        await self._auth_repo.revoke_invite_token(old_invite)
+
+        new_raw_token = await self.create_invite(
+            email=old_invite.email,
+            role=old_invite.role,
+            admin_id=admin_id,
+        )
+
+        return new_raw_token
+
+    async def accept_invite(self, token: str, data, response) -> AuthResponse:
+        """Accept an invite to join the platform.
+
+        Validates the token, registers the user with the invited role and
+        ACTIVE status, then returns a full auth response with tokens.
+
+        Raises:
+            TokenInvalidException: If the token does not exist.
+            VerificationTokenExpiredException: If the token has expired.
+            TokenAlreadyUsedException: If the token was already used.
+
+        """
+        invite = await self._auth_repo.get_invite_token(token)
+        if not invite:
+            raise TokenInvalidException()
+
+        if invite.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+            raise VerificationTokenExpiredException()
+
+        if invite.is_used:
+            raise TokenAlreadyUsedException()
+
+        await self._auth_repo.revoke_invite_token(invite)
+
+        # register user
+        logger.info(f"Registering {invite.email} as {invite.role}")
+
+        user = await self._user_repo.create_user({
+            "first_name": data.first_name,
+            "last_name": data.last_name,
+            "email": invite.email,
+            "phone_number": data.phone_number,
+            "password_hash": hash_password(data.password),
+            "role": invite.role,
+            "account_status": AccountStatus.ACTIVE.value,
+            "email_verified": True,
+            "email_verified_at": datetime.now(UTC),
+        })
+
+        logger.info("Client successfully registered with invite")
+
+        token_pair = create_token_pair(user.id, invite.role)
+
+        response.set_cookie(
+            key="refresh_token",
+            value=token_pair["refresh_token"],
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite="lax",
+            max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        )
+
+        # Store refresh token
+        await self._auth_repo.create_refresh_token(
+            user.id,
+            token_pair["refresh_token"],
+            datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days),
+        )
+
+        # Explicitly commit everything
+        await self._db.commit()
+
+        return AuthResponse(
+            user=UserResponse(
+                id=user.id,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                email=user.email,
+                role=user.role,
+                account_status=user.account_status
+            ),
+            access_token=token_pair["access_token"],
+            token_type=token_pair["token_type"],
+        )

@@ -70,6 +70,10 @@ class User(BaseModel):
         default=False,
         server_default=sa.false(),
     )
+    email_verified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
     last_login_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=True

@@ -248,7 +248,7 @@ export default function HeroSection() {
                   Hire Talent →
                 </Button>
               </Link>
-              <Link to="/register">
+              <Link to="/jobs">
                 <Button
                   size="lg"
                   variant="outline"

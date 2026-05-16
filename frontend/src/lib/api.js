@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { ACCOUNT_STATUS_CODES } from '@/lib/accountStatus'
 
 // In-memory token — never stored in localStorage or cookies
 let accessToken = null
@@ -67,7 +68,12 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null)
         clearAccessToken()
-        window.location.href = '/login'
+        // Don't redirect if the failure is an account-status restriction —
+        // the user is still authenticated, just restricted. Let the UI handle it.
+        const code = refreshError.response?.data?.code
+        if (!ACCOUNT_STATUS_CODES.includes(code)) {
+          window.location.href = '/login'
+        }
         return Promise.reject(refreshError)
       } finally {
         isRefreshing = false

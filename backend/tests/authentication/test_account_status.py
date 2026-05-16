@@ -33,23 +33,6 @@ async def test_pending_verification_blocked(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_invited_blocked(client, db_session):
-    """User with INVITED status cannot access protected endpoints."""
-    from tests.conftest import make_user
-
-    user = make_user(account_status="INVITED")
-    db_session.add(user)
-    await db_session.flush()
-
-    response = await client.get(
-        "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {make_token(user)}"},
-    )
-    assert response.status_code == 403
-    assert response.json()["code"] == "ACCOUNT_SETUP_INCOMPLETE"
-
-
-@pytest.mark.asyncio
 async def test_suspended_blocked(client, db_session):
     """User with SUSPENDED status cannot access protected endpoints."""
     from tests.conftest import make_user

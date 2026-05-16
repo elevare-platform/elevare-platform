@@ -18,8 +18,10 @@ from app.core.exception_handler import (
 from app.core.exceptions import PlatformError
 from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
+from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
 from app.modules.jobs.router import router as jobs_router
+from app.modules.users.router import router as employer_router
 
 logger = logging.getLogger(__name__)
 
@@ -97,3 +99,5 @@ async def health_check() -> dict:
 # ---- Routers ----
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
+app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(employer_router, prefix="/api/v1/employer", tags=["employer"])

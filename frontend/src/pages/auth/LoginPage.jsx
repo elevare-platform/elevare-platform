@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,8 +32,8 @@ export default function LoginPage() {
   const onSubmit = async (values) => {
     setServerError(null)
     try {
-      await login(values.email, values.password)
-      navigate(from, { replace: true })
+      const loggedInUser = await login(values.email, values.password)
+      navigate(getPostAuthRedirect(loggedInUser), { replace: true })
     } catch (err) {
       const status = err.response?.status
       if (status === 401) {

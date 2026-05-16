@@ -99,7 +99,18 @@ body {
   background-size: 40px 40px;
 }
 
-/* ─── HowItWorks layout (Requirements 7.2, 7.4) ──────────────────── */
+/* ─── Job card fade-in (newly appended cards) ─────────────────────── */
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out both;
+}
+
+
 
 /* Mobile: stack steps vertically */
 .how-it-works-steps {

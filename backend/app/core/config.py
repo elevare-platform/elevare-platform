@@ -28,5 +28,13 @@ class Settings(BaseSettings):
     # Cookies
     cookie_secure: bool = False
 
+    # Email Verification
+    email_stub_mode: bool = True
+    email_verification_token_expiry: int = 24
+
+    # Invite Setting
+    invite_expiry: int = 3
+    email_verification_token_expiry: int
+
 
 settings = Settings()

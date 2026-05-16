@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
 
-from .enums import ContractType, JobStatus, WorkModel
+from .enums import ContractType, JobStatus, WorkLocation, WorkModel
 
 if TYPE_CHECKING:
     from app.modules.users.models import User
@@ -60,6 +60,14 @@ class Job(BaseModel):
     location: Mapped[str] = mapped_column(
         String(255),
         nullable=False
+    )
+
+    work_location: Mapped[WorkLocation] = mapped_column(
+        String(20),
+        nullable=False,
+        default=WorkLocation.LOCAL.value,
+        server_default=WorkLocation.LOCAL.value,
+        index=True,
     )
 
     # relationship

@@ -48,4 +48,5 @@ def generate_token() -> str:
     return secrets.token_urlsafe(32)
 
 def hash_token(raw_token: str) -> str:
+    """Return a SHA-256 hex digest of the raw token for safe DB storage."""
     return hashlib.sha256(raw_token.encode()).hexdigest()

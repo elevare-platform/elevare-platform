@@ -121,7 +121,7 @@ function JobCard({ job }) {
           {job.salary_range}
         </span>
         <Link
-          to="/register"
+          to="/jobs"
           style={{
             fontSize: '0.8125rem',
             fontWeight: 600,
@@ -236,7 +236,7 @@ export default function JobBoardPreview() {
             Browse live opportunities from Nigeria's top companies. New roles added daily — find your next move today.
           </p>
           <div>
-            <Link to="/register">
+            <Link to="/jobs">
               <Button
                 size="lg"
                 style={{ background: '#1A4D8F', color: '#ffffff', border: 'none' }}

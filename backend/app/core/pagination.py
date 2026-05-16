@@ -61,9 +61,15 @@ async def paginate_cursor(
         limit: Number of items per page (default 20, max 100).
 
     Returns:
-        A dict with ``items``, ``next_cursor``, and ``count``.
+        A dict with ``items``, ``next_cursor``, ``count`` (page size), and ``total``
+        (total matching rows across all pages).
 
     """
+    # Run a COUNT(*) on the unfiltered-by-cursor base query so we always
+    # return the total number of matching rows regardless of which page we're on.
+    count_query = select(func.count()).select_from(query.subquery())
+    total: int = (await session.scalar(count_query)) or 0
+
     if cursor:
         from sqlalchemy import tuple_
 
@@ -95,6 +101,7 @@ async def paginate_cursor(
         "items": items,
         "next_cursor": next_cursor,
         "count": len(items),
+        "total": total,
     }
 
 

@@ -1,11 +1,12 @@
 """Pydantic request and response schemas for the jobs module."""
 
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.jobs.enums import ContractType, WorkModel
+from app.modules.jobs.enums import ContractType, WorkLocation, WorkModel
 
 # ---------------------------------------------------------------------------
 # Request schemas
@@ -24,6 +25,7 @@ class JobCreateRequest(BaseModel):
     work_model: WorkModel | None = None
     salary_min: Decimal | None = Field(default=None, ge=0, le=999_999_999_999)
     salary_max: Decimal | None = Field(default=None, ge=0, le=999_999_999_999)
+    work_location: WorkLocation
 
     @model_validator(mode="after")
     def validate_salary_range(self) -> "JobCreateRequest":
@@ -47,6 +49,8 @@ class JobUpdateRequest(BaseModel):
     work_model: WorkModel | None = None
     salary_min: Decimal | None = Field(default=None, ge=0, le=999_999_999_999)
     salary_max: Decimal | None = Field(default=None, ge=0, le=999_999_999_999)
+    work_location: WorkLocation | None = None
+
 
     @model_validator(mode="after")
     def validate_salary_range(self) -> "JobUpdateRequest":
@@ -72,6 +76,7 @@ class JobFilterParams(BaseModel):
     location: str | None = Field(default=None, max_length=255)
     cursor: str | None = None
     limit: int = Field(default=20, ge=1, le=100)
+    work_location: WorkLocation | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +97,8 @@ class JobResponse(BaseModel):
     employer_id: UUID | None
     company_name: str | None = None
     company_logo_url: str | None = None
+    work_location: WorkLocation
+    created_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -117,8 +124,10 @@ class JobResponse(BaseModel):
             salary_max=job.salary_max,
             status=job.status,
             employer_id=job.employer_id,
+            work_location=job.work_location,
             company_name=profile.company_name if profile else None,
             company_logo_url=profile.company_logo_url if profile else None,
+            created_at=job.created_at,
         )
 
 
@@ -127,3 +136,4 @@ class JobListResponse(BaseModel):
     items: list[JobResponse]
     next_cursor: str | None
     count: int
+    total: int = 0

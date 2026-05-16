@@ -1,9 +1,13 @@
+import logging
+
 from fastapi import APIRouter, Cookie, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.dependencies import get_current_user, get_db
 from app.core.exceptions import RefreshTokenMissing
 from app.modules.auth.schemas import (
+    AcceptInviteRequest,
     AuthResponse,
     LoginRequest,
     MessageResponse,
@@ -12,6 +16,8 @@ from app.modules.auth.schemas import (
 )
 from app.modules.auth.service import AuthService
 from app.modules.users.models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -114,3 +120,60 @@ async def get_me(
 
     """
     return current_user
+
+@router.post("/verify-email", status_code=200, response_model=MessageResponse)
+async def verify_email(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """Verify a user's email address using a token.
+
+    Args:
+        token: The email verification token (passed as query param from the link).
+        db: Injected async database session.
+
+    Returns:
+        A MessageResponse confirming the verification.
+
+    """
+    return await AuthService(db).verify_email(token)
+
+
+@router.post("/resend-verification-email", status_code=200, response_model=MessageResponse)
+async def resend_verification_email(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MessageResponse:
+    """Resend an email verification token to the authenticated user.
+
+    Args:
+        db: Injected async database session.
+        current_user: The authenticated user requesting a new token.
+
+    Returns:
+        A MessageResponse confirming the token was sent.
+
+    """
+    raw_token = await AuthService(db).create_verification_token(current_user.id)
+    if settings.email_stub_mode:
+        return MessageResponse(message=f"Verification token (stub): {raw_token}")
+    return MessageResponse(message="Verification email sent")
+
+@router.post("/invite/accept", status_code=200, response_model=AuthResponse)
+async def accept_invite(
+    token: str,
+    data: AcceptInviteRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> AuthResponse:
+    """Accept an invite to join the platform.
+
+    Args:
+        token: The invite token.
+        db: Injected async database session.
+
+    Returns:
+        A MessageResponse confirming the invite was accepted.
+    """
+    return await AuthService(db).accept_invite(token, data, response)
+
