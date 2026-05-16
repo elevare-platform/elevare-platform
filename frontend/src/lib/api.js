@@ -11,6 +11,9 @@ export const clearAccessToken = () => { accessToken = null }
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   withCredentials: true, // sends httpOnly refresh token cookie automatically
+  headers: {
+    'ngrok-skip-browser-warning': 'true',
+  },
 })
 
 // Request interceptor — attach Bearer token to every outgoing request
