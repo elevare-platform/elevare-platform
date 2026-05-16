@@ -18,6 +18,7 @@ def make_create_request(**overrides) -> JobCreateRequest:
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME,
         "work_model": WorkModel.HYBRID,
+        "work_location": "LOCAL",
     }
     defaults.update(overrides)
     return JobCreateRequest(**defaults)

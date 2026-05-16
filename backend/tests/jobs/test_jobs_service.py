@@ -22,6 +22,7 @@ def make_create_request(**overrides) -> JobCreateRequest:
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME,
         "work_model": WorkModel.HYBRID,
+        "work_location": "LOCAL",
     }
     defaults.update(overrides)
     return JobCreateRequest(**defaults)
@@ -30,10 +31,22 @@ def make_create_request(**overrides) -> JobCreateRequest:
 @pytest.mark.asyncio
 async def test_create_job_returns_draft(db_session):
     """create_job always creates a DRAFT job."""
+    from app.modules.users.models import EmployerProfile
     from tests.conftest import make_employer
 
     employer = make_employer()
     db_session.add(employer)
+    await db_session.flush()
+
+    # Gate requires a complete profile
+    profile = EmployerProfile(
+        user_id=employer.id,
+        company_name="Test Corp",
+        industry="Technology",
+        company_size="11-50",
+        is_profile_complete=True,
+    )
+    db_session.add(profile)
     await db_session.flush()
 
     service = JobService(db_session)

@@ -33,6 +33,7 @@ def register_payload(**overrides) -> dict:
         "phone_number": data.phone_number,
         "password": data.password,
         "confirm_password": data.confirm_password,
+        "role": data.role,
     }
 
 
@@ -124,17 +125,14 @@ async def test_resend_verification_endpoint(client):
     reg = await client.post("/api/v1/auth/register", json=payload)
     assert reg.status_code == 201
 
-    # Use the registration access token — user is PENDING_VERIFICATION
-    # The resend endpoint requires auth but allows PENDING users through
-    # (it's one of the few endpoints that must work before verification)
+    # Use the registration access token — user is PENDING_VERIFICATION.
+    # The resend endpoint uses get_current_user_any_status so PENDING users
+    # can reach it without being blocked.
     access_token = reg.json()["access_token"]
 
     response = await client.post(
         "/api/v1/auth/resend-verification-email",
         headers={"Authorization": f"Bearer {access_token}"},
     )
-    # PENDING_VERIFICATION users are blocked by get_current_user — this is expected
-    # The resend endpoint is only accessible after login with an active token,
-    # or the dependency must be relaxed. We verify the correct 403 is returned.
-    assert response.status_code == 403
-    assert response.json()["code"] == "EMAIL_VERIFICATION_REQUIRED"
+    assert response.status_code == 200
+    assert "verification" in response.json()["message"].lower()

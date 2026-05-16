@@ -55,6 +55,7 @@ class EmployerProfileResponse(BaseModel):
     """Employer profile fields returned after a successful update."""
 
     company_name: str | None
+    company_description: str | None
     industry: str | None
     company_size: str | None
     website: str | None

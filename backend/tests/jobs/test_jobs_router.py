@@ -17,6 +17,7 @@ def job_payload(**overrides) -> dict:
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME.value,
         "work_model": WorkModel.HYBRID.value,
+        "work_location": "LOCAL",
         "salary_min": 500000,
         "salary_max": 900000,
     }
@@ -46,10 +47,15 @@ async def register_employer(client) -> tuple[str, dict]:
 
 
 async def register_and_promote(client, db_session, role: str) -> str:
-    """Register a user and promote them to the given role. Returns access token."""
+    """Register a user, promote them to the given role, and return an access token.
+
+    For EMPLOYER role, also creates a complete EmployerProfile so the job
+    posting gate is satisfied.
+    """
     from sqlalchemy import select
 
-    from app.modules.users.models import User
+    from app.modules.auth.jwt_handler import create_token_pair
+    from app.modules.users.models import EmployerProfile, User
     from tests.conftest import make_register_data
 
     data = make_register_data()
@@ -60,6 +66,7 @@ async def register_and_promote(client, db_session, role: str) -> str:
         "phone_number": data.phone_number,
         "password": data.password,
         "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
     }
     reg = await client.post("/api/v1/auth/register", json=payload)
     assert reg.status_code == 201
@@ -68,15 +75,25 @@ async def register_and_promote(client, db_session, role: str) -> str:
     result = await db_session.execute(select(User).where(User.email == data.email))
     user = result.scalar_one()
     user.role = role
-    user.account_status = "ACTIVE"  # override PENDING_VERIFICATION for tests
+    user.account_status = "ACTIVE"
     await db_session.flush()
 
-    # Log in again to get a token with the updated role
-    login = await client.post("/api/v1/auth/login", json={
-        "email": data.email,
-        "password": data.password,
-    })
-    return login.json()["access_token"]
+    # Employers need a complete profile to pass the job posting gate
+    if role == "EMPLOYER":
+        profile = EmployerProfile(
+            user_id=user.id,
+            company_name="Test Corp",
+            industry="Technology",
+            company_size="11-50",
+            is_profile_complete=True,
+        )
+        db_session.add(profile)
+        await db_session.flush()
+
+    # Issue a fresh token with the updated role — avoids a login round-trip
+    # that would fail if account_status enforcement is strict on login
+    token_pair = create_token_pair(user.id, role)
+    return token_pair["access_token"]
 
 
 # ---------------------------------------------------------------------------

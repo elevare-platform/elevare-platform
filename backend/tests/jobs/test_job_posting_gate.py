@@ -23,6 +23,7 @@ def make_create_request(**overrides) -> JobCreateRequest:
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME,
         "work_model": WorkModel.HYBRID,
+        "work_location": "LOCAL",
     }
     defaults.update(overrides)
     return JobCreateRequest(**defaults)
@@ -87,12 +88,11 @@ async def test_create_job_allowed_for_complete_profile(db_session):
 
 
 @pytest.mark.asyncio
-async def test_create_job_allowed_when_no_employer_profile_exists(db_session):
-    """create_job proceeds without error when employer has no EmployerProfile row at all.
+async def test_create_job_blocked_when_no_employer_profile_exists(db_session):
+    """create_job raises PermissionDeniedException when employer has no EmployerProfile row.
 
-    The gate only fires when a profile exists AND is_profile_complete is False.
-    An employer with no profile row (e.g. a candidate promoted to employer) is
-    not blocked — the profile check is opt-in once the profile is created.
+    The gate blocks posting when there is no profile at all — the employer must
+    complete onboarding before posting jobs.
     """
     from tests.conftest import make_employer
 
@@ -100,11 +100,12 @@ async def test_create_job_allowed_when_no_employer_profile_exists(db_session):
     db_session.add(employer)
     await db_session.flush()
 
-    # No EmployerProfile created — employer_profile relationship will be None
+    # No EmployerProfile created
     service = JobService(db_session)
-    result = await service.create_job(make_create_request(), employer=employer)
+    with pytest.raises(PermissionDeniedException) as exc_info:
+        await service.create_job(make_create_request(), employer=employer)
 
-    assert result.employer_id == employer.id
+    assert "profile" in exc_info.value.message.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +121,6 @@ async def test_post_job_returns_403_for_incomplete_profile(client, db_session):
     from app.modules.users.models import User
     from tests.conftest import make_register_data
 
-    # Register and promote to EMPLOYER
     data = make_register_data()
     payload = {
         "first_name": data.first_name,
@@ -129,6 +129,7 @@ async def test_post_job_returns_403_for_incomplete_profile(client, db_session):
         "phone_number": data.phone_number,
         "password": data.password,
         "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
     }
     reg = await client.post("/api/v1/auth/register", json=payload)
     assert reg.status_code == 201
@@ -139,7 +140,6 @@ async def test_post_job_returns_403_for_incomplete_profile(client, db_session):
     user.account_status = "ACTIVE"
     await db_session.flush()
 
-    # Create an incomplete employer profile
     profile = EmployerProfile(
         user_id=user.id,
         is_profile_complete=False,
@@ -158,6 +158,7 @@ async def test_post_job_returns_403_for_incomplete_profile(client, db_session):
             "location": "Lagos",
             "contract_type": ContractType.FULL_TIME.value,
             "work_model": WorkModel.HYBRID.value,
+            "work_location": "LOCAL",
         },
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -183,6 +184,7 @@ async def test_post_job_succeeds_for_complete_profile(client, db_session):
         "phone_number": data.phone_number,
         "password": data.password,
         "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
     }
     reg = await client.post("/api/v1/auth/register", json=payload)
     assert reg.status_code == 201
@@ -193,7 +195,6 @@ async def test_post_job_succeeds_for_complete_profile(client, db_session):
     user.account_status = "ACTIVE"
     await db_session.flush()
 
-    # Create a complete employer profile
     profile = EmployerProfile(
         user_id=user.id,
         company_name="Acme Corp",
@@ -214,6 +215,7 @@ async def test_post_job_succeeds_for_complete_profile(client, db_session):
             "location": "Lagos",
             "contract_type": ContractType.FULL_TIME.value,
             "work_model": WorkModel.HYBRID.value,
+            "work_location": "LOCAL",
         },
         headers={"Authorization": f"Bearer {token}"},
     )

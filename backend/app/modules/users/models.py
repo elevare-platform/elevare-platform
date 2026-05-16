@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, String
+from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
@@ -153,6 +153,10 @@ class EmployerProfile(BaseModel):
         index=True,
     )
     company_name: Mapped[str] = mapped_column(String(255), nullable=True)
+    company_description: Mapped[str] = mapped_column(
+        Text,
+        nullable=True
+    )
     company_logo_url: Mapped[str] = mapped_column(String(500), nullable=True)
     industry: Mapped[str] = mapped_column(String(100), nullable=True)
     company_size: Mapped[str] = mapped_column(String(20), nullable=True)

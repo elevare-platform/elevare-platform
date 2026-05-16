@@ -16,10 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import (
+    AccountBannedException,
+    AccountDeactivatedException,
+    AccountSuspendedException,
+    EmailVerificationRequiredException,
     PermissionDeniedException,
     UserNotFoundException,
 )
 from app.modules.auth.jwt_handler import decode_access_token
+from app.modules.users.enums import AccountStatus
 from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -42,20 +47,45 @@ async def get_current_user(
 ) -> User:
     """Decode the bearer token and return the authenticated user.
 
-    Args:
-        token: JWT extracted from the ``Authorization: Bearer`` header.
-        db: Injected database session.
-
-    Returns:
-        The ``User`` ORM instance for the authenticated user.
-
-    Raises:
-        TokenExpiredException: If the token has expired.
-        TokenInvalidException: If the token is malformed or has a bad signature.
-        UserNotFoundException: If the user ID in the token no longer exists in the DB.
+    Enforces account status — raises for PENDING_VERIFICATION, SUSPENDED,
+    BANNED, and DEACTIVATED. Use ``get_current_user_any_status`` on endpoints
+    that must work regardless of status (e.g. GET /me, resend-verification).
 
     """
-    payload = decode_access_token(token)  # raises TokenExpiredException / TokenInvalidException
+    payload = decode_access_token(token)
+
+    result = await db.execute(select(User).where(User.id == payload.sub))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise UserNotFoundException()
+
+    # Enforce account status — every protected endpoint inherits this check
+    status = user.account_status
+    if status == AccountStatus.PENDING_VERIFICATION.value:
+        raise EmailVerificationRequiredException()
+    if status == AccountStatus.SUSPENDED.value:
+        raise AccountSuspendedException()
+    if status == AccountStatus.BANNED.value:
+        raise AccountBannedException()
+    if status == AccountStatus.DEACTIVATED.value:
+        raise AccountDeactivatedException()
+
+    return user
+
+
+async def get_current_user_any_status(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Like get_current_user but skips account status enforcement.
+
+    Use only on endpoints that must be reachable regardless of account status,
+    such as GET /me (needed by the frontend to render restricted-account UI)
+    and POST /resend-verification-email.
+
+    """
+    payload = decode_access_token(token)
 
     result = await db.execute(select(User).where(User.id == payload.sub))
     user = result.scalar_one_or_none()

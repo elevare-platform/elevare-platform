@@ -25,7 +25,7 @@ async def test_pending_verification_blocked(client, db_session):
     await db_session.flush()
 
     response = await client.get(
-        "/api/v1/auth/me",
+        "/api/v1/jobs/mine",
         headers={"Authorization": f"Bearer {make_token(user)}"},
     )
     assert response.status_code == 403
@@ -42,7 +42,7 @@ async def test_suspended_blocked(client, db_session):
     await db_session.flush()
 
     response = await client.get(
-        "/api/v1/auth/me",
+        "/api/v1/jobs/mine",
         headers={"Authorization": f"Bearer {make_token(user)}"},
     )
     assert response.status_code == 403
@@ -59,7 +59,7 @@ async def test_banned_blocked(client, db_session):
     await db_session.flush()
 
     response = await client.get(
-        "/api/v1/auth/me",
+        "/api/v1/jobs/mine",
         headers={"Authorization": f"Bearer {make_token(user)}"},
     )
     assert response.status_code == 403
@@ -76,7 +76,7 @@ async def test_deactivated_blocked(client, db_session):
     await db_session.flush()
 
     response = await client.get(
-        "/api/v1/auth/me",
+        "/api/v1/jobs/mine",
         headers={"Authorization": f"Bearer {make_token(user)}"},
     )
     assert response.status_code == 403

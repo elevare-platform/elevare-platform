@@ -59,11 +59,11 @@ async def get_admin_token(client, db_session) -> str:
         "phone_number": data.phone_number,
         "password": data.password,
         "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
     }
     reg = await client.post("/api/v1/auth/register", json=payload)
     assert reg.status_code == 201
 
-    # Promote to ADMIN and activate
     result = await db_session.execute(select(User).where(User.email == data.email))
     user = result.scalar_one()
     user.role = "ADMIN"
@@ -113,6 +113,7 @@ async def test_non_admin_cannot_create_invite(client, db_session):
         "phone_number": data.phone_number,
         "password": data.password,
         "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
     }
     reg = await client.post("/api/v1/auth/register", json=payload)
     assert reg.status_code == 201
@@ -164,6 +165,7 @@ async def test_admin_invite_duplicate_email_returns_409(client, db_session):
         "phone_number": data.phone_number,
         "password": data.password,
         "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
     }
     await client.post("/api/v1/auth/register", json=reg_payload)
 

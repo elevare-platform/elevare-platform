@@ -4,7 +4,7 @@ from fastapi import APIRouter, Cookie, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import get_current_user, get_current_user_any_status, get_db
 from app.core.exceptions import RefreshTokenMissing
 from app.modules.auth.schemas import (
     AcceptInviteRequest,
@@ -108,15 +108,13 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse, status_code=200)
 async def get_me(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_any_status),
 ) -> UserResponse:
     """Retrieve the authenticated user's profile.
 
-    Args:
-        current_user: The authenticated user.
-
-    Returns:
-        A UserResponse containing the user's profile information.
+    Uses the lenient dependency so restricted accounts (PENDING_VERIFICATION,
+    SUSPENDED, etc.) can still fetch their own data — the frontend needs this
+    to render the correct restricted-account UI.
 
     """
     return current_user
@@ -142,7 +140,7 @@ async def verify_email(
 @router.post("/resend-verification-email", status_code=200, response_model=MessageResponse)
 async def resend_verification_email(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_any_status),
 ) -> MessageResponse:
     """Resend an email verification token to the authenticated user.
 

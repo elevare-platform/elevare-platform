@@ -47,6 +47,7 @@ def make_register_data(**overrides) -> RegisterRequest:
         "phone_number": f"0801{uuid4().int % 10**7:07d}",
         "password": "Password123#",
         "confirm_password": "Password123#",
+        "role": "CANDIDATE",
     }
     defaults.update(overrides)
     return RegisterRequest(**defaults)
@@ -70,6 +71,7 @@ def make_job(employer_id, **overrides) -> Job:
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME.value,
         "work_model": WorkModel.HYBRID.value,
+        "work_location": "LOCAL",
         "status": JobStatus.ACTIVE.value,
         "employer_id": employer_id,
     }

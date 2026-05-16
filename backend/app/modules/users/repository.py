@@ -99,9 +99,8 @@ class UserRepository:
         if data.website is not None:
             profile.website = data.website
 
-        # company_description lives on the frontend schema but the DB model
-        # doesn't have that column yet — skip silently until migration adds it.
-        # profile.company_description = data.company_description
+        if data.company_description is not None:
+            profile.company_description = data.company_description
 
         # Flip the gate — required fields are now present
         profile.is_profile_complete = True

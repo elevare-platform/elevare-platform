@@ -17,6 +17,7 @@ def register_payload(**overrides) -> dict:
         "phone_number": data.phone_number,
         "password": data.password,
         "confirm_password": data.confirm_password,
+        "role": data.role,
     }
 
 
@@ -169,28 +170,31 @@ async def test_get_me_without_token_returns_401(client):
 
 
 @pytest.mark.asyncio
-async def test_get_me_with_wrong_role_returns_403(client):
-    """A route requiring ADMIN role returns 403 for a GUEST user."""
-    from fastapi import APIRouter, Depends
+async def test_get_me_with_wrong_role_returns_403(client, db_session):
+    """A route requiring ADMIN role returns 403 for a non-admin user."""
+    from sqlalchemy import select
 
-    from app.core.dependencies import require_role
-    from app.main import app as fastapi_app
+    from app.modules.auth.jwt_handler import create_token_pair
+    from app.modules.users.models import User
 
-    access_token, _, _ = await register_and_get_tokens(client)
+    # Register and activate a CANDIDATE
+    payload = register_payload()
+    reg = await client.post("/api/v1/auth/register", json=payload)
+    assert reg.status_code == 201
 
-    test_router = APIRouter()
+    result = await db_session.execute(select(User).where(User.email == payload["email"]))
+    user = result.scalar_one()
+    user.account_status = "ACTIVE"
+    await db_session.flush()
 
-    @test_router.get("/test-admin-only")
-    async def admin_only(user=Depends(require_role("ADMIN"))):
-        return {"ok": True}
+    token = create_token_pair(user.id, "CANDIDATE")["access_token"]
 
-    fastapi_app.include_router(test_router, prefix="/api/v1")
-
-    response = await client.get(
-        "/api/v1/test-admin-only",
-        headers={"Authorization": f"Bearer {access_token}"},
+    # /api/v1/admin/employers/invite requires ADMIN role
+    response = await client.post(
+        "/api/v1/admin/employers/invite",
+        json={"email": "x@x.com", "role": "EMPLOYER"},
+        headers={"Authorization": f"Bearer {token}"},
     )
-
     assert response.status_code == 403
 
 
@@ -301,14 +305,15 @@ async def test_verify_email_already_used_returns_400(client):
 
 @pytest.mark.asyncio
 async def test_pending_verification_user_blocked_on_protected_route(client):
-    """A PENDING_VERIFICATION user cannot access protected endpoints."""
+    """A PENDING_VERIFICATION user cannot access strictly-protected endpoints."""
     payload = register_payload()
     reg = await client.post("/api/v1/auth/register", json=payload)
     token = reg.json()["access_token"]
 
-    # Do NOT verify email — account stays PENDING_VERIFICATION
+    # Do NOT verify email — account stays PENDING_VERIFICATION.
+    # /jobs/mine uses require_role → get_current_user (strict).
     response = await client.get(
-        "/api/v1/auth/me",
+        "/api/v1/jobs/mine",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 403
