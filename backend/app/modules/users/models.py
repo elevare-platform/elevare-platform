@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         InviteToken,
         RefreshToken,
     )
+    from app.modules.candidates.models import CandidateProfile
     from app.modules.jobs.models import Job
 
 
@@ -106,6 +107,11 @@ class User(BaseModel):
     invite_tokens: Mapped[list[InviteToken]] = relationship(
         "InviteToken",
         back_populates="inviter"
+    )
+    candidate_profile: Mapped[CandidateProfile] = relationship(
+        "CandidateProfile",
+        back_populates="user",
+        uselist=False,
     )
 
 

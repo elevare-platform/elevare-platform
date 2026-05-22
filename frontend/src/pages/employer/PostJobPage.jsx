@@ -25,14 +25,13 @@ export default function PostJobPage() {
       await api.post('/api/v1/jobs', data)
       navigate('/employer/jobs')
     } catch (err) {
-      const status = err.response?.status
-      const message = err.response?.data?.detail ?? err.response?.data?.message ?? ''
+      const code = err.response?.data?.code
+      const message = err.response?.data?.message ?? ''
 
-      // Req 5.8 — 403 with profile-incomplete message
-      if (status === 403 && message.toLowerCase().includes('profile')) {
+      // Specific code for incomplete profile — show actionable banner
+      if (code === 'PROFILE_INCOMPLETE') {
         setProfileIncomplete(true)
       } else {
-        // Req 5.7 — other errors shown inline
         setError(message || 'Something went wrong. Please try again.')
       }
     } finally {
@@ -53,10 +52,16 @@ export default function PostJobPage() {
             </p>
           </div>
 
-          {/* Req 5.8 — amber banner for incomplete profile */}
+          {/* Profile incomplete — actionable banner */}
           {profileIncomplete && (
-            <div className="mb-6 rounded-md border border-brand-amber bg-brand-amber/10 px-4 py-3 text-sm text-brand-amber-dark font-medium">
-              Complete your company profile before posting jobs.
+            <div className="mb-6 rounded-md border border-brand-amber bg-brand-amber/10 px-4 py-3 text-sm">
+              <p className="font-medium text-amber-800">Your company profile is incomplete.</p>
+              <p className="text-amber-700 mt-1">
+                You need to complete your company profile before posting jobs.{' '}
+                <a href="/employer/profile" className="underline font-medium hover:text-amber-900">
+                  Complete your profile →
+                </a>
+              </p>
             </div>
           )}
 

@@ -10,6 +10,7 @@ services:
       - DEBUG=true
       - ENVIRONMENT=development
       - SECRET_KEY=dev-secret-key-change-in-production
+      - CORS_ORIGINS=["http://localhost:5173","https://elevare-platform.vercel.app","https://spritely-unbeautiful-bryn.ngrok-free.dev"]
     depends_on:
       db:
         condition: service_healthy

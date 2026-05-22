@@ -1,7 +1,15 @@
+"""Application settings loaded from environment variables and .env file."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Centralised configuration for the Elevare API.
+
+    All values are read from environment variables (case-insensitive).
+    A ``.env`` file in the working directory is loaded automatically.
+    """
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -25,6 +33,9 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     algorithm: str = "HS256"
 
+    # CORS
+    cors_origins: list[str] = ["http://localhost:5173"]
+
     # Cookies
     cookie_secure: bool = False
 
@@ -35,6 +46,14 @@ class Settings(BaseSettings):
     # Invite Setting
     invite_expiry: int = 3
     email_verification_token_expiry: int
+
+    # R2 Storage — all optional so app starts without R2 in CI
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_bucket_name: str | None = None
+    r2_endpoint_url: str | None = None
+    r2_region: str = "auto"
+    r2_public_url: str | None = None
 
 
 settings = Settings()

@@ -13,6 +13,11 @@ issues during initialization.
 """
 
 from app.modules.auth.models import EmailVerificationToken, InviteToken, RefreshToken
+from app.modules.candidates.models import (
+    CandidateCvs,
+    CandidateDocuments,
+    CandidateProfile,
+)
 from app.modules.jobs.models import Job
 from app.modules.users.models import User
 
@@ -20,6 +25,9 @@ __all__ = [
     "EmailVerificationToken",
     "InviteToken",
     "RefreshToken",
+    "CandidateProfile",
+    "CandidateCvs",
+    "CandidateDocuments",
     "Job",
     "User",
 ]

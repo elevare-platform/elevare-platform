@@ -48,7 +48,7 @@ function AppRoutes() {
       </Route>
 
       {/* Employer-only routes */}
-      <Route element={<ProtectedRoute allowedRoles={['EMPLOYER']} />}>
+      <Route element={<ProtectedRoute allowedRoles={['EMPLOYER', 'ADMIN']} />}>
         <Route path="/employer/onboarding" element={<OnboardingPage />} />
         <Route path="/employer/jobs" element={<EmployerJobsPage />} />
         <Route path="/employer/jobs/new" element={<PostJobPage />} />

@@ -383,6 +383,13 @@ class AuthService:
 
         await self._auth_repo.revoke_invite_token(invite)
 
+        # Check if a user with that email already exists
+        existing_user = await self._user_repo.get_user_by_email(invite.email)
+        if existing_user:
+            raise AlreadyExistsException(
+                message="An account with this email already exists. Contact support to resolve."
+            )
+
         # register user
         logger.info(f"Registering {invite.email} as {invite.role}")
 

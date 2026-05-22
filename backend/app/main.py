@@ -20,8 +20,8 @@ from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
+from app.modules.employer.router import router as employer_router
 from app.modules.jobs.router import router as jobs_router
-from app.modules.users.router import router as employer_router
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ app = FastAPI(
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server — tightened in production
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

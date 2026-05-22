@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     PermissionDeniedException,
+    ProfileIncompleteException,
     ValidationException,
 )
 from app.modules.jobs.enums import JobStatus
@@ -32,6 +33,8 @@ _VALID_TRANSITIONS: dict[JobStatus, list[JobStatus]] = {
 
 
 class JobService:
+    """Business logic for job listing lifecycle management."""
+
     def __init__(self, db: AsyncSession):
         self._db = db
         self._repo = JobRepository(db)
@@ -42,9 +45,7 @@ class JobService:
         employer = await self._user_repo.get_user_by_id(employer.id)
 
         if not employer.employer_profile or not employer.employer_profile.is_profile_complete:
-            raise PermissionDeniedException(
-                message="Employer profile must be complete to post jobs"
-            )
+            raise ProfileIncompleteException()
         job = await self._repo.create(data, employer_id=employer.id)
         await self._db.commit()
         return JobResponse.from_job(job)

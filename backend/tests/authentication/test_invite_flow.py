@@ -385,3 +385,52 @@ async def test_resend_invite_old_token_no_longer_valid(client, db_session):
     )
     assert response.status_code == 400
     assert response.json()["code"] == "TOKEN_ALREADY_USED"
+
+
+# ---------------------------------------------------------------------------
+# Invite acceptance collision — email already registered
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_accept_invite_collision_with_existing_user_returns_409(client, db_session):
+    """POST /auth/invite/accept returns 409 if the invited email already has an account.
+
+    Scenario: admin invites email X, then someone registers with email X before
+    the invite is accepted. Acceptance must fail loudly, not silently upgrade.
+    """
+    from tests.conftest import make_register_data
+
+    admin_token = await get_admin_token(client, db_session)
+    email = f"collision_{uuid4().hex[:6]}@company.com"
+
+    # Admin creates invite for this email
+    invite_resp = await client.post(
+        "/api/v1/admin/employers/invite",
+        json={"email": email, "role": "EMPLOYER"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert invite_resp.status_code == 200
+    invite_token = invite_resp.json()["invite_token"]
+
+    # Someone registers with the same email before the invite is accepted
+    data = make_register_data(email=email)
+    reg_payload = {
+        "first_name": data.first_name,
+        "last_name": data.last_name,
+        "email": data.email,
+        "phone_number": data.phone_number,
+        "password": data.password,
+        "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
+    }
+    reg = await client.post("/api/v1/auth/register", json=reg_payload)
+    assert reg.status_code == 201
+
+    # Now try to accept the invite — should fail with 409
+    response = await client.post(
+        "/api/v1/auth/invite/accept",
+        params={"token": invite_token},
+        json=accept_payload(),
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "ALREADY_EXISTS"

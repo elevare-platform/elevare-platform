@@ -235,6 +235,19 @@ class PermissionDeniedException(PlatformError):
         super().__init__(message, code, status_code, details)
 
 
+class ProfileIncompleteException(PermissionDeniedException):
+    """Raised when an employer tries to post a job without a complete profile."""
+
+    def __init__(
+        self,
+        message: str = "Complete your company profile before posting jobs",
+        code: str = "PERMISSION_DENIED",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
 # ---------------------------------------------------------------------------
 # Not Found  (HTTP 404)
 # ---------------------------------------------------------------------------
