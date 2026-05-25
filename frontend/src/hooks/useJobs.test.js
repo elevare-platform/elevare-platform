@@ -122,8 +122,8 @@ describe('useJobs', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    // Jobs should be preserved, error should be set
+    // Jobs should be preserved, loadMoreError should be set
     expect(result.current.jobs).toEqual(page1)
-    expect(result.current.error).not.toBeNull()
+    expect(result.current.loadMoreError).not.toBeNull()
   })
 })

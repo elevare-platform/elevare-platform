@@ -64,14 +64,12 @@ function StatCard({ stat, isActive }) {
   return (
     <div
       style={{
-        // Requirements 5.5 — rounded-xl, subtle border, light shadow, no hover animation
         background: '#ffffff',
         borderRadius: '0.75rem',
         border: '1px solid #e2e8f0',
         boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
-        padding: '2.5rem 2rem',
+        padding: 'clamp(1.5rem, 4vw, 2.5rem) clamp(1rem, 3vw, 2rem)',
         textAlign: 'center',
-        flex: 1,
         minWidth: 0,
       }}
     >
@@ -79,7 +77,7 @@ function StatCard({ stat, isActive }) {
       <p
         style={{
           margin: 0,
-          fontSize: '3rem',
+          fontSize: 'clamp(2rem, 5vw, 3rem)',
           fontWeight: 800,
           color: '#1A4D8F',
           lineHeight: 1,
@@ -89,7 +87,7 @@ function StatCard({ stat, isActive }) {
         {count}
         <span
           style={{
-            fontSize: '1.5rem',
+            fontSize: 'clamp(1rem, 2.5vw, 1.5rem)',
             fontWeight: 700,
             color: '#E87722',
             marginLeft: '0.25rem',
@@ -103,7 +101,7 @@ function StatCard({ stat, isActive }) {
       <p
         style={{
           margin: '0.75rem 0 0',
-          fontSize: '0.9375rem',
+          fontSize: 'clamp(0.8125rem, 1.5vw, 0.9375rem)',
           color: '#64748b',
           lineHeight: 1.5,
         }}
@@ -125,19 +123,17 @@ export default function StatsSection() {
       ref={sectionRef}
       aria-label="Platform statistics"
       style={{
-        // Requirements 5.1 — white background, generous padding
         background: '#ffffff',
-        padding: '5rem 1rem',
+        padding: '4rem 1rem',
       }}
     >
       <div
         style={{
           maxWidth: '56rem',
           margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'row',
-          gap: '1.5rem',
-          flexWrap: 'wrap',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '1.25rem',
         }}
       >
         {STATS.map((stat) => (

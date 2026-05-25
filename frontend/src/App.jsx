@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { AuthProvider, useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import LoginPage from '@/pages/auth/LoginPage'
 import RegisterPage from '@/pages/auth/RegisterPage'
@@ -13,6 +13,8 @@ import EmployerJobsPage from '@/pages/employer/EmployerJobsPage'
 import PostJobPage from '@/pages/employer/PostJobPage'
 import OnboardingPage from '@/pages/employer/OnboardingPage'
 import AdminInvitePage from '@/pages/admin/AdminInvitePage'
+import CandidateDashboardPage from '@/pages/candidate/CandidateDashboardPage'
+import CandidateProfilePage from '@/pages/candidate/CandidateProfilePage'
 
 // Redirects authenticated users away from login/register
 function PublicRoute({ children }) {
@@ -26,7 +28,7 @@ function PublicRoute({ children }) {
     )
   }
 
-  return user ? <Navigate to="/dashboard" replace /> : children
+  return user ? <Navigate to={getPostAuthRedirect(user)} replace /> : children
 }
 
 function AppRoutes() {
@@ -57,6 +59,12 @@ function AppRoutes() {
       {/* Admin-only routes */}
       <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
         <Route path="/admin/invite" element={<AdminInvitePage />} />
+      </Route>
+
+      {/* Candidate-only routes */}
+      <Route element={<ProtectedRoute allowedRoles={['CANDIDATE']} />}>
+        <Route path="/candidate/dashboard" element={<CandidateDashboardPage />} />
+        <Route path="/candidate/profile" element={<CandidateProfilePage />} />
       </Route>
 
       {/* Catch-all */}

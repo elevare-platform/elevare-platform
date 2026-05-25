@@ -80,14 +80,8 @@ export default function WhyChooseUs() {
             Why Leading Companies Choose Elevare
           </h2>
 
-          {/* 2×2 grid — Requirements 6.2 */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '1rem',
-            }}
-          >
+          {/* 2×2 grid — Requirements 6.2 — single column on small mobile, 2-col on sm+ */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {FEATURES.map((feature, index) => {
               const Icon = feature.icon
 

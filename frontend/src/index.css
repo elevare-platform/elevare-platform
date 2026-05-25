@@ -112,6 +112,29 @@ body {
 
 
 
+/* ─── Services grid ───────────────────────────────────────────────── */
+
+/* Mobile: single column (Requirements 3.4) */
+.services-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+/* Desktop (≥ 1024px): 3-column grid (Requirements 3.5) */
+@media (min-width: 1024px) {
+  .services-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Tablet (768px–1023px): 2-column grid */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .services-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* Mobile: stack steps vertically */
 .how-it-works-steps {
   display: flex;
@@ -152,5 +175,46 @@ body {
     width: 2rem;
     height: 2px;
     background: #e2e8f0;
+  }
+}
+
+/* ─── Employer Strip grid ─────────────────────────────────────────── */
+
+/* Mobile: single column (Requirements 4.4) */
+.employer-strip-grid {
+  grid-template-columns: 1fr !important;
+}
+
+/* Desktop (≥ 1024px): two-column layout */
+@media (min-width: 1024px) {
+  .employer-strip-grid {
+    grid-template-columns: 3fr 2fr !important;
+  }
+
+  .employer-strip-cta {
+    align-items: flex-start !important;
+  }
+}
+
+/* ─── Insights Strip grid ─────────────────────────────────────────── */
+
+/* Mobile: single column (Requirements 10.3) */
+.insights-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+/* Tablet (768px–1023px): 2-column grid */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .insights-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop (≥ 1024px): 3-column grid (Requirements 10.4) */
+@media (min-width: 1024px) {
+  .insights-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }

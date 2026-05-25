@@ -94,5 +94,8 @@ export function getPostAuthRedirect(user) {
   if (user.role === 'EMPLOYER') {
     return user.is_profile_complete ? '/employer/jobs' : '/employer/onboarding'
   }
+  if (user.role === 'CANDIDATE') {
+    return '/candidate/dashboard'
+  }
   return '/dashboard'
 }

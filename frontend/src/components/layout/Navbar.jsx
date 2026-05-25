@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Menu, X, User, LogOut, LayoutDashboard } from 'lucide-react'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import ElevareLogo from '@/components/ui/ElevareLogo'
 
@@ -126,7 +126,7 @@ function AvatarDropdown({ user, onLogout }) {
             role="menu"
           >
             <button
-              onClick={() => { setOpen(false); navigate('/dashboard') }}
+              onClick={() => { setOpen(false); navigate(getPostAuthRedirect(user)) }}
               className="flex items-center gap-2 w-full px-4 py-2 text-sm text-text hover:bg-surface-muted hover:text-brand-blue transition-colors focus:outline-none focus-visible:bg-surface-muted"
               role="menuitem"
             >
@@ -146,9 +146,55 @@ function AvatarDropdown({ user, onLogout }) {
   )
 }
 
+// ─── Mobile accordion item (for expandable sub-menus in drawer) ──────────────
+
+function MobileAccordionItem({ label, items, onClose }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="border-b border-border/50">
+      <button
+        className="flex items-center justify-between w-full py-3 text-base font-medium text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        {label}
+        <ChevronDown
+          size={16}
+          className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="pb-2 pl-4 space-y-1">
+              {items.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  onClick={onClose}
+                  className="block py-2 text-sm text-text-muted hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+                >
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ─── Mobile drawer ────────────────────────────────────────────────────────────
 
-function MobileDrawer({ isOpen, onClose, user, onLogout }) {
+function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
   const navigate = useNavigate()
 
   // Prevent body scroll when drawer is open
@@ -203,23 +249,41 @@ function MobileDrawer({ isOpen, onClose, user, onLogout }) {
             </div>
 
             {/* Nav links */}
-            <nav className="flex-1 overflow-y-auto px-6 py-6 space-y-1" aria-label="Mobile navigation">
-              {[
-                { label: 'For Employers', href: '#' },
-                { label: 'For Candidates', href: '#' },
-                { label: 'About Us', href: '#' },
-                { label: 'How It Works', href: '#' },
-                { label: 'Contact Us', href: '#' },
-              ].map((item) => (
+            <nav className="flex-1 overflow-y-auto px-6 py-4 space-y-0" aria-label="Mobile navigation">
+              {/* Expandable: For Employers */}
+              <MobileAccordionItem
+                label="For Employers"
+                items={EMPLOYERS_ITEMS}
+                onClose={onClose}
+              />
+              {/* Expandable: For Candidates */}
+              <MobileAccordionItem
+                label="For Candidates"
+                items={CANDIDATES_ITEMS}
+                onClose={onClose}
+              />
+              {['About Us', 'How It Works', 'Contact Us'].map((label) => (
                 <a
-                  key={item.label}
-                  href={item.href}
+                  key={label}
+                  href="#"
                   onClick={onClose}
                   className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
                 >
-                  {item.label}
+                  {label}
                 </a>
               ))}
+
+              {/* Book a Consultation CTA — always visible in mobile drawer */}
+              {onBookConsultation && (
+                <div className="pt-4">
+                  <Button
+                    className="w-full bg-brand-blue hover:bg-brand-blue/90 text-white border-0"
+                    onClick={() => { onClose(); onBookConsultation() }}
+                  >
+                    Book a Consultation
+                  </Button>
+                </div>
+              )}
             </nav>
 
             {/* Bottom auth area */}
@@ -227,7 +291,7 @@ function MobileDrawer({ isOpen, onClose, user, onLogout }) {
               {user ? (
                 <>
                   <button
-                    onClick={() => { onClose(); navigate('/dashboard') }}
+                    onClick={() => { onClose(); navigate(getPostAuthRedirect(user)) }}
                     className="flex items-center gap-2 w-full py-2 text-sm font-medium text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded"
                   >
                     <LayoutDashboard size={16} /> Dashboard
@@ -259,7 +323,7 @@ function MobileDrawer({ isOpen, onClose, user, onLogout }) {
 
 // ─── Navbar ───────────────────────────────────────────────────────────────────
 
-export default function Navbar() {
+export default function Navbar({ onBookConsultation }) {
   const { user, logout } = useAuth()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -312,7 +376,7 @@ export default function Navbar() {
           </Link>
 
           {/* Centre nav — desktop only */}
-          <div className="hidden md:flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-3 lg:gap-6">
             <NavDropdown
               label="For Employers"
               items={EMPLOYERS_ITEMS}
@@ -331,7 +395,7 @@ export default function Navbar() {
               <a
                 key={label}
                 href="#"
-                className="text-sm font-medium text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1"
+                className="text-sm font-medium text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
               >
                 {label}
               </a>
@@ -339,18 +403,27 @@ export default function Navbar() {
           </div>
 
           {/* Right side — desktop only */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 lg:gap-3">
+            {onBookConsultation && (
+              <Button
+                size="sm"
+                className="bg-brand-blue hover:bg-brand-blue/90 text-white border-0 whitespace-nowrap text-xs lg:text-sm px-3 lg:px-4"
+                onClick={onBookConsultation}
+              >
+                Book a Consultation
+              </Button>
+            )}
             {user ? (
               <AvatarDropdown user={user} onLogout={logout} />
             ) : (
               <>
                 <Link to="/login">
-                  <Button variant="ghost" size="sm">Login</Button>
+                  <Button variant="ghost" size="sm" className="text-xs lg:text-sm px-2 lg:px-3">Login</Button>
                 </Link>
                 <Link to="/register">
                   <Button
                     size="sm"
-                    className="bg-brand-amber hover:bg-brand-amber-dark text-white border-0"
+                    className="bg-brand-amber hover:bg-brand-amber-dark text-white border-0 text-xs lg:text-sm px-3 lg:px-4"
                   >
                     Register
                   </Button>
@@ -378,6 +451,7 @@ export default function Navbar() {
         onClose={() => setMobileOpen(false)}
         user={user}
         onLogout={logout}
+        onBookConsultation={onBookConsultation}
       />
     </>
   )

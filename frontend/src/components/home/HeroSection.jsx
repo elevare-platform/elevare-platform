@@ -177,12 +177,14 @@ function ProfileCard({ card }) {
 
 // ─── HeroSection ─────────────────────────────────────────────────────────────
 
-export default function HeroSection() {
+export default function HeroSection({ onBookConsultation }) {
   return (
     <section
       className="relative min-h-screen flex items-center overflow-hidden"
       aria-label="Hero"
       style={{
+        // #1A4D8F fallback for when the background image fails to load (Req 1.5)
+        backgroundColor: '#1A4D8F',
         // Left side stays the light blue-tinted grid; right side fades to a warm
         // off-white so the photo cards feel like they're pinned to a corkboard.
         background: `
@@ -213,18 +215,18 @@ export default function HeroSection() {
       />
 
       {/* Inner grid layout */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-24 lg:py-0">
-        <div className="grid grid-cols-1 lg:grid-cols-[60fr_40fr] gap-12 lg:gap-0 items-center min-h-screen">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-20 sm:py-24 lg:py-0">
+        <div className="grid grid-cols-1 lg:grid-cols-[60fr_40fr] gap-8 lg:gap-0 items-center min-h-screen">
 
           {/* ── Left: text content ── */}
           <div className="flex flex-col justify-center lg:pr-24">
             {/* Eyebrow */}
-            <p className="text-brand-amber font-semibold text-xs tracking-widest uppercase mb-4">
+            <p className="text-brand-amber font-semibold text-xs tracking-widest uppercase mb-3 sm:mb-4">
               Nigeria's Premier Recruitment Platform
             </p>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-text leading-tight mb-6">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-text leading-tight mb-4 sm:mb-6">
               Connecting{' '}
               <em className="not-italic text-brand-amber">Exceptional</em>{' '}
               Talent
@@ -233,17 +235,17 @@ export default function HeroSection() {
             </h1>
 
             {/* Subheadline */}
-            <p className="text-lg text-text-muted leading-relaxed mb-8 max-w-lg">
+            <p className="text-base sm:text-lg text-text-muted leading-relaxed mb-6 sm:mb-8 max-w-lg">
               From Lagos to London, we match the right people with the right roles.
               Fast, precise, and built for African ambition.
             </p>
 
-            {/* CTA buttons */}
-            <div className="flex flex-wrap gap-4 mb-10">
+            {/* CTA buttons — stacked on mobile, side-by-side on desktop (Req 1.2, 1.3, 1.4) */}
+            <div className="flex flex-col sm:flex-row lg:flex-row gap-3 sm:gap-4 mb-6 sm:mb-10">
               <Link to="/register">
                 <Button
                   size="lg"
-                  className="transition-transform duration-200 hover:scale-[1.02] bg-brand-blue hover:bg-brand-blue-dark text-white border-0"
+                  className="w-full sm:w-auto min-h-[44px] transition-transform duration-200 hover:scale-[1.02] bg-brand-blue hover:bg-brand-blue-dark text-white border-0"
                 >
                   Hire Talent →
                 </Button>
@@ -252,7 +254,7 @@ export default function HeroSection() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="transition-transform duration-200 hover:scale-[1.02]"
+                  className="w-full sm:w-auto min-h-[44px] transition-transform duration-200 hover:scale-[1.02]"
                 >
                   Find a Role →
                 </Button>
