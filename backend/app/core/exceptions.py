@@ -217,6 +217,20 @@ class VerificationTokenExpiredException(PlatformError):
         super().__init__(message, code, status_code, details)
 
 
+class CVErrorException(PlatformError):
+    """Raised when an error occurs during CV processing."""
+
+    def __init__(
+        self,
+        message: str = "CV processing error",
+        code: str = "CV_ERROR",
+        status_code: int = 500,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
+
 
 # ---------------------------------------------------------------------------
 # Authorization  (HTTP 403)
@@ -285,6 +299,32 @@ class JobNotFoundError(NotFoundException):
         self,
         message: str = "Job not found",
         code: str = "JOB_NOT_FOUND",
+        status_code: int = 404,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
+class ProfileNotFoundException(NotFoundException):
+    """Raised when a candidate or employer profile is not found."""
+
+    def __init__(
+        self,
+        message: str = "Profile not found",
+        code: str = "PROFILE_NOT_FOUND",
+        status_code: int = 404,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
+class DocumentNotFoundError(NotFoundException):
+    """Raised when a CV or supporting document record is not found."""
+
+    def __init__(
+        self,
+        message: str = "Document not found",
+        code: str = "DOCUMENT_NOT_FOUND",
         status_code: int = 404,
         details: list | None = None,
     ) -> None:

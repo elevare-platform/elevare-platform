@@ -1,0 +1,199 @@
+"""HTTP endpoints for candidate profiles, CVs, and documents."""
+
+import uuid
+
+from fastapi import APIRouter, Depends, File, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.dependencies import get_db, require_role
+from app.core.schemas import SuccessResponse
+from app.core.storage import StorageService, get_storage_service
+from app.modules.candidates.schema import (
+    CandidateCvsResponse,
+    CandidateDocumentsResponse,
+    ProfileResponse,
+    UpdateProfileSchema,
+)
+from app.modules.candidates.service import CandidateService
+from app.modules.users.models import User
+
+router = APIRouter()
+
+
+def get_service(
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage_service),
+) -> CandidateService:
+    """Construct a :class:`CandidateService` with injected DB session and storage."""
+    return CandidateService(db, storage)
+
+
+# ------------------------------------------------------------------
+# Candidate — own profile
+# ------------------------------------------------------------------
+
+@router.get("/me", response_model=ProfileResponse, status_code=200)
+async def get_my_profile(
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Return the authenticated candidate's own profile."""
+    return await service.get_my_profile(current_user.id)
+
+
+@router.put("/me", response_model=ProfileResponse, status_code=200)
+async def update_my_profile(
+    data: UpdateProfileSchema,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Update the authenticated candidate's own profile."""
+    return await service.update_my_profile(current_user.id, data)
+
+
+# ------------------------------------------------------------------
+# Candidate — CVs
+# ------------------------------------------------------------------
+
+@router.post("/me/cv", response_model=CandidateCvsResponse, status_code=201)
+async def upload_cv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Upload a new CV for the authenticated candidate."""
+    contents = await file.read()
+    return await service.upload_cv(current_user.id, contents, file.filename)
+
+
+@router.get("/me/cvs", response_model=list[CandidateCvsResponse], status_code=200)
+async def get_my_cvs(
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Return all CVs belonging to the authenticated candidate."""
+    return await service.get_cvs(current_user.id)
+
+
+@router.get("/me/cv/{cv_id}/url", response_model=SuccessResponse, status_code=200)
+async def get_cv_url(
+    cv_id: uuid.UUID,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Generate a presigned download URL for one of the candidate's own CVs."""
+    url = await service.generate_cv_url(cv_id, current_user.id)
+    return SuccessResponse(message="CV URL generated", data={"url": url})
+
+
+@router.put("/me/cv/{cv_id}/default", response_model=SuccessResponse, status_code=200)
+async def set_cv_default(
+    cv_id: uuid.UUID,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Set a specific CV as the candidate's default."""
+    await service.set_cv_default(cv_id, current_user.id)
+    return SuccessResponse(message="CV set as default")
+
+
+@router.delete("/me/cv/{cv_id}", response_model=SuccessResponse, status_code=200)
+async def delete_cv(
+    cv_id: uuid.UUID,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Delete one of the authenticated candidate's CVs."""
+    await service.delete_cv(cv_id, current_user.id)
+    return SuccessResponse(message="CV deleted successfully")
+
+
+# ------------------------------------------------------------------
+# Candidate — documents
+# ------------------------------------------------------------------
+
+@router.post("/me/documents", response_model=CandidateDocumentsResponse, status_code=201)
+async def upload_document(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Upload a supporting document for the authenticated candidate."""
+    contents = await file.read()
+    return await service.upload_document(current_user.id, contents, file.filename)
+
+
+@router.get("/me/documents", response_model=list[CandidateDocumentsResponse], status_code=200)
+async def get_my_documents(
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Return all supporting documents for the authenticated candidate."""
+    return await service.get_my_documents(current_user.id)
+
+
+@router.get("/me/documents/{document_id}/url", response_model=SuccessResponse, status_code=200)
+async def get_document_url(
+    document_id: uuid.UUID,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Generate a presigned download URL for one of the candidate's own documents."""
+    url = await service.generate_document_url(document_id, current_user.id)
+    return SuccessResponse(message="Document URL generated", data={"url": url})
+
+
+@router.delete("/me/documents/{document_id}", response_model=SuccessResponse, status_code=200)
+async def delete_document(
+    document_id: uuid.UUID,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Delete one of the authenticated candidate's supporting documents."""
+    await service.delete_document(document_id, current_user.id)
+    return SuccessResponse(message="Document deleted successfully")
+
+
+# ------------------------------------------------------------------
+# Employer / Admin — view candidate profiles
+# ------------------------------------------------------------------
+
+@router.get("/{candidate_profile_id}", response_model=ProfileResponse, status_code=200)
+async def get_candidate_profile(
+    candidate_profile_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: CandidateService = Depends(get_service),
+):
+    """Return a candidate profile by ID (employer/admin access)."""
+    return await service.get_profile_by_id(candidate_profile_id, current_user)
+
+
+@router.get("/{candidate_profile_id}/cv/{cv_id}/url", response_model=SuccessResponse, status_code=200)
+async def get_candidate_cv_url(
+    candidate_profile_id: uuid.UUID,
+    cv_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: CandidateService = Depends(get_service),
+):
+    """Employer/admin gets a presigned URL for a candidate's CV."""
+    # Verify the profile exists and the requester has access
+    profile = await service.get_profile_by_id(candidate_profile_id, current_user)
+    cv = await service._repo.get_cv(cv_id)
+    if cv is None or cv.candidate_id != profile.id:
+        from app.core.exceptions import DocumentNotFoundError
+        raise DocumentNotFoundError()
+    url = await service._storage.generate_presigned_url(cv.key, 60 * 15)
+    return SuccessResponse(message="CV URL generated", data={"url": url})
+
+
+# ------------------------------------------------------------------
+# Admin — list all candidates
+# ------------------------------------------------------------------
+
+@router.get("", response_model=list[ProfileResponse], status_code=200)
+async def list_all_candidates(
+    current_user: User = Depends(require_role("ADMIN")),
+    service: CandidateService = Depends(get_service),
+):
+    """Return all candidate profiles (admin only)."""
+    return await service.list_all_profiles()

@@ -59,6 +59,7 @@ class CandidateProfile(BaseModel):
     expected_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     years_of_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_profile_complete: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -96,6 +97,8 @@ class CandidateCvs(BaseModel):
         Boolean,
         default=False,
         nullable=False,
+        # DB enforces at most one is_default=True per candidate_id
+        # via partial unique index: one_default_cv_per_candidate
     )
 
     # Relationships

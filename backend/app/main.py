@@ -1,3 +1,10 @@
+"""FastAPI application entry point for the Elevare platform.
+
+Configures middleware, exception handlers, and mounts all API routers.
+The ``lifespan`` context manager handles startup (logging, DB ping) and
+shutdown (engine disposal).
+"""
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -20,6 +27,7 @@ from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
+from app.modules.candidates.router import router as candidates_router
 from app.modules.employer.router import router as employer_router
 from app.modules.jobs.router import router as jobs_router
 
@@ -89,6 +97,7 @@ app.add_exception_handler(Exception, handle_generic_exception)
 
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
+    """Return a simple liveness payload with version and environment info."""
     return {
         "status": "ok",
         "version": settings.app_version,
@@ -101,3 +110,4 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(employer_router, prefix="/api/v1/employer", tags=["employer"])
+app.include_router(candidates_router, prefix="/api/v1/candidates", tags=["candidates"])

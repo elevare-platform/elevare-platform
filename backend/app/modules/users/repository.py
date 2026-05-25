@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.modules.candidates.models import CandidateProfile
 from app.modules.users.enums import UserRole
 from app.modules.users.models import EmployerProfile, User, UserProfile
 from app.modules.users.schemas import EmployerProfileUpdateRequest
@@ -61,7 +62,12 @@ class UserRepository:
             employer_profile.is_profile_complete = False
             self._db.add(employer_profile)
             await self._db.flush()
+        elif user.role == UserRole.CANDIDATE.value:
+            candidate_profile = CandidateProfile(user_id=user.id)
+            self._db.add(candidate_profile)
+            await self._db.flush()
 
+        await self._db.refresh(user)
         return user
 
     async def get_employer_profile(self, user_id: UUID) -> EmployerProfile | None:
