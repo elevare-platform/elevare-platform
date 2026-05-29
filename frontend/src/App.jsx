@@ -7,6 +7,12 @@ import InviteAcceptPage from '@/pages/auth/InviteAcceptPage'
 import DashboardPage from '@/pages/DashboardPage'
 import UnauthorisedPage from '@/pages/UnauthorisedPage'
 import HomePage from '@/pages/HomePage'
+import ServicesPage from '@/pages/ServicesPage'
+import AboutPage from '@/pages/AboutPage'
+import TalentPipelinePage from '@/pages/TalentPipelinePage'
+import TrainingPage from '@/pages/TrainingPage'
+import WorkforceToolsPage from '@/pages/WorkforceToolsPage'
+import PartnershipPage from '@/pages/PartnershipPage'
 import JobBoardPage from '@/pages/jobs/JobBoardPage'
 import JobDetailPage from '@/pages/jobs/JobDetailPage'
 import EmployerJobsPage from '@/pages/employer/EmployerJobsPage'
@@ -35,6 +41,12 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/services" element={<ServicesPage />} />
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/talent-pipeline" element={<TalentPipelinePage />} />
+      <Route path="/training" element={<TrainingPage />} />
+      <Route path="/workforce-tools" element={<WorkforceToolsPage />} />
+      <Route path="/partnership" element={<PartnershipPage />} />
 
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />

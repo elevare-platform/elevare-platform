@@ -4,22 +4,20 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Menu, X, User, LogOut, LayoutDashboard } from 'lucide-react'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
-import ElevareLogo from '@/components/ui/ElevareLogo'
+import ehsLogo from '@/assets/ehs-logo.png'
 
 // ─── Dropdown data ────────────────────────────────────────────────────────────
 
 const EMPLOYERS_ITEMS = [
+  { label: 'Talent Pipeline (AI)', href: '/talent-pipeline' },
+  { label: 'Workforce Tools', href: '/workforce-tools' },
+  { label: 'B2B Partnerships', href: '/partnership' },
   { label: 'Post a Job', href: '/employer/jobs/new' },
-  { label: 'How It Works', href: '#' },
-  { label: 'Pricing', href: '#' },
-  { label: 'Contact Sales', href: '#' },
 ]
 
 const CANDIDATES_ITEMS = [
   { label: 'Browse Jobs', href: '/jobs' },
-  { label: 'How It Works', href: '#' },
-  { label: 'Career Resources', href: '#' },
-  { label: 'Create Profile', href: '#' },
+  { label: 'Professional Training', href: '/training' },
 ]
 
 // ─── Dropdown panel (shared) ──────────────────────────────────────────────────
@@ -175,14 +173,14 @@ function MobileAccordionItem({ label, items, onClose }) {
           >
             <div className="pb-2 pl-4 space-y-1">
               {items.map((item) => (
-                <a
+                <Link
                   key={item.label}
-                  href={item.href}
+                  to={item.href}
                   onClick={onClose}
                   className="block py-2 text-sm text-text-muted hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
                 >
                   {item.label}
-                </a>
+                </Link>
               ))}
             </div>
           </motion.div>
@@ -235,9 +233,8 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
           >
             {/* Drawer header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-              <Link to="/" onClick={onClose} className="flex items-center gap-2">
-                <ElevareLogo size={28} />
-                <span className="font-bold text-brand-blue tracking-widest text-sm uppercase">Elevare</span>
+              <Link to="/" onClick={onClose} className="flex items-center">
+                <img src={ehsLogo} alt="Elevare Human Solutions" className="h-10 w-auto" />
               </Link>
               <button
                 onClick={onClose}
@@ -262,16 +259,41 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
                 items={CANDIDATES_ITEMS}
                 onClose={onClose}
               />
-              {['About Us', 'How It Works', 'Contact Us'].map((label) => (
-                <a
-                  key={label}
-                  href="#"
-                  onClick={onClose}
-                  className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
-                >
-                  {label}
-                </a>
-              ))}
+              <Link
+                to="/services"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+              >
+                Services
+              </Link>
+              <Link
+                to="/talent-pipeline"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+              >
+                Talent Pipeline
+              </Link>
+              <Link
+                to="/partnership"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+              >
+                B2B Partnerships
+              </Link>
+              <Link
+                to="/training"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+              >
+                Professional Training
+              </Link>
+              <Link
+                to="/about"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+              >
+                About Us
+              </Link>
 
               {/* Book a Consultation CTA — always visible in mobile drawer */}
               {onBookConsultation && (
@@ -363,72 +385,70 @@ export default function Navbar({ onBookConsultation }) {
           className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between"
           aria-label="Main navigation"
         >
-          {/* Logo + wordmark */}
+          {/* Logo */}
           <Link
             to="/"
-            className="flex items-center gap-2 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded"
+            className="flex items-center flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded"
             aria-label="Elevare home"
           >
-            <ElevareLogo size={32} />
-            <span className="font-bold text-brand-blue tracking-widest text-sm uppercase">
-              Elevare
-            </span>
+            <img src={ehsLogo} alt="Elevare Human Solutions" className="h-12 w-auto" />
           </Link>
 
           {/* Centre nav — desktop only */}
-          <div className="hidden md:flex items-center gap-3 lg:gap-6">
-            <NavDropdown
-              label="For Employers"
-              items={EMPLOYERS_ITEMS}
-              isOpen={employersOpen}
-              onOpen={() => { setEmployersOpen(true); setCandidatesOpen(false) }}
-              onClose={() => setEmployersOpen(false)}
-            />
-            <NavDropdown
-              label="For Candidates"
-              items={CANDIDATES_ITEMS}
-              isOpen={candidatesOpen}
-              onOpen={() => { setCandidatesOpen(true); setEmployersOpen(false) }}
-              onClose={() => setCandidatesOpen(false)}
-            />
-            {['About Us', 'How It Works', 'Contact Us'].map((label) => (
-              <a
-                key={label}
-                href="#"
-                className="text-sm font-medium text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
-              >
-                {label}
-              </a>
-            ))}
+          <div className="hidden md:flex items-center gap-2 lg:gap-4.5">
+            <Link
+              to="/services"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
+            >
+              Services
+            </Link>
+            <Link
+              to="/talent-pipeline"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
+            >
+              Talent Pipeline
+            </Link>
+            <Link
+              to="/partnership"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
+            >
+              B2B Partnerships
+            </Link>
+            <Link
+              to="/training"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
+            >
+              Professional Training
+            </Link>
+            <Link
+              to="/about"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
+            >
+              About Us
+            </Link>
           </div>
 
           {/* Right side — desktop only */}
-          <div className="hidden md:flex items-center gap-2 lg:gap-3">
-            {onBookConsultation && (
-              <Button
-                size="sm"
-                className="bg-brand-blue hover:bg-brand-blue/90 text-white border-0 whitespace-nowrap text-xs lg:text-sm px-3 lg:px-4"
-                onClick={onBookConsultation}
-              >
-                Book a Consultation
-              </Button>
-            )}
+          <div className="hidden md:flex items-center gap-3">
             {user ? (
               <AvatarDropdown user={user} onLogout={logout} />
             ) : (
-              <>
-                <Link to="/login">
-                  <Button variant="ghost" size="sm" className="text-xs lg:text-sm px-2 lg:px-3">Login</Button>
+              <div className="flex items-center gap-3">
+                <Link
+                  to="/login"
+                  className="text-xs font-bold uppercase tracking-wider text-text-muted hover:text-brand-blue transition-colors focus-visible:outline-none py-1.5 px-2.5"
+                >
+                  Login
                 </Link>
                 <Link to="/register">
                   <Button
                     size="sm"
-                    className="bg-brand-amber hover:bg-brand-amber-dark text-white border-0 text-xs lg:text-sm px-3 lg:px-4"
+                    className="bg-brand-amber hover:bg-brand-amber-dark text-white border-0 text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-full shadow-sm hover:scale-[1.02] transition-transform"
                   >
                     Register
                   </Button>
                 </Link>
-              </>
+              </div>
             )}
           </div>
 

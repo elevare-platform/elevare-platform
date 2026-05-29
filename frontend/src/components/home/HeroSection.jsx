@@ -222,22 +222,20 @@ export default function HeroSection({ onBookConsultation }) {
           <div className="flex flex-col justify-center lg:pr-24">
             {/* Eyebrow */}
             <p className="text-brand-amber font-semibold text-xs tracking-widest uppercase mb-3 sm:mb-4">
-              Nigeria's Premier Recruitment Platform
+              HR Strategy & Workforce Solutions
             </p>
 
             {/* Headline */}
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-text leading-tight mb-4 sm:mb-6">
-              Connecting{' '}
-              <em className="not-italic text-brand-amber">Exceptional</em>{' '}
-              Talent
-              <br />
-              With Ambitious Companies
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-5xl font-extrabold text-text leading-tight mb-4 sm:mb-6">
+              Human Capital Advisory &amp;{' '}
+              <span className="text-brand-blue">Workforce Transformation</span>
+              <br className="hidden md:inline" />
+              <span className="text-brand-amber"> &amp; Recruitment Consulting</span>
             </h1>
 
             {/* Subheadline */}
-            <p className="text-base sm:text-lg text-text-muted leading-relaxed mb-6 sm:mb-8 max-w-lg">
-              From Lagos to London, we match the right people with the right roles.
-              Fast, precise, and built for African ambition.
+            <p className="text-base sm:text-lg text-text-muted leading-relaxed mb-6 sm:mb-8 max-w-xl">
+              Where Talent Meets Opportunity — Elevating People, Empowering Businesses. We align state-of-the-art talent strategies with organizational goals to drive real business growth.
             </p>
 
             {/* CTA buttons — stacked on mobile, side-by-side on desktop (Req 1.2, 1.3, 1.4) */}

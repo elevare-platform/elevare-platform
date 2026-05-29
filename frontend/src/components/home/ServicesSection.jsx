@@ -1,143 +1,118 @@
+import { Link } from 'react-router-dom'
 import {
   Users,
   Search,
   FileText,
+  Layers,
+  Cpu,
   GraduationCap,
-  BookOpen,
-  Award,
-  ClipboardList,
-  Briefcase,
   ArrowRight,
 } from 'lucide-react'
 
-// ─── Services data (Requirements 3.1, 3.2) ───────────────────────────────────
-// 8 services across 3 clusters
-
+// ─── Homepage Featured Services ──────────────────────────────────────────────
 const SERVICES = [
-  // Cluster 1: Core HR & Recruitment
-  {
-    id: 'talent-acquisition',
-    cluster: 'Core HR & Recruitment',
-    icon: Search,
-    name: 'Talent Acquisition',
-    description: 'End-to-end recruitment from job brief to signed offer, powered by our vetted candidate pool.',
-  },
   {
     id: 'hr-consulting',
-    cluster: 'Core HR & Recruitment',
+    cluster: 'Strategy & Advisory',
     icon: Users,
-    name: 'HR Consulting',
-    description: 'Strategic HR advisory to help you build policies, structures, and people processes that scale.',
+    name: 'HR Consulting & Advisory',
+    description: 'Strategic guidance on HR policy, organizational structures, and scalable workforce solutions.',
   },
   {
-    id: 'executive-search',
-    cluster: 'Core HR & Recruitment',
-    icon: Briefcase,
-    name: 'Executive Search',
-    description: 'Discreet, targeted search for C-suite and senior leadership roles across industries.',
-  },
-  // Cluster 2: Training & Development
-  {
-    id: 'learning-development',
-    cluster: 'Training & Development',
-    icon: GraduationCap,
-    name: 'Learning & Development',
-    description: 'Customised training programmes that upskill your workforce and drive measurable performance.',
+    id: 'recruitment-executive-search',
+    cluster: 'Talent Acquisition',
+    icon: Search,
+    name: 'Recruitment & Executive Search',
+    description: 'End-to-end talent search and C-suite placements powered by our extensive professional networks.',
   },
   {
-    id: 'onboarding-programs',
-    cluster: 'Training & Development',
-    icon: BookOpen,
-    name: 'Onboarding Programmes',
-    description: 'Structured onboarding journeys that get new hires productive faster and reduce early attrition.',
-  },
-  {
-    id: 'leadership-coaching',
-    cluster: 'Training & Development',
-    icon: Award,
-    name: 'Leadership Coaching',
-    description: 'One-on-one and group coaching to develop high-potential managers into confident leaders.',
-  },
-  // Cluster 3: Workforce Operations
-  {
-    id: 'payroll-compliance',
+    id: 'payroll-management',
     cluster: 'Workforce Operations',
     icon: FileText,
-    name: 'Payroll & Compliance',
-    description: 'Accurate, timely payroll processing with full compliance to Nigerian labour regulations.',
+    name: 'Payroll Management',
+    description: 'Accurate, timely, and compliant payroll administration tailored to local labor regulations.',
   },
   {
-    id: 'workforce-planning',
+    id: 'staff-outsourcing',
     cluster: 'Workforce Operations',
-    icon: ClipboardList,
-    name: 'Workforce Planning',
-    description: 'Data-driven headcount planning and org design to align your people strategy with business goals.',
+    icon: Layers,
+    name: 'Staff Outsourcing Services',
+    description: 'Flexible staffing options and complete workforce management solutions to optimize operations.',
+  },
+  {
+    id: 'workforce-automation',
+    cluster: 'HR Technology',
+    icon: Cpu,
+    name: 'Workforce Automation Systems',
+    description: 'Implementing custom HR systems to automate attendance, leave, performance, and real-time tracking.',
+  },
+  {
+    id: 'corporate-training',
+    cluster: 'Training & Development',
+    icon: GraduationCap,
+    name: 'Corporate Training Programs',
+    description: 'Bespoke upskilling and professional development programs that elevate team capabilities and productivity.',
   },
 ]
 
-// ─── Cluster tag colours ──────────────────────────────────────────────────────
-
+// ─── Cluster tag colors ──────────────────────────────────────────────────────
 const CLUSTER_STYLES = {
-  'Core HR & Recruitment': { bg: '#fffbeb', color: '#b45309' },
-  'Training & Development': { bg: '#f0fdf4', color: '#15803d' },
-  'Workforce Operations': { bg: '#eff6ff', color: '#1d4ed8' },
+  'Strategy & Advisory': { bg: '#e8f0fb', color: '#1A4D8F' },
+  'Talent Acquisition': { bg: '#fffbeb', color: '#b45309' },
+  'Workforce Operations': { bg: '#f0fdf4', color: '#15803d' },
+  'HR Technology': { bg: '#faf5ff', color: '#6b21a8' },
+  'Training & Development': { bg: '#fef2f2', color: '#991b1b' },
 }
 
 // ─── ServiceCard ──────────────────────────────────────────────────────────────
-
 function ServiceCard({ service }) {
   const Icon = service.icon
-  const clusterStyle = CLUSTER_STYLES[service.cluster]
+  const clusterStyle = CLUSTER_STYLES[service.cluster] || { bg: '#f1f5f9', color: '#334155' }
 
   return (
     <article
       style={{
         background: '#ffffff',
-        borderRadius: '0.75rem',
+        borderRadius: '0.85rem',
         border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 8px rgba(0,0,0,0.05)',
-        padding: '1.5rem',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.02), 0 2px 6px rgba(0,0,0,0.02)',
+        padding: '2rem',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.75rem',
-        transition: 'box-shadow 0.2s, transform 0.2s',
+        gap: '1rem',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = '0 8px 24px rgba(26,77,143,0.12)'
-        e.currentTarget.style.transform = 'translateY(-2px)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = '0 1px 8px rgba(0,0,0,0.05)'
-        e.currentTarget.style.transform = 'translateY(0)'
-      }}
+      className="group hover:-translate-y-1.5 hover:shadow-xl hover:border-brand-blue/20"
     >
-      {/* Icon */}
+      {/* Icon Wrapper */}
       <div
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          width: 44,
-          height: 44,
-          borderRadius: '0.625rem',
+          width: 52,
+          height: 52,
+          borderRadius: '0.75rem',
           background: '#e8f0fb',
           flexShrink: 0,
+          transition: 'all 0.3s ease',
         }}
+        className="group-hover:bg-brand-blue group-hover:scale-110"
         aria-hidden="true"
       >
-        <Icon size={22} color="#1A4D8F" strokeWidth={1.75} />
+        <Icon size={24} className="text-brand-blue group-hover:text-white transition-colors duration-300" strokeWidth={2} />
       </div>
 
-      {/* Cluster label (amber/coloured tag) — Requirements 3.2 */}
+      {/* Cluster label */}
       <span
         style={{
           display: 'inline-block',
-          fontSize: '0.6875rem',
+          fontSize: '0.72rem',
           fontWeight: 600,
           letterSpacing: '0.06em',
           textTransform: 'uppercase',
-          padding: '2px 8px',
-          borderRadius: 999,
+          padding: '4px 10px',
+          borderRadius: '4px',
           background: clusterStyle.bg,
           color: clusterStyle.color,
           alignSelf: 'flex-start',
@@ -150,7 +125,7 @@ function ServiceCard({ service }) {
       <h3
         style={{
           margin: 0,
-          fontSize: '1rem',
+          fontSize: '1.25rem',
           fontWeight: 700,
           color: '#1e293b',
           lineHeight: 1.3,
@@ -159,11 +134,11 @@ function ServiceCard({ service }) {
         {service.name}
       </h3>
 
-      {/* One-line description */}
+      {/* Description */}
       <p
         style={{
           margin: 0,
-          fontSize: '0.875rem',
+          fontSize: '0.925rem',
           color: '#64748b',
           lineHeight: 1.6,
           flexGrow: 1,
@@ -172,114 +147,95 @@ function ServiceCard({ service }) {
         {service.description}
       </p>
 
-      {/* Arrow link — Requirements 3.3 */}
-      <a
-        href="#"
+      {/* Learn more link / CTA */}
+      <Link
+        to="/services"
         aria-label={`Learn more about ${service.name}`}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '0.25rem',
-          fontSize: '0.875rem',
+          gap: '0.35rem',
+          fontSize: '0.9rem',
           fontWeight: 600,
           color: '#1A4D8F',
           textDecoration: 'none',
-          marginTop: 'auto',
+          marginTop: '0.5rem',
           transition: 'gap 0.2s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.gap = '0.5rem')}
-        onMouseLeave={(e) => (e.currentTarget.style.gap = '0.25rem')}
+        className="group-hover:text-brand-amber"
       >
-        Learn more <ArrowRight size={14} strokeWidth={2} aria-hidden="true" />
-      </a>
+        Learn more <ArrowRight size={16} strokeWidth={2.5} className="group-hover:translate-x-1 transition-transform" aria-hidden="true" />
+      </Link>
     </article>
   )
 }
 
 // ─── ServicesSection ──────────────────────────────────────────────────────────
-
 export default function ServicesSection() {
   return (
     <section
       aria-label="Our services"
-      style={{ background: '#F8F9FA', padding: '5rem 1rem' }}
+      style={{ background: '#F8F9FA', padding: '6.5rem 1rem' }}
     >
       <div style={{ maxWidth: '72rem', margin: '0 auto' }}>
 
         {/* Section header */}
-        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '4.5rem' }}>
           <p
             style={{
-              margin: '0 0 0.5rem',
-              fontSize: '0.8125rem',
-              fontWeight: 600,
+              margin: '0 0 0.75rem',
+              fontSize: '0.875rem',
+              fontWeight: 700,
               color: '#E87722',
-              letterSpacing: '0.08em',
+              letterSpacing: '0.12em',
               textTransform: 'uppercase',
             }}
           >
-            What We Do
+            What We Offer
           </p>
           <h2
             style={{
-              margin: '0 0 1rem',
-              fontSize: 'clamp(1.625rem, 3vw, 2.125rem)',
+              margin: '0 0 1.25rem',
+              fontSize: 'clamp(2rem, 4vw, 2.75rem)',
               fontWeight: 800,
               color: '#1e293b',
               lineHeight: 1.2,
+              letterSpacing: '-0.02em',
             }}
           >
-            Comprehensive HR Solutions
+            Workforce Solutions Built for Growth
           </h2>
           <p
             style={{
               margin: 0,
-              fontSize: '1rem',
+              fontSize: '1.125rem',
               color: '#64748b',
-              maxWidth: '36rem',
+              maxWidth: '38rem',
               marginLeft: 'auto',
               marginRight: 'auto',
-              lineHeight: 1.6,
+              lineHeight: 1.7,
             }}
           >
-            From finding your next hire to developing your entire workforce, Elevare covers every stage of the talent lifecycle.
+            Aligning talent strategy with modern operational structures. We deliver premium HR, recruiting, and automation services to scale your business.
           </p>
         </div>
 
-        {/* Services grid — Requirements 3.4 (mobile: 1 col), 3.5 (desktop: 3 col) */}
+        {/* Services grid */}
         <div className="services-grid">
           {SERVICES.map((service) => (
             <ServiceCard key={service.id} service={service} />
           ))}
         </div>
 
-        {/* View All Services link */}
-        <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
-          <a
-            href="#"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.375rem',
-              fontSize: '0.9375rem',
-              fontWeight: 600,
-              color: '#1A4D8F',
-              textDecoration: 'none',
-              borderBottom: '2px solid #1A4D8F',
-              paddingBottom: '2px',
-              transition: 'color 0.2s, border-color 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#E87722'
-              e.currentTarget.style.borderColor = '#E87722'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#1A4D8F'
-              e.currentTarget.style.borderColor = '#1A4D8F'
-            }}
+        {/* View All Services CTA Button */}
+        <div style={{ textAlign: 'center', marginTop: '4rem' }}>
+          <Link
+            to="/services"
+            className="inline-flex items-center gap-2 px-8 py-3.5 text-sm font-semibold text-white bg-brand-blue hover:bg-brand-blue-dark rounded-md transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
           >
-            View All Services <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
-          </a>
+            View All Services
+            <ArrowRight size={16} strokeWidth={2.5} aria-hidden="true" />
+          </Link>
         </div>
 
       </div>

@@ -11,9 +11,9 @@ const STEPS = [
   },
   {
     number: '02',
-    title: 'We Shortlist Top Matches',
+    title: 'AI Talent Pipeline Matching',
     description:
-      'Our team and platform surface the best-fit candidates from our vetted pool.',
+      'Our smart recruitment pipelines instantly curate and map the best-fit professionals matching your technical criteria.',
   },
   {
     number: '03',

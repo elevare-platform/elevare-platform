@@ -4,16 +4,17 @@
 // exactly as the first copy scrolls out of view.
 
 const COMPANIES = [
-  'Access Bank',
-  'GTBank',
-  'Flutterwave',
-  'Andela',
-  'Interswitch',
-  'Paystack',
-  'Konga',
-  'MTN Nigeria',
-  'Dangote Group',
-  'Sterling Bank',
+  'EL-Rishon Logistics Ltd',
+  'Kid City Lagos',
+  'Limeswood Int’l Company Ltd',
+  'Gourmet Twist Restaurant',
+  'Goldplates Feast House',
+  'The Gardens Ikoyi',
+  'Springpet Homes Ltd',
+  'Homiva Property Ventures',
+  'Jolly Energy Fleet Ltd',
+  'Health Bridge Medical Center',
+  'The Smiths Group',
 ]
 
 // ─── SocialProofBar ───────────────────────────────────────────────────────────
@@ -51,7 +52,7 @@ export default function SocialProofBar() {
             whiteSpace: 'nowrap',
           }}
         >
-          Trusted by 100+ companies
+          Trusted by 10+ companies
         </p>
 
         {/* Scrolling strip container — clips the overflowing strip */}

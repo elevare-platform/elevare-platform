@@ -4,7 +4,7 @@ import { Mail } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import ElevareLogo from '@/components/ui/ElevareLogo'
+import ehsLogo from '@/assets/ehs-logo.png'
 
 // Inline SVG brand icons (lucide-react does not ship brand icons)
 function LinkedInIcon({ size = 16 }) {
@@ -42,36 +42,31 @@ const RC_NUMBER = 'RC: 1234567'
 
 // Column 2 — Learn More
 const LEARN_MORE_LINKS = [
-  { label: 'About Us', href: '#' },
-  { label: 'How It Works', href: '#' },
-  { label: 'Pricing', href: '#' },
-  { label: 'Blog', href: '#' },
-  { label: 'Contact Us', href: '#' },
+  { label: 'Our Services', href: '/services' },
+  { label: 'About Us', href: '/about' },
+  { label: 'B2B Partnerships', href: '/partnership' },
+  { label: 'Talent Pipeline', href: '/talent-pipeline' },
 ]
 
 // Column 3 — For Employers
 const EMPLOYER_LINKS = [
-  { label: 'Post a Job', href: '#' },
-  { label: 'How It Works', href: '#' },
-  { label: 'Pricing', href: '#' },
-  { label: 'Success Stories', href: '#' },
-  { label: 'Contact Sales', href: '#' },
+  { label: 'Post a Job', href: '/employer/jobs/new' },
+  { label: 'Talent Pipeline (AI)', href: '/talent-pipeline' },
+  { label: 'Workforce Tools', href: '/workforce-tools' },
+  { label: 'B2B Partnerships', href: '/partnership' },
 ]
 
 // Column 4 — For Candidates
 const CANDIDATE_LINKS = [
-  { label: 'Browse Jobs', href: '#' },
-  { label: 'Create Profile', href: '#' },
-  { label: 'Career Resources', href: '#' },
-  { label: 'Interview Tips', href: '#' },
-  { label: 'Salary Guide', href: '#' },
+  { label: 'Browse Jobs', href: '/jobs' },
+  { label: 'Professional Training', href: '/training' },
 ]
 
 // Column 5 — Connect (Req 12.4)
 const SOCIAL_LINKS = [
-  { label: 'LinkedIn', href: 'https://linkedin.com', Icon: LinkedInIcon },
-  { label: 'Twitter / X', href: 'https://twitter.com', Icon: TwitterXIcon },
-  { label: 'Instagram', href: 'https://instagram.com', Icon: InstagramIcon },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/company/elevare-human-solutions-ltd/?viewAsMember=true', Icon: LinkedInIcon },
+  { label: 'Instagram (Business)', href: 'https://www.instagram.com/elevare_recruits_ehls?igsh=MTVidmozZ2VzOXN6aQ%3D%3D&utm_source=qr', Icon: InstagramIcon },
+  { label: 'Instagram (Consultant)', href: 'https://www.instagram.com/hrgirloflagos?igsh=a3J4Mmp6bWE1cDdj&utm_source=qr', Icon: InstagramIcon },
 ]
 
 // Newsletter zod schema (Req 11.4)
@@ -192,12 +187,12 @@ export default function Footer({ onBookConsultation }) {
 
           {/* Column 1 — Brand (Req 12.1) — full width on mobile */}
           <div className="col-span-2 lg:col-span-1">
-            {/* Logo + wordmark */}
-            <div className="flex items-center gap-2 mb-3">
-              <ElevareLogo size={28} variant="white" />
-              <span className="font-bold text-white tracking-widest text-sm uppercase">
-                ELEVARE
-              </span>
+            <div className="mb-3">
+              <img
+                src={ehsLogo}
+                alt="Elevare Human Solutions"
+                className="h-10 w-auto brightness-0 invert"
+              />
             </div>
 
             {/* Tagline */}

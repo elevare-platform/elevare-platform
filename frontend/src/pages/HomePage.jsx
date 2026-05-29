@@ -12,6 +12,7 @@ import HowItWorks from '@/components/home/HowItWorks'
 import Testimonials from '@/components/home/Testimonials'
 import JobBoardPreview from '@/components/home/JobBoardPreview'
 import InsightsStrip from '@/components/home/InsightsStrip'
+import PartnersSection from '@/components/home/PartnersSection'
 import FinalCTA from '@/components/home/FinalCTA'
 import { ConsultationModal } from '@/components/ui/ConsultationModal'
 import { FloatingWhatsApp } from '@/components/ui/FloatingWhatsApp'
@@ -40,6 +41,7 @@ export default function HomePage() {
         <JobBoardPreview />
         {/* Requirements 10.1–10.4 */}
         <InsightsStrip />
+        <PartnersSection />
         <FinalCTA />
       </main>
       <Footer onBookConsultation={openModal} />
