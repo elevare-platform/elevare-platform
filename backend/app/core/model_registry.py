@@ -18,9 +18,16 @@ from app.modules.candidates.models import (
     CandidateCvs,
     CandidateDocuments,
     CandidateProfile,
+    WorkExperience,
+    Education,
+    Certification,
 )
 from app.modules.jobs.models import Job
-from app.modules.users.models import User
+from app.modules.users.models import (
+    User,
+    EmployerProfile,
+    UserProfile
+)
 
 __all__ = [
     "EmailVerificationToken",
@@ -29,7 +36,12 @@ __all__ = [
     "CandidateProfile",
     "CandidateCvs",
     "CandidateDocuments",
+    "WorkExperience",
+    "Certification",
+    "Education",
     "Job",
     "User",
+    "UserProfile",
+    "EmployerProfile",
     "Application",
 ]
