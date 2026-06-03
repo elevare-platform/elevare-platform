@@ -247,18 +247,6 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
 
             {/* Nav links */}
             <nav className="flex-1 overflow-y-auto px-6 py-4 space-y-0" aria-label="Mobile navigation">
-              {/* Expandable: For Employers */}
-              <MobileAccordionItem
-                label="For Employers"
-                items={EMPLOYERS_ITEMS}
-                onClose={onClose}
-              />
-              {/* Expandable: For Candidates */}
-              <MobileAccordionItem
-                label="For Candidates"
-                items={CANDIDATES_ITEMS}
-                onClose={onClose}
-              />
               <Link
                 to="/services"
                 onClick={onClose}
@@ -272,6 +260,13 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
                 className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
               >
                 Talent Pipeline
+              </Link>
+              <Link
+                to="/workforce-tools"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+              >
+                Workforce Tools
               </Link>
               <Link
                 to="/partnership"
@@ -395,7 +390,7 @@ export default function Navbar({ onBookConsultation }) {
           </Link>
 
           {/* Centre nav — desktop only */}
-          <div className="hidden md:flex items-center gap-2 lg:gap-4.5">
+          <div className="hidden lg:flex items-center gap-2.5 lg:gap-4.5">
             <Link
               to="/services"
               className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
@@ -407,6 +402,12 @@ export default function Navbar({ onBookConsultation }) {
               className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
             >
               Talent Pipeline
+            </Link>
+            <Link
+              to="/workforce-tools"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
+            >
+              Workforce Tools
             </Link>
             <Link
               to="/partnership"
@@ -429,7 +430,7 @@ export default function Navbar({ onBookConsultation }) {
           </div>
 
           {/* Right side — desktop only */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3">
             {user ? (
               <AvatarDropdown user={user} onLogout={logout} />
             ) : (
@@ -454,7 +455,7 @@ export default function Navbar({ onBookConsultation }) {
 
           {/* Hamburger — mobile only */}
           <button
-            className="md:hidden p-2 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+            className="lg:hidden p-2 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation menu"
             aria-expanded={mobileOpen}

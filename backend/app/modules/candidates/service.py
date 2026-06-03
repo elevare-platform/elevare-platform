@@ -19,6 +19,7 @@ from app.core.file_validation import (
     validate_pdf_upload,
 )
 from app.core.storage import StorageService
+from app.modules.candidates.models import CandidateCvs
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.candidates.schema import (
     CandidateCvsResponse,
@@ -81,8 +82,8 @@ class CandidateService:
         return ProfileResponse.model_validate(profile)
 
     async def get_profile_by_id(self, profile_id: uuid.UUID, requesting_user) -> ProfileResponse:
-        """Admin gets any profile. Employer scoped to applicants (Phase 5)."""
-        if requesting_user.role == UserRole.ADMIN.value:
+        """Admin or Employer can view any candidate profile by profile ID."""
+        if requesting_user.role in (UserRole.ADMIN.value, UserRole.EMPLOYER.value):
             profile = await self._repo.get_by_id(profile_id)
             if profile is None:
                 raise ProfileNotFoundException()
@@ -94,7 +95,6 @@ class CandidateService:
                 raise ProfileNotFoundException()
             return ProfileResponse.model_validate(profile)
 
-        # EMPLOYER — scoped to applicants only in Phase 5, 404 for now
         raise ProfileNotFoundException()
 
     async def list_all_profiles(self) -> list[ProfileResponse]:
@@ -105,6 +105,9 @@ class CandidateService:
     # ------------------------------------------------------------------
     # CVs
     # ------------------------------------------------------------------
+
+    async def get_cv(self, cv_id):
+        return self._db.get(CandidateCvs, cv_id)
 
     async def upload_cv(self, user_id: uuid.UUID, file: bytes, filename: str) -> CandidateCvsResponse:
         """Validate, upload, and persist a candidate CV.

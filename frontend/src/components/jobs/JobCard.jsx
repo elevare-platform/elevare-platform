@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Building2, MapPin, Clock, Bookmark, BookmarkCheck, ArrowRight } from 'lucide-react'
+import { Building2, MapPin, Clock, Bookmark, BookmarkCheck } from 'lucide-react'
 import { cn, formatSalary, timeAgo } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { ApplyButton } from '@/components/jobs/ApplyButton'
 
 // ─── Badge colour mapping ─────────────────────────────────────────────────────
 
@@ -154,6 +155,16 @@ function EmployerActions({ job, onPublish, onClose }) {
           <Button size="sm" variant="ghost" className="transition-colors">View</Button>
         </Link>
       )}
+      <Link to={`/employer/jobs/${job.id}/applicants`}>
+        <Button size="sm" variant="ghost" className="transition-colors">
+          View Applicants
+          {job.application_count != null && (
+            <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-brand-blue text-white text-[10px] font-bold leading-none">
+              {job.application_count > 99 ? '99+' : job.application_count}
+            </span>
+          )}
+        </Button>
+      </Link>
     </div>
   )
 }
@@ -223,7 +234,7 @@ function extractSkills(description = '', max = 4) {
 
 // ─── Card body ────────────────────────────────────────────────────────────────
 
-function CardBody({ job, variant, onPublish, onClose }) {
+function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
   const [saved, setSaved] = useState(false)
 
   const salaryText =
@@ -315,19 +326,16 @@ function CardBody({ job, variant, onPublish, onClose }) {
         </div>
 
         {variant === 'public' && (
-          <span
-            className={cn(
-              'inline-flex items-center gap-1.5 flex-shrink-0',
-              'px-3.5 py-1.5 rounded-lg text-xs font-semibold',
-              'bg-brand-blue text-white',
-              'group-hover:bg-brand-blue-dark group-hover:gap-2',
-              'transition-all duration-200',
-            )}
-            aria-hidden="true"
-          >
-            Apply
-            <ArrowRight size={11} className="transition-transform duration-200 group-hover:translate-x-0.5" />
-          </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Link
+              to={`/jobs/${job.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-xs font-medium text-text-muted hover:text-brand-blue transition-colors focus-visible:outline-none"
+            >
+              View details
+            </Link>
+            <ApplyButton jobId={job.id} jobStatus={job.status} size="sm" initialApplied={initialApplied} />
+          </div>
         )}
       </div>
 
@@ -350,7 +358,7 @@ function CardBody({ job, variant, onPublish, onClose }) {
  * @param {Function} [props.onPublish]
  * @param {Function} [props.onClose]
  */
-export function JobCard({ job, variant = 'public', onPublish, onClose }) {
+export function JobCard({ job, variant = 'public', onPublish, onClose, initialApplied = null }) {
   const base = cn(
     'group rounded-2xl border border-slate-200 bg-white',
     // Subtle shadow that lifts on hover — no oversized shadows
@@ -364,16 +372,9 @@ export function JobCard({ job, variant = 'public', onPublish, onClose }) {
 
   if (variant === 'public') {
     return (
-      <Link
-        to={`/jobs/${job.id}`}
-        className={cn(
-          base,
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2',
-        )}
-        aria-label={`View ${job.title} at ${job.company_name ?? 'company'}`}
-      >
-        <CardBody job={job} variant="public" />
-      </Link>
+      <div className={cn(base, 'focus-visible:outline-none')} role="article">
+        <CardBody job={job} variant="public" initialApplied={initialApplied} />
+      </div>
     )
   }
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
@@ -10,6 +11,7 @@ from sqlalchemy import (
     ARRAY,
     UUID,
     Boolean,
+    Date,
     ForeignKey,
     Index,
     Integer,
@@ -60,7 +62,16 @@ class CandidateProfile(BaseModel):
     years_of_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    portfolio_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    preferred_work_model: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    preferred_location: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     is_profile_complete: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.false(),
+    )
+    open_to_relocation: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=False,
@@ -71,6 +82,9 @@ class CandidateProfile(BaseModel):
     user: Mapped[User] = relationship(back_populates="candidate_profile")
     cvs: Mapped[list[CandidateCvs]] = relationship(back_populates="candidate_profile")
     documents: Mapped[list[CandidateDocuments]] = relationship(back_populates="candidate_profile")
+    work_experiences: Mapped[list[WorkExperience]] = relationship(back_populates="candidate_profile")
+    educations: Mapped[list[Education]] = relationship(back_populates="candidate_profile")
+    certifications: Mapped[list[Certification]] = relationship(back_populates="candidate_profile")
 
 
 class CandidateCvs(BaseModel):
@@ -81,6 +95,15 @@ class CandidateCvs(BaseModel):
     """
 
     __tablename__ = "candidate_cv"
+
+    __table_args__ = (
+        Index(
+            "one_default_cv_per_candidate",
+            "candidate_id",
+            unique=True,
+            postgresql_where=sa.text("is_default = true"),
+        ),
+    )
 
     candidate_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -128,4 +151,80 @@ class CandidateDocuments(BaseModel):
 
     # Relationships
     candidate_profile: Mapped[CandidateProfile] = relationship(back_populates="documents")
+
+
+class WorkExperience(BaseModel):
+    """A single work experience entry on a candidate's profile."""
+
+    __tablename__ = "candidate_work_experience"
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    company_name: Mapped[str] = mapped_column(String(255))
+    job_title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # YYYY-MM format
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # YYYY-MM format
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # relationships
+    candidate_profile: Mapped[CandidateProfile] = relationship(
+        "CandidateProfile",
+        back_populates="work_experiences",
+    )
+
+
+class Education(BaseModel):
+    """An educational qualification entry on a candidate's profile."""
+
+    __tablename__ = "candidate_education"
+
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    institution_name: Mapped[str] = mapped_column(String(255))
+    degree: Mapped[str] = mapped_column(String(255))
+    field_of_study: Mapped[str] = mapped_column(String(255))
+    start_year: Mapped[date] = mapped_column(Date)
+    end_year: Mapped[date] = mapped_column(Date)
+
+    # relationships
+    candidate_profile: Mapped[CandidateProfile] = relationship(
+        "CandidateProfile",
+        back_populates="educations",
+    )
+
+
+class Certification(BaseModel):
+    """A professional certification or credential on a candidate's profile."""
+
+    __tablename__ = "candidate_certification"
+
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    name: Mapped[str] = mapped_column(String(255))
+    issuing_organization: Mapped[str] = mapped_column(String(255))
+    issue_date: Mapped[date] = mapped_column(Date)
+    expiration_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    credential_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    credential_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # relationships
+    candidate_profile: Mapped[CandidateProfile] = relationship(
+        "CandidateProfile",
+        back_populates="certifications",
+    )
+
+
+
+
 

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FormField, FormMessage } from '@/components/ui/form'
 import api from '@/lib/api'
+import ehsLogo from '@/assets/ehs-logo.png'
 import { cn } from '@/lib/utils'
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -175,10 +176,7 @@ export default function AdminInvitePage() {
       {/* Header */}
       <header className="bg-white border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded bg-brand-blue flex items-center justify-center">
-            <span className="text-white font-bold text-xs">E</span>
-          </div>
-          <span className="font-semibold text-text">Elevare</span>
+          <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
           <span className="text-text-muted text-sm">/ Admin</span>
         </div>
         <div className="flex items-center gap-4">

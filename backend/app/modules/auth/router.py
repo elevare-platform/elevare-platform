@@ -117,7 +117,7 @@ async def get_me(
     to render the correct restricted-account UI.
 
     """
-    return current_user
+    return AuthService._build_user_response(current_user)
 
 @router.post("/verify-email", status_code=200, response_model=MessageResponse)
 async def verify_email(

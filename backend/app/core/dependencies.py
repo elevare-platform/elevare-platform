@@ -13,6 +13,7 @@ from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import (
@@ -24,6 +25,7 @@ from app.core.exceptions import (
     UserNotFoundException,
 )
 from app.modules.auth.jwt_handler import decode_access_token
+from app.modules.candidates.models import CandidateProfile
 from app.modules.users.enums import AccountStatus
 from app.modules.users.models import User
 
@@ -40,7 +42,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         except Exception:
             raise
 
-
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -54,7 +55,11 @@ async def get_current_user(
     """
     payload = decode_access_token(token)
 
-    result = await db.execute(select(User).where(User.id == payload.sub))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.employer_profile))
+        .where(User.id == payload.sub)
+    )
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -73,7 +78,6 @@ async def get_current_user(
 
     return user
 
-
 async def get_current_user_any_status(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -87,14 +91,17 @@ async def get_current_user_any_status(
     """
     payload = decode_access_token(token)
 
-    result = await db.execute(select(User).where(User.id == payload.sub))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.employer_profile))
+        .where(User.id == payload.sub)
+    )
     user = result.scalar_one_or_none()
 
     if user is None:
         raise UserNotFoundException()
 
     return user
-
 
 def require_role(*roles: str):
     """Dependency factory that restricts access to users with specific roles.
@@ -122,3 +129,18 @@ def require_role(*roles: str):
         return current_user
 
     return _check_role
+
+async def get_candidate(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_any_status),
+) -> CandidateProfile | None:
+    """Return the CandidateProfile for the current user, or None if not found."""
+    result = await db.execute(
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == current_user.id)
+    )
+    candidate = result.scalar_one_or_none()
+
+    return candidate
+
+

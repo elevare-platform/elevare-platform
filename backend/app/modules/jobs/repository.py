@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,7 +15,10 @@ from app.modules.users.models import User
 
 
 class JobRepository:
-    def __init__(self, db: AsyncSession):
+    """Data-access layer for :class:`Job` records."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        """Initialise the repository with an async database session."""
         self._db = db
 
     @staticmethod
@@ -78,8 +81,24 @@ class JobRepository:
             stmt = stmt.where(Job.contract_type == filters.contract_type.value)
         if filters.work_model:
             stmt = stmt.where(Job.work_model == filters.work_model.value)
+        if filters.work_location:
+            stmt = stmt.where(Job.work_location == filters.work_location.value)
+        if filters.seniority_level:
+            stmt = stmt.where(Job.seniority_level == filters.seniority_level.value)
+        if filters.min_years_experience is not None:
+            stmt = stmt.where(
+                (Job.required_years_experience == None) |  # noqa: E711 — SQLAlchemy needs ==
+                (Job.required_years_experience <= filters.min_years_experience)
+            )
         if filters.location:
             stmt = stmt.where(Job.location.ilike(f"%{filters.location}%"))
+        # Full-text search across title and description
+        if filters.q:
+            term = f"%{filters.q}%"
+            from sqlalchemy import or_
+            stmt = stmt.where(
+                or_(Job.title.ilike(term), Job.description.ilike(term))
+            )
 
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
@@ -89,13 +108,35 @@ class JobRepository:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
-        """Return paginated jobs owned by a specific employer."""
+        """Return paginated jobs owned by a specific employer, with application counts.
+
+        Application counts are fetched in a single bulk query and attached to
+        each Job instance as a transient ``application_count`` attribute.
+        This avoids N+1 queries and doesn't require modifying paginate_cursor.
+        """
+        from app.modules.applications.models import Application
+
         stmt = (
             select(Job)
             .where(Job.employer_id == employer_id)
             .options(self._with_employer_profile())
         )
-        return await paginate_cursor(stmt, self._db, cursor, limit)
+        result = await paginate_cursor(stmt, self._db, cursor, limit)
+        jobs = result["items"]
+
+        if jobs:
+            job_ids = [j.id for j in jobs]
+            # Single query: count applications grouped by job_id
+            counts_result = await self._db.execute(
+                select(Application.job_id, func.count(Application.id).label("cnt"))
+                .where(Application.job_id.in_(job_ids))
+                .group_by(Application.job_id)
+            )
+            counts = {row.job_id: row.cnt for row in counts_result}
+            for job in jobs:
+                job.application_count = counts.get(job.id, 0)
+
+        return result
 
     async def list_all(
         self,

@@ -10,7 +10,9 @@ import { JobFilters } from '@/components/jobs/JobFilters'
 import { WorkLocationToggle } from '@/components/jobs/WorkLocationToggle'
 import { SalaryRangeSlider, SALARY_MIN, SALARY_MAX } from '@/components/jobs/SalaryRangeSlider'
 import { useJobs } from '@/hooks/useJobs'
+import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
+import api from '@/lib/api'
 
 // ─── Skeleton card — mirrors real card structure to prevent layout shift ──────
 
@@ -429,6 +431,19 @@ export default function JobBoardPage() {
   }), [searchQuery, filters, salaryRange])
 
   const { jobs, loading, error, hasMore, loadMore, total } = useJobs({ params: apiParams })
+  const { user } = useAuth()
+
+  // Batch has-applied — one request for all visible jobs instead of N individual calls
+  const [appliedMap, setAppliedMap] = useState({})
+  useEffect(() => {
+    if (user?.role !== 'CANDIDATE' || jobs.length === 0) return
+    const activeIds = jobs.filter((j) => j.status === 'ACTIVE').map((j) => j.id)
+    if (activeIds.length === 0) return
+
+    api.post('/api/v1/applications/has-applied/batch', { job_ids: activeIds })
+      .then(({ data }) => setAppliedMap((prev) => ({ ...prev, ...data })))
+      .catch(() => {}) // non-critical — individual checks will fall back
+  }, [jobs, user?.role])
 
   const displayedJobs = useMemo(
     () => applySort(applyClientFilters(jobs, filters), sortBy),
@@ -608,7 +623,7 @@ export default function JobBoardPage() {
                             : undefined
                         }
                       >
-                        <JobCard job={job} variant="public" />
+                        <JobCard job={job} variant="public" initialApplied={appliedMap[job.id] ?? null} />
                       </div>
                     ))}
                   </div>

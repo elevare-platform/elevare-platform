@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FormField, FormMessage } from '@/components/ui/form'
 import api, { setAccessToken } from '@/lib/api'
+import ehsLogo from '@/assets/ehs-logo.png'
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -113,10 +114,7 @@ export default function InviteAcceptPage() {
           <div className="absolute bottom-24 -left-24 w-80 h-80 rounded-full border border-white/10" />
         </div>
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-brand-amber flex items-center justify-center">
-            <span className="text-white font-bold text-sm">E</span>
-          </div>
-          <span className="text-white font-semibold text-lg">Elevare</span>
+          <img src={ehsLogo} alt="Elevare Human Solutions" className="h-10 w-auto brightness-0 invert" />
         </div>
         <div className="relative z-10 space-y-4">
           <h1 className="text-4xl font-bold text-white leading-tight">
@@ -136,10 +134,7 @@ export default function InviteAcceptPage() {
         <div className="w-full max-w-md space-y-8">
           {/* Mobile logo */}
           <div className="flex items-center gap-3 lg:hidden">
-            <div className="w-8 h-8 rounded bg-brand-blue flex items-center justify-center">
-              <span className="text-white font-bold text-sm">E</span>
-            </div>
-            <span className="text-text font-semibold text-lg">Elevare</span>
+            <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
           </div>
 
           <div className="space-y-2">

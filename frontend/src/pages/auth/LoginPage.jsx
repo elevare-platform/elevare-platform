@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FormField, FormMessage } from '@/components/ui/form'
+import ehsLogo from '@/assets/ehs-logo.png'
 
 const schema = z.object({
   email: z.string().email('Enter a valid email address'),
@@ -56,12 +57,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded bg-brand-amber flex items-center justify-center">
-              <span className="text-white font-bold text-sm">E</span>
-            </div>
-            <span className="text-white font-semibold text-lg">Elevare</span>
-          </div>
+          <img src={ehsLogo} alt="Elevare Human Solutions" className="h-10 w-auto brightness-0 invert" />
         </div>
 
         <div className="relative z-10 space-y-6">
@@ -82,10 +78,7 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-6 bg-surface-muted">
         <div className="w-full max-w-md space-y-8">
           <div className="flex items-center gap-3 lg:hidden">
-            <div className="w-8 h-8 rounded bg-brand-blue flex items-center justify-center">
-              <span className="text-white font-bold text-sm">E</span>
-            </div>
-            <span className="text-text font-semibold text-lg">Elevare</span>
+            <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
           </div>
 
           <div className="space-y-2">

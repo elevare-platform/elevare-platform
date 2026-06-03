@@ -331,6 +331,19 @@ class DocumentNotFoundError(NotFoundException):
         super().__init__(message, code, status_code, details)
 
 
+class ApplicationNotFound(NotFoundException):
+    """Raised when an application record is not found."""
+
+    def __init__(
+        self,
+        message: str = "Application not found",
+        code: str = "APPLICATION_NOT_FOUND",
+        status_code: int = 404,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
 # ---------------------------------------------------------------------------
 # Validation  (HTTP 422)
 # ---------------------------------------------------------------------------
@@ -346,3 +359,70 @@ class ValidationException(PlatformError):
         details: list | None = None,
     ) -> None:
         super().__init__(message, code, status_code, details)
+
+# ---------------------------------------------------------------------------
+# Job Exceptions
+# ---------------------------------------------------------------------------
+class JobApplicationEnded(PlatformError):
+    """Raised when the job application deadline has passed."""
+
+    def __init__(
+        self,
+        message: str = "Job application deadline has passed.",
+        code: str = "JOB_DEADLINE_PAST",
+        status_code: int = 422,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
+class AlreadyApplied(PlatformError):
+    """Raised when a candidate tries to apply to a job they already applied for."""
+
+    def __init__(
+        self,
+        message: str = "You already applied for this job",
+        code: str = "ALREADY_APPLIED",
+        status_code: int = 409,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+# --- Application Status Errors
+class ApplicationWithdrawalError(PlatformError):
+    """Raised when a candidate attempts an invalid application withdrawal."""
+
+    def __init__(
+        self,
+        message: str = "You can't withdraw your application for this particular job",
+        code: str = "WITHDRAWAL_ERROR",
+        status_code: int = 409,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+class InvalidStatus(PlatformError):
+    """Raised when an invalid application status transition is attempted."""
+
+    def __init__(
+        self,
+        message: str = "Valid Transition Error",
+        code: str = "INVALID_STATUS_TRANSITION",
+        status_code: int = 400,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+
+
+class CandidateProfileIncompleteException(PlatformError):
+    """Raised when a candidate tries to apply without completing their profile."""
+
+    def __init__(
+        self,
+        message: str = "Complete your profile before applying to jobs",
+        code: str = "PROFILE_INCOMPLETE",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        super().__init__(message, code, status_code, details)
+

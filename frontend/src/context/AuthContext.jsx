@@ -13,19 +13,26 @@ export function AuthProvider({ children }) {
       try {
         const { data: refreshData } = await api.post('/api/v1/auth/refresh')
         setAccessToken(refreshData.access_token)
-        // /me must work for any account status (requires backend fix on that endpoint).
-        // If it returns a 403 with an account-status code, the user is still
-        // authenticated — we fall into the catch and handle it there.
         const me = await api.get('/api/v1/auth/me')
-        setUser(me.data)
+        const userData = me.data
+
+        // For employers, /me doesn't include is_profile_complete (it lives on
+        // employer_profile, not on the User model). Fetch it separately so the
+        // onboarding redirect works correctly on every page load.
+        if (userData.role === 'EMPLOYER') {
+          try {
+            const { data: profile } = await api.get('/api/v1/employer/profile')
+            userData.is_profile_complete = profile.is_profile_complete ?? false
+          } catch {
+            // If profile fetch fails, default to false so onboarding is shown
+            userData.is_profile_complete = false
+          }
+        }
+
+        setUser(userData)
       } catch (err) {
         const code = err.response?.data?.code
         if (ACCOUNT_STATUS_CODES.includes(code)) {
-          // Session is valid but account is restricted. Decode the minimal
-          // identity from the error response context if available, otherwise
-          // the user will see the login page until the backend /me fix is applied.
-          // Once the backend returns user data on /me regardless of status,
-          // this branch becomes unreachable.
           clearAccessToken()
           setUser(null)
         } else {
@@ -42,8 +49,18 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/api/v1/auth/login', { email, password })
     setAccessToken(data.access_token)
-    setUser(data.user)
-    return data.user
+    const userData = data.user
+    // Populate is_profile_complete for employers (not in login response)
+    if (userData.role === 'EMPLOYER') {
+      try {
+        const { data: profile } = await api.get('/api/v1/employer/profile')
+        userData.is_profile_complete = profile.is_profile_complete ?? false
+      } catch {
+        userData.is_profile_complete = false
+      }
+    }
+    setUser(userData)
+    return userData
   }, [])
 
   const register = useCallback(async (payload) => {
@@ -92,7 +109,7 @@ export function isAccountRestricted(user) {
 export function getPostAuthRedirect(user) {
   if (!user) return '/login'
   if (user.role === 'EMPLOYER') {
-    return user.is_profile_complete ? '/employer/jobs' : '/employer/onboarding'
+    return user.is_profile_complete ? '/dashboard' : '/employer/onboarding'
   }
   if (user.role === 'CANDIDATE') {
     return '/candidate/dashboard'

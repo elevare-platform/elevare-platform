@@ -35,3 +35,13 @@ class WorkLocation(str, Enum):
     LOCAL = "LOCAL"
     INTERNATIONAL = "INTERNATIONAL"
 
+
+class SeniorityLevel(str, Enum):
+    """Seniority level for a job listing."""
+
+    JUNIOR = "JUNIOR"
+    MID = "MID"
+    SENIOR = "SENIOR"
+    LEAD = "LEAD"
+    EXECUTIVE = "EXECUTIVE"
+

@@ -19,11 +19,13 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Elevare API"
     app_version: str = "0.1.0"
+    app_url: str = "http://localhost:5173"
     debug: bool = True
     environment: str = "development"
 
-    # Database
+    # --- Persistence ---
     database_url: str
+    redis_url: str
 
     # Security (populated in Phase 2)
     secret_key: str
@@ -54,6 +56,10 @@ class Settings(BaseSettings):
     r2_endpoint_url: str | None = None
     r2_region: str = "auto"
     r2_public_url: str | None = None
+
+    # Resend
+    resend_api_key: str | None = None
+    mail_from: str | None = None
 
 
 settings = Settings()

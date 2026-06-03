@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Building2 } from 'lucide-react'
+import { ArrowLeft, Building2, Globe, ExternalLink } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { cn, formatSalary } from '@/lib/utils'
 import api from '@/lib/api'
+import { ApplyButton } from '@/components/jobs/ApplyButton'
 
-// ─── Badge helpers (mirrors JobCard) ─────────────────────────────────────────
+// ─── Badge helpers ────────────────────────────────────────────────────────────
 
 const BADGE_CLASSES = {
   DRAFT:         'bg-gray-100 text-gray-600',
@@ -56,14 +57,8 @@ function Badge({ value }) {
   )
 }
 
-// ─── Pure helper — determines whether to show employer management buttons ─────
-// Extracted so it can be property-tested (Property 6).
-
 /**
  * Returns true iff the authenticated user is the employer who owns this job.
- * @param {Object|null} user - AuthContext user object
- * @param {Object} job - Job data object
- * @returns {boolean}
  */
 export function canManageJob(user, job) {
   return (
@@ -72,8 +67,6 @@ export function canManageJob(user, job) {
     user.id === job.employer_id
   )
 }
-
-// ─── Skeleton loading state ───────────────────────────────────────────────────
 
 function SkeletonDetail() {
   return (
@@ -97,10 +90,6 @@ function SkeletonDetail() {
 
 // ─── JobDetailPage ────────────────────────────────────────────────────────────
 
-/**
- * Public job detail page — /jobs/:id
- * Requirements: 3.1–3.5, 7.1–7.5
- */
 export default function JobDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -113,7 +102,6 @@ export default function JobDetailPage() {
   const [actionError, setActionError] = useState(null)
   const [actionLoading, setActionLoading] = useState(false)
 
-  // Fetch job on mount — Req 3.1
   useEffect(() => {
     let cancelled = false
 
@@ -121,17 +109,13 @@ export default function JobDetailPage() {
       setLoading(true)
       setNotFound(false)
       setError(null)
-
       try {
         const { data } = await api.get(`/api/v1/jobs/${id}`)
         if (!cancelled) setJob(data)
       } catch (err) {
         if (cancelled) return
-        if (err.response?.status === 404) {
-          setNotFound(true)
-        } else {
-          setError('Something went wrong. Please try again.')
-        }
+        if (err.response?.status === 404) setNotFound(true)
+        else setError('Something went wrong. Please try again.')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -141,7 +125,6 @@ export default function JobDetailPage() {
     return () => { cancelled = true }
   }, [id])
 
-  // Publish action — Req 7.2
   const handlePublish = async () => {
     setActionError(null)
     setActionLoading(true)
@@ -155,7 +138,6 @@ export default function JobDetailPage() {
     }
   }
 
-  // Close action — Req 7.3
   const handleClose = async () => {
     setActionError(null)
     setActionLoading(true)
@@ -183,7 +165,6 @@ export default function JobDetailPage() {
       <main className="min-h-screen bg-background">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
-          {/* Back button — Req 3.4 */}
           <button
             onClick={() => navigate('/jobs')}
             className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text mb-6 transition-colors"
@@ -193,10 +174,8 @@ export default function JobDetailPage() {
             Back to jobs
           </button>
 
-          {/* Skeleton — Req 3.2 */}
           {loading && <SkeletonDetail />}
 
-          {/* 404 state — Req 3.3 */}
           {!loading && notFound && (
             <div className="text-center py-20">
               <p className="text-xl font-semibold text-text mb-2">Job not found</p>
@@ -204,12 +183,11 @@ export default function JobDetailPage() {
                 This job posting may have been removed or the link is incorrect.
               </p>
               <Link to="/jobs" className="text-brand-blue hover:underline text-sm font-medium">
-                ← Browse all jobs
+                Browse all jobs
               </Link>
             </div>
           )}
 
-          {/* Generic error */}
           {!loading && error && (
             <div className="text-center py-20">
               <p className="text-red-600 mb-4">{error}</p>
@@ -219,12 +197,9 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          {/* Job detail — Req 3.5 */}
           {!loading && job && (
             <article>
-              {/* Header */}
               <div className="flex items-start gap-4 mb-6">
-                {/* Company logo / placeholder */}
                 {job.company_logo_url ? (
                   <img
                     src={job.company_logo_url}
@@ -239,18 +214,15 @@ export default function JobDetailPage() {
                     <Building2 size={24} className="text-text-muted" />
                   </span>
                 )}
-
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold text-text leading-tight mb-1">
-                    {job.title}
-                  </h1>
-                  <p className="text-text-muted font-medium">
-                    {job.company_name ?? 'Unknown Company'}
-                  </p>
+                  <h1 className="text-2xl font-bold text-text leading-tight mb-1">{job.title}</h1>
+                  <p className="text-text-muted font-medium">{job.company_name ?? 'Unknown Company'}</p>
+                  {job.company_industry && (
+                    <p className="text-xs text-text-muted mt-0.5">{job.company_industry}</p>
+                  )}
                 </div>
               </div>
 
-              {/* Meta row — badges */}
               <div className="flex flex-wrap gap-2 mb-4">
                 <Badge value={job.contract_type} />
                 <Badge value={job.work_model} />
@@ -258,61 +230,84 @@ export default function JobDetailPage() {
                 <Badge value={job.status} />
               </div>
 
-              {/* Location + salary */}
               <div className="flex flex-wrap gap-4 text-sm text-text-muted mb-6">
                 <span>📍 {job.location}</span>
-                {salaryText && (
-                  <span className="font-semibold text-text">{salaryText}</span>
-                )}
+                {salaryText && <span className="font-semibold text-text">{salaryText}</span>}
               </div>
 
-              {/* Employer management buttons — Req 7.1–7.5 */}
               {isOwner && (
                 <div className="flex flex-wrap gap-2 mb-6 p-4 rounded-lg border border-border bg-surface">
                   <span className="text-sm text-text-muted self-center mr-2">Manage:</span>
-
                   {job.status === 'DRAFT' && (
-                    <Button
-                      size="sm"
-                      onClick={handlePublish}
-                      disabled={actionLoading}
-                      className="bg-green-600 hover:bg-green-700 text-white border-0"
-                    >
+                    <Button size="sm" onClick={handlePublish} disabled={actionLoading} className="bg-green-600 hover:bg-green-700 text-white border-0">
                       Publish
                     </Button>
                   )}
-
                   {job.status === 'ACTIVE' && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={handleClose}
-                      disabled={actionLoading}
-                    >
+                    <Button size="sm" variant="destructive" onClick={handleClose} disabled={actionLoading}>
                       Close
                     </Button>
                   )}
-
                   {(job.status === 'DRAFT' || job.status === 'ACTIVE') && (
                     <Link to={`/employer/jobs/${job.id}/edit`}>
-                      <Button size="sm" variant="outline" disabled={actionLoading}>
-                        Edit
-                      </Button>
+                      <Button size="sm" variant="outline" disabled={actionLoading}>Edit</Button>
                     </Link>
                   )}
-
-                  {actionError && (
-                    <p className="w-full text-sm text-red-600 mt-1">{actionError}</p>
-                  )}
+                  {actionError && <p className="w-full text-sm text-red-600 mt-1">{actionError}</p>}
                 </div>
               )}
 
-              {/* Full description */}
               <div className="prose prose-sm max-w-none text-text">
                 <h2 className="text-lg font-semibold text-text mb-3">Job Description</h2>
                 <div className="whitespace-pre-wrap text-sm leading-relaxed text-text-muted">
                   {job.description}
                 </div>
+              </div>
+
+              {/* Company info section */}
+              {(job.company_description || job.company_website || job.company_industry) && (
+                <div className="mt-8 rounded-xl border border-border bg-surface p-5 space-y-3">
+                  <div className="flex items-center gap-3">
+                    {job.company_logo_url ? (
+                      <img
+                        src={job.company_logo_url}
+                        alt={`${job.company_name} logo`}
+                        className="w-10 h-10 rounded-lg object-contain border border-border bg-background flex-shrink-0"
+                      />
+                    ) : (
+                      <span className="w-10 h-10 rounded-lg border border-border bg-background flex items-center justify-center flex-shrink-0">
+                        <Building2 size={18} className="text-text-muted" />
+                      </span>
+                    )}
+                    <div>
+                      <p className="font-semibold text-text text-sm">{job.company_name ?? 'About the company'}</p>
+                      {job.company_industry && (
+                        <p className="text-xs text-text-muted">{job.company_industry}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {job.company_description && (
+                    <p className="text-sm text-text-muted leading-relaxed">{job.company_description}</p>
+                  )}
+
+                  {job.company_website && (
+                    <a
+                      href={job.company_website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-brand-blue hover:underline"
+                    >
+                      <Globe size={13} />
+                      {job.company_website.replace(/^https?:\/\//, '')}
+                      <ExternalLink size={11} />
+                    </a>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-8">
+                <ApplyButton jobId={job.id} jobStatus={job.status} />
               </div>
             </article>
           )}

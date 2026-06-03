@@ -1,257 +1,351 @@
-import { useRef, useState, useCallback } from 'react'
-import { AlertCircle, RefreshCw } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Briefcase, FileText, CheckCircle, TrendingUp,
+  ChevronRight, Building2, Star, AlertCircle,
+} from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
+import { Button } from '@/components/ui/button'
 import { ProfileStrengthBar } from '@/components/candidate/ProfileStrengthBar'
-import { CvSection } from '@/components/candidate/CvSection'
-import { CvUpload } from '@/components/candidate/CvUpload'
-import { DocumentsSection } from '@/components/candidate/DocumentsSection'
-import { DocumentUpload } from '@/components/candidate/DocumentUpload'
-import { CareerResources } from '@/components/candidate/CareerResources'
-import { OpportunitiesSection } from '@/components/candidate/OpportunitiesSection'
-import { EmptyState } from '@/components/candidate/EmptyState'
 import { useCandidateProfile } from '@/hooks/useCandidateProfile'
 import { useAuth } from '@/context/AuthContext'
-import { isEmptyState } from '@/lib/candidateUtils'
+import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 
-// ─── Skeleton loader ──────────────────────────────────────────────────────────
+// ─── Status config ────────────────────────────────────────────────────────────
 
-function DashboardSkeleton() {
+const STATUS_BADGE = {
+  SUBMITTED:   'bg-blue-100 text-blue-700',
+  REVIEWING:   'bg-amber-100 text-amber-700',
+  SHORTLISTED: 'bg-green-100 text-green-700',
+  REJECTED:    'bg-red-100 text-red-600',
+  HIRED:       'bg-emerald-100 text-emerald-800',
+  WITHDRAWN:   'bg-gray-100 text-gray-500',
+}
+
+const STATUS_LABELS = {
+  SUBMITTED:   'Submitted',
+  REVIEWING:   'Reviewing',
+  SHORTLISTED: 'Shortlisted',
+  REJECTED:    'Rejected',
+  HIRED:       'Hired',
+  WITHDRAWN:   'Withdrawn',
+}
+
+function StatusBadge({ status }) {
+  if (!status) return null
   return (
-    <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Loading profile">
-      {/* Strength bar skeleton */}
-      <div className="rounded-lg border border-border bg-surface p-5 space-y-3">
-        <div className="flex justify-between">
-          <div className="h-4 bg-slate-200 rounded w-32" />
-          <div className="h-4 bg-slate-200 rounded w-10" />
-        </div>
-        <div className="h-2 bg-slate-200 rounded-full w-full" />
-        <div className="h-3 bg-slate-200 rounded w-64" />
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium', STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-600')}>
+      {STATUS_LABELS[status] ?? status}
+    </span>
+  )
+}
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+function StatCard({ icon: Icon, label, value, colour, loading }) {
+  return (
+    <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-3">
+      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', colour)}>
+        <Icon size={16} className="text-white" />
       </div>
-      {/* CV section skeleton */}
-      <div className="rounded-lg border border-border bg-surface p-5 space-y-3">
-        <div className="h-5 bg-slate-200 rounded w-24" />
-        <div className="h-14 bg-slate-200 rounded" />
-        <div className="h-14 bg-slate-200 rounded" />
-      </div>
-      {/* Documents section skeleton */}
-      <div className="rounded-lg border border-border bg-surface p-5 space-y-3">
-        <div className="h-5 bg-slate-200 rounded w-36" />
-        <div className="h-14 bg-slate-200 rounded" />
+      <div>
+        {loading ? (
+          <div className="h-5 w-8 bg-gray-200 rounded animate-pulse mb-0.5" />
+        ) : (
+          <p className="text-xl font-bold text-text leading-none">{value ?? 0}</p>
+        )}
+        <p className="text-xs text-text-muted mt-0.5">{label}</p>
       </div>
     </div>
   )
 }
 
-// ─── Inline toast error ───────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
-function ToastError({ message, onDismiss }) {
-  if (!message) return null
-  return (
-    <div
-      role="alert"
-      className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-    >
-      <span className="flex items-center gap-2">
-        <AlertCircle size={15} aria-hidden="true" />
-        {message}
-      </span>
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="text-red-500 hover:text-red-700 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 rounded"
-      >
-        Dismiss
-      </button>
-    </div>
-  )
+function Skeleton({ className }) {
+  return <div className={cn('animate-pulse bg-gray-200 rounded', className)} />
 }
 
 // ─── CandidateDashboardPage ───────────────────────────────────────────────────
 
-/**
- * Career Hub dashboard page for CANDIDATE users.
- *
- * Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 4.2, 4.3, 4.4, 5.2, 5.3, 6.5, 7.5, 10.1
- */
 export default function CandidateDashboardPage() {
   const { user } = useAuth()
-  const { profile, loading, error, refetch, setCvs, setDocuments } = useCandidateProfile()
+  const { profile, loading: profileLoading } = useCandidateProfile()
 
-  // Ref for scrolling to the CV upload zone (Requirement 4.5)
-  const cvUploadRef = useRef(null)
+  const [applications, setApplications] = useState([])
+  const [appsLoading, setAppsLoading] = useState(true)
+  const [recentJobs, setRecentJobs] = useState([])
+  const [jobsLoading, setJobsLoading] = useState(true)
 
-  // Inline toast error for action failures (download, delete, set-default)
-  const [actionError, setActionError] = useState(null)
-
-  const clearActionError = useCallback(() => setActionError(null), [])
-
-  // ── CV action handlers ──────────────────────────────────────────────────────
-
-  // Requirement 4.2 — download CV via presigned URL
-  const handleCvDownload = useCallback(async (id) => {
-    try {
-      const { data } = await api.get(`/api/v1/candidates/me/cv/${id}/url`)
-      window.open(data.url, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      setActionError(err?.response?.data?.detail ?? err.message ?? 'Failed to get download URL.')
-    }
+  // Fetch recent applications (last 5)
+  useEffect(() => {
+    api.get('/api/v1/applications/me', { params: { limit: 5 } })
+      .then(({ data }) => setApplications(data.items ?? data ?? []))
+      .catch(() => setApplications([]))
+      .finally(() => setAppsLoading(false))
   }, [])
 
-  // Requirement 4.3 — set default CV with optimistic update
-  const handleCvSetDefault = useCallback(async (id) => {
-    // Optimistic update
-    setCvs((prev) => prev.map((cv) => ({ ...cv, is_default: cv.id === id })))
-    try {
-      await api.put(`/api/v1/candidates/me/cv/${id}/default`)
-    } catch (err) {
-      // Revert on failure by refetching
-      refetch()
-      setActionError(err?.response?.data?.detail ?? err.message ?? 'Failed to set default CV.')
-    }
-  }, [setCvs, refetch])
-
-  // Requirement 4.4 — delete CV with optimistic update
-  const handleCvDelete = useCallback(async (id) => {
-    // Optimistic update
-    setCvs((prev) => prev.filter((cv) => cv.id !== id))
-    try {
-      await api.delete(`/api/v1/candidates/me/cv/${id}`)
-    } catch (err) {
-      // Revert on failure by refetching
-      refetch()
-      setActionError(err?.response?.data?.detail ?? err.message ?? 'Failed to delete CV.')
-    }
-  }, [setCvs, refetch])
-
-  // Requirement 6.5 — optimistic append after CV upload
-  const handleCvUploadSuccess = useCallback((newCv) => {
-    setCvs((prev) => [...prev, newCv])
-  }, [setCvs])
-
-  // ── Document action handlers ────────────────────────────────────────────────
-
-  // Requirement 5.2 — download document via presigned URL
-  const handleDocDownload = useCallback(async (id) => {
-    try {
-      const { data } = await api.get(`/api/v1/candidates/me/documents/${id}/url`)
-      window.open(data.url, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      setActionError(err?.response?.data?.detail ?? err.message ?? 'Failed to get download URL.')
-    }
+  // Fetch recommended jobs (recent active jobs)
+  useEffect(() => {
+    api.get('/api/v1/jobs', { params: { limit: 3, status: 'ACTIVE' } })
+      .then(({ data }) => setRecentJobs(data.items ?? data ?? []))
+      .catch(() => setRecentJobs([]))
+      .finally(() => setJobsLoading(false))
   }, [])
 
-  // Requirement 5.3 — delete document with optimistic update
-  const handleDocDelete = useCallback(async (id) => {
-    // Optimistic update
-    setDocuments((prev) => prev.filter((doc) => doc.id !== id))
+  const handleWithdraw = useCallback(async (id) => {
+    if (!window.confirm('Withdraw this application?')) return
     try {
-      await api.delete(`/api/v1/candidates/me/documents/${id}`)
-    } catch (err) {
-      // Revert on failure by refetching
-      refetch()
-      setActionError(err?.response?.data?.detail ?? err.message ?? 'Failed to delete document.')
-    }
-  }, [setDocuments, refetch])
+      await api.patch(`/api/v1/applications/${id}/withdraw`)
+      setApplications((prev) => prev.map((a) => a.id === id ? { ...a, status: 'WITHDRAWN' } : a))
+    } catch { /* silently ignore */ }
+  }, [])
 
-  // Requirement 7.5 — optimistic append after document upload
-  const handleDocUploadSuccess = useCallback((newDoc) => {
-    setDocuments((prev) => [...prev, newDoc])
-  }, [setDocuments])
+  // Derive stats from applications
+  const stats = {
+    total: applications.length,
+    reviewing: applications.filter((a) => a.status === 'REVIEWING').length,
+    shortlisted: applications.filter((a) => a.status === 'SHORTLISTED').length,
+    hired: applications.filter((a) => a.status === 'HIRED').length,
+  }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
+  const defaultCv = profile?.cvs?.find((cv) => cv.is_default) ?? profile?.cvs?.[0]
   const firstName = user?.first_name ?? 'there'
-  const empty = isEmptyState(profile)
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-muted">
       <Navbar />
 
       <main className="flex-1 pt-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-8">
 
-          {/* Requirement 2.3 — page heading + personalised greeting */}
-          <div>
-            <h1 className="text-2xl font-bold text-text">Your Career Hub</h1>
-            <p className="text-text-muted text-sm mt-1">
-              Welcome back, {firstName}.
-            </p>
+          {/* ── Welcome ── */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-text">Welcome back, {firstName}</h1>
+              <p className="text-text-muted text-sm mt-0.5">Here's your job search at a glance.</p>
+            </div>
+            <Link to="/jobs">
+              <Button className="flex items-center gap-2">
+                <Briefcase size={15} /> Browse Jobs
+              </Button>
+            </Link>
           </div>
 
-          {/* Requirement 2.2 — skeleton while loading */}
-          {loading && <DashboardSkeleton />}
+          {/* ── Stats row ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard icon={FileText}    label="Applied"     value={stats.total}       colour="bg-brand-blue"  loading={appsLoading} />
+            <StatCard icon={TrendingUp}  label="Reviewing"   value={stats.reviewing}   colour="bg-amber-500"   loading={appsLoading} />
+            <StatCard icon={Star}        label="Shortlisted" value={stats.shortlisted} colour="bg-green-500"   loading={appsLoading} />
+            <StatCard icon={CheckCircle} label="Hired"       value={stats.hired}       colour="bg-emerald-600" loading={appsLoading} />
+          </div>
 
-          {/* Requirement 2.4 — inline error + retry on failure */}
-          {!loading && error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-6 flex flex-col items-center gap-4 text-center">
-              <AlertCircle size={32} className="text-red-400" aria-hidden="true" />
-              <div>
-                <p className="font-semibold text-red-700">Failed to load your profile</p>
-                <p className="text-sm text-red-600 mt-1">{error}</p>
-              </div>
-              <button
-                type="button"
-                onClick={refetch}
-                className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-              >
-                <RefreshCw size={14} aria-hidden="true" />
-                Retry
-              </button>
+          {/* ── Main grid ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
+            {/* Left col — applications + recommended jobs */}
+            <div className="lg:col-span-2 space-y-6">
+
+              {/* Recent Applications */}
+              <section className="bg-white rounded-xl border border-border overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                  <h2 className="font-semibold text-text text-sm">My Applications</h2>
+                  <Link to="/candidate/applications" className="text-brand-blue text-xs font-medium hover:underline flex items-center gap-1">
+                    View all <ChevronRight size={12} />
+                  </Link>
+                </div>
+
+                {appsLoading && (
+                  <div className="p-4 space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <Skeleton className="w-10 h-10 rounded-lg flex-shrink-0" />
+                        <div className="flex-1 space-y-1.5">
+                          <Skeleton className="h-3.5 w-1/2" />
+                          <Skeleton className="h-3 w-1/3" />
+                        </div>
+                        <Skeleton className="h-5 w-16 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!appsLoading && applications.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-10 text-center px-6">
+                    <Briefcase size={28} className="text-gray-300 mb-2" />
+                    <p className="text-sm font-medium text-text">No applications yet</p>
+                    <p className="text-xs text-text-muted mt-1 mb-4">Start applying to track your progress here.</p>
+                    <Link to="/jobs"><Button size="sm">Browse Jobs</Button></Link>
+                  </div>
+                )}
+
+                {!appsLoading && applications.length > 0 && (
+                  <ul>
+                    {applications.map((app) => {
+                      const canWithdraw = app.status === 'SUBMITTED' || app.status === 'REVIEWING'
+                      return (
+                        <li key={app.id} className="flex items-center gap-3 px-5 py-3 border-b border-border last:border-0 hover:bg-surface-muted transition-colors">
+                          {app.company_logo ? (
+                            <img src={app.company_logo} alt="" className="w-9 h-9 rounded-lg object-contain border border-border bg-background flex-shrink-0" />
+                          ) : (
+                            <span className="w-9 h-9 rounded-lg border border-border bg-background flex items-center justify-center flex-shrink-0">
+                              <Building2 size={14} className="text-text-muted" />
+                            </span>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-text truncate">{app.job_title ?? 'Untitled Job'}</p>
+                            <p className="text-xs text-text-muted truncate">{app.company_name ?? 'Unknown Company'}</p>
+                          </div>
+                          <StatusBadge status={app.status} />
+                          {canWithdraw && (
+                            <button
+                              type="button"
+                              onClick={() => handleWithdraw(app.id)}
+                              className="text-xs text-red-500 hover:text-red-700 hover:underline flex-shrink-0 focus-visible:outline-none"
+                            >
+                              Withdraw
+                            </button>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </section>
+
+              {/* Recommended Jobs */}
+              <section className="bg-white rounded-xl border border-border overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                  <h2 className="font-semibold text-text text-sm">Recommended Jobs</h2>
+                  <Link to="/jobs" className="text-brand-blue text-xs font-medium hover:underline flex items-center gap-1">
+                    Browse all <ChevronRight size={12} />
+                  </Link>
+                </div>
+
+                {jobsLoading && (
+                  <div className="p-4 space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <Skeleton className="w-10 h-10 rounded-lg flex-shrink-0" />
+                        <div className="flex-1 space-y-1.5">
+                          <Skeleton className="h-3.5 w-2/3" />
+                          <Skeleton className="h-3 w-1/3" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!jobsLoading && recentJobs.length === 0 && (
+                  <p className="text-sm text-text-muted px-5 py-6">No jobs available right now.</p>
+                )}
+
+                {!jobsLoading && recentJobs.length > 0 && (
+                  <ul>
+                    {recentJobs.map((job) => (
+                      <li key={job.id} className="flex items-center gap-3 px-5 py-3 border-b border-border last:border-0 hover:bg-surface-muted transition-colors">
+                        <span className="w-9 h-9 rounded-lg border border-border bg-background flex items-center justify-center flex-shrink-0">
+                          <Building2 size={14} className="text-text-muted" />
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-text truncate">{job.title}</p>
+                          <p className="text-xs text-text-muted truncate">{job.company_name ?? job.location}</p>
+                        </div>
+                        <Link to={`/jobs/${job.id}`} className="text-xs text-brand-blue hover:underline flex-shrink-0">
+                          View
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
             </div>
-          )}
 
-          {/* Action error toast */}
-          {actionError && (
-            <ToastError message={actionError} onDismiss={clearActionError} />
-          )}
+            {/* Right col — profile + CV widget */}
+            <div className="space-y-5">
 
-          {/* Requirement 10.1 — conditionally render empty state vs full dashboard */}
-          {!loading && !error && profile && (
-            <>
-              {empty ? (
-                /* Empty state — Requirement 10.1 through 10.6 */
-                <EmptyState firstName={firstName} profile={profile} />
-              ) : (
-                /* Full dashboard */
-                <div className="space-y-8">
-                  {/* Profile Strength — Requirements 3.1–3.5 */}
-                  <ProfileStrengthBar profile={profile} />
-
-                  {/* CVs + Upload — Requirements 4.x, 6.x */}
-                  <section className="space-y-4">
-                    <CvSection
-                      cvs={profile.cvs ?? []}
-                      onDownload={handleCvDownload}
-                      onSetDefault={handleCvSetDefault}
-                      onDelete={handleCvDelete}
-                      uploadRef={cvUploadRef}
-                    />
-                    <div ref={cvUploadRef}>
-                      <CvUpload onUploadSuccess={handleCvUploadSuccess} />
-                    </div>
-                  </section>
-
-                  {/* Documents + Upload — Requirements 5.x, 7.x */}
-                  <section className="space-y-4">
-                    <DocumentsSection
-                      documents={profile.documents ?? []}
-                      onDownload={handleDocDownload}
-                      onDelete={handleDocDelete}
-                    />
-                    <DocumentUpload onUploadSuccess={handleDocUploadSuccess} />
-                  </section>
-
-                  {/* Career Resources — Requirements 8.x */}
-                  <CareerResources />
-
-                  {/* Opportunities — Requirements 9.x */}
-                  <OpportunitiesSection />
+              {/* Profile strength */}
+              {!profileLoading && profile && (
+                <div className="bg-white rounded-xl border border-border p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="font-semibold text-text text-sm">Profile</h2>
+                    <Link to="/candidate/profile" className="text-brand-blue text-xs font-medium hover:underline">
+                      Edit
+                    </Link>
+                  </div>
+                  <ProfileStrengthBar profile={profile} compact />
                 </div>
               )}
-            </>
-          )}
+
+              {profileLoading && (
+                <div className="bg-white rounded-xl border border-border p-5 space-y-3 animate-pulse">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-2 w-full rounded-full" />
+                  <Skeleton className="h-3 w-40" />
+                </div>
+              )}
+
+              {/* CV widget */}
+              <div className="bg-white rounded-xl border border-border p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-semibold text-text text-sm">My Documents</h2>
+                  <Link to="/candidate/dashboard/documents" className="text-brand-blue text-xs font-medium hover:underline">
+                    Manage
+                  </Link>
+                </div>
+
+                {profileLoading ? (
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                ) : defaultCv ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2.5">
+                    <FileText size={14} className="text-brand-blue flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-text truncate">{defaultCv.filename}</p>
+                      <p className="text-[11px] text-text-muted">Default CV</p>
+                    </div>
+                    {defaultCv.is_default && (
+                      <span className="text-[10px] font-semibold text-brand-blue bg-brand-blue/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                        Default
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-3">
+                    <p className="text-xs text-text-muted mb-2">No CV uploaded yet</p>
+                    <Link to="/candidate/dashboard/documents">
+                      <Button size="sm" variant="outline" className="text-xs">Upload CV</Button>
+                    </Link>
+                  </div>
+                )}
+
+                <p className="text-xs text-text-muted mt-2">
+                  {profile?.cvs?.length ?? 0} CV{(profile?.cvs?.length ?? 0) !== 1 ? 's' : ''} · {profile?.documents?.length ?? 0} document{(profile?.documents?.length ?? 0) !== 1 ? 's' : ''}
+                </p>
+              </div>
+
+              {/* Quick links */}
+              <div className="bg-white rounded-xl border border-border p-5 space-y-2">
+                <h2 className="font-semibold text-text text-sm mb-3">Quick Links</h2>
+                {[
+                  { label: 'My Applications', to: '/candidate/applications' },
+                  { label: 'Edit Profile', to: '/candidate/profile' },
+                  { label: 'Browse Jobs', to: '/jobs' },
+                ].map(({ label, to }) => (
+                  <Link
+                    key={to}
+                    to={to}
+                    className="flex items-center justify-between py-2 text-sm text-text hover:text-brand-blue transition-colors border-b border-border last:border-0"
+                  >
+                    {label}
+                    <ChevronRight size={14} className="text-text-muted" />
+                  </Link>
+                ))}
+              </div>
+
+            </div>
+          </div>
 
         </div>
       </main>

@@ -53,6 +53,37 @@ class AuthService:
         self._user_repo = UserRepository(db)
         self._auth_repo = AuthRepository(db)
 
+    @staticmethod
+    def _build_user_response(user, employer_profile=None) -> UserResponse:
+        """Build a UserResponse, populating is_profile_complete for employers.
+
+        employer_profile must be passed explicitly when the relationship may
+        not be loaded on the user object (e.g. immediately after create_user).
+        When None is passed for an EMPLOYER, is_profile_complete defaults to False.
+        """
+        is_profile_complete = None
+        if user.role == "EMPLOYER":
+            if employer_profile is not None:
+                is_profile_complete = employer_profile.is_profile_complete
+            else:
+                # Try the already-loaded relationship; if not loaded, default False
+                # to avoid triggering async lazy-load outside a coroutine.
+                try:
+                    profile = user.__dict__.get("employer_profile")
+                    is_profile_complete = profile.is_profile_complete if profile else False
+                except Exception:
+                    is_profile_complete = False
+
+        return UserResponse(
+            id=user.id,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            email=user.email,
+            role=user.role,
+            account_status=user.account_status,
+            is_profile_complete=is_profile_complete,
+        )
+
     async def register_user(self, data: RegisterRequest, response: Response):
         """Register a new user and return an auth response with token pair.
 
@@ -118,14 +149,7 @@ class AuthService:
         await self._db.commit()
 
         return AuthResponse(
-            user=UserResponse(
-                id=user.id,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                email=user.email,
-                role=user.role,
-                account_status=user.account_status,
-            ),
+            user=self._build_user_response(user),
             access_token=token_pair["access_token"],
             token_type=token_pair["token_type"],
             verification_token=verification_token if settings.email_stub_mode else None,
@@ -183,14 +207,7 @@ class AuthService:
         await self._db.commit()
 
         return AuthResponse(
-            user=UserResponse(
-                id=user.id,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                email=user.email,
-                role=user.role,
-                account_status=user.account_status,
-            ),
+            user=self._build_user_response(user, employer_profile=getattr(user, '__dict__', {}).get('employer_profile')),
             access_token=token_pair["access_token"],
             token_type=token_pair["token_type"],
         )
@@ -429,14 +446,7 @@ class AuthService:
         await self._db.commit()
 
         return AuthResponse(
-            user=UserResponse(
-                id=user.id,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                email=user.email,
-                role=user.role,
-                account_status=user.account_status
-            ),
+            user=self._build_user_response(user),
             access_token=token_pair["access_token"],
             token_type=token_pair["token_type"],
         )

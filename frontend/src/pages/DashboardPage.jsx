@@ -52,6 +52,7 @@ function StatusBadge({ status }) {
 function EmployerDashboard({ user }) {
   const [stats, setStats] = useState(null)
   const [statsLoading, setStatsLoading] = useState(true)
+  const [profile, setProfile] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const { jobs, loading: jobsLoading } = useJobs({ endpoint: '/api/v1/jobs/mine', limit: 5 })
 
@@ -60,9 +61,13 @@ function EmployerDashboard({ user }) {
       .then(({ data }) => setStats(data))
       .catch(() => setStats({ total_jobs: 0, active_jobs: 0, draft_jobs: 0, closed_jobs: 0, total_applications: 0 }))
       .finally(() => setStatsLoading(false))
+
+    api.get('/api/v1/employer/profile')
+      .then(({ data }) => setProfile(data))
+      .catch(() => {})
   }, [])
 
-  const isProfileComplete = user?.employer_profile?.is_profile_complete
+  const isProfileComplete = user?.is_profile_complete
 
   const tabs = [
     { id: 'overview', label: 'Console Overview', icon: LayoutDashboard },
@@ -78,7 +83,7 @@ function EmployerDashboard({ user }) {
         <div>
           <h1 className="text-2xl font-bold text-text">Welcome back, {user?.first_name}</h1>
           <p className="text-text-muted text-sm mt-1">
-            {user?.employer_profile?.company_name ?? 'Your employer dashboard'}
+            {profile?.company_name ?? 'Your employer dashboard'}
           </p>
         </div>
         <Link to="/employer/jobs/new">

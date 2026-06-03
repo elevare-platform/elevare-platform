@@ -15,6 +15,7 @@ from app.core.database import BaseModel
 from .enums import AccountStatus, UserRole
 
 if TYPE_CHECKING:
+    from app.modules.applications.models import Application
     from app.modules.auth.models import (
         EmailVerificationToken,
         InviteToken,
@@ -113,6 +114,18 @@ class User(BaseModel):
         back_populates="user",
         uselist=False,
     )
+    application_updated_by: Mapped[Application] = relationship(
+        "Application",
+        back_populates="who_updated_status",
+        foreign_keys="Application.status_updated_by",
+    )
+    applications: Mapped[list[Application]] = relationship(
+        "Application",
+        back_populates="candidate",
+        foreign_keys="Application.candidate_id",
+    )
+
+
 
 
 class UserProfile(BaseModel):

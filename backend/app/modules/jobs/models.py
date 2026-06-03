@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import (
+    ARRAY,
+    UUID,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
 
-from .enums import ContractType, JobStatus, WorkLocation, WorkModel
+from .enums import ContractType, JobStatus, SeniorityLevel, WorkLocation, WorkModel
 
 if TYPE_CHECKING:
+    from app.modules.applications.models import Application
     from app.modules.users.models import User
 
 
@@ -34,7 +46,7 @@ class Job(BaseModel):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    title: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     salary_min: Mapped[Decimal] = mapped_column(
         Numeric(precision=12, scale=2),
@@ -69,8 +81,28 @@ class Job(BaseModel):
         server_default=WorkLocation.LOCAL.value,
         index=True,
     )
+    application_deadline: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True
+    )
+
+    required_skills: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    seniority_level: Mapped[SeniorityLevel | None] = mapped_column(String(20), nullable=True)
+    openings_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
+    required_years_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
 
     # relationship
-    employer: Mapped[User] = relationship("User", back_populates="jobs")
+    employer: Mapped[User] = relationship(
+        "User",
+        back_populates="jobs",
+        foreign_keys=[employer_id],
+    )
+    applications: Mapped[list[Application]] = relationship(
+        "Application",
+        back_populates="job"
+    )
+
 
 

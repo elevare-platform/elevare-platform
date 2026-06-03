@@ -25,12 +25,7 @@ class UserService:
     async def update_employer_profile(
         self, user_id: UUID, data: EmployerProfileUpdateRequest
     ) -> EmployerProfileResponse:
-        """Create or update the employer's company profile.
-
-        Raises:
-            PermissionDeniedException: If the authenticated user is not an EMPLOYER.
-
-        """
+        """Create or update the employer's company profile."""
         user = await self._user_repo.get_user_by_id(user_id)
 
         if not user or user.role != "EMPLOYER":
@@ -40,5 +35,20 @@ class UserService:
 
         profile = await self._user_repo.upsert_employer_profile(user_id, data)
         await self._db.commit()
+
+        return EmployerProfileResponse.model_validate(profile)
+
+    async def get_employer_profile(self, user_id: UUID) -> EmployerProfileResponse:
+        """Return the employer's company profile.
+
+        Raises:
+            PermissionDeniedException: If no profile exists for this user.
+        """
+        profile = await self._user_repo.get_employer_profile(user_id)
+
+        if profile is None:
+            raise PermissionDeniedException(
+                message="Employer profile not found"
+            )
 
         return EmployerProfileResponse.model_validate(profile)

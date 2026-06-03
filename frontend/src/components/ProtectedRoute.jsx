@@ -22,7 +22,9 @@ export function ProtectedRoute({ allowedRoles }) {
   if (isAccountRestricted(user)) {
     return (
       <>
-        <AccountStatusBanner />
+        <div className="pt-16">
+          <AccountStatusBanner />
+        </div>
         <RestrictedPage user={user} allowedRoles={allowedRoles} />
       </>
     )

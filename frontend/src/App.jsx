@@ -17,10 +17,14 @@ import JobBoardPage from '@/pages/jobs/JobBoardPage'
 import JobDetailPage from '@/pages/jobs/JobDetailPage'
 import EmployerJobsPage from '@/pages/employer/EmployerJobsPage'
 import PostJobPage from '@/pages/employer/PostJobPage'
+import EditJobPage from '@/pages/employer/EditJobPage'
 import OnboardingPage from '@/pages/employer/OnboardingPage'
 import AdminInvitePage from '@/pages/admin/AdminInvitePage'
 import CandidateDashboardPage from '@/pages/candidate/CandidateDashboardPage'
 import CandidateProfilePage from '@/pages/candidate/CandidateProfilePage'
+import CandidateDocumentsPage from '@/pages/candidate/CandidateDocumentsPage'
+import MyApplicationsPage from '@/pages/candidate/MyApplicationsPage'
+import ApplicantsPage from '@/pages/employer/ApplicantsPage'
 
 // Redirects authenticated users away from login/register
 function PublicRoute({ children }) {
@@ -66,6 +70,8 @@ function AppRoutes() {
         <Route path="/employer/onboarding" element={<OnboardingPage />} />
         <Route path="/employer/jobs" element={<EmployerJobsPage />} />
         <Route path="/employer/jobs/new" element={<PostJobPage />} />
+        <Route path="/employer/jobs/:id/edit" element={<EditJobPage />} />
+        <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
       </Route>
 
       {/* Admin-only routes */}
@@ -76,7 +82,9 @@ function AppRoutes() {
       {/* Candidate-only routes */}
       <Route element={<ProtectedRoute allowedRoles={['CANDIDATE']} />}>
         <Route path="/candidate/dashboard" element={<CandidateDashboardPage />} />
+        <Route path="/candidate/dashboard/documents" element={<CandidateDocumentsPage />} />
         <Route path="/candidate/profile" element={<CandidateProfilePage />} />
+        <Route path="/candidate/applications" element={<MyApplicationsPage />} />
       </Route>
 
       {/* Catch-all */}

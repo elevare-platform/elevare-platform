@@ -1,5 +1,6 @@
-import { useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { Building2, Globe } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { JobCard } from '@/components/jobs/JobCard'
@@ -38,6 +39,14 @@ export default function EmployerJobsPage() {
     endpoint: '/api/v1/jobs/mine',
   })
 
+  const [profile, setProfile] = useState(null)
+
+  useEffect(() => {
+    api.get('/api/v1/employer/profile')
+      .then(({ data }) => setProfile(data))
+      .catch(() => {})
+  }, [])
+
   // Req 4.7 — Publish a DRAFT job and update local state on success
   const handlePublish = useCallback(async (job) => {
     try {
@@ -68,6 +77,44 @@ export default function EmployerJobsPage() {
 
       <main className="flex-1 pt-16">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+
+          {/* Company profile banner */}
+          {profile && (
+            <div className="flex items-center gap-4 mb-8 p-4 rounded-xl border border-border bg-surface">
+              {profile.company_logo_url ? (
+                <img
+                  src={profile.company_logo_url}
+                  alt={`${profile.company_name} logo`}
+                  className="w-14 h-14 rounded-xl object-contain border border-border bg-background flex-shrink-0"
+                />
+              ) : (
+                <span className="w-14 h-14 rounded-xl border border-border bg-background flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                  <Building2 size={24} className="text-text-muted" />
+                </span>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-text">{profile.company_name}</p>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
+                  {profile.industry && <span>{profile.industry}</span>}
+                  {profile.company_size && <span>{profile.company_size} employees</span>}
+                  {profile.website && (
+                    <a
+                      href={profile.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-brand-blue hover:underline"
+                    >
+                      <Globe size={11} />
+                      {profile.website.replace(/^https?:\/\//, '')}
+                    </a>
+                  )}
+                </div>
+              </div>
+              <Link to="/employer/onboarding">
+                <Button size="sm" variant="outline">Edit profile</Button>
+              </Link>
+            </div>
+          )}
 
           {/* Page header */}
           <div className="flex items-center justify-between mb-8">

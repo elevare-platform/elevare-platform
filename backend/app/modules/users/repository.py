@@ -19,7 +19,9 @@ class UserRepository:
 
     async def get_user_by_email(self, email: str) -> User | None:
         """Return a user by email address, or None if not found."""
-        stmt = select(User).where(User.email == email)
+        stmt = select(User).where(User.email == email).options(
+            selectinload(User.employer_profile)
+        )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 

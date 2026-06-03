@@ -59,6 +59,7 @@ class CandidateRepository:
             .options(
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),
+                selectinload(CandidateProfile.user),
             )
         )
         result = await self._db.execute(stmt)

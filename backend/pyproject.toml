@@ -24,7 +24,7 @@ ignore = [
     "B008",  # FastAPI Depends() false positive
 ]
 
-per-file-ignores = { "tests/*" = ["S101"] }  # allow assert in tests
+per-file-ignores = { "tests/*" = ["S101", "D100", "D101", "D102", "D103", "D104"], "alembic/versions/*" = ["UP035", "UP007", "UP006", "I001", "F401", "E902"] }  # allow assert + skip docstrings in tests; skip modernisation rules in auto-generated migrations
 
 [tool.isort]
 profile = "black"

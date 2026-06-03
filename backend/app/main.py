@@ -8,6 +8,7 @@ shutdown (engine disposal).
 import logging
 from contextlib import asynccontextmanager
 
+import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +27,7 @@ from app.core.exceptions import PlatformError
 from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.modules.admin.router import router as admin_router
+from app.modules.applications.router import router as app_router
 from app.modules.auth.router import router as auth_router
 from app.modules.candidates.router import router as candidates_router
 from app.modules.employer.router import router as employer_router
@@ -62,6 +64,15 @@ async def lifespan(app: FastAPI):
         logger.info("Database connection verified")
     except Exception:
         logger.error("Database connection failed", exc_info=True)
+
+    # Verify redis connection
+    try:
+        async with aioredis.from_url(settings.redis_url) as redis_client:
+            await redis_client.ping()
+            await redis_client.aclose()
+            logger.info("Redis connection verified")
+    except Exception:
+        logger.error("Redis connection failed", exc_info=True)
 
     yield
 
@@ -111,3 +122,4 @@ app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(employer_router, prefix="/api/v1/employer", tags=["employer"])
 app.include_router(candidates_router, prefix="/api/v1/candidates", tags=["candidates"])
+app.include_router(app_router, prefix="/api/v1/applications", tags=["applications"])
