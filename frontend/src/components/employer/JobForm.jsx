@@ -245,6 +245,47 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
         </FormField>
       </div>
 
+      {/* Salary range */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormField>
+          <Label htmlFor="salary_min">Salary min (₦, optional)</Label>
+          <Input
+            id="salary_min"
+            type="number"
+            min={0}
+            placeholder="e.g. 500000"
+            {...register('salary_min')}
+          />
+          <FormMessage>{errors.salary_min?.message}</FormMessage>
+        </FormField>
+
+        <FormField>
+          <Label htmlFor="salary_max">Salary max (₦, optional)</Label>
+          <Input
+            id="salary_max"
+            type="number"
+            min={0}
+            placeholder="e.g. 900000"
+            {...register('salary_max')}
+          />
+          <FormMessage>{errors.salary_max?.message}</FormMessage>
+        </FormField>
+      </div>
+
+      {/* Required skills */}
+      <FormField>
+        <Label>Required skills</Label>
+        <Controller
+          name="required_skills"
+          control={control}
+          render={({ field }) => (
+            <SkillsTagInput value={field.value ?? []} onChange={field.onChange} />
+          )}
+        />
+        <p className="text-xs text-text-muted mt-1">Press Enter or click Add after each skill.</p>
+        <FormMessage>{errors.required_skills?.message}</FormMessage>
+      </FormField>
+
       {/* Openings + Deadline */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField>
@@ -267,49 +308,20 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
             type="date"
             {...register('application_deadline')}
           />
-          <FormMessage>{errors.application_deadline?.message}</FormMessage>)
+          <FormMessage>{errors.application_deadline?.message}</FormMessage>
+        </FormField>
+      </div>
+
+      {error && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <Button type="submit" className="w-full" size="lg" disabled={loading}>
+        {loading ? <><Loader2 size={16} className="mr-2 animate-spin" />Saving job…</> : 'Save job'}
+      </Button>
+
+    </form>
+  )
 }
- </form>
-  >
-   Button </
-     ob'}Save j…</> : 'ingpin" />Save-sanimatme="mr-2 lassNa csize={16}er2 ? <><Loadoading   {lg}>
-      {loadinsabled="lg" dize=full" si="w-meassNait" cl="submypeutton t    <B     )}
-
- </div>
-          
- {error}         00">
-ext-red-7t-sm tpy-3 tex0 px-4 20d-border-rerder -50 bo-red bgrounded-md="sName<div clas
-        r && (  {erroeld>
-
-    </FormFie>
-      essagFormMage}</essills?.m_skquiredrrors.ree>{emMessag <For       skill.</p>
-fter each k Add anter or clicss E">Premt-1ed -text-mut textxt-xsme="teclassNa    <p     />
-    )}
-         />
-     ange} ={field.onChhange? []} onCd.value ?fielt value={gInpullsTa<Ski           ) => (
-  }er={({ field    rendrol}
-      {contontrol=    cs"
-      ired_skill"requ      name=roller
-    <Cont       
- ls</Label>uired skilabel>Req<L
-        mField><For     
-  skills */}edir  {/* Requdiv>
-
-    
-      </ormField>      </F  Message>
-e}</Form_max?.messagsalaryerrors.Message>{  <Form      ax')} />
-  salary_m('..register" {.0000. 90r="e.gldeehon={0} placnumber" mi" type=ax"_m"salary=  <Input id        l>
-l)</Labe optionalary max (₦,">Samax"salary_tmlFor=bel h    <La
-      mField>        <For
-ld>
-  </FormFie      essage>
-/FormM}<ge.messa_min?rs.salaryerromMessage>{or  <F     >
-   ')} /alary_minegister('s" {...r500000.g. ="elaceholderin={0} pumber" m type="nn"_miid="salary <Input     abel>
-     ptional)</L (₦, o minn">Salaryry_misalahtmlFor="  <Label    ld>
-     <FormFie        ">
-s-2 gap-4grid-cols-1 md:d grid-col"griclassName=iv }
-      <dange */ary r/* Sal
-
-      {  </div>ld>
-    mFie   </For
-     

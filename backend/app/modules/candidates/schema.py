@@ -1,6 +1,6 @@
 """Pydantic schemas for the candidates module."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -24,6 +24,37 @@ class UpdateProfileSchema(BaseModel):
     years_of_experience: int | None = None
     notice_period_days: int | None = None
     linkedin_url: str | None = None
+    portfolio_url: str | None = None
+    github_url: str | None = None
+    preferred_locations: list[str] | None = None
+    preferred_work_models: list[str] | None = None
+    open_to_relocation: bool = False
+
+
+class WorkExperienceCreateSchema(BaseModel):
+    company_name: str
+    job_title: str
+    description: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    is_current: bool = False
+
+
+class EducationCreateSchema(BaseModel):
+    institution_name: str
+    degree: str
+    field_of_study: str
+    start_year: int | None = None
+    end_year: int | None = None
+
+
+class CertificationCreateSchema(BaseModel):
+    name: str
+    issuing_organization: str
+    issue_date: date | None = None
+    expiration_date: date | None = None
+    credential_id: str | None = None
+    credential_url: str | None = None
 
 
 # ------------------------------------------
@@ -58,6 +89,47 @@ class CandidateDocumentsResponse(BaseModel):
     url: str | None = None  # populated on demand via presigned URL
 
 
+class WorkExperienceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    candidate_id: UUID
+    company_name: str
+    job_title: str
+    description: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    is_current: bool
+    created_at: datetime
+
+
+class EducationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    candidate_id: UUID
+    institution_name: str
+    degree: str
+    field_of_study: str
+    start_year: int | None = None
+    end_year: int | None = None
+    created_at: datetime
+
+
+class CertificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    candidate_id: UUID
+    name: str
+    issuing_organization: str
+    issue_date: date | None = None
+    expiration_date: date | None = None
+    credential_id: str | None = None
+    credential_url: str | None = None
+    created_at: datetime
+
+
 class ProfileResponse(BaseModel):
     """Response schema for a full candidate profile, including CVs and documents."""
 
@@ -74,6 +146,14 @@ class ProfileResponse(BaseModel):
     years_of_experience: int | None = None
     notice_period_days: int | None = None
     linkedin_url: str | None = None
+    github_url: str | None = None
+    portfolio_url: str | None = None
+    preferred_locations: list[str] | None = None
+    preferred_work_models: list[str] | None = None
+    open_to_relocation: bool = False
     is_profile_complete: bool = False
     cvs: list[CandidateCvsResponse] = []
     documents: list[CandidateDocumentsResponse] = []
+    work_experiences: list[WorkExperienceResponse] = []
+    educations: list[EducationResponse] = []
+    certifications: list[CertificationResponse] = []

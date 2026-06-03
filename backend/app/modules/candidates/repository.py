@@ -8,11 +8,19 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ProfileNotFoundException
 from app.modules.candidates.models import (
+    Certification,
     CandidateCvs,
     CandidateDocuments,
     CandidateProfile,
+    Education,
+    WorkExperience,
 )
-from app.modules.candidates.schema import UpdateProfileSchema
+from app.modules.candidates.schema import (
+    CertificationCreateSchema,
+    EducationCreateSchema,
+    UpdateProfileSchema,
+    WorkExperienceCreateSchema,
+)
 
 # Fields required for profile completion — single source of truth
 REQUIRED_PROFILE_FIELDS = ("bio", "skills", "years_of_experience", "location")
@@ -39,13 +47,16 @@ class CandidateRepository:
         self._db = db
 
     async def get_by_user_id(self, user_id: uuid.UUID) -> CandidateProfile | None:
-        """Fetch a candidate profile with CVs and documents eagerly loaded."""
+        """Fetch a candidate profile with all related data eagerly loaded."""
         stmt = (
             select(CandidateProfile)
             .where(CandidateProfile.user_id == user_id)
             .options(
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),
+                selectinload(CandidateProfile.work_experiences),
+                selectinload(CandidateProfile.educations),
+                selectinload(CandidateProfile.certifications),
             )
         )
         result = await self._db.execute(stmt)
@@ -60,6 +71,9 @@ class CandidateRepository:
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),
                 selectinload(CandidateProfile.user),
+                selectinload(CandidateProfile.work_experiences),
+                selectinload(CandidateProfile.educations),
+                selectinload(CandidateProfile.certifications),
             )
         )
         result = await self._db.execute(stmt)
@@ -221,6 +235,9 @@ class CandidateRepository:
             select(CandidateProfile).options(
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),
+                selectinload(CandidateProfile.work_experiences),
+                selectinload(CandidateProfile.educations),
+                selectinload(CandidateProfile.certifications),
             )
         )
         return list(result.scalars().all())
@@ -231,3 +248,66 @@ class CandidateRepository:
             select(func.count()).where(CandidateCvs.candidate_id == profile_id)
         )
         return result or 0
+
+    # ------------------------------------------------------------------
+    # Work Experience
+    # ------------------------------------------------------------------
+
+    async def add_work_experience(
+        self, profile_id: uuid.UUID, data: WorkExperienceCreateSchema
+    ) -> WorkExperience:
+        """Persist a new work experience entry."""
+        entry = WorkExperience(candidate_id=profile_id, **data.model_dump())
+        self._db.add(entry)
+        await self._db.flush()
+        await self._db.refresh(entry)
+        return entry
+
+    async def get_work_experience(self, entry_id: uuid.UUID) -> WorkExperience | None:
+        return await self._db.get(WorkExperience, entry_id)
+
+    async def delete_work_experience(self, entry: WorkExperience) -> None:
+        await self._db.delete(entry)
+        await self._db.flush()
+
+    # ------------------------------------------------------------------
+    # Education
+    # ------------------------------------------------------------------
+
+    async def add_education(
+        self, profile_id: uuid.UUID, data: EducationCreateSchema
+    ) -> Education:
+        """Persist a new education entry."""
+        entry = Education(candidate_id=profile_id, **data.model_dump())
+        self._db.add(entry)
+        await self._db.flush()
+        await self._db.refresh(entry)
+        return entry
+
+    async def get_education(self, entry_id: uuid.UUID) -> Education | None:
+        return await self._db.get(Education, entry_id)
+
+    async def delete_education(self, entry: Education) -> None:
+        await self._db.delete(entry)
+        await self._db.flush()
+
+    # ------------------------------------------------------------------
+    # Certifications
+    # ------------------------------------------------------------------
+
+    async def add_certification(
+        self, profile_id: uuid.UUID, data: CertificationCreateSchema
+    ) -> Certification:
+        """Persist a new certification entry."""
+        entry = Certification(candidate_id=profile_id, **data.model_dump())
+        self._db.add(entry)
+        await self._db.flush()
+        await self._db.refresh(entry)
+        return entry
+
+    async def get_certification(self, entry_id: uuid.UUID) -> Certification | None:
+        return await self._db.get(Certification, entry_id)
+
+    async def delete_certification(self, entry: Certification) -> None:
+        await self._db.delete(entry)
+        await self._db.flush()

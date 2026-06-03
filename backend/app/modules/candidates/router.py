@@ -11,8 +11,14 @@ from app.core.storage import StorageService, get_storage_service
 from app.modules.candidates.schema import (
     CandidateCvsResponse,
     CandidateDocumentsResponse,
+    CertificationCreateSchema,
+    CertificationResponse,
+    EducationCreateSchema,
+    EducationResponse,
     ProfileResponse,
     UpdateProfileSchema,
+    WorkExperienceCreateSchema,
+    WorkExperienceResponse,
 )
 from app.modules.candidates.service import CandidateService
 from app.modules.users.models import User
@@ -152,6 +158,81 @@ async def delete_document(
     """Delete one of the authenticated candidate's supporting documents."""
     await service.delete_document(document_id, current_user.id)
     return SuccessResponse(message="Document deleted successfully")
+
+
+# ------------------------------------------------------------------
+# Candidate — work experience
+# ------------------------------------------------------------------
+
+@router.post("/me/work-experience", response_model=WorkExperienceResponse, status_code=201)
+async def add_work_experience(
+    data: WorkExperienceCreateSchema,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Add a work experience entry to the authenticated candidate's profile."""
+    return await service.add_work_experience(current_user.id, data)
+
+
+@router.delete("/me/work-experience/{entry_id}", response_model=SuccessResponse, status_code=200)
+async def delete_work_experience(
+    entry_id: uuid.UUID,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Delete a work experience entry."""
+    await service.delete_work_experience(entry_id, current_user.id)
+    return SuccessResponse(message="Work experience deleted")
+
+
+# ------------------------------------------------------------------
+# Candidate — education
+# ------------------------------------------------------------------
+
+@router.post("/me/education", response_model=EducationResponse, status_code=201)
+async def add_education(
+    data: EducationCreateSchema,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Add an education entry to the authenticated candidate's profile."""
+    return await service.add_education(current_user.id, data)
+
+
+@router.delete("/me/education/{entry_id}", response_model=SuccessResponse, status_code=200)
+async def delete_education(
+    entry_id: uuid.UUID,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Delete an education entry."""
+    await service.delete_education(entry_id, current_user.id)
+    return SuccessResponse(message="Education entry deleted")
+
+
+# ------------------------------------------------------------------
+# Candidate — certifications
+# ------------------------------------------------------------------
+
+@router.post("/me/certifications", response_model=CertificationResponse, status_code=201)
+async def add_certification(
+    data: CertificationCreateSchema,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Add a certification to the authenticated candidate's profile."""
+    return await service.add_certification(current_user.id, data)
+
+
+@router.delete("/me/certifications/{entry_id}", response_model=SuccessResponse, status_code=200)
+async def delete_certification(
+    entry_id: uuid.UUID,
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+):
+    """Delete a certification entry."""
+    await service.delete_certification(entry_id, current_user.id)
+    return SuccessResponse(message="Certification deleted")
 
 
 # ------------------------------------------------------------------

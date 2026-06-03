@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models for the candidates module."""
 
 from __future__ import annotations
+from app.modules.jobs.enums import WorkModel
 
 import uuid
 from datetime import date
@@ -62,9 +63,10 @@ class CandidateProfile(BaseModel):
     years_of_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    github_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     portfolio_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    preferred_work_model: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-    preferred_location: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    preferred_work_models: Mapped[list[WorkModel] | None] = mapped_column(ARRAY(String), nullable=True)
+    preferred_locations: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     is_profile_complete: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -165,9 +167,9 @@ class WorkExperience(BaseModel):
     company_name: Mapped[str] = mapped_column(String(255))
     job_title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # YYYY-MM format
-    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # YYYY-MM format
-    is_current: Mapped[bool] = mapped_column(Boolean, default=False)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.false())
 
     # relationships
     candidate_profile: Mapped[CandidateProfile] = relationship(
@@ -190,8 +192,8 @@ class Education(BaseModel):
     institution_name: Mapped[str] = mapped_column(String(255))
     degree: Mapped[str] = mapped_column(String(255))
     field_of_study: Mapped[str] = mapped_column(String(255))
-    start_year: Mapped[date] = mapped_column(Date)
-    end_year: Mapped[date] = mapped_column(Date)
+    start_year: Mapped[int] = mapped_column(Integer, nullable=True)
+    end_year: Mapped[int] = mapped_column(Integer, nullable=True)
 
     # relationships
     candidate_profile: Mapped[CandidateProfile] = relationship(
@@ -213,7 +215,7 @@ class Certification(BaseModel):
 
     name: Mapped[str] = mapped_column(String(255))
     issuing_organization: Mapped[str] = mapped_column(String(255))
-    issue_date: Mapped[date] = mapped_column(Date)
+    issue_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     expiration_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     credential_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     credential_url: Mapped[str | None] = mapped_column(String(255), nullable=True)

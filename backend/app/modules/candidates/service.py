@@ -24,8 +24,14 @@ from app.modules.candidates.repository import CandidateRepository
 from app.modules.candidates.schema import (
     CandidateCvsResponse,
     CandidateDocumentsResponse,
+    CertificationCreateSchema,
+    CertificationResponse,
+    EducationCreateSchema,
+    EducationResponse,
     ProfileResponse,
     UpdateProfileSchema,
+    WorkExperienceCreateSchema,
+    WorkExperienceResponse,
 )
 from app.modules.users.enums import UserRole
 
@@ -313,3 +319,81 @@ class CandidateService:
             raise PermissionDeniedException("You do not have permission to access this document")
 
         return await self._storage.generate_presigned_url(document.key, 60 * 15)
+
+    # ------------------------------------------------------------------
+    # Work Experience
+    # ------------------------------------------------------------------
+
+    async def add_work_experience(
+        self, user_id: uuid.UUID, data: WorkExperienceCreateSchema
+    ) -> WorkExperienceResponse:
+        profile = await self._repo.get_by_user_id(user_id)
+        if profile is None:
+            raise ProfileNotFoundException()
+        entry = await self._repo.add_work_experience(profile.id, data)
+        await self._db.commit()
+        return WorkExperienceResponse.model_validate(entry)
+
+    async def delete_work_experience(self, entry_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        profile = await self._repo.get_by_user_id(user_id)
+        if profile is None:
+            raise ProfileNotFoundException()
+        entry = await self._repo.get_work_experience(entry_id)
+        if entry is None:
+            raise DocumentNotFoundError()
+        if entry.candidate_id != profile.id:
+            raise PermissionDeniedException("You do not have permission to delete this entry")
+        await self._repo.delete_work_experience(entry)
+        await self._db.commit()
+
+    # ------------------------------------------------------------------
+    # Education
+    # ------------------------------------------------------------------
+
+    async def add_education(
+        self, user_id: uuid.UUID, data: EducationCreateSchema
+    ) -> EducationResponse:
+        profile = await self._repo.get_by_user_id(user_id)
+        if profile is None:
+            raise ProfileNotFoundException()
+        entry = await self._repo.add_education(profile.id, data)
+        await self._db.commit()
+        return EducationResponse.model_validate(entry)
+
+    async def delete_education(self, entry_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        profile = await self._repo.get_by_user_id(user_id)
+        if profile is None:
+            raise ProfileNotFoundException()
+        entry = await self._repo.get_education(entry_id)
+        if entry is None:
+            raise DocumentNotFoundError()
+        if entry.candidate_id != profile.id:
+            raise PermissionDeniedException("You do not have permission to delete this entry")
+        await self._repo.delete_education(entry)
+        await self._db.commit()
+
+    # ------------------------------------------------------------------
+    # Certifications
+    # ------------------------------------------------------------------
+
+    async def add_certification(
+        self, user_id: uuid.UUID, data: CertificationCreateSchema
+    ) -> CertificationResponse:
+        profile = await self._repo.get_by_user_id(user_id)
+        if profile is None:
+            raise ProfileNotFoundException()
+        entry = await self._repo.add_certification(profile.id, data)
+        await self._db.commit()
+        return CertificationResponse.model_validate(entry)
+
+    async def delete_certification(self, entry_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        profile = await self._repo.get_by_user_id(user_id)
+        if profile is None:
+            raise ProfileNotFoundException()
+        entry = await self._repo.get_certification(entry_id)
+        if entry is None:
+            raise DocumentNotFoundError()
+        if entry.candidate_id != profile.id:
+            raise PermissionDeniedException("You do not have permission to delete this entry")
+        await self._repo.delete_certification(entry)
+        await self._db.commit()

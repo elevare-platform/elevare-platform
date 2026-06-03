@@ -29,6 +29,8 @@ export function ProfileStrengthBar({ profile }) {
     return v === null || v === undefined || v === ''
   })
 
+  const missingCV = !profile?.cvs || profile.cvs.length === 0
+
   // Color the bar based on strength level
   const barColor =
     strength === 100
@@ -74,6 +76,12 @@ export function ProfileStrengthBar({ profile }) {
               {FIELD_LABELS[field]}
             </li>
           ))}
+          {missingCV && (
+            <li className="flex items-center gap-2 text-sm text-text-muted">
+              <span className="w-4 h-4 rounded-full border-2 border-border flex-shrink-0" aria-hidden="true" />
+              Upload a CV
+            </li>
+          )}
         </ul>
       )}
 
