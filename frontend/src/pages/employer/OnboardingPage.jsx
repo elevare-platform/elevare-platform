@@ -77,7 +77,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-surface-muted flex flex-col">
       {/* Minimal header */}
       <header className="bg-white border-b border-border px-6 py-4 flex items-center gap-3">
-        <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
+        <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
       </header>
 
       <main className="flex-1 flex items-start justify-center px-4 py-12">

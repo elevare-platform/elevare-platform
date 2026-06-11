@@ -114,7 +114,7 @@ export default function InviteAcceptPage() {
           <div className="absolute bottom-24 -left-24 w-80 h-80 rounded-full border border-white/10" />
         </div>
         <div className="relative z-10 flex items-center gap-3">
-          <img src={ehsLogo} alt="Elevare Human Solutions" className="h-10 w-auto brightness-0 invert" />
+          <img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" />
         </div>
         <div className="relative z-10 space-y-4">
           <h1 className="text-4xl font-bold text-white leading-tight">
@@ -134,7 +134,7 @@ export default function InviteAcceptPage() {
         <div className="w-full max-w-md space-y-8">
           {/* Mobile logo */}
           <div className="flex items-center gap-3 lg:hidden">
-            <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
+            <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
           </div>
 
           <div className="space-y-2">

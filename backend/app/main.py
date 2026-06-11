@@ -27,11 +27,14 @@ from app.core.exceptions import PlatformError
 from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.modules.admin.router import router as admin_router
+from app.modules.ai.router import router as ai_router
 from app.modules.applications.router import router as app_router
 from app.modules.auth.router import router as auth_router
 from app.modules.candidates.router import router as candidates_router
+from app.modules.contact.router import router as contact_router
 from app.modules.employer.router import router as employer_router
 from app.modules.jobs.router import router as jobs_router
+from app.modules.sitemaps.router import router as sitemap_router
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +46,11 @@ async def lifespan(app: FastAPI):
     cleanup (session disposal) on shutdown.
 
     Args:
+    ----
         app: The current FastAPI instance.
 
     Yields:
+    ------
         None: Control to the application until shutdown.
 
     """
@@ -117,9 +122,13 @@ async def health_check() -> dict:
 
 
 # ---- Routers ----
+app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(employer_router, prefix="/api/v1/employer", tags=["employer"])
 app.include_router(candidates_router, prefix="/api/v1/candidates", tags=["candidates"])
 app.include_router(app_router, prefix="/api/v1/applications", tags=["applications"])
+app.include_router(contact_router, prefix="/api/v1/contact", tags=["contact"])
+app.include_router(sitemap_router, prefix="", tags=["Sitemap"])
+

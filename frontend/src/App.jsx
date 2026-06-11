@@ -1,104 +1,156 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
-import LoginPage from '@/pages/auth/LoginPage'
-import RegisterPage from '@/pages/auth/RegisterPage'
-import InviteAcceptPage from '@/pages/auth/InviteAcceptPage'
-import DashboardPage from '@/pages/DashboardPage'
-import UnauthorisedPage from '@/pages/UnauthorisedPage'
-import HomePage from '@/pages/HomePage'
-import ServicesPage from '@/pages/ServicesPage'
-import AboutPage from '@/pages/AboutPage'
-import TalentPipelinePage from '@/pages/TalentPipelinePage'
-import TrainingPage from '@/pages/TrainingPage'
-import WorkforceToolsPage from '@/pages/WorkforceToolsPage'
-import PartnershipPage from '@/pages/PartnershipPage'
-import JobBoardPage from '@/pages/jobs/JobBoardPage'
-import JobDetailPage from '@/pages/jobs/JobDetailPage'
-import EmployerJobsPage from '@/pages/employer/EmployerJobsPage'
-import PostJobPage from '@/pages/employer/PostJobPage'
-import EditJobPage from '@/pages/employer/EditJobPage'
-import OnboardingPage from '@/pages/employer/OnboardingPage'
-import AdminInvitePage from '@/pages/admin/AdminInvitePage'
-import CandidateDashboardPage from '@/pages/candidate/CandidateDashboardPage'
-import CandidateProfilePage from '@/pages/candidate/CandidateProfilePage'
-import CandidateDocumentsPage from '@/pages/candidate/CandidateDocumentsPage'
-import MyApplicationsPage from '@/pages/candidate/MyApplicationsPage'
-import ApplicantsPage from '@/pages/employer/ApplicantsPage'
+import { initAnalytics, trackPageview } from '@/lib/analytics'
 
-// Redirects authenticated users away from login/register
+// ─── Page-level code splitting ────────────────────────────────────────────────
+// Each lazy() call becomes its own JS chunk — only loaded when first visited.
+
+const HomePage = lazy(() => import('@/pages/HomePage'))
+const ServicesPage = lazy(() => import('@/pages/ServicesPage'))
+const AboutPage = lazy(() => import('@/pages/AboutPage'))
+const TalentPipelinePage = lazy(() => import('@/pages/TalentPipelinePage'))
+const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
+const WorkforceToolsPage = lazy(() => import('@/pages/WorkforceToolsPage'))
+const PartnershipPage = lazy(() => import('@/pages/PartnershipPage'))
+const HowItWorksPage = lazy(() => import('@/pages/HowItWorksPage'))
+const PricingPage = lazy(() => import('@/pages/PricingPage'))
+const ContactPage = lazy(() => import('@/pages/ContactPage'))
+const PrivacyPage = lazy(() => import('@/pages/PrivacyPage'))
+const TermsPage = lazy(() => import('@/pages/TermsPage'))
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
+
+const LoginPage = lazy(() => import('@/pages/auth/LoginPage'))
+const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'))
+const InviteAcceptPage = lazy(() => import('@/pages/auth/InviteAcceptPage'))
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
+const UnauthorisedPage = lazy(() => import('@/pages/UnauthorisedPage'))
+
+const JobBoardPage = lazy(() => import('@/pages/jobs/JobBoardPage'))
+const JobDetailPage = lazy(() => import('@/pages/jobs/JobDetailPage'))
+
+const EmployerJobsPage = lazy(() => import('@/pages/employer/EmployerJobsPage'))
+const PostJobPage = lazy(() => import('@/pages/employer/PostJobPage'))
+const EditJobPage = lazy(() => import('@/pages/employer/EditJobPage'))
+const OnboardingPage = lazy(() => import('@/pages/employer/OnboardingPage'))
+const ApplicantsPage = lazy(() => import('@/pages/employer/ApplicantsPage'))
+
+const AdminInvitePage = lazy(() => import('@/pages/admin/AdminInvitePage'))
+const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboardPage'))
+const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'))
+const AdminJobsPage = lazy(() => import('@/pages/admin/AdminJobsPage'))
+const AdminApplicationsPage = lazy(() => import('@/pages/admin/AdminApplicationsPage'))
+const AdminAuditLogPage = lazy(() => import('@/pages/admin/AdminAuditLogPage'))
+
+const CandidateDashboardPage = lazy(() => import('@/pages/candidate/CandidateDashboardPage'))
+const CandidateProfilePage = lazy(() => import('@/pages/candidate/CandidateProfilePage'))
+const CandidateDocumentsPage = lazy(() => import('@/pages/candidate/CandidateDocumentsPage'))
+const MyApplicationsPage = lazy(() => import('@/pages/candidate/MyApplicationsPage'))
+const ProfileViewsPage = lazy(() => import('@/pages/candidate/ProfileViewsPage'))
+
+// ─── Shared loading fallback ──────────────────────────────────────────────────
+
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-brand-blue border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+// ─── Auth guards ──────────────────────────────────────────────────────────────
+
 function PublicRoute({ children }) {
   const { user, authReady } = useAuth()
-
-  if (!authReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-brand-blue border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
-
+  if (!authReady) return <PageLoader />
   return user ? <Navigate to={getPostAuthRedirect(user)} replace /> : children
 }
 
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 function AppRoutes() {
+  const location = useLocation()
+
+  useEffect(() => {
+    trackPageview(location.pathname + location.search)
+  }, [location])
+
   return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/services" element={<ServicesPage />} />
-      <Route path="/about" element={<AboutPage />} />
-      <Route path="/talent-pipeline" element={<TalentPipelinePage />} />
-      <Route path="/training" element={<TrainingPage />} />
-      <Route path="/workforce-tools" element={<WorkforceToolsPage />} />
-      <Route path="/partnership" element={<PartnershipPage />} />
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/services" element={<ServicesPage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/talent-pipeline" element={<TalentPipelinePage />} />
+        <Route path="/training" element={<TrainingPage />} />
+        <Route path="/workforce-tools" element={<WorkforceToolsPage />} />
+        <Route path="/partnership" element={<PartnershipPage />} />
+        <Route path="/how-it-works" element={<HowItWorksPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/contact" element={<ContactPage />} />
 
-      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-      <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-      <Route path="/invite/accept" element={<PublicRoute><InviteAcceptPage /></PublicRoute>} />
-      <Route path="/unauthorised" element={<UnauthorisedPage />} />
+        <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+        <Route path="/invite/accept" element={<PublicRoute><InviteAcceptPage /></PublicRoute>} />
+        <Route path="/unauthorised" element={<UnauthorisedPage />} />
 
-      {/* Public job routes */}
-      <Route path="/jobs" element={<JobBoardPage />} />
-      <Route path="/jobs/:id" element={<JobDetailPage />} />
+        {/* Public job routes */}
+        <Route path="/jobs" element={<JobBoardPage />} />
+        <Route path="/jobs/:id" element={<JobDetailPage />} />
 
-      <Route element={<ProtectedRoute />}>
-        <Route path="/dashboard" element={<DashboardPage />} />
-      </Route>
+        <Route element={<ProtectedRoute />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+        </Route>
 
-      {/* Employer-only routes */}
-      <Route element={<ProtectedRoute allowedRoles={['EMPLOYER', 'ADMIN']} />}>
-        <Route path="/employer/onboarding" element={<OnboardingPage />} />
-        <Route path="/employer/jobs" element={<EmployerJobsPage />} />
-        <Route path="/employer/jobs/new" element={<PostJobPage />} />
-        <Route path="/employer/jobs/:id/edit" element={<EditJobPage />} />
-        <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
-      </Route>
+        {/* Employer-only routes */}
+        <Route element={<ProtectedRoute allowedRoles={['EMPLOYER', 'ADMIN']} />}>
+          <Route path="/employer/onboarding" element={<OnboardingPage />} />
+          <Route path="/employer/jobs" element={<EmployerJobsPage />} />
+          <Route path="/employer/jobs/new" element={<PostJobPage />} />
+          <Route path="/employer/jobs/:id/edit" element={<EditJobPage />} />
+          <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
+        </Route>
 
-      {/* Admin-only routes */}
-      <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
-        <Route path="/admin/invite" element={<AdminInvitePage />} />
-      </Route>
+        {/* Admin-only routes */}
+        <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+          <Route path="/admin/invite" element={<AdminInvitePage />} />
+          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/jobs" element={<AdminJobsPage />} />
+          <Route path="/admin/applications" element={<AdminApplicationsPage />} />
+          <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
+        </Route>
 
-      {/* Candidate-only routes */}
-      <Route element={<ProtectedRoute allowedRoles={['CANDIDATE']} />}>
-        <Route path="/candidate/dashboard" element={<CandidateDashboardPage />} />
-        <Route path="/candidate/dashboard/documents" element={<CandidateDocumentsPage />} />
-        <Route path="/candidate/profile" element={<CandidateProfilePage />} />
-        <Route path="/candidate/applications" element={<MyApplicationsPage />} />
-      </Route>
+        {/* Candidate-only routes */}
+        <Route element={<ProtectedRoute allowedRoles={['CANDIDATE']} />}>
+          <Route path="/candidate/dashboard" element={<CandidateDashboardPage />} />
+          <Route path="/candidate/dashboard/documents" element={<CandidateDocumentsPage />} />
+          <Route path="/candidate/profile" element={<CandidateProfilePage />} />
+          <Route path="/candidate/applications" element={<MyApplicationsPage />} />
+          <Route path="/candidate/profile-views" element={<ProfileViewsPage />} />
+        </Route>
 
-      {/* Catch-all */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Legal */}
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+
+        {/* Catch-all — 404 */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </Suspense>
   )
 }
 
 export default function App() {
+  useEffect(() => {
+    initAnalytics()
+  }, [])
+
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes>
-        </AppRoutes>
+        <AppRoutes />
       </AuthProvider>
     </BrowserRouter>
   )

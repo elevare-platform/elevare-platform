@@ -45,11 +45,32 @@ class EmailService(ABC):
         """Send email address verification link to a new user."""
         ...
 
+    @abstractmethod
+    async def send_job_moderation_status(
+      self, employer_email: str, job_data: dict, action: str, reason: str | None = None
+    ) -> None:
+      """Send Job's moderation status to respective employers."""
+      ...
+
+    @abstractmethod
+    async def send_contact_notification(
+        self,
+        recipient: str,
+        name: str,
+        sender_email: str,
+        company: str | None,
+        message: str,
+        inquiry_type: str,
+    ) -> None:
+        """Notify the Elevare team of a new contact form submission."""
+        ...
+
 
 class ResendEmailService(EmailService):
     """Concrete implementation that delivers email via the Resend API."""
 
     def __init__(self) -> None:
+        """Initialise the service and configure the Resend SDK with the API key."""
         import resend as resend_sdk
         resend_sdk.api_key = settings.resend_api_key
         self._resend = resend_sdk
@@ -57,8 +78,7 @@ class ResendEmailService(EmailService):
     async def _send_html(
         self, subject: str, recipients: list[str], html_body: str
     ) -> None:
-        """Internal helper — runs the blocking Resend SDK call in a thread pool
-        so it doesn't block the async event loop."""
+        """Run the blocking Resend SDK call in a thread pool to avoid blocking the event loop."""
         import asyncio
 
         loop = asyncio.get_event_loop()
@@ -82,6 +102,7 @@ class ResendEmailService(EmailService):
     async def send_application_confirmation(
         self, candidate_email: str, job_title: str, company_name: str
     ) -> None:
+        """Send an application-received confirmation email to the candidate."""
         html_body = f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -119,6 +140,7 @@ class ResendEmailService(EmailService):
     async def send_status_update(
         self, candidate_email: str, job_title: str, new_status: str
     ) -> None:
+        """Send a status update email to the candidate when their application status changes."""
         status_colours: dict[str, str] = {
             "reviewing":   "#3B82F6",
             "shortlisted": "#10B981",
@@ -171,6 +193,7 @@ class ResendEmailService(EmailService):
     async def send_employer_notification(
         self, employer_email: str, job_title: str, candidate_name: str
     ) -> None:
+        """Notify an employer by email that a new application has been received."""
         html_body = f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -212,6 +235,7 @@ class ResendEmailService(EmailService):
     async def send_verification_email(
         self, email: str, verification_token: str
     ) -> None:
+        """Send an email address verification link to the newly registered user."""
         verification_link = f"{settings.app_url}/verify-email?token={verification_token}"
         html_body = f"""<!DOCTYPE html>
 <html>
@@ -250,6 +274,49 @@ class ResendEmailService(EmailService):
             html_body=html_body,
         )
 
+    async def send_contact_notification(
+        self,
+        recipient: str,
+        name: str,
+        sender_email: str,
+        company: str | None,
+        message: str,
+        inquiry_type: str,
+    ) -> None:
+        """Send a new contact form submission notification to the Elevare team."""
+        label = "Employer Inquiry" if inquiry_type == "employer_inquiry" else "General Contact"
+        company_row = f"<tr><td style='color:#6B7280;font-size:13px;padding-bottom:4px;'>Company</td><td style='color:#111827;font-size:14px;'>{company}</td></tr>" if company else ""
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#F3F4F6;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <tr><td style="background:#1E3A5F;padding:24px 32px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:22px;">Elevare — New {label}</h1>
+        </td></tr>
+        <tr><td style="padding:28px 32px;">
+          <table cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;">
+            <tr><td style="color:#6B7280;font-size:13px;padding-bottom:4px;">Name</td><td style="color:#111827;font-size:14px;">{name}</td></tr>
+            <tr><td style="color:#6B7280;font-size:13px;padding-bottom:4px;">Email</td><td style="color:#111827;font-size:14px;">{sender_email}</td></tr>
+            {company_row}
+            <tr><td style="color:#6B7280;font-size:13px;padding-bottom:4px;">Type</td><td style="color:#111827;font-size:14px;">{label}</td></tr>
+          </table>
+          <hr style="border:none;border-top:1px solid #E5E7EB;margin:20px 0;"/>
+          <p style="color:#374151;font-size:14px;line-height:1.7;white-space:pre-wrap;">{message}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+        await self._send_html(
+            subject=f"[Elevare] New {label} from {name}",
+            recipients=[recipient],
+            html_body=html_body,
+        )
+
 
 class StubEmailService(EmailService):
     """Concrete implementation that logs to stdout — used in tests and CI."""
@@ -257,6 +324,7 @@ class StubEmailService(EmailService):
     async def send_application_confirmation(
         self, candidate_email: str, job_title: str, company_name: str
     ) -> None:
+        """Log a stub application confirmation email."""
         logger.info(
             "STUB EMAIL SENT to %s: Application confirmation for %s at %s",
             candidate_email,
@@ -267,6 +335,7 @@ class StubEmailService(EmailService):
     async def send_status_update(
         self, candidate_email: str, job_title: str, new_status: str
     ) -> None:
+        """Log a stub application status update email."""
         logger.info(
             "STUB EMAIL SENT to %s: Status update for %s (now %s)",
             candidate_email,
@@ -277,6 +346,7 @@ class StubEmailService(EmailService):
     async def send_employer_notification(
         self, employer_email: str, job_title: str, candidate_name: str
     ) -> None:
+        """Log a stub employer new-application notification email."""
         logger.info(
             "STUB EMAIL SENT to %s: New application for %s by %s",
             employer_email,
@@ -287,12 +357,43 @@ class StubEmailService(EmailService):
     async def send_verification_email(
         self, email: str, verification_token: str
     ) -> None:
+        """Log a stub email verification email."""
         logger.info(
             "STUB EMAIL SENT to %s: Verification email (token: %s)",
             email,
             verification_token,
         )
 
+    async def send_job_moderation_status(
+      self, employer_email: str, job_data: dict, action: str, reason: str | None = None
+    ) -> None:
+      """Send Job's moderation status to respective employers."""
+      logger.info(
+        "STUB EMAIL SENT to %s: Action Taken on Job ID: %s - %s -> (action: %s) (reason: %s)",
+        employer_email,
+        job_data['id'],
+        job_data['title'],
+        action,
+        reason,
+      )
+
+    async def send_contact_notification(
+        self,
+        recipient: str,
+        name: str,
+        sender_email: str,
+        company: str | None,
+        message: str,
+        inquiry_type: str,
+    ) -> None:
+        """Log a stub contact form notification email."""
+        logger.info(
+            "STUB EMAIL SENT to %s: Contact form from %s (%s) — type=%s",
+            recipient,
+            name,
+            sender_email,
+            inquiry_type,
+        )
 
 
 def get_email_service() -> EmailService:

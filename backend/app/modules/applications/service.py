@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import AsyncSessionLocal
 from app.core.email import get_email_service
 from app.core.exceptions import (
     AlreadyApplied,
@@ -17,6 +18,7 @@ from app.core.exceptions import (
     PermissionDeniedException,
     ProfileNotFoundException,
 )
+from app.modules.ai.service import AIService, get_ai_service
 from app.modules.applications.enums import ApplicationStatus
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.applications.schema import (
@@ -31,6 +33,7 @@ from app.modules.users.repository import UserRepository
 
 
 class ApplicationService:
+    """Orchestrates business logic for job application lifecycle management."""
 
     # Valid status transitions — terminal states have empty sets.
     # A status not in this map is also treated as terminal.
@@ -53,6 +56,7 @@ class ApplicationService:
     }
 
     def __init__(self, db: AsyncSession) -> None:
+        """Initialise the service with an async database session."""
         self._db = db
         self._job_repo = JobRepository(db)
         self._app_repo = ApplicationRepository(db)
@@ -68,7 +72,6 @@ class ApplicationService:
         cover_letter: str | None = None,
     ) -> ApplicationResponse:
         """Create a new application. Fires confirmation emails as background tasks."""
-
         job = await self._job_repo.get_by_id(job_id)
         candidate = await self._candidate_repo.get_by_user_id(candidate_id)
 
@@ -128,16 +131,59 @@ class ApplicationService:
             job.title,
             f"{candidate.user.first_name} {candidate.user.last_name}",
         )
+        # Queue AI score computation — fires after response is returned.
+        # Score starts as null; updated on the application row once computed.
+        background_tasks.add_task(
+            ApplicationService._compute_match_score,
+            application.id,
+            candidate.skills or [],
+            job.description or "",
+            job.title or "",
+            job.required_skills or [],
+            get_ai_service(),
+        )
 
         await self._db.commit()
 
         return ApplicationResponse.from_application(application, cv_url=cv_url)
 
+    @staticmethod
+    async def _compute_match_score(
+        application_id: uuid.UUID,
+        candidate_skills: list[str],
+        job_description: str,
+        job_title: str,
+        required_skills: list[str],
+        ai_service: AIService,
+    ):
+        async with AsyncSessionLocal() as db:
+            try:
+                repo = ApplicationRepository(db)
+                result = await ai_service.compute_match_score(
+                    candidate_skills,
+                    job_description,
+                    job_title,
+                    required_skills,
+                )
+                await repo.update(
+                    application_id,
+                    {
+                        "match_score": result.score,
+                        "score_computed_at": result.computed_at,
+                    },
+                )
+                await db.commit()
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "Failed to compute match score for application %s", application_id
+                )
+
+
     async def withdraw_application(
         self, application_id: uuid.UUID, candidate_id: uuid.UUID
     ) -> ApplicationResponse:
         """Withdraw an application. Only allowed from submitted or reviewing state."""
-
         application = await self._app_repo.get_by_id(application_id)
         if not application:
             raise ApplicationNotFound()
@@ -164,6 +210,7 @@ class ApplicationService:
         cursor: str | None = None,
         limit: int = 20,
     ) -> ApplicationList:
+        """Return paginated applications for the authenticated candidate."""
         paginated = await self._app_repo.get_all_applications_by_candidate(
             candidate_id, filters, cursor, limit
         )
@@ -227,7 +274,6 @@ class ApplicationService:
         background_tasks: BackgroundTasks,
     ) -> ApplicationResponse:
         """Transition an application to a new status. Fires a status update email."""
-
         application = await self._app_repo.get_by_id(application_id)
         if not application:
             raise ApplicationNotFound()
@@ -257,6 +303,7 @@ class ApplicationService:
         return ApplicationResponse.from_application(updated)
 
     async def has_applied(self, candidate_id: uuid.UUID, job_id: uuid.UUID) -> bool:
+        """Return True if the candidate has an existing application for the given job."""
         result = await self._app_repo.has_applied(candidate_id, job_id)
         await self._db.commit()
         return result is not None

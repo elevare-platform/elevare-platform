@@ -191,6 +191,9 @@ export default function Footer({ onBookConsultation }) {
               <img
                 src={ehsLogo}
                 alt="Elevare Human Solutions"
+                width={116}
+                height={40}
+                loading="lazy"
                 className="h-10 w-auto brightness-0 invert"
               />
             </div>
@@ -318,7 +321,7 @@ export default function Footer({ onBookConsultation }) {
           </p>
           <div className="flex items-center gap-4">
             <Link
-              to="#"
+              to="/privacy"
               className="text-xs transition-colors"
               style={{ color: 'rgba(255,255,255,0.4)' }}
               onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.8)')}
@@ -327,7 +330,7 @@ export default function Footer({ onBookConsultation }) {
               Privacy Policy
             </Link>
             <Link
-              to="#"
+              to="/terms"
               className="text-xs transition-colors"
               style={{ color: 'rgba(255,255,255,0.4)' }}
               onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.8)')}

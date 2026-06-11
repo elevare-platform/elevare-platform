@@ -234,6 +234,20 @@ async def delete_certification(
     await service.delete_certification(entry_id, current_user.id)
     return SuccessResponse(message="Certification deleted")
 
+# ------------------------------------------------------------------
+# Candidate — profile views (must be before /{candidate_profile_id})
+# ------------------------------------------------------------------
+
+@router.get("/me/profile-views", status_code=200)
+async def profile_view_history(
+    current_user: User = Depends(require_role("CANDIDATE")),
+    service: CandidateService = Depends(get_service),
+    cursor: str | None = None,
+    limit: int = 20,
+):
+    """Return the profile view history for the authenticated candidate."""
+    return await service.get_profile_views(current_user.id, cursor, limit)
+
 
 # ------------------------------------------------------------------
 # Employer / Admin — view candidate profiles
@@ -242,11 +256,12 @@ async def delete_certification(
 @router.get("/{candidate_profile_id}", response_model=ProfileResponse, status_code=200)
 async def get_candidate_profile(
     candidate_profile_id: uuid.UUID,
-    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    job_id: uuid.UUID | None = None,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN", "CANDIDATE")),
     service: CandidateService = Depends(get_service),
 ):
     """Return a candidate profile by ID (employer/admin access)."""
-    return await service.get_profile_by_id(candidate_profile_id, current_user)
+    return await service.get_profile_by_id(candidate_profile_id, current_user, job_id)
 
 
 @router.get("/{candidate_profile_id}/cv/{cv_id}/url", response_model=SuccessResponse, status_code=200)
@@ -268,7 +283,7 @@ async def get_candidate_cv_url(
 
 
 # ------------------------------------------------------------------
-# Admin — list all candidates
+# Employer / Admin — view candidate profiles
 # ------------------------------------------------------------------
 
 @router.get("", response_model=list[ProfileResponse], status_code=200)

@@ -51,16 +51,33 @@ const FALLBACK_JOBS = [
 // ─── Work-mode badge colours ──────────────────────────────────────────────────
 
 const WORK_MODE_STYLES = {
-  Remote:  { background: '#f0fdf4', color: '#15803d' },
-  Hybrid:  { background: '#fffbeb', color: '#b45309' },
-  'On-site': { background: '#eff6ff', color: '#1d4ed8' },
+  REMOTE:  { background: '#f0fdf4', color: '#15803d' },
+  HYBRID:  { background: '#fffbeb', color: '#b45309' },
+  ONSITE:  { background: '#eff6ff', color: '#1d4ed8' },
+}
+
+const WORK_MODE_LABELS = {
+  REMOTE: 'Remote',
+  HYBRID: 'Hybrid',
+  ONSITE: 'On-site',
+}
+
+function formatSalary(min, max) {
+  if (!min && !max) return null
+  const fmt = (n) => `₦${Number(n).toLocaleString('en-NG')}`
+  if (min && max) return `${fmt(min)} – ${fmt(max)}`
+  if (min) return `From ${fmt(min)}`
+  return `Up to ${fmt(max)}`
 }
 
 // ─── JobCard ──────────────────────────────────────────────────────────────────
 // Renders a single job listing card (Requirements 9.6).
 
 function JobCard({ job }) {
-  const workModeStyle = WORK_MODE_STYLES[job.work_mode] ?? { background: '#f1f5f9', color: '#475569' }
+  const workMode = job.work_model ?? job.work_mode
+  const workModeStyle = WORK_MODE_STYLES[workMode] ?? { background: '#f1f5f9', color: '#475569' }
+  const workModeLabel = WORK_MODE_LABELS[workMode] ?? workMode
+  const salaryDisplay = job.salary_range ?? formatSalary(job.salary_min, job.salary_max)
 
   return (
     <article
@@ -77,21 +94,23 @@ function JobCard({ job }) {
       {/* Company name + industry badge */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#64748b' }}>
-          {job.company}
+          {job.company_name ?? job.company}
         </span>
-        <span
-          style={{
-            fontSize: '0.6875rem',
-            fontWeight: 600,
-            padding: '2px 8px',
-            borderRadius: 999,
-            background: '#eff6ff',
-            color: '#1d4ed8',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {job.industry}
-        </span>
+        {(job.company_industry ?? job.industry) && (
+          <span
+            style={{
+              fontSize: '0.6875rem',
+              fontWeight: 600,
+              padding: '2px 8px',
+              borderRadius: 999,
+              background: '#eff6ff',
+              color: '#1d4ed8',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {job.company_industry ?? job.industry}
+          </span>
+        )}
       </div>
 
       {/* Job title */}
@@ -102,23 +121,25 @@ function JobCard({ job }) {
       {/* Location + work-mode badge */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '0.8125rem', color: '#64748b' }}>📍 {job.location}</span>
-        <span
-          style={{
-            fontSize: '0.6875rem',
-            fontWeight: 600,
-            padding: '2px 8px',
-            borderRadius: 999,
-            ...workModeStyle,
-          }}
-        >
-          {job.work_mode}
-        </span>
+        {workMode && (
+          <span
+            style={{
+              fontSize: '0.6875rem',
+              fontWeight: 600,
+              padding: '2px 8px',
+              borderRadius: 999,
+              ...workModeStyle,
+            }}
+          >
+            {workModeLabel}
+          </span>
+        )}
       </div>
 
       {/* Salary range + Apply Now link */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#1e293b' }}>
-          {job.salary_range}
+          {salaryDisplay ?? ''}
         </span>
         <Link
           to="/jobs"
@@ -165,10 +186,10 @@ export default function JobBoardPreview() {
     // The api instance's request interceptor only attaches Authorization when
     // an access token is in memory; for this public endpoint no token is needed.
     api
-      .get('/api/jobs?status=active&limit=8')
+      .get('/api/v1/jobs?status=active&limit=8')
       .then((res) => {
-        // Handle both { jobs: [...] } and plain array response shapes
-        const data = res.data?.jobs ?? res.data
+        // API returns { items: [...], next_cursor, count, total }
+        const data = res.data?.items ?? res.data?.jobs ?? res.data
         const list = Array.isArray(data) && data.length > 0 ? data : null
 
         // Fallback logic: if the API returns an empty array, use hardcoded jobs

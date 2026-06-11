@@ -12,22 +12,20 @@ Import order generally follows dependency hierarchy to avoid resolution
 issues during initialization.
 """
 
+from app.modules.admin.models import AuditLog
 from app.modules.applications.models import Application
 from app.modules.auth.models import EmailVerificationToken, InviteToken, RefreshToken
 from app.modules.candidates.models import (
     CandidateCvs,
     CandidateDocuments,
     CandidateProfile,
-    WorkExperience,
-    Education,
     Certification,
+    Education,
+    WorkExperience,
 )
+from app.modules.contact.models import ContactSubmission
 from app.modules.jobs.models import Job
-from app.modules.users.models import (
-    User,
-    EmployerProfile,
-    UserProfile
-)
+from app.modules.users.models import EmployerProfile, User, UserProfile
 
 __all__ = [
     "EmailVerificationToken",
@@ -44,4 +42,6 @@ __all__ = [
     "UserProfile",
     "EmployerProfile",
     "Application",
+    "AuditLog",
+    "ContactSubmission",
 ]

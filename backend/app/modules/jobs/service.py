@@ -10,7 +10,7 @@ from app.core.exceptions import (
     ProfileIncompleteException,
     ValidationException,
 )
-from app.modules.jobs.enums import JobStatus
+from app.modules.jobs.enums import JobStatus, ModerationStatus
 from app.modules.jobs.repository import JobRepository
 from app.modules.jobs.schemas import (
     JobCreateRequest,
@@ -36,6 +36,7 @@ class JobService:
     """Business logic for job listing lifecycle management."""
 
     def __init__(self, db: AsyncSession):
+        """Initialise the service with an async database session."""
         self._db = db
         self._repo = JobRepository(db)
         self._user_repo = UserRepository(db)
@@ -53,27 +54,33 @@ class JobService:
     async def publish_job(self, job_id: UUID, current_user: User) -> JobResponse:
         """Transition a job from DRAFT to ACTIVE.
 
-        Raises:
+        Raises
+        ------
             JobNotFoundError: If the job does not exist.
             PermissionDeniedException: If the caller does not own the job.
             ValidationException: If the transition is not valid.
+
         """
         job = await self._repo.get_by_id(job_id)
         self._check_ownership(job, current_user)
         self._check_transition(job, JobStatus.ACTIVE)
-        job = await self._repo.set_status(job, JobStatus.ACTIVE)
-        await self._db.commit()
-        return JobResponse.from_job(job)
+        if job.moderation_status == ModerationStatus.APPROVED.value:
+            job = await self._repo.set_status(job, JobStatus.ACTIVE)
+            await self._db.commit()
+            return JobResponse.from_job(job)
+        raise ValidationException("Job listing isn't approved yet")
 
     async def close_job(self, job_id: UUID, current_user: User) -> JobResponse:
         """Transition a job from ACTIVE to CLOSED.
 
         Admins can close any job. Employers can only close their own.
 
-        Raises:
+        Raises
+        ------
             JobNotFoundError: If the job does not exist.
             PermissionDeniedException: If the caller does not own the job and is not admin.
             ValidationException: If the transition is not valid.
+
         """
         job = await self._repo.get_by_id(job_id)
 
@@ -89,11 +96,13 @@ class JobService:
     async def update_job(
         self, job_id: UUID, data: JobUpdateRequest, current_user: User
     ) -> JobResponse:
-        """Partially update a job. Only the owning employer can update.
+        """Update a job partially. Only the owning employer can modify it.
 
-        Raises:
+        Raises
+        ------
             JobNotFoundError: If the job does not exist.
             PermissionDeniedException: If the caller does not own the job.
+
         """
         job = await self._repo.get_by_id(job_id)
         self._check_ownership(job, current_user)

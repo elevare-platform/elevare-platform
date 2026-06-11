@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Building2, Globe, ExternalLink } from 'lucide-react'
+import { Helmet } from 'react-helmet-async'
+import { trackEvent } from '@/lib/analytics'
+import { ArrowLeft, Building2, Calendar, Globe, ExternalLink } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
@@ -111,7 +113,10 @@ export default function JobDetailPage() {
       setError(null)
       try {
         const { data } = await api.get(`/api/v1/jobs/${id}`)
-        if (!cancelled) setJob(data)
+        if (!cancelled) {
+          setJob(data)
+          trackEvent('Jobs', 'view', data.id)
+        }
       } catch (err) {
         if (cancelled) return
         if (err.response?.status === 404) setNotFound(true)
@@ -160,6 +165,21 @@ export default function JobDetailPage() {
 
   return (
     <>
+      <Helmet>
+        {job ? (
+          <>
+            <title>{job.title} — {job.location} | Elevare</title>
+            <meta name="description" content={`${job.title} at ${job.company_name || 'a leading company'}. ${job.location} · ${job.contract_type}. Apply on Elevare.`} />
+            <meta property="og:title" content={`${job.title} at ${job.company_name || 'Elevare'}`} />
+            <meta property="og:description" content={`${job.title} · ${job.location} · ${job.contract_type}. Apply now on Elevare.`} />
+            <meta property="og:url" content={`https://elevare.com.ng/jobs/${job.id}`} />
+            <meta property="og:type" content="website" />
+            <link rel="canonical" href={`https://elevare.com.ng/jobs/${job.id}`} />
+          </>
+        ) : (
+          <title>Job Listing | Elevare</title>
+        )}
+      </Helmet>
       <Navbar />
 
       <main className="min-h-screen bg-background">
@@ -228,11 +248,40 @@ export default function JobDetailPage() {
                 <Badge value={job.work_model} />
                 <Badge value={job.work_location} />
                 <Badge value={job.status} />
+                {job.seniority_level && (
+                  <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', 'bg-violet-100 text-violet-700')}>
+                    {{JUNIOR:'Junior',MID:'Mid-level',SENIOR:'Senior',LEAD:'Lead',EXECUTIVE:'Executive'}[job.seniority_level] ?? job.seniority_level}
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-wrap gap-4 text-sm text-text-muted mb-6">
                 <span>📍 {job.location}</span>
+                {job.required_years_experience != null && (
+                  <span>🕐 {job.required_years_experience === 0 ? 'No experience required' : `${job.required_years_experience}+ years experience`}</span>
+                )}
+                {job.openings_count > 1 && (
+                  <span>👥 {job.openings_count} openings</span>
+                )}
                 {salaryText && <span className="font-semibold text-text">{salaryText}</span>}
+                {job.application_deadline && (() => {
+                  const date = new Date(job.application_deadline)
+                  const daysLeft = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                  if (daysLeft < 0) return null
+                  const label = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+                  const urgent = daysLeft <= 3
+                  return (
+                    <span className={cn(
+                      'inline-flex items-center gap-1.5 font-medium',
+                      urgent ? 'text-red-600' : 'text-amber-600'
+                    )}>
+                      <Calendar size={14} />
+                      {urgent
+                        ? `Applications close in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`
+                        : `Applications close ${label}`}
+                    </span>
+                  )
+                })()}
               </div>
 
               {isOwner && (
@@ -263,6 +312,23 @@ export default function JobDetailPage() {
                   {job.description}
                 </div>
               </div>
+
+              {/* Required skills */}
+              {job.required_skills?.length > 0 && (
+                <div className="mt-6">
+                  <h2 className="text-base font-semibold text-text mb-3">Required Skills</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {job.required_skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="inline-flex items-center px-3 py-1 rounded-full bg-brand-blue/10 text-brand-blue text-xs font-medium"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Company info section */}
               {(job.company_description || job.company_website || job.company_industry) && (

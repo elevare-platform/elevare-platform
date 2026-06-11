@@ -1,5 +1,6 @@
 """Data-access layer for candidate profiles, CVs, and documents."""
 
+import logging
 import uuid
 
 from sqlalchemy import func, select
@@ -7,12 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ProfileNotFoundException
+from app.core.pagination import paginate_cursor
+from app.modules.applications.models import Application
 from app.modules.candidates.models import (
-    Certification,
     CandidateCvs,
     CandidateDocuments,
     CandidateProfile,
+    Certification,
     Education,
+    ProfileView,
     WorkExperience,
 )
 from app.modules.candidates.schema import (
@@ -21,6 +25,9 @@ from app.modules.candidates.schema import (
     UpdateProfileSchema,
     WorkExperienceCreateSchema,
 )
+from app.modules.users.models import User
+
+logger = logging.getLogger(__name__)
 
 # Fields required for profile completion — single source of truth
 REQUIRED_PROFILE_FIELDS = ("bio", "skills", "years_of_experience", "location")
@@ -31,7 +38,7 @@ def compute_profile_completion(profile: CandidateProfile) -> bool:
     return all(
         getattr(profile, field) not in ("", None, [], {})
         for field in REQUIRED_PROFILE_FIELDS
-    )
+    ) and len(profile.cvs) > 0
 
 
 class CandidateRepository:
@@ -41,6 +48,7 @@ class CandidateRepository:
         """Initialise the repository with an async database session.
 
         Args:
+        ----
             db: The SQLAlchemy async session to use for all queries.
 
         """
@@ -52,6 +60,7 @@ class CandidateRepository:
             select(CandidateProfile)
             .where(CandidateProfile.user_id == user_id)
             .options(
+                selectinload(CandidateProfile.user),
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),
                 selectinload(CandidateProfile.work_experiences),
@@ -70,7 +79,7 @@ class CandidateRepository:
             .options(
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),
-                selectinload(CandidateProfile.user),
+                selectinload(CandidateProfile.user).selectinload(User.applications).selectinload(Application.job),
                 selectinload(CandidateProfile.work_experiences),
                 selectinload(CandidateProfile.educations),
                 selectinload(CandidateProfile.certifications),
@@ -83,13 +92,16 @@ class CandidateRepository:
         """Apply a partial update to a candidate profile and recompute completion.
 
         Args:
+        ----
             user_id: UUID of the owning user.
             data: Validated partial-update payload.
 
         Returns:
+        -------
             The updated :class:`CandidateProfile` instance.
 
         Raises:
+        ------
             ProfileNotFoundException: If no profile exists for ``user_id``.
 
         """
@@ -110,12 +122,14 @@ class CandidateRepository:
         """Persist a new CV record and return it.
 
         Args:
+        ----
             profile_id: The candidate profile UUID.
             key: Storage object key (e.g. S3/R2 path).
             filename: Original filename as uploaded by the user.
             is_default: Whether this CV should be the candidate's default.
 
         Returns:
+        -------
             The newly created :class:`CandidateCvs` instance.
 
         """
@@ -166,7 +180,6 @@ class CandidateRepository:
         that only one row per candidate can have is_default=TRUE at any time.
         We clear existing defaults first to avoid a constraint violation.
         """
-
         from sqlalchemy import update
         await self._db.execute(
             update(CandidateCvs)
@@ -193,12 +206,14 @@ class CandidateRepository:
         """Persist a new supporting document record and return it.
 
         Args:
+        ----
             profile_id: The candidate profile UUID.
             key: Storage object key.
             filename: Original filename as uploaded by the user.
             document_type: MIME type or extension-derived type string.
 
         Returns:
+        -------
             The newly created :class:`CandidateDocuments` instance.
 
         """
@@ -264,9 +279,11 @@ class CandidateRepository:
         return entry
 
     async def get_work_experience(self, entry_id: uuid.UUID) -> WorkExperience | None:
+        """Fetch a single work experience entry by its primary key, or None if not found."""
         return await self._db.get(WorkExperience, entry_id)
 
     async def delete_work_experience(self, entry: WorkExperience) -> None:
+        """Delete a work experience record and flush the session."""
         await self._db.delete(entry)
         await self._db.flush()
 
@@ -285,9 +302,11 @@ class CandidateRepository:
         return entry
 
     async def get_education(self, entry_id: uuid.UUID) -> Education | None:
+        """Fetch a single education entry by its primary key, or None if not found."""
         return await self._db.get(Education, entry_id)
 
     async def delete_education(self, entry: Education) -> None:
+        """Delete an education record and flush the session."""
         await self._db.delete(entry)
         await self._db.flush()
 
@@ -306,8 +325,105 @@ class CandidateRepository:
         return entry
 
     async def get_certification(self, entry_id: uuid.UUID) -> Certification | None:
+        """Fetch a single certification entry by its primary key, or None if not found."""
         return await self._db.get(Certification, entry_id)
 
     async def delete_certification(self, entry: Certification) -> None:
+        """Delete a certification record and flush the session."""
         await self._db.delete(entry)
         await self._db.flush()
+
+
+    # -----------------------------------------------
+    # Privacy — application check for APPLIED_ONLY
+    # -----------------------------------------------
+
+    async def candidate_has_applied_to_employer(
+        self,
+        candidate_profile_id: uuid.UUID,
+        employer_id: uuid.UUID,
+    ) -> bool:
+        """Return True if the candidate has applied to any job owned by this employer."""
+        from sqlalchemy import and_
+
+        from app.modules.applications.models import Application
+        from app.modules.jobs.models import Job
+
+        stmt = (
+            select(Application.id)
+            .join(Job, Job.id == Application.job_id)
+            .join(CandidateProfile, CandidateProfile.user_id == Application.candidate_id)
+            .where(
+                and_(
+                    CandidateProfile.id == candidate_profile_id,
+                    Job.employer_id == employer_id,
+                )
+            )
+            .limit(1)
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    # -----------------------------------------------
+    # Profile Views
+    # -----------------------------------------------
+
+    _VIEW_DEDUP_HOURS = 24
+
+    async def create_profile_viewed(
+        self,
+        employer_id: uuid.UUID,
+        candidate_profile_id: uuid.UUID,
+        job_id: uuid.UUID | None = None,
+    ) -> ProfileView | None:
+        """Record that an employer viewed a candidate's profile.
+
+        Returns None (no insert) if the same employer already viewed this
+        candidate+job combination within the last 24 hours — prevents a
+        single browsing session from flooding the candidate's view history.
+        """
+        from datetime import timedelta
+
+        from sqlalchemy import and_
+
+        cutoff = func.now() - timedelta(hours=self._VIEW_DEDUP_HOURS)
+
+        dupe_stmt = select(ProfileView).where(
+            and_(
+                ProfileView.employer_id == employer_id,
+                ProfileView.candidate_id == candidate_profile_id,
+                ProfileView.job_id == job_id,  # works for both UUID and None
+                ProfileView.viewed_at >= cutoff,
+            )
+        ).limit(1)
+
+        result = await self._db.execute(dupe_stmt)
+        if result.scalar_one_or_none() is not None:
+            return None  # already recorded recently, skip
+
+        #TODO: In app notification
+        logger.info("Candidate profile viewed")
+        profile_viewed = ProfileView(
+            candidate_id=candidate_profile_id,
+            employer_id=employer_id,
+            job_id=job_id,
+        )
+        self._db.add(profile_viewed)
+        await self._db.flush()
+        return profile_viewed
+
+    async def get_profile_views(
+        self,
+        candidate_profile_id: uuid.UUID,
+        cursor: str | None = None,
+        limit: int = 20,
+    ):
+        """Return paginated profile view records for a candidate."""
+        stmt = (
+            select(ProfileView)
+            .where(ProfileView.candidate_id == candidate_profile_id)
+            .options(
+                selectinload(ProfileView.employer).selectinload(User.employer_profile)
+            )
+        )
+        return await paginate_cursor(stmt, self._db, cursor, limit)

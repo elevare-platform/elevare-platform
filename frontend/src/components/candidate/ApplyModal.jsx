@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import { X, UploadCloud, FileText, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { validateCvFile } from '@/lib/uploadValidation'
@@ -126,10 +127,16 @@ export default function ApplyModal({ jobId, onClose, onSuccess }) {
       })
       onSuccess()
     } catch (err) {
-      if (err.response?.status === 409) {
-        setError('You have already applied for this job.')
+      const status = err.response?.status
+      const detail = err.response?.data?.detail
+
+      if (status === 409) {
+        setError({ message: 'You have already applied for this job.' })
+      } else if (status === 403 && err.response?.data?.code === 'PROFILE_INCOMPLETE') {
+        setError({ message: typeof detail === 'string' ? detail : 'Your profile is incomplete.', profileLink: true })
       } else {
-        setError('Something went wrong. Please try again.')
+        const msg = typeof detail === 'string' ? detail : 'Something went wrong. Please try again.'
+        setError({ message: msg })
       }
     } finally {
       setSubmitting(false)
@@ -295,7 +302,18 @@ export default function ApplyModal({ jobId, onClose, onSuccess }) {
           </div>
 
           {error && (
-            <p className="text-sm text-red-600" role="alert">{error}</p>
+            <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 space-y-2" role="alert">
+              <p className="text-sm text-red-700">{error.message}</p>
+              {error.profileLink && (
+                <Link
+                  to="/candidate/profile"
+                  onClick={onClose}
+                  className="inline-block text-sm font-medium text-brand-blue hover:underline"
+                >
+                  Complete your profile →
+                </Link>
+              )}
+            </div>
           )}
 
           <div className="flex justify-end gap-3 pt-1">

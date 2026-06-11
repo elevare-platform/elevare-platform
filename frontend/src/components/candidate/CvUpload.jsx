@@ -4,6 +4,7 @@ import { validateCvFile } from '@/lib/uploadValidation'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { trackEvent } from '@/lib/analytics'
 
 /**
  * Formats bytes into a human-readable string (e.g. "1.2 MB").
@@ -93,6 +94,7 @@ export function CvUpload({ onUploadSuccess }) {
       })
 
       clearSelection()
+      trackEvent('Profile', 'cv_upload')
       onUploadSuccess?.(data)
     } catch (err) {
       const msg = err.response?.data?.detail ?? err.message ?? 'Upload failed.'

@@ -19,6 +19,7 @@ from app.core.file_validation import (
     validate_pdf_upload,
 )
 from app.core.storage import StorageService
+from app.modules.candidates.enums import VisibilityStatus
 from app.modules.candidates.models import CandidateCvs
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.candidates.schema import (
@@ -53,6 +54,7 @@ class CandidateService:
         """Initialise the service with a database session and storage backend.
 
         Args:
+        ----
             db: The SQLAlchemy async session used for all DB operations.
             storage: The storage service used for file uploads and presigned URLs.
 
@@ -68,7 +70,8 @@ class CandidateService:
     async def get_my_profile(self, user_id: uuid.UUID) -> ProfileResponse:
         """Return the profile for the currently authenticated candidate.
 
-        Raises:
+        Raises
+        ------
             ProfileNotFoundException: If no profile exists for ``user_id``.
 
         """
@@ -87,12 +90,41 @@ class CandidateService:
         await self._db.commit()
         return ProfileResponse.model_validate(profile)
 
-    async def get_profile_by_id(self, profile_id: uuid.UUID, requesting_user) -> ProfileResponse:
-        """Admin or Employer can view any candidate profile by profile ID."""
+    async def get_profile_by_id(
+        self,
+        profile_id: uuid.UUID,
+        requesting_user,
+        job_id: uuid.UUID | None = None,
+    ) -> ProfileResponse:
+        """Admin or Employer can view any candidate profile by profile ID.
+
+        Enforces visibility rules for employer access:
+        - PUBLIC: always accessible
+        - APPLIED_ONLY: only if the candidate has applied to one of this employer's jobs
+        - PRIVATE: never accessible to employers (raises PermissionDeniedException)
+        """
         if requesting_user.role in (UserRole.ADMIN.value, UserRole.EMPLOYER.value):
             profile = await self._repo.get_by_id(profile_id)
             if profile is None:
                 raise ProfileNotFoundException()
+
+            if requesting_user.role == UserRole.EMPLOYER.value:
+                if profile.visibility == VisibilityStatus.PRIVATE.value:
+                    raise PermissionDeniedException("This profile is private")
+
+                if profile.visibility == VisibilityStatus.APPLIED_ONLY.value:
+                    has_application = await self._repo.candidate_has_applied_to_employer(
+                        candidate_profile_id=profile.id,
+                        employer_id=requesting_user.id,
+                    )
+                    if not has_application:
+                        raise PermissionDeniedException(
+                            "This candidate's profile is only visible to employers they have applied to"
+                        )
+
+                await self._repo.create_profile_viewed(requesting_user.id, profile.id, job_id)
+                await self._db.commit()
+
             return ProfileResponse.model_validate(profile)
 
         if requesting_user.role == UserRole.CANDIDATE.value:
@@ -108,11 +140,32 @@ class CandidateService:
         profiles = await self._repo.list_all()
         return [ProfileResponse.model_validate(p) for p in profiles]
 
+    async def get_profile_views(self, user_id: uuid.UUID, cursor: str | None = None, limit: int = 20):
+        """Return paginated profile view records for the authenticated candidate."""
+        profile = await self._repo.get_by_user_id(user_id)
+        if profile is None:
+            raise ProfileNotFoundException()
+        paginated = await self._repo.get_profile_views(profile.id, cursor, limit)
+
+        items = []
+        for view in paginated["items"]:
+            employer_profile = getattr(getattr(view, "employer", None), "employer_profile", None)
+            items.append({
+                "id": view.id,
+                "viewed_at": view.viewed_at,
+                "company_name": employer_profile.company_name if employer_profile else None,
+                "company_logo_url": employer_profile.company_logo_url if employer_profile else None,
+                "job_title": None,  # TODO: load job title when job_id is set
+            })
+
+        return {"items": items, "next_cursor": paginated.get("next_cursor")}
+
     # ------------------------------------------------------------------
     # CVs
     # ------------------------------------------------------------------
 
     async def get_cv(self, cv_id):
+        """Return a CV by its primary key, or None if not found."""
         return self._db.get(CandidateCvs, cv_id)
 
     async def upload_cv(self, user_id: uuid.UUID, file: bytes, filename: str) -> CandidateCvsResponse:
@@ -122,14 +175,17 @@ class CandidateService:
         Raises ``ValidationException`` if the candidate already has 5 CVs.
 
         Args:
+        ----
             user_id: UUID of the authenticated candidate.
             file: Raw file bytes.
             filename: Original filename from the upload.
 
         Returns:
+        -------
             The newly created :class:`CandidateCvsResponse`.
 
         Raises:
+        ------
             ProfileNotFoundException: If the candidate has no profile.
             ValidationException: If the CV limit (5) has been reached.
             CVErrorException: If the storage upload fails.
@@ -157,6 +213,14 @@ class CandidateService:
             raise CVErrorException(str(e)) from e
 
         cv = await self._repo.save_cv(profile.id, uploaded_key, filename, is_default=is_first)
+
+        # Recompute profile completion — a CV is required for is_profile_complete=True.
+        # Expire the cached profile so the reload picks up the newly inserted CV row.
+        from app.modules.candidates.repository import compute_profile_completion
+        await self._db.refresh(profile, ["cvs"])
+        profile.is_profile_complete = compute_profile_completion(profile)
+        await self._db.flush()
+
         await self._db.commit()
         return CandidateCvsResponse.model_validate(cv)
 
@@ -165,7 +229,8 @@ class CandidateService:
 
         Promotes the next most-recent CV to default if the deleted one was the default.
 
-        Raises:
+        Raises
+        ------
             ProfileNotFoundException: If the candidate has no profile.
             DocumentNotFoundError: If the CV does not exist.
             PermissionDeniedException: If the CV belongs to a different candidate.
@@ -193,7 +258,8 @@ class CandidateService:
     async def set_cv_default(self, cv_id: uuid.UUID, user_id: uuid.UUID) -> None:
         """Mark a CV as the candidate's default, clearing the flag on all others.
 
-        Raises:
+        Raises
+        ------
             ProfileNotFoundException: If the candidate has no profile.
             DocumentNotFoundError: If the CV does not exist.
             PermissionDeniedException: If the CV belongs to a different candidate.
@@ -242,14 +308,17 @@ class CandidateService:
         """Validate, upload, and persist a supporting document.
 
         Args:
+        ----
             user_id: UUID of the authenticated candidate.
             file: Raw file bytes.
             filename: Original filename from the upload.
 
         Returns:
+        -------
             The newly created :class:`CandidateDocumentsResponse`.
 
         Raises:
+        ------
             ProfileNotFoundException: If the candidate has no profile.
             CVErrorException: If the storage upload fails.
 
@@ -278,7 +347,8 @@ class CandidateService:
     async def delete_document(self, document_id: uuid.UUID, user_id: uuid.UUID) -> None:
         """Delete a supporting document from storage and the database.
 
-        Raises:
+        Raises
+        ------
             ProfileNotFoundException: If the candidate has no profile.
             DocumentNotFoundError: If the document does not exist.
             PermissionDeniedException: If the document belongs to a different candidate.
@@ -327,6 +397,7 @@ class CandidateService:
     async def add_work_experience(
         self, user_id: uuid.UUID, data: WorkExperienceCreateSchema
     ) -> WorkExperienceResponse:
+        """Add a work experience entry to the candidate's profile."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
             raise ProfileNotFoundException()
@@ -335,6 +406,7 @@ class CandidateService:
         return WorkExperienceResponse.model_validate(entry)
 
     async def delete_work_experience(self, entry_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        """Delete a work experience entry, enforcing profile ownership."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
             raise ProfileNotFoundException()
@@ -353,6 +425,7 @@ class CandidateService:
     async def add_education(
         self, user_id: uuid.UUID, data: EducationCreateSchema
     ) -> EducationResponse:
+        """Add an education entry to the candidate's profile."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
             raise ProfileNotFoundException()
@@ -361,6 +434,7 @@ class CandidateService:
         return EducationResponse.model_validate(entry)
 
     async def delete_education(self, entry_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        """Delete an education entry, enforcing profile ownership."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
             raise ProfileNotFoundException()
@@ -379,6 +453,7 @@ class CandidateService:
     async def add_certification(
         self, user_id: uuid.UUID, data: CertificationCreateSchema
     ) -> CertificationResponse:
+        """Add a certification entry to the candidate's profile."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
             raise ProfileNotFoundException()
@@ -387,6 +462,7 @@ class CandidateService:
         return CertificationResponse.model_validate(entry)
 
     async def delete_certification(self, entry_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        """Delete a certification entry, enforcing profile ownership."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
             raise ProfileNotFoundException()

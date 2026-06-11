@@ -87,7 +87,7 @@ async def update_job(
     current_user: User = Depends(require_role("EMPLOYER")),
     db: AsyncSession = Depends(get_db),
 ) -> JobResponse:
-    """Partially update a job. Only the owning employer can update."""
+    """Update a job partially. Only the owning employer can modify it."""
     return await JobService(db).update_job(job_id, data, current_user)
 
 
@@ -124,3 +124,4 @@ async def admin_list_jobs(
 ) -> JobListResponse:
     """Return all jobs regardless of status. Admin only."""
     return await JobService(db).admin_list_jobs(cursor=cursor, limit=limit)
+

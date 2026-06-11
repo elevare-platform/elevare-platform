@@ -53,7 +53,7 @@ function BrandPanel() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full border border-white/5" />
       </div>
       <div className="relative z-10">
-        <img src={ehsLogo} alt="Elevare Human Solutions" className="h-10 w-auto brightness-0 invert" />
+        <img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" />
       </div>
       <div className="relative z-10 space-y-6">
         <h1 className="text-4xl font-bold text-white leading-tight">
@@ -136,7 +136,7 @@ function RoleStep({ onNext }) {
   return (
     <div className="w-full max-w-md space-y-8">
       <div className="flex items-center gap-3 lg:hidden">
-        <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
+        <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
       </div>
 
       <div className="space-y-2">
@@ -214,7 +214,7 @@ function RegisterForm({ role, onBack }) {
   return (
     <div className="w-full max-w-md space-y-8">
       <div className="flex items-center gap-3 lg:hidden">
-        <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
+        <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
       </div>
 
       <div className="space-y-2">

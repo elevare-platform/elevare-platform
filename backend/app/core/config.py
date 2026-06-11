@@ -61,5 +61,10 @@ class Settings(BaseSettings):
     resend_api_key: str | None = None
     mail_from: str | None = None
 
+    # Contact / Sitemap
+    contact_email: str = "info_admin@elevare.com.ng"
+    sales_email: str = "hr@elevare.com.ng"
+    site_url: str = "https://elevare-platform.vercel.app/"
+
 
 settings = Settings()

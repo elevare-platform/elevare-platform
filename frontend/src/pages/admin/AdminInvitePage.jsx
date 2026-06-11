@@ -176,7 +176,7 @@ export default function AdminInvitePage() {
       {/* Header */}
       <header className="bg-white border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
+          <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
           <span className="text-text-muted text-sm">/ Admin</span>
         </div>
         <div className="flex items-center gap-4">

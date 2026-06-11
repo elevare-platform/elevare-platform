@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { Helmet } from 'react-helmet-async'
 import {
   SlidersHorizontal, X, Briefcase, MapPin, Search,
   ChevronDown, ArrowUpDown, SearchX,
@@ -138,8 +139,8 @@ function SearchBar({ value, onSearch }) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Search job title or location"
-          aria-label="Search job title or location"
+          placeholder="Search job title or keywords"
+          aria-label="Search job title or keywords"
           className="flex-1 min-w-0 py-3.5 pr-2 bg-transparent text-sm text-text placeholder:text-text-muted focus:outline-none"
         />
 
@@ -325,16 +326,6 @@ function ListingsHeader({ count, loading, sortBy, onSortChange }) {
 function applyClientFilters(jobs, filters) {
   let result = jobs
 
-  if (filters.industry) {
-    const kw = filters.industry.toLowerCase()
-    result = result.filter(
-      (j) =>
-        j.title?.toLowerCase().includes(kw) ||
-        j.description?.toLowerCase().includes(kw) ||
-        j.location?.toLowerCase().includes(kw)
-    )
-  }
-
   if (filters.posted_days) {
     const cutoff = Date.now() - Number(filters.posted_days) * 24 * 60 * 60 * 1000
     result = result.filter((j) => {
@@ -422,10 +413,13 @@ export default function JobBoardPage() {
   const [sortBy, setSortBy] = useState('recent')
 
   const apiParams = useMemo(() => ({
-    ...(searchQuery ? { location: searchQuery } : {}),
+    ...(searchQuery ? { q: searchQuery } : {}),
     ...(filters.contract_type ? { contract_type: filters.contract_type } : {}),
     ...(filters.work_model ? { work_model: filters.work_model } : {}),
     ...(filters.work_location ? { work_location: filters.work_location } : {}),
+    ...(filters.seniority_level ? { seniority_level: filters.seniority_level } : {}),
+    ...(filters.min_years_experience != null ? { min_years_experience: Number(filters.min_years_experience) } : {}),
+    ...(filters.max_years_experience != null ? { max_years_experience: Number(filters.max_years_experience) } : {}),
     ...(salaryRange.min > SALARY_MIN ? { salary_min: salaryRange.min } : {}),
     ...(salaryRange.max < SALARY_MAX ? { salary_max: salaryRange.max } : {}),
   }), [searchQuery, filters, salaryRange])
@@ -472,14 +466,24 @@ export default function JobBoardPage() {
     filters.contract_type ||
     filters.work_model ||
     filters.work_location ||
-    filters.industry ||
+    filters.seniority_level ||
     filters.posted_days ||
-    filters.experience_level ||
+    filters.min_years_experience != null ||
+    filters.max_years_experience != null ||
     salaryRange.min > SALARY_MIN ||
     salaryRange.max < SALARY_MAX
 
   return (
     <>
+      <Helmet>
+        <title>Browse Jobs in Africa | Elevare</title>
+        <meta name="description" content="Find your next role on Elevare — browse hundreds of active job listings across Nigeria and Africa." />
+        <meta property="og:title" content="Browse Jobs in Africa | Elevare" />
+        <meta property="og:description" content="Find your next role on Elevare — browse hundreds of active job listings across Nigeria and Africa." />
+        <meta property="og:url" content="https://elevare.com.ng/jobs" />
+        <meta property="og:type" content="website" />
+        <link rel="canonical" href="https://elevare.com.ng/jobs" />
+      </Helmet>
       <Navbar />
 
       <div className="pt-16">

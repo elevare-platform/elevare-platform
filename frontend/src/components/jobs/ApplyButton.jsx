@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import ApplyModal from '@/components/candidate/ApplyModal'
 import api from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 
 /**
  * ApplyButton — shared apply CTA used on both the job board cards and the
@@ -48,6 +49,7 @@ export function ApplyButton({ jobId, jobStatus, size = 'default', initialApplied
     setHasApplied(true)
     setToast(true)
     setTimeout(() => setToast(false), 4000)
+    trackEvent('Applications', 'apply', jobId)
     onApplied?.()
   }
 

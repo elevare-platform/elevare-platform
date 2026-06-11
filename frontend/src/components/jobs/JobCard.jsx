@@ -194,6 +194,44 @@ function SaveButton({ saved, onToggle }) {
   )
 }
 
+// ─── Deadline badge ───────────────────────────────────────────────────────────
+
+function DeadlineBadge({ deadline }) {
+  if (!deadline) return null
+  const date = new Date(deadline)
+  const now = Date.now()
+  const diff = date.getTime() - now
+  const daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24))
+
+  if (diff < 0) return null // already passed — don't show
+
+  const label = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const urgent = daysLeft <= 3
+
+  return (
+    <span
+      title={`Applications close ${label}`}
+      className={cn(
+        'inline-flex items-center h-[22px] px-2.5 rounded-full',
+        'text-[11px] font-semibold leading-none whitespace-nowrap',
+        urgent
+          ? 'bg-red-50 text-red-600 border border-red-200'
+          : 'bg-amber-50 text-amber-700 border border-amber-200'
+      )}
+    >
+      {urgent ? `⚠ Closes in ${daysLeft}d` : `Closes ${label}`}
+    </span>
+  )
+}
+
+const SENIORITY_LABELS = {
+  JUNIOR: 'Junior',
+  MID: 'Mid-level',
+  SENIOR: 'Senior',
+  LEAD: 'Lead',
+  EXECUTIVE: 'Executive',
+}
+
 // ─── Skill tag ────────────────────────────────────────────────────────────────
 
 function SkillTag({ label }) {
@@ -243,12 +281,21 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
       : null
 
   const posted = timeAgo(job.created_at)
-  const skills = extractSkills(job.description)
+
+  // Prefer server-provided required_skills, fall back to extraction
+  const skills = (job.required_skills?.length > 0)
+    ? job.required_skills.slice(0, 4)
+    : extractSkills(job.description)
 
   const descPreview = job.description
     ? job.description.length > 110
       ? job.description.slice(0, 110).trimEnd() + '…'
       : job.description
+    : null
+
+  const seniorityLabel = job.seniority_level ? SENIORITY_LABELS[job.seniority_level] : null
+  const expText = job.required_years_experience != null
+    ? job.required_years_experience === 0 ? 'No exp. required' : `${job.required_years_experience}+ yrs exp`
     : null
 
   return (
@@ -291,11 +338,20 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
       </div>
 
       {/* ── Badges ──────────────────────────────────────────────────────── */}
-      {/* flex-wrap + min-w-0 on parent prevents overflow */}
       <div className="flex flex-wrap gap-1.5 min-w-0">
         <Badge value={job.contract_type} />
         <Badge value={job.work_model} />
         <Badge value={job.work_location} />
+        {seniorityLabel && (
+          <span className="inline-flex items-center h-[22px] px-2.5 rounded-full text-[11px] font-semibold bg-violet-50 text-violet-700 whitespace-nowrap">
+            {seniorityLabel}
+          </span>
+        )}
+        {expText && (
+          <span className="inline-flex items-center h-[22px] px-2.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 whitespace-nowrap">
+            {expText}
+          </span>
+        )}
       </div>
 
       {/* ── Description preview ─────────────────────────────────────────── */}
@@ -312,16 +368,24 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
         </div>
       )}
 
+      {/* ── Deadline ────────────────────────────────────────────────────── */}
+      {job.application_deadline && (
+        <DeadlineBadge deadline={job.application_deadline} />
+      )}
+
       {/* ── Spacer pushes footer to bottom ──────────────────────────────── */}
       <div className="flex-1" />
 
       {/* ── Footer: salary + apply ──────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
-        <div className="min-w-0">
+      <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+        <div className="flex-1 min-w-0 overflow-hidden">
           {salaryText ? (
             <p className="text-sm font-bold text-slate-800 truncate">{salaryText}</p>
           ) : (
             <p className="text-xs text-slate-400 italic">Salary not disclosed</p>
+          )}
+          {job.openings_count > 1 && (
+            <p className="text-[11px] text-slate-400 mt-0.5">{job.openings_count} openings</p>
           )}
         </div>
 
@@ -330,9 +394,9 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
             <Link
               to={`/jobs/${job.id}`}
               onClick={(e) => e.stopPropagation()}
-              className="text-xs font-medium text-text-muted hover:text-brand-blue transition-colors focus-visible:outline-none"
+              className="text-xs font-medium text-text-muted hover:text-brand-blue transition-colors focus-visible:outline-none whitespace-nowrap"
             >
-              View details
+              Details
             </Link>
             <ApplyButton jobId={job.id} jobStatus={job.status} size="sm" initialApplied={initialApplied} />
           </div>

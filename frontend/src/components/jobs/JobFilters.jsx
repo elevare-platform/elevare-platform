@@ -19,18 +19,13 @@ const WORK_MODEL_OPTIONS = [
   { value: 'ONSITE', label: 'Onsite' },
 ]
 
-const INDUSTRY_OPTIONS = [
-  { value: '', label: 'All Industries' },
-  { value: 'technology', label: 'Technology' },
-  { value: 'finance', label: 'Finance & Banking' },
-  { value: 'healthcare', label: 'Healthcare' },
-  { value: 'education', label: 'Education' },
-  { value: 'marketing', label: 'Marketing & Media' },
-  { value: 'engineering', label: 'Engineering' },
-  { value: 'legal', label: 'Legal' },
-  { value: 'logistics', label: 'Logistics & Supply Chain' },
-  { value: 'hospitality', label: 'Hospitality & Tourism' },
-  { value: 'other', label: 'Other' },
+const SENIORITY_OPTIONS = [
+  { value: '', label: 'All Levels' },
+  { value: 'JUNIOR', label: 'Junior' },
+  { value: 'MID', label: 'Mid-level' },
+  { value: 'SENIOR', label: 'Senior' },
+  { value: 'LEAD', label: 'Lead' },
+  { value: 'EXECUTIVE', label: 'Executive' },
 ]
 
 const POSTED_TIME_OPTIONS = [
@@ -41,15 +36,16 @@ const POSTED_TIME_OPTIONS = [
   { value: '30', label: 'Last 30 days' },
 ]
 
-// Experience level pills
-const EXPERIENCE_LEVELS = [
-  { value: 'none', label: 'No Experience' },
-  { value: '1', label: '1 Year' },
-  { value: '2', label: '2 Years' },
-  { value: '3', label: '3 Years' },
-  { value: '5', label: '5 Years' },
-  { value: '7', label: '7 Years' },
-  { value: '10', label: '10+ Years' },
+const EXPERIENCE_OPTIONS = [
+  { value: '', label: 'Any' },
+  { value: '0', label: '0 (No experience)' },
+  { value: '1', label: '1 year' },
+  { value: '2', label: '2 years' },
+  { value: '3', label: '3 years' },
+  { value: '5', label: '5 years' },
+  { value: '7', label: '7 years' },
+  { value: '10', label: '10 years' },
+  { value: '15', label: '15+ years' },
 ]
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
@@ -96,35 +92,61 @@ function FilterSelect({ id, label, value, options, onChange }) {
 }
 
 /**
- * ExperiencePills — selectable pill buttons for experience level.
- * Selecting an active pill deactivates it (sets to null).
+ * ExperienceRange — two selects for min and max years of experience.
+ * Max defaults to "Any" when not set. If only max is set, it acts as a ceiling.
+ * If both are set, it filters to a range.
  */
-function ExperiencePills({ value, onChange }) {
+function ExperienceRange({ minValue, maxValue, onChange }) {
+  const handleMin = (val) => onChange(val || undefined, maxValue)
+  const handleMax = (val) => onChange(minValue, val || undefined)
+
   return (
     <div>
-      <SectionLabel>Experience Level</SectionLabel>
-      <div className="flex flex-wrap gap-2">
-        {EXPERIENCE_LEVELS.map(({ value: v, label }) => {
-          const isActive = value === v
-          return (
-            <button
-              key={v}
-              type="button"
-              onClick={() => onChange(isActive ? null : v)}
-              aria-pressed={isActive}
-              className={cn(
-                'inline-flex items-center justify-center h-7 px-3 rounded-full text-xs font-medium',
-                'whitespace-nowrap transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
-                isActive
-                  ? 'bg-brand-blue text-white'
-                  : 'border border-border text-text-muted hover:border-brand-blue hover:text-brand-blue bg-surface'
-              )}
-            >
-              {label}
-            </button>
-          )
-        })}
+      <SectionLabel>Years of Experience</SectionLabel>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 relative">
+          <select
+            id="exp-min"
+            aria-label="Minimum years of experience"
+            value={minValue ?? ''}
+            onChange={(e) => handleMin(e.target.value)}
+            className={cn(
+              'w-full appearance-none rounded-lg border border-border bg-surface',
+              'pl-3 pr-7 py-2 text-sm text-text leading-tight',
+              'cursor-pointer transition-colors',
+              'focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue',
+              minValue && 'border-brand-blue/40 text-brand-blue font-medium'
+            )}
+          >
+            {EXPERIENCE_OPTIONS.map(({ value: v, label: l }) => (
+              <option key={v} value={v}>{v === '' ? 'Min' : l}</option>
+            ))}
+          </select>
+          <ChevronDown size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
+        </div>
+
+        <span className="text-xs text-text-muted flex-shrink-0">to</span>
+
+        <div className="flex-1 relative">
+          <select
+            id="exp-max"
+            aria-label="Maximum years of experience"
+            value={maxValue ?? ''}
+            onChange={(e) => handleMax(e.target.value)}
+            className={cn(
+              'w-full appearance-none rounded-lg border border-border bg-surface',
+              'pl-3 pr-7 py-2 text-sm text-text leading-tight',
+              'cursor-pointer transition-colors',
+              'focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue',
+              maxValue && 'border-brand-blue/40 text-brand-blue font-medium'
+            )}
+          >
+            {EXPERIENCE_OPTIONS.map(({ value: v, label: l }) => (
+              <option key={v} value={v}>{v === '' ? 'Max' : l}</option>
+            ))}
+          </select>
+          <ChevronDown size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
+        </div>
       </div>
     </div>
   )
@@ -133,8 +155,8 @@ function ExperiencePills({ value, onChange }) {
 // ─── JobFilters ───────────────────────────────────────────────────────────────
 
 /**
- * JobFilters — contract type, work model, industry, posted time, and
- * experience level filters.
+ * JobFilters — contract type, work model, seniority, posted time, and
+ * experience range filters.
  *
  * @param {Object} props
  * @param {Object} props.filters - Current filter state
@@ -142,6 +164,14 @@ function ExperiencePills({ value, onChange }) {
  */
 export function JobFilters({ filters = {}, onChange }) {
   const set = (key, val) => onChange({ ...filters, [key]: val || undefined })
+
+  const handleExperienceChange = (min, max) => {
+    onChange({
+      ...filters,
+      min_years_experience: min,
+      max_years_experience: max,
+    })
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -162,11 +192,11 @@ export function JobFilters({ filters = {}, onChange }) {
       />
 
       <FilterSelect
-        id="filter-industry"
-        label="Industry"
-        value={filters.industry ?? ''}
-        options={INDUSTRY_OPTIONS}
-        onChange={(val) => set('industry', val)}
+        id="filter-seniority"
+        label="Seniority Level"
+        value={filters.seniority_level ?? ''}
+        options={SENIORITY_OPTIONS}
+        onChange={(val) => set('seniority_level', val)}
       />
 
       <FilterSelect
@@ -177,9 +207,10 @@ export function JobFilters({ filters = {}, onChange }) {
         onChange={(val) => set('posted_days', val)}
       />
 
-      <ExperiencePills
-        value={filters.experience_level ?? null}
-        onChange={(val) => onChange({ ...filters, experience_level: val ?? undefined })}
+      <ExperienceRange
+        minValue={filters.min_years_experience}
+        maxValue={filters.max_years_experience}
+        onChange={handleExperienceChange}
       />
     </div>
   )

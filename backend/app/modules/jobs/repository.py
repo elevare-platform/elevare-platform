@@ -2,13 +2,13 @@
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import JobNotFoundError
 from app.core.pagination import paginate_cursor
-from app.modules.jobs.enums import JobStatus
+from app.modules.jobs.enums import JobStatus, ModerationStatus
 from app.modules.jobs.models import Job
 from app.modules.jobs.schemas import JobCreateRequest, JobFilterParams, JobUpdateRequest
 from app.modules.users.models import User
@@ -87,8 +87,13 @@ class JobRepository:
             stmt = stmt.where(Job.seniority_level == filters.seniority_level.value)
         if filters.min_years_experience is not None:
             stmt = stmt.where(
-                (Job.required_years_experience == None) |  # noqa: E711 — SQLAlchemy needs ==
-                (Job.required_years_experience <= filters.min_years_experience)
+                (Job.required_years_experience == None) |  # noqa: E711
+                (Job.required_years_experience >= filters.min_years_experience)
+            )
+        if filters.max_years_experience is not None:
+            stmt = stmt.where(
+                (Job.required_years_experience == None) |  # noqa: E711
+                (Job.required_years_experience <= filters.max_years_experience)
             )
         if filters.location:
             stmt = stmt.where(Job.location.ilike(f"%{filters.location}%"))
@@ -146,3 +151,20 @@ class JobRepository:
         """Return all jobs regardless of status — admin only."""
         stmt = select(Job).options(self._with_employer_profile())
         return await paginate_cursor(stmt, self._db, cursor, limit)
+
+    async def get_sitemap_jobs(self) -> list[Row]:
+        """Return all ACTIVE jobs with only the fields needed for sitemap.xml."""
+        stmt = (
+            select(
+                Job.id,
+                Job.updated_at,
+            )
+            .where(
+                Job.status == JobStatus.ACTIVE.value,
+                Job.moderation_status == ModerationStatus.APPROVED.value
+            )
+            .order_by(Job.created_at.desc())
+        )
+        result = await self._db.execute(stmt)
+        return result.all()
+

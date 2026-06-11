@@ -22,7 +22,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
 
-from .enums import ContractType, JobStatus, SeniorityLevel, WorkLocation, WorkModel
+from .enums import (
+    ContractType,
+    JobStatus,
+    ModerationStatus,
+    SeniorityLevel,
+    WorkLocation,
+    WorkModel,
+)
 
 if TYPE_CHECKING:
     from app.modules.applications.models import Application
@@ -91,6 +98,13 @@ class Job(BaseModel):
     seniority_level: Mapped[SeniorityLevel | None] = mapped_column(String(20), nullable=True)
     openings_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
     required_years_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    moderation_status: Mapped[ModerationStatus] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=ModerationStatus.PENDING.value,
+        default=ModerationStatus.PENDING.value,
+    )
 
 
     # relationship

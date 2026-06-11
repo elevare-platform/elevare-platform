@@ -1,3 +1,5 @@
+"""Pydantic schemas for job application requests and responses."""
+
 import uuid
 from datetime import datetime
 
@@ -7,6 +9,8 @@ from app.modules.applications.enums import ApplicationStatus
 
 
 class ApplicationResponse(BaseModel):
+    """Serialised view of a job application returned to the client."""
+
     id: uuid.UUID
     candidate_id: uuid.UUID
     job_id: uuid.UUID
@@ -25,6 +29,9 @@ class ApplicationResponse(BaseModel):
     candidate_location: str | None = None
     years_of_experience: int | None = None
     candidate_profile_id: uuid.UUID | None = None  # profile PK for employer profile view
+    # AI match score — null until background task computes it
+    match_score: int | None = None
+    score_computed_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -65,39 +72,54 @@ class ApplicationResponse(BaseModel):
             candidate_location=candidate_profile.location if candidate_profile else None,
             years_of_experience=candidate_profile.years_of_experience if candidate_profile else None,
             candidate_profile_id=candidate_profile.id if candidate_profile else None,
+            match_score=application.match_score,
+            score_computed_at=application.score_computed_at,
         )
 
 
 class ApplicationList(BaseModel):
     """Paginated list of applications with cursor for next page."""
+
     items: list[ApplicationResponse]
     next_cursor: str | None
     count: int
     total: int = 0
 
 class ApplicationFilters(BaseModel):
+    """Query filters for listing applications."""
+
     status: ApplicationStatus | None = None
 
 
 class ApplicationCreateRequest(BaseModel):
+    """Payload for submitting a new job application."""
+
     job_id: uuid.UUID
     cv_id: uuid.UUID | None = None
     cover_letter: str | None = None
 
 
 class MyApplicationsRequest(BaseModel):
+    """Request body for paginated candidate application listings."""
+
     filters: ApplicationFilters
     cursor: str
     limit: int
 
 
 class WithdrawApplication(BaseModel):
+    """Payload for withdrawing a specific application."""
+
     application_id: uuid.UUID
 
 
 class UpdateApplicationStatus(BaseModel):
+    """Payload for updating an application's status."""
+
     new_status: ApplicationStatus
 
 
 class HasAppliedBatchRequest(BaseModel):
+    """Payload for batch checking whether a candidate has applied to multiple jobs."""
+
     job_ids: list[uuid.UUID]

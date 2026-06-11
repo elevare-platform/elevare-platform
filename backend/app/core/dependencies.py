@@ -9,12 +9,14 @@ Provides:
 import logging
 from collections.abc import AsyncGenerator
 
+import redis.asyncio as aioredis
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import (
     AccountBannedException,
@@ -116,9 +118,11 @@ def require_role(*roles: str):
             ...
 
     Args:
+    ----
         *roles: One or more role strings that are permitted to access the route.
 
     Returns:
+    -------
         A FastAPI dependency that returns the current user if their role is
         in the allowed set, or raises ``PermissionDeniedException`` otherwise.
 
@@ -142,5 +146,13 @@ async def get_candidate(
     candidate = result.scalar_one_or_none()
 
     return candidate
+
+async def get_redis_client() -> AsyncGenerator[aioredis.Redis, None]:
+    """Yield a Redis client and ensure it is closed after the request."""
+    redis = aioredis.from_url(settings.redis_url)
+    try:
+        yield redis
+    finally:
+        await redis.aclose()
 
 

@@ -114,5 +114,8 @@ export function getPostAuthRedirect(user) {
   if (user.role === 'CANDIDATE') {
     return '/candidate/dashboard'
   }
+  if (user.role === 'ADMIN') {
+    return '/admin/dashboard'
+  }
   return '/dashboard'
 }

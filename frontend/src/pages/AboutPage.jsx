@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { ConsultationModal } from '@/components/ui/ConsultationModal'
@@ -118,6 +120,15 @@ export default function AboutPage() {
 
   return (
     <>
+      <Helmet>
+        <title>About Us | Elevare Human Solutions</title>
+        <meta name="description" content="Learn about Elevare Human Solutions — our mission, values, and the team behind Africa's leading recruitment platform." />
+        <meta property="og:title" content="About Us | Elevare Human Solutions" />
+        <meta property="og:description" content="Learn about Elevare Human Solutions — our mission, values, and the team behind Africa's leading recruitment platform." />
+        <meta property="og:url" content="https://elevare.com.ng/about" />
+        <meta property="og:type" content="website" />
+        <link rel="canonical" href="https://elevare.com.ng/about" />
+      </Helmet>
       <Navbar onBookConsultation={openModal} />
 
       <main className="pt-16 bg-[#fafbfc]">
@@ -148,7 +159,60 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* ── 2. Founder & Leadership Spotlight Section ── */}
+        {/* ── 2. Company Story & Mission ── */}
+        <section className="py-16 sm:py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+            <div>
+              <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-2">Our Story</p>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-text tracking-tight mb-6">
+                Who We Are
+              </h2>
+              <p className="text-text-muted text-base leading-relaxed mb-6">
+                Elevare Human Solutions Ltd is a professional human capital consulting and workforce solutions firm committed to helping organizations build high-performing, sustainable, and productive workforces.
+              </p>
+              <p className="text-text-muted text-base leading-relaxed">
+                We provide integrated HR solutions that support businesses across recruitment, workforce management, organization development, employee engagement, payroll operations, leadership development, and performance management.
+              </p>
+            </div>
+            <div className="bg-brand-blue rounded-2xl p-8 sm:p-10 text-white">
+              <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-4">Our Mission</p>
+              <p className="text-lg sm:text-xl font-medium leading-relaxed text-blue-50">
+                "To support organizations in building strong, productive, and sustainable workforces through practical HR solutions, strategic workforce advisory, and professional service delivery."
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 3. Core Values ── */}
+        <section className="bg-white py-16 sm:py-24 border-y border-border">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-2">What Drives Us</p>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-text tracking-tight">Our Core Values</h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              {[
+                { label: 'Professional Integrity', icon: ShieldCheck },
+                { label: 'Service Excellence', icon: Award },
+                { label: 'Client Partnership', icon: Users },
+                { label: 'Accountability', icon: CheckCircle2 },
+                { label: 'Innovation', icon: Sparkles },
+                { label: 'Talent Quality', icon: TrendingUp },
+                { label: 'Workforce Transformation', icon: Layers },
+                { label: 'Long-Term Business Impact', icon: Rocket },
+              ].map(({ label, icon: Icon }) => (
+                <div key={label} className="group bg-surface-muted hover:bg-brand-blue rounded-xl p-6 text-center flex flex-col items-center gap-3 transition-all duration-300 hover:shadow-md">
+                  <div className="w-11 h-11 rounded-full bg-brand-blue-light text-brand-blue group-hover:bg-white/20 group-hover:text-white flex items-center justify-center transition-colors duration-300">
+                    <Icon size={20} strokeWidth={2} />
+                  </div>
+                  <p className="font-bold text-sm text-text group-hover:text-white transition-colors">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── 4. Founder & Leadership Spotlight Section ── */}
         <section className="py-16 sm:py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-2">
@@ -171,6 +235,10 @@ export default function AboutPage() {
                     <img
                       src={founderImg}
                       alt="Jennifer .O. Efe-Odiete, ACIPM, HRPL"
+                      width={400}
+                      height={533}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover grayscale-[15%] group-hover:grayscale-0 transition-all duration-500"
                     />
                   </div>
@@ -311,6 +379,19 @@ export default function AboutPage() {
               )
             })}
           </div>
+        </section>
+
+        {/* ── Register CTA ── */}
+        <section className="py-16 sm:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-text mb-4">Ready to get started?</h2>
+          <p className="text-text-muted text-base max-w-xl mx-auto mb-8">
+            Join hundreds of employers and candidates already using Elevare to build better careers and stronger teams.
+          </p>
+          <Link to="/register">
+            <Button className="bg-brand-blue hover:bg-brand-blue/90 text-white border-0 px-8 py-3 text-sm font-bold uppercase tracking-wider rounded-full shadow-sm hover:scale-[1.02] transition-transform inline-flex items-center gap-2">
+              Join Us <ArrowRight size={16} />
+            </Button>
+          </Link>
         </section>
 
         {/* ── 5. stay connected CTA/Social media connections Section ── */}

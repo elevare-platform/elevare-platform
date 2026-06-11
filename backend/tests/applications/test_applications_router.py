@@ -77,8 +77,8 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE") -> 
     return token_pair["access_token"], user
 
 
-async def create_job_via_api(client, employer_token: str, **overrides) -> dict:
-    """Create a job via the API and publish it. Returns the job response dict."""
+async def create_job_via_api(client, db_session, employer_token: str, **overrides) -> dict:
+    """Create a job, approve it via admin, then publish it. Returns the job response dict."""
     resp = await client.post(
         "/api/v1/jobs",
         json=job_payload(**overrides),
@@ -87,7 +87,15 @@ async def create_job_via_api(client, employer_token: str, **overrides) -> dict:
     assert resp.status_code == 201, resp.text
     job = resp.json()
 
-    # Publish so candidates can apply
+    # Create a real admin user and approve the job (required since moderation defaults to PENDING)
+    admin_token, _ = await register_and_activate(client, db_session, "ADMIN")
+    approve = await client.patch(
+        f"/api/v1/admin/jobs/{job['id']}/moderate",
+        json={"action": "APPROVED"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert approve.status_code == 200, approve.text
+
     pub = await client.post(
         f"/api/v1/jobs/{job['id']}/publish",
         headers={"Authorization": f"Bearer {employer_token}"},
@@ -104,6 +112,31 @@ async def upload_cv(client, candidate_token: str) -> None:
         files={"file": ("resume.pdf", pdf_bytes, "application/pdf")},
         headers={"Authorization": f"Bearer {candidate_token}"},
     )
+
+
+async def complete_candidate_profile(client, db_session, token: str, user_id) -> None:
+    """Set required profile fields and upload a CV so is_profile_complete=True."""
+    from app.modules.candidates.models import CandidateProfile
+
+    await client.put(
+        "/api/v1/candidates/me",
+        json={
+            "bio": "Experienced software developer.",
+            "skills": ["Python", "FastAPI", "PostgreSQL"],
+            "years_of_experience": 3,
+            "location": "Lagos, Nigeria",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    await upload_cv(client, token)
+    # Force flag in DB — CV upload triggers recompute but test session may not see it
+    result = await db_session.execute(
+        select(CandidateProfile).where(CandidateProfile.user_id == user_id)
+    )
+    profile = result.scalar_one_or_none()
+    if profile:
+        profile.is_profile_complete = True
+        await db_session.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -127,8 +160,8 @@ async def test_candidate_applies_successfully(client, db_session):
     candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     resp = await client.post(
         "/api/v1/applications",
@@ -149,11 +182,11 @@ async def test_candidate_applies_successfully(client, db_session):
 @pytest.mark.asyncio
 async def test_duplicate_application_returns_409(client, db_session):
     """Applying to the same job twice returns 409."""
-    candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     await client.post(
         "/api/v1/applications",
@@ -172,12 +205,12 @@ async def test_duplicate_application_returns_409(client, db_session):
 @pytest.mark.asyncio
 async def test_apply_to_expired_job_returns_error(client, db_session):
     """Applying to a job with a past deadline returns the correct error."""
-    candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
     job = await create_job_via_api(
-        client, employer_token,
+        client, db_session, employer_token,
         application_deadline=past_deadline()
     )
 
@@ -197,11 +230,11 @@ async def test_apply_to_expired_job_returns_error(client, db_session):
 @pytest.mark.asyncio
 async def test_withdraw_from_submitted_succeeds(client, db_session):
     """PATCH /applications/{id}/withdraw from submitted status succeeds."""
-    candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     apply_resp = await client.post(
         "/api/v1/applications",
@@ -222,11 +255,11 @@ async def test_withdraw_from_submitted_succeeds(client, db_session):
 @pytest.mark.asyncio
 async def test_withdraw_from_shortlisted_returns_error(client, db_session):
     """PATCH /applications/{id}/withdraw from shortlisted status is rejected."""
-    candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     apply_resp = await client.post(
         "/api/v1/applications",
@@ -262,11 +295,11 @@ async def test_withdraw_from_shortlisted_returns_error(client, db_session):
 @pytest.mark.asyncio
 async def test_employer_views_own_job_applicants(client, db_session):
     """GET /applications/job/{id} returns applicants for the employer's own job."""
-    candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     await client.post(
         "/api/v1/applications",
@@ -288,7 +321,7 @@ async def test_employer_cannot_view_other_employers_applicants(client, db_sessio
     employer1_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
     employer2_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    job = await create_job_via_api(client, employer1_token)
+    job = await create_job_via_api(client, db_session, employer1_token)
 
     resp = await client.get(
         f"/api/v1/applications/job/{job['id']}",
@@ -307,8 +340,8 @@ async def test_valid_status_transition_records_updated_at(client, db_session):
     candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, employer_user = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     apply_resp = await client.post(
         "/api/v1/applications",
@@ -338,11 +371,11 @@ async def test_valid_status_transition_records_updated_at(client, db_session):
 @pytest.mark.asyncio
 async def test_invalid_status_transition_returns_error(client, db_session):
     """PATCH /applications/{id}/status with invalid transition returns domain error."""
-    candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     apply_resp = await client.post(
         "/api/v1/applications",
@@ -371,7 +404,7 @@ async def test_has_applied_returns_false_before_applying(client, db_session):
     candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    job = await create_job_via_api(client, employer_token)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     resp = await client.get(
         f"/api/v1/applications/{job['id']}/has-applied",
@@ -384,11 +417,11 @@ async def test_has_applied_returns_false_before_applying(client, db_session):
 @pytest.mark.asyncio
 async def test_has_applied_returns_true_after_applying(client, db_session):
     """GET /applications/{job_id}/has-applied returns true after applying."""
-    candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token)
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token)
 
     await client.post(
         "/api/v1/applications",
@@ -411,11 +444,11 @@ async def test_has_applied_returns_true_after_applying(client, db_session):
 @pytest.mark.asyncio
 async def test_my_applications_includes_job_context(client, db_session):
     """GET /applications/me includes job_title and company_name in each item."""
-    candidate_token, _ = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await upload_cv(client, candidate_token)
-    job = await create_job_via_api(client, employer_token, title="Senior Python Developer")
+    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    job = await create_job_via_api(client, db_session, employer_token, title="Senior Python Developer")
 
     await client.post(
         "/api/v1/applications",

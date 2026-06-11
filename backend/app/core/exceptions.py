@@ -9,7 +9,8 @@ global exception handler to build a consistent ``ErrorResponse``.
 class PlatformError(Exception):
     """Base class for all application-level exceptions.
 
-    Attributes:
+    Attributes
+    ----------
         message: Human-readable description of the error.
         code: Upper-snake-case machine-readable identifier (e.g. ``NOT_FOUND``).
         status_code: HTTP status code to return to the client.
@@ -24,6 +25,7 @@ class PlatformError(Exception):
         status_code: int,
         details: list | None = None,
     ) -> None:
+        """Set error attributes and pass the message to the base Exception."""
         self.message = message
         self.code = code
         self.status_code = status_code
@@ -45,6 +47,7 @@ class InvalidCredentialsException(PlatformError):
         status_code: int = 401,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -58,6 +61,7 @@ class TokenExpiredException(PlatformError):
         status_code: int = 401,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -71,6 +75,7 @@ class TokenInvalidException(PlatformError):
         status_code: int = 401,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -84,6 +89,7 @@ class RevokedTokenException(PlatformError):
         status_code: int = 401,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -97,6 +103,7 @@ class RefreshTokenMissing(PlatformError):
         status_code: int = 401,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -110,6 +117,7 @@ class EmailNotVerifiedException(PlatformError):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -123,6 +131,7 @@ class AlreadyExistsException(PlatformError):
         status_code: int = 409,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -136,6 +145,7 @@ class AccountSuspendedException(PlatformError):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -149,6 +159,7 @@ class AccountBannedException(PlatformError):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -162,6 +173,7 @@ class AccountDeactivatedException(PlatformError):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -175,6 +187,7 @@ class AccountSetupIncompleteException(PlatformError):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -188,6 +201,7 @@ class EmailVerificationRequiredException(PlatformError):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -201,6 +215,7 @@ class TokenAlreadyUsedException(PlatformError):
         status_code: int = 400,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -214,6 +229,7 @@ class VerificationTokenExpiredException(PlatformError):
         status_code: int = 400,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -227,6 +243,7 @@ class CVErrorException(PlatformError):
         status_code: int = 500,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -246,6 +263,7 @@ class PermissionDeniedException(PlatformError):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -259,6 +277,7 @@ class ProfileIncompleteException(PermissionDeniedException):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -276,6 +295,7 @@ class NotFoundException(PlatformError):
         status_code: int = 404,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -289,6 +309,7 @@ class UserNotFoundException(NotFoundException):
         status_code: int = 404,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -302,6 +323,7 @@ class JobNotFoundError(NotFoundException):
         status_code: int = 404,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -315,6 +337,7 @@ class ProfileNotFoundException(NotFoundException):
         status_code: int = 404,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -328,6 +351,7 @@ class DocumentNotFoundError(NotFoundException):
         status_code: int = 404,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -341,6 +365,7 @@ class ApplicationNotFound(NotFoundException):
         status_code: int = 404,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -358,6 +383,7 @@ class ValidationException(PlatformError):
         status_code: int = 422,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 # ---------------------------------------------------------------------------
@@ -373,6 +399,7 @@ class JobApplicationEnded(PlatformError):
         status_code: int = 422,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -386,6 +413,7 @@ class AlreadyApplied(PlatformError):
         status_code: int = 409,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 # --- Application Status Errors
@@ -399,6 +427,7 @@ class ApplicationWithdrawalError(PlatformError):
         status_code: int = 409,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 class InvalidStatus(PlatformError):
@@ -411,6 +440,7 @@ class InvalidStatus(PlatformError):
         status_code: int = 400,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
 
@@ -424,5 +454,20 @@ class CandidateProfileIncompleteException(PlatformError):
         status_code: int = 403,
         details: list | None = None,
     ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class CannotModifyAdminException(PlatformError):
+    """Raised when an admin attempts to modify another admin account."""
+
+    def __init__(
+        self,
+        message: str = "Admin accounts cannot be modified by other admins",
+        code: str = "CANNOT_MODIFY_ADMIN",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 

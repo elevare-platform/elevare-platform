@@ -29,9 +29,10 @@ class UpdateProfileSchema(BaseModel):
     preferred_locations: list[str] | None = None
     preferred_work_models: list[str] | None = None
     open_to_relocation: bool = False
-
-
+    visibility: str | None = None  # PUBLIC | APPLIED_ONLY | PRIVATE
 class WorkExperienceCreateSchema(BaseModel):
+    """Payload for adding a work experience entry to a candidate's profile."""
+
     company_name: str
     job_title: str
     description: str | None = None
@@ -41,6 +42,8 @@ class WorkExperienceCreateSchema(BaseModel):
 
 
 class EducationCreateSchema(BaseModel):
+    """Payload for adding an education entry to a candidate's profile."""
+
     institution_name: str
     degree: str
     field_of_study: str
@@ -49,6 +52,8 @@ class EducationCreateSchema(BaseModel):
 
 
 class CertificationCreateSchema(BaseModel):
+    """Payload for adding a certification to a candidate's profile."""
+
     name: str
     issuing_organization: str
     issue_date: date | None = None
@@ -90,6 +95,8 @@ class CandidateDocumentsResponse(BaseModel):
 
 
 class WorkExperienceResponse(BaseModel):
+    """Response schema for a work experience entry."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -104,6 +111,8 @@ class WorkExperienceResponse(BaseModel):
 
 
 class EducationResponse(BaseModel):
+    """Response schema for an education entry."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -117,6 +126,8 @@ class EducationResponse(BaseModel):
 
 
 class CertificationResponse(BaseModel):
+    """Response schema for a certification entry."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -130,6 +141,18 @@ class CertificationResponse(BaseModel):
     created_at: datetime
 
 
+class ProfileViewResponse(BaseModel):
+    """Response schema for a candidate profile view record."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    viewed_at: datetime
+    company_name: str | None = None
+    company_logo_url: str | None = None
+    job_title: str | None = None  # populated by the service if job_id is set
+
+
 class ProfileResponse(BaseModel):
     """Response schema for a full candidate profile, including CVs and documents."""
 
@@ -137,6 +160,8 @@ class ProfileResponse(BaseModel):
 
     id: UUID
     user_id: UUID
+    first_name: str | None = None
+    last_name: str | None = None
     bio: str | None = None
     avatar_url: str | None = None
     skills: list[str] | None = None
@@ -151,9 +176,20 @@ class ProfileResponse(BaseModel):
     preferred_locations: list[str] | None = None
     preferred_work_models: list[str] | None = None
     open_to_relocation: bool = False
+    visibility: str = 'APPLIED_ONLY'
     is_profile_complete: bool = False
     cvs: list[CandidateCvsResponse] = []
     documents: list[CandidateDocumentsResponse] = []
     work_experiences: list[WorkExperienceResponse] = []
     educations: list[EducationResponse] = []
     certifications: list[CertificationResponse] = []
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """Validate and build the response, enriching name fields from the user relation."""
+        instance = super().model_validate(obj, **kwargs)
+        # Populate name fields from the user relationship when available
+        if hasattr(obj, 'user') and obj.user is not None:
+            instance.first_name = getattr(obj.user, 'first_name', None)
+            instance.last_name = getattr(obj.user, 'last_name', None)
+        return instance

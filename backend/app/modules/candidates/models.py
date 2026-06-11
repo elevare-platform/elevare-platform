@@ -1,10 +1,9 @@
 """SQLAlchemy ORM models for the candidates module."""
 
 from __future__ import annotations
-from app.modules.jobs.enums import WorkModel
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
@@ -13,18 +12,23 @@ from sqlalchemy import (
     UUID,
     Boolean,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     String,
     Text,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
+from app.modules.candidates.enums import VisibilityStatus
+from app.modules.jobs.enums import WorkModel
 
 if TYPE_CHECKING:
+    from app.modules.jobs.models import Job
     from app.modules.users.models import User
 
 
@@ -59,7 +63,7 @@ class CandidateProfile(BaseModel):
     skills: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     expected_salary: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    expected_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    expect3ed_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     years_of_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -79,6 +83,12 @@ class CandidateProfile(BaseModel):
         default=False,
         server_default=sa.false(),
     )
+    visibility: Mapped[VisibilityStatus] = mapped_column(
+        String(15),
+        nullable=False,
+        default=VisibilityStatus.APPLIED_ONLY.value,
+        server_default="APPLIED_ONLY",
+    )
 
     # Relationships
     user: Mapped[User] = relationship(back_populates="candidate_profile")
@@ -87,6 +97,7 @@ class CandidateProfile(BaseModel):
     work_experiences: Mapped[list[WorkExperience]] = relationship(back_populates="candidate_profile")
     educations: Mapped[list[Education]] = relationship(back_populates="candidate_profile")
     certifications: Mapped[list[Certification]] = relationship(back_populates="candidate_profile")
+    profile_views: Mapped[list[ProfileView]] = relationship(back_populates="candidate_profile")
 
 
 class CandidateCvs(BaseModel):
@@ -227,6 +238,41 @@ class Certification(BaseModel):
     )
 
 
+class ProfileView(BaseModel):
+    """Records when an employer views a candidate's profile."""
 
+    __tablename__ = "profile_views"
 
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    employer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    viewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
 
+    # relationships
+    candidate_profile: Mapped[CandidateProfile] = relationship(
+        "CandidateProfile",
+        back_populates="profile_views",
+        foreign_keys=[candidate_id],
+    )
+    employer: Mapped[User] = relationship(
+        "User",
+        foreign_keys=[employer_id],
+        back_populates="profile_views_employer",
+    )
+    job: Mapped[Job] = relationship("Job")

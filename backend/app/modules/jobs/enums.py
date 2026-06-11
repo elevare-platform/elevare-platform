@@ -45,3 +45,11 @@ class SeniorityLevel(str, Enum):
     LEAD = "LEAD"
     EXECUTIVE = "EXECUTIVE"
 
+
+class ModerationStatus(str, Enum):
+    """Moderation state of a job listing as reviewed by an admin."""
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+

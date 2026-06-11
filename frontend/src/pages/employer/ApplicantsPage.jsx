@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { User, ArrowLeft, ChevronDown, X, MapPin, Briefcase, FileText, Star } from 'lucide-react'
+import {
+  User, ArrowLeft, ChevronDown, X, MapPin, Briefcase, FileText,
+  Star, Info, GraduationCap, Award, Globe, ExternalLink,
+  DollarSign, Clock,
+} from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
@@ -39,6 +43,11 @@ const TRANSITIONS = {
 
 const FILTER_TABS = ['all', 'SUBMITTED', 'REVIEWING', 'SHORTLISTED', 'HIRED', 'REJECTED', 'WITHDRAWN']
 
+const SORT_OPTIONS = [
+  { value: 'date', label: 'Date Applied' },
+  { value: 'score', label: 'Match Score' },
+]
+
 function StatusBadge({ status }) {
   if (!status) return null
   return (
@@ -51,6 +60,55 @@ function StatusBadge({ status }) {
   )
 }
 
+// ─── Match score badge ────────────────────────────────────────────────────────
+
+function scoreColour(score) {
+  if (score === null || score === undefined) return 'bg-gray-100 text-gray-500'
+  if (score <= 40) return 'bg-red-100 text-red-600'
+  if (score <= 70) return 'bg-amber-100 text-amber-700'
+  return 'bg-green-100 text-green-700'
+}
+
+function MatchScoreBadge({ score, matchedKeywords = [] }) {
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+  const hasScore = score !== null && score !== undefined
+
+  const tooltipText = hasScore && matchedKeywords.length > 0
+    ? `Matched: ${matchedKeywords.join(', ')}`
+    : hasScore
+      ? 'No keyword matches found'
+      : 'Score not yet computed'
+
+  return (
+    <div className="relative inline-flex items-center">
+      <button
+        type="button"
+        onMouseEnter={() => setTooltipVisible(true)}
+        onMouseLeave={() => setTooltipVisible(false)}
+        onFocus={() => setTooltipVisible(true)}
+        onBlur={() => setTooltipVisible(false)}
+        aria-label={`Match score: ${hasScore ? `${score}%` : 'not computed'}. ${tooltipText}`}
+        className={cn(
+          'w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 cursor-default',
+          scoreColour(score)
+        )}
+      >
+        {hasScore ? `${score}%` : '—'}
+      </button>
+
+      {tooltipVisible && (
+        <div
+          role="tooltip"
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10 w-max max-w-xs rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg pointer-events-none"
+        >
+          {tooltipText}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function formatDate(isoString) {
   if (!isoString) return ''
   return new Date(isoString).toLocaleDateString('en-GB', {
@@ -60,16 +118,25 @@ function formatDate(isoString) {
 
 // ─── Candidate profile panel ──────────────────────────────────────────────────
 
-function CandidateProfilePanel({ profileId, onClose }) {
+function CandidateProfilePanel({ profileId, jobId, onClose }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [restricted, setRestricted] = useState(false)
 
   useEffect(() => {
-    api.get(`/api/v1/candidates/${profileId}`)
+    setLoading(true)
+    setRestricted(false)
+    const params = jobId ? { job_id: jobId } : {}
+    api.get(`/api/v1/candidates/${profileId}`, { params })
       .then(({ data }) => setProfile(data))
-      .catch(() => setProfile(null))
+      .catch((err) => {
+        if (err.response?.status === 403 || err.response?.status === 404) {
+          setRestricted(true)
+        }
+        setProfile(null)
+      })
       .finally(() => setLoading(false))
-  }, [profileId])
+  }, [profileId, jobId])
 
   return (
     <div
@@ -115,7 +182,11 @@ function CandidateProfilePanel({ profileId, onClose }) {
           )}
 
           {!loading && !profile && (
-            <p className="text-sm text-text-muted text-center py-10">Profile not available.</p>
+            <p className="text-sm text-text-muted text-center py-10">
+              {restricted
+                ? 'This candidate has restricted their profile visibility.'
+                : 'Profile not available.'}
+            </p>
           )}
 
           {!loading && profile && (
@@ -127,7 +198,9 @@ function CandidateProfilePanel({ profileId, onClose }) {
                 </span>
                 <div>
                   <p className="font-semibold text-text text-base">
-                    {profile.first_name ?? 'Candidate'}
+                    {profile.first_name
+                      ? `${profile.first_name} ${profile.last_name ?? ''}`.trim()
+                      : 'Candidate'}
                   </p>
                   <div className="flex flex-wrap gap-x-3 text-xs text-text-muted mt-0.5">
                     {profile.location && (
@@ -154,9 +227,91 @@ function CandidateProfilePanel({ profileId, onClose }) {
                   <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Skills</p>
                   <div className="flex flex-wrap gap-1.5">
                     {profile.skills.map((s) => (
-                      <span key={s} className="px-2.5 py-1 rounded-full bg-brand-blue/10 text-brand-blue text-xs font-medium">
-                        {s}
+                      <span key={s} className="px-2.5 py-1 rounded-full bg-brand-blue/10 text-brand-blue text-xs font-medium">{s}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Salary + notice period */}
+              {(profile.expected_salary || profile.notice_period_days != null) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {profile.expected_salary && (
+                    <div className="flex items-center gap-2 text-xs text-text-muted">
+                      <DollarSign size={13} className="flex-shrink-0" />
+                      <span>
+                        {profile.expected_currency ?? ''} {Number(profile.expected_salary).toLocaleString()}
                       </span>
+                    </div>
+                  )}
+                  {profile.notice_period_days != null && (
+                    <div className="flex items-center gap-2 text-xs text-text-muted">
+                      <Clock size={13} className="flex-shrink-0" />
+                      <span>{profile.notice_period_days} day notice</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Work experience */}
+              {profile.work_experiences?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Work Experience</p>
+                  <div className="space-y-3">
+                    {profile.work_experiences.map((w) => (
+                      <div key={w.id} className="border-l-2 border-brand-blue/30 pl-3">
+                        <p className="text-sm font-medium text-text">{w.job_title}</p>
+                        <p className="text-xs text-text-muted">{w.company_name}</p>
+                        <p className="text-xs text-text-muted">
+                          {w.start_date ?? '—'} → {w.is_current ? 'Present' : (w.end_date ?? '—')}
+                        </p>
+                        {w.description && (
+                          <p className="text-xs text-text-muted mt-1 line-clamp-2">{w.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Education */}
+              {profile.educations?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Education</p>
+                  <div className="space-y-3">
+                    {profile.educations.map((e) => (
+                      <div key={e.id} className="flex items-start gap-2">
+                        <GraduationCap size={14} className="text-text-muted flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-text">{e.degree} in {e.field_of_study}</p>
+                          <p className="text-xs text-text-muted">{e.institution_name}</p>
+                          {(e.start_year || e.end_year) && (
+                            <p className="text-xs text-text-muted">{e.start_year ?? '—'} – {e.end_year ?? 'Present'}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Certifications */}
+              {profile.certifications?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Certifications</p>
+                  <div className="space-y-2">
+                    {profile.certifications.map((c) => (
+                      <div key={c.id} className="flex items-start gap-2">
+                        <Award size={14} className="text-text-muted flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-text">{c.name}</p>
+                          <p className="text-xs text-text-muted">{c.issuing_organization}</p>
+                          {c.credential_url && (
+                            <a href={c.credential_url} target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-brand-blue hover:underline">View credential</a>
+                          )}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -182,18 +337,30 @@ function CandidateProfilePanel({ profileId, onClose }) {
                 </div>
               )}
 
-              {/* LinkedIn */}
-              {profile.linkedin_url && (
+              {/* Links */}
+              {(profile.linkedin_url || profile.github_url || profile.portfolio_url) && (
                 <div>
-                  <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">LinkedIn</p>
-                  <a
-                    href={profile.linkedin_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-brand-blue hover:underline break-all"
-                  >
-                    {profile.linkedin_url}
-                  </a>
+                  <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Links</p>
+                  <div className="space-y-1.5">
+                    {profile.linkedin_url && (
+                      <a href={profile.linkedin_url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-xs text-brand-blue hover:underline">
+                        <ExternalLink size={13} />LinkedIn
+                      </a>
+                    )}
+                    {profile.github_url && (
+                      <a href={profile.github_url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-xs text-brand-blue hover:underline">
+                        <ExternalLink size={13} />GitHub
+                      </a>
+                    )}
+                    {profile.portfolio_url && (
+                      <a href={profile.portfolio_url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-xs text-brand-blue hover:underline">
+                        <Globe size={13} />Portfolio
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -206,7 +373,7 @@ function CandidateProfilePanel({ profileId, onClose }) {
 
 // ─── Applicant card ───────────────────────────────────────────────────────────
 
-function ApplicantCard({ application, onError }) {
+function ApplicantCard({ application, jobId, onError }) {
   const [status, setStatus] = useState(application.status)
   const [updating, setUpdating] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -269,6 +436,12 @@ function ApplicantCard({ application, onError }) {
 
         {/* Status badge */}
         <StatusBadge status={status} />
+
+        {/* Match score badge */}
+        <MatchScoreBadge
+          score={application.match_score}
+          matchedKeywords={application.matched_keywords ?? []}
+        />
 
         {/* Status transition dropdown — only shown for non-terminal statuses */}
         {!isTerminal && (
@@ -333,6 +506,7 @@ function ApplicantCard({ application, onError }) {
       {profileOpen && (
         <CandidateProfilePanel
           profileId={application.candidate_profile_id}
+          jobId={jobId}
           onClose={() => setProfileOpen(false)}
         />
       )}
@@ -364,6 +538,7 @@ export default function ApplicantsPage() {
   const [jobTitle, setJobTitle] = useState(null)
   const [activeTab, setActiveTab] = useState('all')
   const [applicants, setApplicants] = useState([])
+  const [sortBy, setSortBy] = useState('date')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [toast, setToast] = useState(null)
@@ -414,6 +589,13 @@ export default function ApplicantsPage() {
     fetchApplicants(activeTab, null, true)
   }, [activeTab, fetchApplicants])
 
+  const sortedApplicants = [...applicants].sort((a, b) => {
+    if (sortBy !== 'score') return 0
+    const sa = a.match_score ?? -1
+    const sb = b.match_score ?? -1
+    return sb - sa
+  })
+
   return (
     <>
       <Navbar />
@@ -433,24 +615,43 @@ export default function ApplicantsPage() {
             Applicants{jobTitle ? ` for ${jobTitle}` : ''}
           </h1>
 
-          {/* Filter tabs — all statuses */}
-          <div className="flex flex-wrap gap-1.5 mb-6" role="tablist" aria-label="Filter applicants by status">
-            {FILTER_TABS.map((tab) => (
-              <button
-                key={tab}
-                role="tab"
-                aria-selected={activeTab === tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
-                  activeTab === tab
-                    ? 'bg-brand-blue text-white'
-                    : 'bg-surface border border-border text-text-muted hover:text-text'
-                )}
-              >
-                {tab === 'all' ? 'All' : STATUS_LABELS[tab]}
-              </button>
-            ))}
+          {/* Filter tabs + sort control */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter applicants by status">
+              {FILTER_TABS.map((tab) => (
+                <button
+                  key={tab}
+                  role="tab"
+                  aria-selected={activeTab === tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
+                    activeTab === tab
+                      ? 'bg-brand-blue text-white'
+                      : 'bg-surface border border-border text-text-muted hover:text-text'
+                  )}
+                >
+                  {tab === 'all' ? 'All' : STATUS_LABELS[tab]}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="sort-select" className="text-xs text-text-muted whitespace-nowrap">Sort by:</label>
+              <div className="relative">
+                <select
+                  id="sort-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="appearance-none text-xs rounded-lg border border-border bg-background pl-3 pr-7 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
+              </div>
+            </div>
           </div>
 
           {error && (
@@ -476,10 +677,11 @@ export default function ApplicantsPage() {
 
           {applicants.length > 0 && (
             <div className="space-y-3">
-              {applicants.map((app) => (
+              {sortedApplicants.map((app) => (
                 <ApplicantCard
                   key={app.id}
                   application={app}
+                  jobId={jobId}
                   onError={showToast}
                 />
               ))}

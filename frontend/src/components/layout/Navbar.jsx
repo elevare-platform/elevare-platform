@@ -9,14 +9,19 @@ import ehsLogo from '@/assets/ehs-logo.png'
 // ─── Dropdown data ────────────────────────────────────────────────────────────
 
 const EMPLOYERS_ITEMS = [
+  { label: 'Post a Job', href: '/register?role=employer' },
+  { label: 'How It Works', href: '/how-it-works#employers' },
+  { label: 'Pricing', href: '/pricing' },
+  { label: 'Contact Sales', href: '/contact?type=employer_inquiry' },
   { label: 'Talent Pipeline (AI)', href: '/talent-pipeline' },
   { label: 'Workforce Tools', href: '/workforce-tools' },
   { label: 'B2B Partnerships', href: '/partnership' },
-  { label: 'Post a Job', href: '/employer/jobs/new' },
 ]
 
 const CANDIDATES_ITEMS = [
   { label: 'Browse Jobs', href: '/jobs' },
+  { label: 'How It Works', href: '/how-it-works#candidates' },
+  { label: 'Create Profile', href: '/register?role=candidate' },
   { label: 'Professional Training', href: '/training' },
 ]
 
@@ -234,7 +239,7 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
             {/* Drawer header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
               <Link to="/" onClick={onClose} className="flex items-center">
-                <img src={ehsLogo} alt="Elevare Human Solutions" className="h-10 w-auto" />
+                <img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto" />
               </Link>
               <button
                 onClick={onClose}
@@ -247,47 +252,28 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
 
             {/* Nav links */}
             <nav className="flex-1 overflow-y-auto px-6 py-4 space-y-0" aria-label="Mobile navigation">
-              <Link
-                to="/services"
-                onClick={onClose}
-                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
-              >
-                Services
-              </Link>
-              <Link
-                to="/talent-pipeline"
-                onClick={onClose}
-                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
-              >
-                Talent Pipeline
-              </Link>
-              <Link
-                to="/workforce-tools"
-                onClick={onClose}
-                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
-              >
-                Workforce Tools
-              </Link>
-              <Link
-                to="/partnership"
-                onClick={onClose}
-                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
-              >
-                B2B Partnerships
-              </Link>
-              <Link
-                to="/training"
-                onClick={onClose}
-                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
-              >
-                Professional Training
-              </Link>
+              <MobileAccordionItem label="For Employers" items={EMPLOYERS_ITEMS} onClose={onClose} />
+              <MobileAccordionItem label="For Candidates" items={CANDIDATES_ITEMS} onClose={onClose} />
               <Link
                 to="/about"
                 onClick={onClose}
                 className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
               >
                 About Us
+              </Link>
+              <Link
+                to="/how-it-works"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+              >
+                How It Works
+              </Link>
+              <Link
+                to="/contact"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
+              >
+                Contact Us
               </Link>
 
               {/* Book a Consultation CTA — always visible in mobile drawer */}
@@ -386,46 +372,42 @@ export default function Navbar({ onBookConsultation }) {
             className="flex items-center flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded"
             aria-label="Elevare home"
           >
-            <img src={ehsLogo} alt="Elevare Human Solutions" className="h-12 w-auto" />
+            <img src={ehsLogo} alt="Elevare Human Solutions" width={140} height={48} className="h-12 w-auto" />
           </Link>
 
           {/* Centre nav — desktop only */}
           <div className="hidden lg:flex items-center gap-2.5 lg:gap-4.5">
-            <Link
-              to="/services"
-              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
-            >
-              Services
-            </Link>
-            <Link
-              to="/talent-pipeline"
-              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
-            >
-              Talent Pipeline
-            </Link>
-            <Link
-              to="/workforce-tools"
-              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
-            >
-              Workforce Tools
-            </Link>
-            <Link
-              to="/partnership"
-              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
-            >
-              B2B Partnerships
-            </Link>
-            <Link
-              to="/training"
-              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
-            >
-              Professional Training
-            </Link>
+            <NavDropdown
+              label="For Employers"
+              items={EMPLOYERS_ITEMS}
+              isOpen={employersOpen}
+              onOpen={() => { setEmployersOpen(true); setCandidatesOpen(false) }}
+              onClose={() => setEmployersOpen(false)}
+            />
+            <NavDropdown
+              label="For Candidates"
+              items={CANDIDATES_ITEMS}
+              isOpen={candidatesOpen}
+              onOpen={() => { setCandidatesOpen(true); setEmployersOpen(false) }}
+              onClose={() => setCandidatesOpen(false)}
+            />
             <Link
               to="/about"
               className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
             >
               About Us
+            </Link>
+            <Link
+              to="/how-it-works"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
+            >
+              How It Works
+            </Link>
+            <Link
+              to="/contact"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"
+            >
+              Contact Us
             </Link>
           </div>
 

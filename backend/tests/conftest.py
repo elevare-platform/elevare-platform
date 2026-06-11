@@ -1,3 +1,5 @@
+"""Shared pytest fixtures and factory helpers for the Elevare test suite."""
+
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -9,6 +11,7 @@ from sqlalchemy.pool import NullPool
 import app.core.model_registry  # noqa: F401
 from app.core.config import settings
 from app.core.dependencies import get_db
+from app.core.email import StubEmailService, get_email_service
 from app.main import app
 from app.modules.auth.schemas import RegisterRequest
 from app.modules.jobs.enums import ContractType, JobStatus, WorkModel
@@ -63,6 +66,11 @@ def make_employer(**overrides) -> User:
     return make_user(role=UserRole.EMPLOYER.value, **overrides)
 
 
+def make_admin(**overrides) -> User:
+    """Build an unsaved admin User instance."""
+    return make_user(role=UserRole.ADMIN.value, **overrides)
+
+
 def make_job(employer_id, **overrides) -> Job:
     """Build an unsaved Job instance with sensible defaults."""
     defaults = {
@@ -89,12 +97,16 @@ async def db_session():
 
 @pytest_asyncio.fixture
 async def client(db_session):
-    """Async HTTP client with DB dependency overridden to use test session."""
+    """Async HTTP client with DB and email dependencies overridden for tests."""
 
     async def override_get_db():
         yield db_session
 
+    def override_get_email_service():
+        return StubEmailService()
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_email_service] = override_get_email_service
 
     async with AsyncClient(
         transport=ASGITransport(app=app),

@@ -1,5 +1,6 @@
 // HomePage — assembles all home section components in order.
 import { useState } from 'react'
+import { Helmet } from 'react-helmet-async'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import HeroSection from '@/components/home/HeroSection'
@@ -25,6 +26,15 @@ export default function HomePage() {
 
   return (
     <>
+      <Helmet>
+        <title>Elevare Human Solutions — Connecting Talent with Opportunity in Africa</title>
+        <meta name="description" content="Elevare connects exceptional talent with ambitious companies across Africa. Post a job or find your next role today." />
+        <meta property="og:title" content="Elevare Human Solutions — Connecting Talent with Opportunity" />
+        <meta property="og:description" content="Elevare connects exceptional talent with ambitious companies across Africa." />
+        <meta property="og:url" content="https://elevare.com.ng/" />
+        <meta property="og:type" content="website" />
+        <link rel="canonical" href="https://elevare.com.ng/" />
+      </Helmet>
       <Navbar onBookConsultation={openModal} />
       <main>
         {/* Requirements 1.1–1.5 */}

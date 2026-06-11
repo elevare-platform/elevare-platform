@@ -331,6 +331,7 @@ export default function CandidateDashboardPage() {
                 {[
                   { label: 'My Applications', to: '/candidate/applications' },
                   { label: 'Edit Profile', to: '/candidate/profile' },
+                  { label: 'Profile Views', to: '/candidate/profile-views' },
                   { label: 'Browse Jobs', to: '/jobs' },
                 ].map(({ label, to }) => (
                   <Link

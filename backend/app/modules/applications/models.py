@@ -7,7 +7,15 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, Index, Text, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
@@ -60,6 +68,15 @@ class Application(BaseModel):
     status_updated_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"),
         nullable=True,
+    )
+
+    match_score: Mapped[int] = mapped_column(
+        Integer,
+        nullable=True
+    )
+    score_computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
     )
 
     # Relationships

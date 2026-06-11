@@ -15,13 +15,14 @@ from app.core.database import BaseModel
 from .enums import AccountStatus, UserRole
 
 if TYPE_CHECKING:
+    from app.modules.admin.models import AuditLog
     from app.modules.applications.models import Application
     from app.modules.auth.models import (
         EmailVerificationToken,
         InviteToken,
         RefreshToken,
     )
-    from app.modules.candidates.models import CandidateProfile
+    from app.modules.candidates.models import CandidateProfile, ProfileView
     from app.modules.jobs.models import Job
 
 
@@ -123,6 +124,15 @@ class User(BaseModel):
         "Application",
         back_populates="candidate",
         foreign_keys="Application.candidate_id",
+    )
+    profile_views_employer: Mapped[list[ProfileView]] = relationship(
+        "ProfileView",
+        back_populates="employer",
+        foreign_keys="ProfileView.employer_id",
+    )
+    audit_logs: Mapped[list[AuditLog]] = relationship(
+        "AuditLog",
+        back_populates="admin"
     )
 
 

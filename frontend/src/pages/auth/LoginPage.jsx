@@ -57,7 +57,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10">
-          <img src={ehsLogo} alt="Elevare Human Solutions" className="h-10 w-auto brightness-0 invert" />
+        <img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" />
         </div>
 
         <div className="relative z-10 space-y-6">
@@ -78,7 +78,7 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-6 bg-surface-muted">
         <div className="w-full max-w-md space-y-8">
           <div className="flex items-center gap-3 lg:hidden">
-            <img src={ehsLogo} alt="Elevare Human Solutions" className="h-9 w-auto" />
+            <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
           </div>
 
           <div className="space-y-2">
