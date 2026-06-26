@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import {
   Users,
   Search,
@@ -8,6 +9,7 @@ import {
   GraduationCap,
   ArrowRight,
 } from 'lucide-react'
+import { useIntersectionObserver } from '@/hooks/useIntersectionObserver'
 
 // ─── Homepage Featured Services ──────────────────────────────────────────────
 const SERVICES = [
@@ -57,35 +59,59 @@ const SERVICES = [
 
 // ─── Cluster tag colors ──────────────────────────────────────────────────────
 const CLUSTER_STYLES = {
-  'Strategy & Advisory': { bg: '#e8f0fb', color: '#1A4D8F' },
-  'Talent Acquisition': { bg: '#fffbeb', color: '#b45309' },
-  'Workforce Operations': { bg: '#f0fdf4', color: '#15803d' },
-  'HR Technology': { bg: '#faf5ff', color: '#6b21a8' },
+  'Strategy & Advisory':    { bg: '#e8f0fb', color: '#1A4D8F' },
+  'Talent Acquisition':     { bg: '#fffbeb', color: '#b45309' },
+  'Workforce Operations':   { bg: '#f0fdf4', color: '#15803d' },
+  'HR Technology':          { bg: '#faf5ff', color: '#6b21a8' },
   'Training & Development': { bg: '#fef2f2', color: '#991b1b' },
 }
 
+// ─── Framer Motion card variants — staggered scroll-triggered reveal ──────────
+const cardVariants = {
+  hidden:  { opacity: 0, y: 28, scale: 0.97 },
+  visible: (i) => ({
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.5,
+      delay: i * 0.08,
+      ease: [0.16, 1, 0.3, 1],
+    },
+  }),
+}
+
 // ─── ServiceCard ──────────────────────────────────────────────────────────────
-function ServiceCard({ service }) {
+function ServiceCard({ service, index, isVisible }) {
   const Icon = service.icon
   const clusterStyle = CLUSTER_STYLES[service.cluster] || { bg: '#f1f5f9', color: '#334155' }
 
   return (
-    <article
+    <motion.article
+      custom={index}
+      variants={cardVariants}
+      initial="hidden"
+      animate={isVisible ? 'visible' : 'hidden'}
+      className="svc-card group"
       style={{
         background: '#ffffff',
-        borderRadius: '0.85rem',
+        borderRadius: '0.875rem',
         border: '1px solid #e2e8f0',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.02), 0 2px 6px rgba(0,0,0,0.02)',
         padding: '2rem',
         display: 'flex',
         flexDirection: 'column',
         gap: '1rem',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: 'relative',
+        overflow: 'hidden',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.03)',
       }}
-      className="group hover:-translate-y-1.5 hover:shadow-xl hover:border-brand-blue/20"
     >
+      {/* Top-edge accent bar — slides in on hover */}
+      <span className="svc-card-accent" aria-hidden="true" />
+
       {/* Icon Wrapper */}
       <div
+        className="svc-icon-wrap"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -95,12 +121,14 @@ function ServiceCard({ service }) {
           borderRadius: '0.75rem',
           background: '#e8f0fb',
           flexShrink: 0,
-          transition: 'all 0.3s ease',
         }}
-        className="group-hover:bg-brand-blue group-hover:scale-110"
         aria-hidden="true"
       >
-        <Icon size={24} className="text-brand-blue group-hover:text-white transition-colors duration-300" strokeWidth={2} />
+        <Icon
+          size={24}
+          className="svc-icon text-brand-blue"
+          strokeWidth={2}
+        />
       </div>
 
       {/* Cluster label */}
@@ -147,33 +175,40 @@ function ServiceCard({ service }) {
         {service.description}
       </p>
 
-      {/* Learn more link / CTA */}
+      {/* Learn more link */}
       <Link
         to="/services"
         aria-label={`Learn more about ${service.name}`}
+        className="svc-learn-more"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '0.35rem',
           fontSize: '0.9rem',
           fontWeight: 600,
           color: '#1A4D8F',
           textDecoration: 'none',
           marginTop: '0.5rem',
-          transition: 'gap 0.2s',
         }}
-        className="group-hover:text-brand-amber"
       >
-        Learn more <ArrowRight size={16} strokeWidth={2.5} className="group-hover:translate-x-1 transition-transform" aria-hidden="true" />
+        <span className="svc-learn-more-text">Learn more</span>
+        <ArrowRight
+          size={16}
+          strokeWidth={2.5}
+          className="svc-learn-more-arrow"
+          aria-hidden="true"
+        />
       </Link>
-    </article>
+    </motion.article>
   )
 }
 
 // ─── ServicesSection ──────────────────────────────────────────────────────────
 export default function ServicesSection() {
+  const [sectionRef, isVisible] = useIntersectionObserver({ threshold: 0.1, triggerOnce: true })
+
   return (
     <section
+      ref={sectionRef}
       aria-label="Our services"
       style={{ background: '#F8F9FA', padding: '6.5rem 1rem' }}
     >
@@ -222,12 +257,17 @@ export default function ServicesSection() {
 
         {/* Services grid */}
         <div className="services-grid">
-          {SERVICES.map((service) => (
-            <ServiceCard key={service.id} service={service} />
+          {SERVICES.map((service, i) => (
+            <ServiceCard
+              key={service.id}
+              service={service}
+              index={i}
+              isVisible={isVisible}
+            />
           ))}
         </div>
 
-        {/* View All Services CTA Button */}
+        {/* View All Services CTA */}
         <div style={{ textAlign: 'center', marginTop: '4rem' }}>
           <Link
             to="/services"

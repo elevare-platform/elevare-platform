@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { storePostVerifyNext } from '@/pages/auth/VerifyEmailPage'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -17,24 +18,35 @@ const schema = z.object({
 })
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, user, authReady } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [showPassword, setShowPassword] = useState(false)
   const [serverError, setServerError] = useState(null)
 
-  // Redirect back to the page the user was trying to visit, or dashboard
-  const from = location.state?.from?.pathname || '/dashboard'
+  const params = new URLSearchParams(location.search)
+  const next = params.get('next') || location.state?.from?.pathname || null
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
   })
 
+  // If already authenticated, redirect immediately
+  useEffect(() => {
+    if (authReady && user) {
+      navigate(next || getPostAuthRedirect(user), { replace: true })
+    }
+  }, [authReady, user, next, navigate])
+
   const onSubmit = async (values) => {
     setServerError(null)
     try {
       const loggedInUser = await login(values.email, values.password)
-      navigate(getPostAuthRedirect(loggedInUser), { replace: true })
+      // If user logs in but is unverified, store next so verify page can redirect after
+      if (loggedInUser.account_status === 'PENDING_VERIFICATION' && next) {
+        storePostVerifyNext(next)
+      }
+      navigate(next || getPostAuthRedirect(loggedInUser), { replace: true })
     } catch (err) {
       const status = err.response?.status
       if (status === 401) {
@@ -143,7 +155,10 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-text-muted">
             Don't have an account?{' '}
-            <Link to="/register" className="text-brand-blue font-medium hover:underline">
+            <Link
+              to={next ? `/register?next=${next}` : '/register'}
+              className="text-brand-blue font-medium hover:underline"
+            >
               Create one
             </Link>
           </p>

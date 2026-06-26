@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Briefcase, FileText,
-  ScrollText, LogOut, Menu, UserPlus,
+  ScrollText, LogOut, Menu, UserPlus, FileSearch,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import ehsLogo from '@/assets/ehs-logo.png'
@@ -12,6 +12,7 @@ const NAV = [
   { to: '/admin/users', icon: Users, label: 'Users' },
   { to: '/admin/jobs', icon: Briefcase, label: 'Jobs' },
   { to: '/admin/applications', icon: FileText, label: 'Applications' },
+  { to: '/admin/cv-parser', icon: FileSearch, label: 'CV Parser' },
   { to: '/admin/audit-log', icon: ScrollText, label: 'Audit Log' },
   { to: '/admin/invite', icon: UserPlus, label: 'Invite' },
 ]

@@ -24,6 +24,7 @@ const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'))
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'))
 const InviteAcceptPage = lazy(() => import('@/pages/auth/InviteAcceptPage'))
+const VerifyEmailPage = lazy(() => import('@/pages/auth/VerifyEmailPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const UnauthorisedPage = lazy(() => import('@/pages/UnauthorisedPage'))
 
@@ -35,6 +36,9 @@ const PostJobPage = lazy(() => import('@/pages/employer/PostJobPage'))
 const EditJobPage = lazy(() => import('@/pages/employer/EditJobPage'))
 const OnboardingPage = lazy(() => import('@/pages/employer/OnboardingPage'))
 const ApplicantsPage = lazy(() => import('@/pages/employer/ApplicantsPage'))
+const EmployerCVParserPage = lazy(() => import('@/pages/employer/EmployerCVParserPage'))
+const TalentPoolPage = lazy(() => import('@/pages/employer/TalentPoolPage'))
+const SharedApplicantsPage = lazy(() => import('@/pages/SharedApplicantsPage'))
 
 const AdminInvitePage = lazy(() => import('@/pages/admin/AdminInvitePage'))
 const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboardPage'))
@@ -42,6 +46,7 @@ const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'))
 const AdminJobsPage = lazy(() => import('@/pages/admin/AdminJobsPage'))
 const AdminApplicationsPage = lazy(() => import('@/pages/admin/AdminApplicationsPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/admin/AdminAuditLogPage'))
+const AdminCVParserPage = lazy(() => import('@/pages/admin/AdminCVParserPage'))
 
 const CandidateDashboardPage = lazy(() => import('@/pages/candidate/CandidateDashboardPage'))
 const CandidateProfilePage = lazy(() => import('@/pages/candidate/CandidateProfilePage'))
@@ -90,9 +95,10 @@ function AppRoutes() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/contact" element={<ContactPage />} />
 
-        <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-        <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-        <Route path="/invite/accept" element={<PublicRoute><InviteAcceptPage /></PublicRoute>} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/invite/accept" element={<InviteAcceptPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/unauthorised" element={<UnauthorisedPage />} />
 
         {/* Public job routes */}
@@ -110,7 +116,12 @@ function AppRoutes() {
           <Route path="/employer/jobs/new" element={<PostJobPage />} />
           <Route path="/employer/jobs/:id/edit" element={<EditJobPage />} />
           <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
+          <Route path="/employer/cv-parser" element={<EmployerCVParserPage />} />
+          <Route path="/employer/talent-pool" element={<TalentPoolPage />} />
         </Route>
+
+        {/* Public shared applicant view — no auth */}
+        <Route path="/shared/jobs/:token" element={<SharedApplicantsPage />} />
 
         {/* Admin-only routes */}
         <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
@@ -120,6 +131,7 @@ function AppRoutes() {
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
           <Route path="/admin/applications" element={<AdminApplicationsPage />} />
           <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
+          <Route path="/admin/cv-parser" element={<AdminCVParserPage />} />
         </Route>
 
         {/* Candidate-only routes */}

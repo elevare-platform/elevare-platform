@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useNavigate } from 'react-router-dom'
+import { storePostVerifyNext } from '@/pages/auth/VerifyEmailPage'
 import { Eye, EyeOff, Loader2, Check, X, Briefcase, User } from 'lucide-react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -173,10 +174,14 @@ function RoleStep({ onNext }) {
 function RegisterForm({ role, onBack }) {
   const { register: registerUser } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [serverError, setServerError] = useState(null)
   const [passwordValue, setPasswordValue] = useState('')
+
+  const params = new URLSearchParams(location.search)
+  const next = params.get('next')
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
@@ -193,8 +198,11 @@ function RegisterForm({ role, onBack }) {
         password: values.password,
         confirm_password: values.confirm_password,
         role,
+        cv_sharing_consent: values.cv_sharing_consent ?? false,
       })
-      navigate(getPostAuthRedirect(user), { replace: true })
+      // Store intended destination so VerifyEmailPage can redirect there after verification
+      if (next) storePostVerifyNext(next)
+      navigate(next || getPostAuthRedirect(user), { replace: true })
     } catch (err) {
       const status = err.response?.status
       const data = err.response?.data
@@ -329,6 +337,23 @@ function RegisterForm({ role, onBack }) {
           <FormMessage>{errors.confirm_password?.message}</FormMessage>
         </FormField>
 
+        {/* CV sharing consent — candidate only */}
+        {role === 'CANDIDATE' && (
+          <div className="flex items-start gap-3 rounded-lg border border-border p-3 bg-surface">
+            <input
+              type="checkbox"
+              id="cv_sharing_consent"
+              {...register('cv_sharing_consent')}
+              className="mt-0.5 accent-brand-blue"
+            />
+            <label htmlFor="cv_sharing_consent" className="text-sm text-text cursor-pointer leading-snug">
+              I consent to my CV and profile being shared with potential employers through anonymised
+              shortlist links. My name will only be shown if I have given consent and the recruiter
+              has enabled name disclosure.
+            </label>
+          </div>
+        )}
+
         {serverError && (
           <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
             {serverError}
@@ -358,6 +383,18 @@ function RegisterForm({ role, onBack }) {
 
 export default function RegisterPage() {
   const [role, setRole] = useState(null)
+  const { user, authReady } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const params = new URLSearchParams(location.search)
+  const next = params.get('next') || null
+
+  useEffect(() => {
+    if (authReady && user) {
+      navigate(next || getPostAuthRedirect(user), { replace: true })
+    }
+  }, [authReady, user, next, navigate])
 
   return (
     <div className="min-h-screen flex">

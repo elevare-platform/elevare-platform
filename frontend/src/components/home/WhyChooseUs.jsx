@@ -27,6 +27,39 @@ const FEATURES = [
   },
 ]
 
+// ─── Framer Motion variants ───────────────────────────────────────────────────
+
+/** Eyebrow and heading — fade-up slightly ahead of cards */
+const headingVariants = {
+  hidden:  { opacity: 0, y: 20 },
+  visible: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.55, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] },
+  }),
+}
+
+/** Feature cards — spring entrance with subtle scale */
+const cardVariants = {
+  hidden:  { opacity: 0, y: 24, scale: 0.97 },
+  visible: (i) => ({
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.5, delay: 0.15 + i * 0.09, ease: [0.16, 1, 0.3, 1] },
+  }),
+}
+
+/** Right image panel — slides in from the right */
+const imageVariants = {
+  hidden:  { opacity: 0, x: 40 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: { duration: 0.65, delay: 0.1, ease: [0.16, 1, 0.3, 1] },
+  },
+}
+
 // ─── WhyChooseUs ─────────────────────────────────────────────────────────────
 
 export default function WhyChooseUs() {
@@ -53,8 +86,13 @@ export default function WhyChooseUs() {
 
         {/* ── Left: heading + 2×2 card grid ── */}
         <div style={{ flex: '1 1 480px', minWidth: 0 }}>
+
           {/* Eyebrow */}
-          <p
+          <motion.p
+            custom={0}
+            variants={headingVariants}
+            initial="hidden"
+            animate={isVisible ? 'visible' : 'hidden'}
             style={{
               margin: '0 0 0.5rem',
               fontSize: '0.8125rem',
@@ -65,10 +103,14 @@ export default function WhyChooseUs() {
             }}
           >
             Why Elevare
-          </p>
+          </motion.p>
 
           {/* Heading — Requirements 6.1 */}
-          <h2
+          <motion.h2
+            custom={1}
+            variants={headingVariants}
+            initial="hidden"
+            animate={isVisible ? 'visible' : 'hidden'}
             style={{
               margin: '0 0 2.5rem',
               fontSize: 'clamp(1.625rem, 3vw, 2.125rem)',
@@ -78,7 +120,7 @@ export default function WhyChooseUs() {
             }}
           >
             Why Leading Companies Choose Elevare
-          </h2>
+          </motion.h2>
 
           {/* 2×2 grid — Requirements 6.2 — single column on small mobile, 2-col on sm+ */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -86,22 +128,30 @@ export default function WhyChooseUs() {
               const Icon = feature.icon
 
               return (
-                // Requirements 6.4 — fade-up entrance, staggered 100ms between cards
+                // Requirements 6.4 — spring entrance, staggered
                 <motion.article
                   key={feature.title}
-                  initial={{ opacity: 0, y: 24 }}
-                  animate={isVisible ? { opacity: 1, y: 0 } : {}}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  custom={index}
+                  variants={cardVariants}
+                  initial="hidden"
+                  animate={isVisible ? 'visible' : 'hidden'}
+                  className="why-card group"
                   style={{
                     background: '#ffffff',
-                    borderRadius: '0.75rem',
+                    borderRadius: '0.875rem',
                     border: '1px solid #e2e8f0',
-                    boxShadow: '0 1px 8px rgba(0,0,0,0.05)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.03)',
                     padding: '1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden',
                   }}
                 >
-                  {/* Icon */}
+                  {/* Top-edge accent bar — same language as service cards */}
+                  <span className="why-card-accent" aria-hidden="true" />
+
+                  {/* Icon wrapper */}
                   <div
+                    className="why-icon-wrap"
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -114,16 +164,23 @@ export default function WhyChooseUs() {
                     }}
                     aria-hidden="true"
                   >
-                    <Icon size={22} color="#1A4D8F" strokeWidth={1.75} />
+                    <Icon
+                      size={22}
+                      className="why-icon"
+                      strokeWidth={1.75}
+                      style={{ color: '#1A4D8F' }}
+                    />
                   </div>
 
                   {/* Title */}
                   <h3
+                    className="why-card-title"
                     style={{
                       margin: '0 0 0.375rem',
                       fontSize: '0.9375rem',
                       fontWeight: 700,
                       color: '#1e293b',
+                      transition: 'color 0.25s ease',
                     }}
                   >
                     {feature.title}
@@ -146,8 +203,12 @@ export default function WhyChooseUs() {
           </div>
         </div>
 
-        {/* ── Right: image — stretches to match left column height ── */}
-        <div
+        {/* ── Right: image panel — slides in from right ── */}
+        <motion.div
+          variants={imageVariants}
+          initial="hidden"
+          animate={isVisible ? 'visible' : 'hidden'}
+          className="why-image-wrap"
           style={{
             flex: '1 1 400px',
             minWidth: 0,
@@ -160,6 +221,7 @@ export default function WhyChooseUs() {
           <img
             src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1200&h=900&fit=crop&crop=center"
             alt="A diverse group of professionals collaborating in a modern office"
+            className="why-image"
             style={{
               width: '100%',
               height: '100%',
@@ -167,7 +229,7 @@ export default function WhyChooseUs() {
               display: 'block',
             }}
           />
-        </div>
+        </motion.div>
 
       </div>
     </section>

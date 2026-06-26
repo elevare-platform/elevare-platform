@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Briefcase, Plus, TrendingUp, FileText, CheckCircle, XCircle } from 'lucide-react'
+import { Briefcase, Plus, TrendingUp, FileText, CheckCircle, XCircle, FileSearch } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
@@ -222,7 +222,7 @@ export default function EmployerDashboardPage() {
           </div>
 
           {/* Quick actions */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Link
               to="/employer/jobs/new"
               className="rounded-xl border border-border bg-white p-5 hover:border-brand-blue/40 hover:shadow-sm transition-all group flex items-center gap-4"
@@ -245,6 +245,18 @@ export default function EmployerDashboardPage() {
               <div>
                 <p className="font-semibold text-text text-sm">Manage Jobs</p>
                 <p className="text-text-muted text-xs mt-0.5">View, edit, publish, or close listings</p>
+              </div>
+            </Link>
+            <Link
+              to="/employer/cv-parser"
+              className="rounded-xl border border-border bg-white p-5 hover:border-brand-blue/40 hover:shadow-sm transition-all group flex items-center gap-4"
+            >
+              <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                <FileSearch size={18} className="text-purple-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-text text-sm">CV Parser</p>
+                <p className="text-text-muted text-xs mt-0.5">Upload CVs and extract candidate data</p>
               </div>
             </Link>
           </div>

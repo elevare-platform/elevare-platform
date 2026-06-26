@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown, Menu, X, User, LogOut, LayoutDashboard } from 'lucide-react'
+import { ChevronDown, Menu, X, User, LogOut, LayoutDashboard, FileText } from 'lucide-react'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import ehsLogo from '@/assets/ehs-logo.png'

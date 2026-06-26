@@ -306,7 +306,7 @@ export default function ApplyModal({ jobId, onClose, onSuccess }) {
               <p className="text-sm text-red-700">{error.message}</p>
               {error.profileLink && (
                 <Link
-                  to="/candidate/profile"
+                  to={`/candidate/profile?next=${encodeURIComponent(`/jobs/${jobId}`)}`}
                   onClick={onClose}
                   className="inline-block text-sm font-medium text-brand-blue hover:underline"
                 >

@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   User, ArrowLeft, ChevronDown, X, MapPin, Briefcase, FileText,
-  Star, Info, GraduationCap, Award, Globe, ExternalLink,
-  DollarSign, Clock,
+  Star, GraduationCap, Award, Globe, ExternalLink,
+  DollarSign, Clock, Share2, Link as LinkIcon, Copy, Check as CheckIcon,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -45,7 +45,8 @@ const FILTER_TABS = ['all', 'SUBMITTED', 'REVIEWING', 'SHORTLISTED', 'HIRED', 'R
 
 const SORT_OPTIONS = [
   { value: 'date', label: 'Date Applied' },
-  { value: 'score', label: 'Match Score' },
+  { value: 'ai_score', label: 'AI Score' },
+  { value: 'match_score', label: 'Match Score' },
 ]
 
 function StatusBadge({ status }) {
@@ -114,6 +115,260 @@ function formatDate(isoString) {
   return new Date(isoString).toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric',
   })
+}
+
+// ─── AI score badge ───────────────────────────────────────────────────────────
+
+function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
+  const [open, setOpen] = useState(false)
+  const hasScore = score !== null && score !== undefined
+
+  const colour = !hasScore
+    ? 'bg-gray-100 text-gray-400 border-gray-200'
+    : score >= 70
+      ? 'bg-purple-100 text-purple-700 border-purple-200'
+      : score >= 40
+        ? 'bg-amber-100 text-amber-700 border-amber-200'
+        : 'bg-red-100 text-red-600 border-red-200'
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="AI Score — click for reasoning"
+        aria-label={`AI score: ${hasScore ? score : 'not computed'}`}
+        className={cn(
+          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer',
+          colour
+        )}
+      >
+        <span className="text-[10px] font-bold uppercase tracking-wide opacity-60">AI</span>
+        {hasScore ? score : '—'}
+      </button>
+
+      {open && hasScore && (
+        <div
+          className="absolute right-0 top-full mt-2 z-20 w-72 rounded-xl border border-border bg-white shadow-xl p-4 space-y-3 text-sm"
+          role="dialog"
+          aria-label="AI fit reasoning"
+        >
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="absolute top-3 right-3 text-text-muted hover:text-text"
+            aria-label="Close"
+          >
+            <X size={14} />
+          </button>
+
+          {fitSummary && (
+            <p className="text-text text-xs leading-relaxed">{fitSummary}</p>
+          )}
+
+          {strengths?.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-green-600 mb-1">Strengths</p>
+              <ul className="space-y-1">
+                {strengths.map((s, i) => (
+                  <li key={i} className="text-xs text-text flex gap-1.5">
+                    <span className="text-green-500 mt-0.5">✓</span>{s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {weaknesses?.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-red-500 mb-1">Gaps</p>
+              <ul className="space-y-1">
+                {weaknesses.map((w, i) => (
+                  <li key={i} className="text-xs text-text flex gap-1.5">
+                    <span className="text-red-400 mt-0.5">·</span>{w}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Share with client modal ──────────────────────────────────────────────────
+
+function ShareModal({ jobId, onClose }) {
+  const [expiryDays, setExpiryDays] = useState(30)
+  const [discloseNames, setDiscloseNames] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [generatedUrl, setGeneratedUrl] = useState(null)
+  const [copied, setCopied] = useState(false)
+  const [tokens, setTokens] = useState([])
+  const [loadingTokens, setLoadingTokens] = useState(true)
+  const [revoking, setRevoking] = useState(null)
+  const baseUrl = window.location.origin
+
+  useEffect(() => {
+    setLoadingTokens(true)
+    api.get(`/api/v1/jobs/${jobId}/access-tokens`)
+      .then(({ data }) => setTokens(data))
+      .catch(() => {})
+      .finally(() => setLoadingTokens(false))
+  }, [jobId])
+
+  const handleGenerate = async () => {
+    setGenerating(true)
+    try {
+      const { data } = await api.post(`/api/v1/jobs/${jobId}/access-tokens`, {
+        expires_in_days: expiryDays,
+        disclose_names: discloseNames,
+      })
+      const url = `${baseUrl}/shared/jobs/${data.token}`
+      setGeneratedUrl(url)
+      setTokens((prev) => [data, ...prev])
+    } catch {
+      // surface error inline
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleCopy = async () => {
+    if (!generatedUrl) return
+    await navigator.clipboard.writeText(generatedUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleRevoke = async (tokenId) => {
+    setRevoking(tokenId)
+    try {
+      await api.patch(`/api/v1/jobs/access-tokens/${tokenId}/revoke`)
+      setTokens((prev) => prev.map((t) => t.id === tokenId ? { ...t, is_active: false } : t))
+    } catch {
+      // silent
+    } finally {
+      setRevoking(null)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+      <div
+        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-5"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Share applicant list with client"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-text">Share with client</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Config */}
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-text-muted block mb-1.5">Link expires after</label>
+            <select
+              value={expiryDays}
+              onChange={(e) => setExpiryDays(Number(e.target.value))}
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+            >
+              {[7, 14, 30, 60, 90].map((d) => (
+                <option key={d} value={d}>{d} days</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="disclose-names"
+              checked={discloseNames}
+              onChange={(e) => setDiscloseNames(e.target.checked)}
+              className="mt-0.5 accent-brand-blue"
+            />
+            <div>
+              <label htmlFor="disclose-names" className="text-sm font-medium text-text cursor-pointer">
+                Include candidate names
+              </label>
+              <p className="text-xs text-text-muted mt-0.5">
+                Names will only appear for candidates who have given sharing consent. Others will display as initials.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={generating}
+            className="w-full rounded-lg bg-brand-blue text-white py-2.5 text-sm font-medium hover:bg-brand-blue/90 disabled:opacity-50 transition-colors"
+          >
+            {generating ? 'Generating…' : 'Generate link'}
+          </button>
+        </div>
+
+        {/* Generated URL */}
+        {generatedUrl && (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-2">
+            <p className="text-xs font-medium text-green-700">Link ready</p>
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={generatedUrl}
+                className="flex-1 text-xs bg-white border border-border rounded px-2 py-1.5 truncate"
+              />
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-text hover:bg-surface-muted transition-colors"
+              >
+                {copied ? <CheckIcon size={12} className="text-green-600" /> : <Copy size={12} />}
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Active tokens list */}
+        {tokens.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Active links</p>
+            {tokens.map((t) => (
+              <div key={t.id} className="flex items-center justify-between text-xs rounded-lg border border-border px-3 py-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <LinkIcon size={11} className={t.is_active ? 'text-green-500' : 'text-gray-400'} />
+                  <span className="text-text-muted truncate">
+                    Expires {new Date(t.expires_at).toLocaleDateString()}
+                    {t.disclose_names && ' · Names on'}
+                  </span>
+                  {!t.is_active && (
+                    <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px]">Revoked</span>
+                  )}
+                </div>
+                {t.is_active && (
+                  <button
+                    type="button"
+                    onClick={() => handleRevoke(t.id)}
+                    disabled={revoking === t.id}
+                    className="text-red-500 hover:text-red-700 ml-2 disabled:opacity-40"
+                  >
+                    {revoking === t.id ? '…' : 'Revoke'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ─── Candidate profile panel ──────────────────────────────────────────────────
@@ -437,10 +692,18 @@ function ApplicantCard({ application, jobId, onError }) {
         {/* Status badge */}
         <StatusBadge status={status} />
 
-        {/* Match score badge */}
+        {/* Match score badge — Phase 6.5 keyword signal */}
         <MatchScoreBadge
           score={application.match_score}
           matchedKeywords={application.matched_keywords ?? []}
+        />
+
+        {/* AI score badge — Phase 11.5 composite score, distinct from match_score */}
+        <AiScoreBadge
+          score={application.ai_score}
+          fitSummary={application.ai_fit_summary}
+          strengths={application.ai_strengths}
+          weaknesses={application.ai_weaknesses}
         />
 
         {/* Status transition dropdown — only shown for non-terminal statuses */}
@@ -544,6 +807,7 @@ export default function ApplicantsPage() {
   const [toast, setToast] = useState(null)
   const [cursor, setCursor] = useState(null)
   const [hasMore, setHasMore] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const showToast = useCallback((msg) => {
     setToast(msg)
@@ -557,6 +821,8 @@ export default function ApplicantsPage() {
       const params = { limit: 20 }
       if (status !== 'all') params.status = status
       if (nextCursor) params.cursor = nextCursor
+      // Pass sort=ai_score to backend when that sort is active
+      if (sortBy === 'ai_score') params.sort = 'ai_score'
 
       const { data } = await api.get(`/api/v1/applications/job/${jobId}`, { params })
       const items = data.items ?? data
@@ -587,13 +853,13 @@ export default function ApplicantsPage() {
 
   useEffect(() => {
     fetchApplicants(activeTab, null, true)
-  }, [activeTab, fetchApplicants])
+  }, [activeTab, sortBy, fetchApplicants])
 
   const sortedApplicants = [...applicants].sort((a, b) => {
-    if (sortBy !== 'score') return 0
-    const sa = a.match_score ?? -1
-    const sb = b.match_score ?? -1
-    return sb - sa
+    if (sortBy === 'match_score') {
+      return (b.match_score ?? -1) - (a.match_score ?? -1)
+    }
+    return 0 // ai_score sort is handled server-side; date is default order
   })
 
   return (
@@ -611,13 +877,18 @@ export default function ApplicantsPage() {
             Back to jobs
           </Link>
 
-          <h1 className="text-2xl font-bold text-text mb-6">
-            Applicants{jobTitle ? ` for ${jobTitle}` : ''}
-          </h1>
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-2xl font-bold text-text">
+              Applicants{jobTitle ? ` for ${jobTitle}` : ''}
+            </h1>
+            <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}
+              className="flex items-center gap-1.5">
+              <Share2 size={14} /> Share with client
+            </Button>
+          </div>
 
           {/* Filter tabs + sort control */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter applicants by status">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter applicants by status">
               {FILTER_TABS.map((tab) => (
                 <button
                   key={tab}
@@ -713,6 +984,9 @@ export default function ApplicantsPage() {
           {toast}
         </div>
       )}
+
+      {/* Share modal */}
+      {shareOpen && <ShareModal jobId={jobId} onClose={() => setShareOpen(false)} />}
 
       <Footer />
     </>

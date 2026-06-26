@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 
@@ -13,12 +14,12 @@ const PROFILE_CARDS = [
     title: 'Senior Product Designer',
     available: true,
     availableLabel: 'Available now',
-    imageUrl: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=200&h=200&fit=crop&crop=face',
-    imgW: 200,
-    imgH: 200,
+    imageUrl: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=245&h=195&fit=crop&crop=face',
+    imgW: 245,
+    imgH: 195,
     delay: '0s',
     top: 80,
-    left: 20,
+    left: 10,
     rotate: '-3deg',
     zIndex: 2,
   },
@@ -28,12 +29,12 @@ const PROFILE_CARDS = [
     title: 'Engineering Manager',
     available: false,
     availableLabel: 'Open to offers',
-    imageUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&h=200&fit=crop&crop=face',
-    imgW: 200,
-    imgH: 200,
+    imageUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=245&h=195&fit=crop&crop=face',
+    imgW: 245,
+    imgH: 195,
     delay: '0.9s',
     top: 280,
-    left: 320,
+    left: 280,
     rotate: '2deg',
     zIndex: 3,
   },
@@ -43,16 +44,71 @@ const PROFILE_CARDS = [
     title: 'Head of Finance',
     available: true,
     availableLabel: 'Available now',
-    imageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&h=200&fit=crop&crop=face',
-    imgW: 200,
-    imgH: 200,
+    imageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=245&h=195&fit=crop&crop=face',
+    imgW: 245,
+    imgH: 195,
     delay: '1.8s',
-    top: 460,
-    left: 30,
+    top: 480,
+    left: 20,
     rotate: '-2deg',
     zIndex: 2,
   },
 ]
+
+// ─── Hero background slides ──────────────────────────────────────────────────
+// Images are served from /public/hero-images/ via Vite static assets.
+const HERO_SLIDES = [
+  { src: '/hero-images/img1.jpg', alt: 'Aerial view of Victoria Island, Lagos — Civic Centre Towers and the waterfront' },
+  { src: '/hero-images/img4.jpg', alt: 'Lagos skyline looking south along the marina corridor' },
+  { src: '/hero-images/img3.jpg', alt: 'Lekki-Ikoyi Link Bridge at dusk — an engineering landmark' },
+  { src: '/hero-images/img2.jpg', alt: 'Lagos cityscape at golden hour — the mainland and harbour' },
+  { src: '/hero-images/img5.jpg', alt: 'Lagos panorama — lush greenery meets a modern skyline' },
+]
+
+// ─── HeroSlideshow ───────────────────────────────────────────────────────────
+// Full-bleed layer that crossfades between slides. Each active slide plays a
+// slow Ken Burns pan via CSS animation. Pauses the auto-advance while hovered.
+
+function HeroSlideshow() {
+  const [current, setCurrent] = useState(0)
+  const [paused, setPaused] = useState(false)
+
+  const advance = useCallback(() => {
+    setCurrent((prev) => (prev + 1) % HERO_SLIDES.length)
+  }, [])
+
+  useEffect(() => {
+    if (paused) return
+    const id = setInterval(advance, 6000)
+    return () => clearInterval(id)
+  }, [advance, paused])
+
+  return (
+    <div
+      className="absolute inset-0 hero-slideshow"
+      aria-hidden="true"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      {HERO_SLIDES.map((slide, i) => (
+        <div
+          key={slide.src}
+          className={`hero-slide ${ i === current ? 'hero-slide--active' : '' }`}
+        >
+          <img
+            src={slide.src}
+            alt={slide.alt}
+            className="hero-slide-img"
+            draggable={false}
+          />
+        </div>
+      ))}
+
+      {/* Multi-stop overlay: opaque dark on the left (text area) → semi-transparent right */}
+      <div className="hero-slide-overlay" />
+    </div>
+  )
+}
 
 // ─── Social proof avatars ─────────────────────────────────────────────────────
 
@@ -100,14 +156,9 @@ function TapeX() {
 function ProfileCard({ card }) {
   return (
     <article
+      className="hero-photo-card"
       style={{
-        position: 'absolute',
-        top: card.top,
-        left: card.left,
-        zIndex: card.zIndex,
-        transform: `rotate(${card.rotate})`,
-        animation: `float 5s ease-in-out infinite`,
-        animationDelay: card.delay,
+        '--card-rotation': card.rotate,
         // White card with a slight warm tint — like photo paper
         background: '#fffef8',
         borderRadius: '6px',
@@ -182,32 +233,20 @@ export default function HeroSection({ onBookConsultation }) {
     <section
       className="relative min-h-screen flex items-center overflow-hidden"
       aria-label="Hero"
-      style={{
-        // #1A4D8F fallback for when the background image fails to load (Req 1.5)
-        backgroundColor: '#1A4D8F',
-        // Left side stays the light blue-tinted grid; right side fades to a warm
-        // off-white so the photo cards feel like they're pinned to a corkboard.
-        background: `
-          linear-gradient(
-            to right,
-            #EEF3FA 0%,
-            #EEF3FA 45%,
-            #f5f0e8 72%,
-            #ede8dc 100%
-          )
-        `,
-      }}
+      style={{ backgroundColor: '#0e1f3a' }}
     >
+      {/* ── Crossfade background slideshow ── */}
+      <HeroSlideshow />
+
       {/* Grid pattern overlay — only covers the left portion */}
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0 pointer-events-none hero-grid-pattern"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(26,77,143,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(26,77,143,0.04) 1px, transparent 1px)
+            linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)
           `,
           backgroundSize: '40px 40px',
-          // Fade the grid out before the right half
           WebkitMaskImage: 'linear-gradient(to right, black 0%, black 40%, transparent 65%)',
           maskImage: 'linear-gradient(to right, black 0%, black 40%, transparent 65%)',
         }}
@@ -216,51 +255,87 @@ export default function HeroSection({ onBookConsultation }) {
 
       {/* Inner grid layout */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-20 sm:py-24 lg:py-0">
-        <div className="grid grid-cols-1 lg:grid-cols-[60fr_40fr] gap-8 lg:gap-0 items-center min-h-screen">
+        <div className="grid grid-cols-1 lg:grid-cols-[53fr_47fr] gap-8 lg:gap-0 items-center min-h-screen">
 
           {/* ── Left: text content ── */}
           <div className="flex flex-col justify-center lg:pr-24">
+
             {/* Eyebrow */}
-            <p className="text-brand-amber font-semibold text-xs tracking-widest uppercase mb-3 sm:mb-4">
-              HR Strategy & Workforce Solutions
-            </p>
+            <div className="hero-text-mask" style={{ marginBottom: '0.9rem' }}>
+              <p
+                className="font-semibold text-xs tracking-widest uppercase hero-reveal-line"
+                style={{ color: '#E87722', animationDelay: '150ms' }}
+              >
+                HR Strategy &amp; Workforce Solutions
+              </p>
+            </div>
 
-            {/* Headline */}
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-5xl font-extrabold text-text leading-tight mb-4 sm:mb-6">
-              Human Capital Advisory &amp;{' '}
-              <span className="text-brand-blue">Workforce Transformation</span>
-              <br className="hidden md:inline" />
-              <span className="text-brand-amber"> &amp; Recruitment Consulting</span>
-            </h1>
+            {/* Headline — each line in its own mask so they cascade one by one */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div className="hero-text-mask">
+                <h1
+                  className="text-4xl sm:text-5xl lg:text-6xl xl:text-6xl font-bold leading-tight hero-reveal-line"
+                  style={{ color: '#ffffff', animationDelay: '400ms', fontFamily: "'Lobster Two', cursive" }}
+                >
+                  Human Capital Advisory
+                </h1>
+              </div>
+              <div className="hero-text-mask">
+                <p
+                  className="text-4xl sm:text-5xl lg:text-6xl xl:text-6xl font-bold leading-tight hero-reveal-line"
+                  style={{ color: '#60a5fa', animationDelay: '680ms', fontFamily: "'Lobster Two', cursive" }}
+                >
+                  &amp; Workforce Transformation
+                </p>
+              </div>
+              <div className="hero-text-mask">
+                <p
+                  className="text-4xl sm:text-5xl lg:text-6xl xl:text-6xl font-bold leading-tight hero-reveal-line"
+                  style={{ color: '#E87722', animationDelay: '960ms', fontFamily: "'Lobster Two', cursive" }}
+                >
+                  &amp; Recruitment Consulting
+                </p>
+              </div>
+            </div>
 
-            {/* Subheadline */}
-            <p className="text-base sm:text-lg text-text-muted leading-relaxed mb-6 sm:mb-8 max-w-xl">
-              Where Talent Meets Opportunity — Elevating People, Empowering Businesses. We align state-of-the-art talent strategies with organizational goals to drive real business growth.
-            </p>
+            {/* Subheadline — enters as one block after the headline finishes */}
+            <div className="hero-text-mask" style={{ marginBottom: '1.75rem' }}>
+              <p
+                className="text-base sm:text-lg leading-relaxed max-w-xl hero-reveal-line"
+                style={{ color: 'rgba(255,255,255,0.78)', animationDelay: '1250ms' }}
+              >
+                Where Talent Meets Opportunity. Elevating People, Empowering Businesses.
+                We align state-of-the-art talent strategies with organizational goals to drive real business growth.
+              </p>
+            </div>
 
-            {/* CTA buttons — stacked on mobile, side-by-side on desktop (Req 1.2, 1.3, 1.4) */}
-            <div className="flex flex-col sm:flex-row lg:flex-row gap-3 sm:gap-4 mb-6 sm:mb-10">
+            {/* CTA buttons */}
+            <div
+              className="flex flex-col sm:flex-row lg:flex-row gap-3 sm:gap-4 mb-6 sm:mb-10 hero-entrance-ctas"
+              style={{ animationDelay: '1550ms' }}
+            >
               <Link to="/register">
                 <Button
                   size="lg"
-                  className="w-full sm:w-auto min-h-[44px] transition-transform duration-200 hover:scale-[1.02] bg-brand-blue hover:bg-brand-blue-dark text-white border-0"
+                  className="hero-btn-primary w-full sm:w-auto min-h-[44px] bg-brand-blue hover:bg-brand-blue-dark text-white border-0"
                 >
-                  Hire Talent →
+                  Hire Talent <span className="hero-btn-arrow">→</span>
                 </Button>
               </Link>
               <Link to="/jobs">
                 <Button
                   size="lg"
                   variant="outline"
-                  className="w-full sm:w-auto min-h-[44px] transition-transform duration-200 hover:scale-[1.02]"
+                  className="hero-btn-secondary w-full sm:w-auto min-h-[44px]"
+                  style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#ffffff', background: 'rgba(255,255,255,0.08)' }}
                 >
-                  Find a Role →
+                  Find a Role <span className="hero-btn-arrow">→</span>
                 </Button>
               </Link>
             </div>
 
             {/* Social proof avatar row */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 hero-entrance-social" style={{ animationDelay: '1800ms' }}>
               <div className="flex -space-x-2">
                 {AVATAR_URLS.map((url, i) => (
                   <img
@@ -269,13 +344,13 @@ export default function HeroSection({ onBookConsultation }) {
                     alt={`Professional ${i + 1} on Elevare`}
                     width={36}
                     height={36}
-                    className="rounded-full border-2 border-white object-cover"
-                    style={{ width: 36, height: 36 }}
+                    className="rounded-full border-2 border-white object-cover hero-social-avatar"
+                    style={{ width: 36, height: 36, animationDelay: `${1900 + i * 100}ms` }}
                   />
                 ))}
               </div>
-              <p className="text-sm text-text-muted font-medium">
-                Join <span className="text-text font-semibold">2,400+</span> professionals already on Elevare
+              <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.72)' }}>
+                Join <span style={{ color: '#ffffff', fontWeight: 700 }}>2,400+</span> professionals already on Elevare
               </p>
             </div>
           </div>
@@ -288,6 +363,7 @@ export default function HeroSection({ onBookConsultation }) {
           >
             {/* Subtle corkboard texture hint */}
             <div
+              className="hero-corkboard-glow"
               style={{
                 position: 'absolute',
                 inset: 0,
@@ -302,6 +378,7 @@ export default function HeroSection({ onBookConsultation }) {
               {/* Waterfall connector — draws top-centre of Amara → Chidi centre → bottom-centre of Fatima */}
               <svg
                 aria-hidden="true"
+                className="hero-entrance-connector"
                 style={{
                   position: 'absolute',
                   inset: 0,
@@ -344,8 +421,26 @@ export default function HeroSection({ onBookConsultation }) {
                 />
               </svg>
 
-              {PROFILE_CARDS.map((card) => (
-                <ProfileCard key={card.id} card={card} />
+              {PROFILE_CARDS.map((card, i) => (
+                <div
+                  key={card.id}
+                  className="hero-card-wrapper hero-card-drop"
+                  style={{
+                    position: 'absolute',
+                    top: card.top,
+                    left: card.left,
+                    zIndex: card.zIndex,
+                    width: card.imgW + 20,
+                    '--drop-delay': `${1400 + i * 380}ms`,
+                  }}
+                >
+                  <div
+                    className="hero-card-float"
+                    style={{ animationDelay: card.delay }}
+                  >
+                    <ProfileCard card={card} />
+                  </div>
+                </div>
               ))}
             </div>
           </div>

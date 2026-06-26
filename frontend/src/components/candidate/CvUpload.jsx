@@ -97,8 +97,10 @@ export function CvUpload({ onUploadSuccess }) {
       trackEvent('Profile', 'cv_upload')
       onUploadSuccess?.(data)
     } catch (err) {
-      const msg = err.response?.data?.detail ?? err.message ?? 'Upload failed.'
-      setUploadError(typeof msg === 'string' ? msg : JSON.stringify(msg))
+      const detail = err.response?.data?.detail
+      const message = err.response?.data?.message
+      const raw = detail ?? message ?? err.message ?? 'Upload failed.'
+      setUploadError(typeof raw === 'string' ? raw : JSON.stringify(raw))
       setSelectedFile(null)
       if (inputRef.current) inputRef.current.value = ''
     } finally {

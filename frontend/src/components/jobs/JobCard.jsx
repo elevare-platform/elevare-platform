@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Building2, MapPin, Clock, Bookmark, BookmarkCheck } from 'lucide-react'
+import { Building2, MapPin, Clock, Bookmark, BookmarkCheck, Share2, Check } from 'lucide-react'
 import { cn, formatSalary, timeAgo } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ApplyButton } from '@/components/jobs/ApplyButton'
@@ -124,6 +124,21 @@ export function getJobActions(status) {
 
 function EmployerActions({ job, onPublish, onClose }) {
   const actions = getJobActions(job.status)
+  const [copied, setCopied] = useState(false)
+
+  const handleShare = (e) => {
+    e.preventDefault()
+    const url = `${window.location.origin}/jobs/${job.id}`
+    if (navigator.share) {
+      navigator.share({ title: job.title, url }).catch(() => {})
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+    }
+  }
+
   return (
     <div className="flex flex-wrap gap-2 pt-3 border-t border-border" role="group" aria-label="Job actions">
       {actions.publish && (
@@ -165,6 +180,15 @@ function EmployerActions({ job, onPublish, onClose }) {
           )}
         </Button>
       </Link>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={handleShare}
+        className="transition-colors flex items-center gap-1.5"
+      >
+        {copied ? <Check size={13} className="text-green-600" /> : <Share2 size={13} />}
+        {copied ? 'Copied!' : 'Share'}
+      </Button>
     </div>
   )
 }

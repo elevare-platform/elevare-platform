@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, AlertCircle, CheckCircle, Plus, Trash2, Briefcase, GraduationCap, Award } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -321,6 +321,8 @@ function CertificationForm({ onSave, onCancel }) {
 export default function CandidateProfilePage() {
   const { profile, loading, error, refetch } = useCandidateProfile()
   const navigate = useNavigate()
+  const location = useLocation()
+  const next = new URLSearchParams(location.search).get('next') || '/candidate/dashboard'
 
   const [values, setValues] = useState({
     bio: '', skills: [], years_of_experience: '', location: '',
@@ -403,7 +405,7 @@ export default function CandidateProfilePage() {
       setInitialValues({ ...values })
       setSaveSuccess(true)
       trackEvent('Profile', 'profile_complete')
-      setTimeout(() => navigate('/candidate/dashboard'), 1200)
+      setTimeout(() => navigate(next, { replace: true }), 1200)
     } catch (err) {
       const detail = err?.response?.data?.detail
       if (Array.isArray(detail)) {

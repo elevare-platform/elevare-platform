@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import { trackEvent } from '@/lib/analytics'
-import { ArrowLeft, Building2, Calendar, Globe, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Building2, Calendar, Globe, ExternalLink, Share2, Check } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
@@ -162,6 +162,19 @@ export default function JobDetailPage() {
       : null
 
   const isOwner = job ? canManageJob(user, job) : false
+  const [copied, setCopied] = useState(false)
+
+  const handleShare = () => {
+    const url = window.location.href
+    if (navigator.share) {
+      navigator.share({ title: job?.title, url }).catch(() => {})
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+    }
+  }
 
   return (
     <>
@@ -185,14 +198,25 @@ export default function JobDetailPage() {
       <main className="min-h-screen bg-background">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
-          <button
-            onClick={() => navigate('/jobs')}
-            className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text mb-6 transition-colors"
-            aria-label="Back to job board"
-          >
-            <ArrowLeft size={16} />
-            Back to jobs
-          </button>
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => navigate('/jobs')}
+              className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text transition-colors"
+              aria-label="Back to job board"
+            >
+              <ArrowLeft size={16} />
+              Back to jobs
+            </button>
+            {job && (
+              <button
+                onClick={handleShare}
+                className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text transition-colors"
+              >
+                {copied ? <Check size={15} className="text-green-600" /> : <Share2 size={15} />}
+                {copied ? 'Copied!' : 'Share'}
+              </button>
+            )}
+          </div>
 
           {loading && <SkeletonDetail />}
 

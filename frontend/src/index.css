@@ -44,11 +44,8 @@ body {
 
 /* ─── Keyframe animations ─────────────────────────────────────────── */
 
-/* Hero profile cards floating effect */
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50%       { transform: translateY(-10px); }
-}
+/* Note: @keyframes float is defined in the Hero Section block below,
+   where rotation is handled as a static CSS transform on .hero-photo-card */
 
 /* Social proof bar — horizontal scroll */
 @keyframes scroll-x {
@@ -216,5 +213,658 @@ body {
 @media (min-width: 1024px) {
   .insights-grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ─── Hero Section Premium Animations ────────────────────────────── */
+
+@keyframes hero-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Hero text reveal — curtain lift ───────────────────────────────
+   Each .hero-text-mask is overflow:hidden. The child .hero-reveal-line
+   starts below the clip line and slides up into view, like a theatre
+   curtain rising. Feels cinematic and premium.
+─────────────────────────────────────────────────────────────────── */
+
+.hero-text-mask {
+  overflow: hidden;
+  /* The mask itself has no visual; only the clip matters */
+}
+
+.hero-reveal-line {
+  opacity: 0;
+  transform: translateY(110%);
+  animation: hero-curtain-up 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes hero-curtain-up {
+  from {
+    opacity: 0;
+    transform: translateY(110%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* CTA row and social proof: delay is set via inline style in JSX */
+.hero-entrance-ctas {
+  opacity: 0;
+  animation: hero-fade-in-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.hero-entrance-social {
+  opacity: 0;
+  animation: hero-fade-in-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Reduced motion: collapse all hero text reveals to a plain opacity fade */
+@media (prefers-reduced-motion: reduce) {
+  .hero-reveal-line,
+  .hero-entrance-ctas,
+  .hero-entrance-social {
+    animation: hero-reduced-fade 0.4s ease forwards !important;
+    transform: none !important;
+  }
+  .hero-card-drop {
+    animation: hero-reduced-fade 0.4s ease forwards !important;
+    animation-delay: var(--drop-delay, 0ms) !important;
+    transform: none !important;
+  }
+  @keyframes hero-reduced-fade {
+    to { opacity: 1; }
+  }
+}
+
+/* Background grid drift animation for ambient depth */
+@keyframes hero-grid-drift {
+  0% { transform: translate(0, 0); }
+  50% { transform: translate(-8px, -8px); }
+  100% { transform: translate(0, 0); }
+}
+
+.hero-grid-pattern {
+  inset: -16px;
+  animation: hero-grid-drift 32s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Primary CTA Button Interaction with Shine Effect */
+.hero-btn-primary {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease !important;
+}
+
+.hero-btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.25),
+    transparent
+  );
+  transform: skewX(-25deg);
+  pointer-events: none;
+}
+
+.hero-btn-primary:hover::before {
+  left: 150%;
+  transition: left 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-btn-primary:hover {
+  transform: scale(1.03) !important;
+  box-shadow: 0 10px 20px -5px rgba(26, 77, 143, 0.35) !important;
+}
+
+.hero-btn-primary:hover .hero-btn-arrow {
+  transform: translateX(4px);
+}
+
+/* Secondary CTA Button Interaction */
+.hero-btn-secondary {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.hero-btn-secondary:hover {
+  transform: scale(1.03) !important;
+  background-color: var(--color-brand-blue-light) !important;
+  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.05) !important;
+}
+
+.hero-btn-secondary:hover .hero-btn-arrow {
+  transform: translateX(4px);
+}
+
+.hero-btn-arrow {
+  display: inline-block;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-left: 4px;
+}
+
+/* Social proof avatars */
+.hero-social-avatar {
+  opacity: 0;
+  transform: scale(0.6);
+  animation: hero-avatar-entrance 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), z-index 0s, box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.hero-social-avatar:hover {
+  transform: scale(1.2) translateY(-2px);
+  z-index: 10;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes hero-avatar-entrance {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Background pulse glow */
+.hero-corkboard-glow {
+  animation: corkboard-glow-pulse 8s ease-in-out infinite;
+}
+
+@keyframes corkboard-glow-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1.1; }
+}
+
+/* Pinned photo cards float + hover architecture */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.hero-card-float {
+  animation: float 6s ease-in-out infinite;
+  will-change: transform;
+}
+
+.hero-card-wrapper {
+  /* Entrance handled by .hero-card-drop on the same element */
+  transition: z-index 0s;
+}
+
+.hero-card-wrapper:hover {
+  z-index: 99 !important;
+}
+
+@keyframes hero-card-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-60px) scale(0.88) rotate(var(--drop-initial-rotate, 0deg));
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(6px) scale(1.03);
+  }
+  75% {
+    transform: translateY(-4px) scale(0.99);
+  }
+  90% {
+    transform: translateY(2px) scale(1.005);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* hero-card-drop uses the CSS custom property --drop-delay for stagger */
+.hero-card-drop {
+  opacity: 0;
+  animation:
+    hero-card-drop 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: var(--drop-delay, 600ms);
+}
+
+.hero-photo-card {
+  will-change: transform;
+  transform: rotate(var(--card-rotation, 0deg));
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-card-wrapper:hover .hero-photo-card {
+  transform: scale(1.05) rotate(calc(var(--card-rotation, 0deg) * 0.25)) translateY(-8px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2), 0 6px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Connector line entrance */
+.hero-entrance-connector {
+  opacity: 0;
+  animation: hero-connector-fade 1s ease-out forwards;
+  animation-delay: 1.2s;
+}
+
+@keyframes hero-connector-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ─── Accessibility Support: Reduced Motion ───────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes hero-fade-in-up {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .hero-grid-pattern {
+    animation: none;
+    inset: 0;
+  }
+  .hero-btn-primary:hover,
+  .hero-btn-secondary:hover {
+    transform: none !important;
+  }
+  .hero-btn-primary:hover .hero-btn-arrow,
+  .hero-btn-secondary:hover .hero-btn-arrow {
+    transform: none !important;
+  }
+  .hero-btn-primary::before {
+    display: none;
+  }
+  .hero-social-avatar {
+    transform: none;
+    animation: hero-avatar-entrance-reduced 0.3s ease-out forwards;
+  }
+  .hero-social-avatar:hover {
+    transform: none;
+  }
+  @keyframes hero-avatar-entrance-reduced {
+    to { opacity: 1; }
+  }
+  .hero-corkboard-glow {
+    animation: none;
+  }
+  .hero-card-wrapper {
+    opacity: 0;
+    animation: hero-card-reveal-reduced 0.5s ease-out forwards;
+  }
+  .hero-card-wrapper:hover {
+    z-index: initial !important;
+  }
+  @keyframes hero-card-reveal-reduced {
+    to { opacity: 1; }
+  }
+  .hero-card-float {
+    animation: none;
+  }
+  .hero-photo-card {
+    transform: rotate(var(--card-rotation, 0deg));
+    animation: none;
+  }
+  .hero-card-wrapper:hover .hero-photo-card {
+    transform: rotate(var(--card-rotation, 0deg)) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10) !important;
+  }
+}
+
+/* ─── What We Offer — Service Card Interactions ───────────────────── */
+
+/* Card hover: lift, deepen shadow, border colour accent */
+.svc-card {
+  transition:
+    transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.3s ease;
+  cursor: default;
+}
+
+.svc-card:hover {
+  transform: translateY(-6px);
+  box-shadow:
+    0 20px 40px rgba(26, 77, 143, 0.1),
+    0 8px 16px rgba(0, 0, 0, 0.06);
+  border-color: rgba(26, 77, 143, 0.2) !important;
+}
+
+/* Top-edge accent bar — expands left→right on hover */
+.svc-card-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0;
+  background: linear-gradient(90deg, #1A4D8F, #E87722);
+  border-radius: 0 0 3px 0;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.svc-card:hover .svc-card-accent {
+  width: 100%;
+}
+
+/* Icon wrapper — background swap + scale spring */
+.svc-icon-wrap {
+  transition:
+    background-color 0.3s ease,
+    transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.svc-card:hover .svc-icon-wrap {
+  background-color: #1A4D8F;
+  transform: scale(1.12) rotate(-6deg);
+}
+
+/* Icon itself — colour swap to white when wrapper fills */
+.svc-icon {
+  transition: color 0.25s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.svc-card:hover .svc-icon {
+  color: #ffffff !important;
+  transform: rotate(6deg);
+}
+
+/* Learn more link — gap-expand + amber colour on hover */
+.svc-learn-more {
+  gap: 0.35rem;
+  transition: color 0.25s ease, gap 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.svc-card:hover .svc-learn-more {
+  color: #E87722;
+  gap: 0.6rem;
+}
+
+/* Underline grow on Learn more text */
+.svc-learn-more-text {
+  position: relative;
+}
+
+.svc-learn-more-text::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: currentColor;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.svc-card:hover .svc-learn-more-text::after {
+  width: 100%;
+}
+
+/* Arrow slide on hover */
+.svc-learn-more-arrow {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+}
+
+.svc-card:hover .svc-learn-more-arrow {
+  transform: translateX(4px);
+}
+
+/* ─── Reduced motion overrides ────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .svc-card {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .svc-card:hover {
+    transform: none;
+  }
+  .svc-card-accent {
+    transition: none;
+  }
+  .svc-icon-wrap {
+    transition: background-color 0.2s ease;
+  }
+  .svc-card:hover .svc-icon-wrap {
+    transform: none;
+  }
+  .svc-card:hover .svc-icon {
+    transform: none;
+  }
+  .svc-learn-more {
+    transition: color 0.2s ease;
+  }
+  .svc-card:hover .svc-learn-more {
+    gap: 0.35rem;
+  }
+  .svc-learn-more-text::after {
+    transition: none;
+  }
+  .svc-learn-more-arrow {
+    transition: none;
+  }
+  .svc-card:hover .svc-learn-more-arrow {
+    transform: none;
+  }
+}
+
+/* ─── Why Elevare — Feature Card & Image Interactions ─────────────── */
+
+/* Card hover: lift + shadow + border tint */
+.why-card {
+  transition:
+    transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.3s ease;
+  cursor: default;
+}
+
+.why-card:hover {
+  transform: translateY(-5px);
+  box-shadow:
+    0 16px 36px rgba(26, 77, 143, 0.1),
+    0 6px 12px rgba(0, 0, 0, 0.05);
+  border-color: rgba(26, 77, 143, 0.2) !important;
+}
+
+/* Top-edge accent bar — same language as service cards */
+.why-card-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0;
+  background: linear-gradient(90deg, #1A4D8F, #E87722);
+  border-radius: 0 0 3px 0;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.why-card:hover .why-card-accent {
+  width: 100%;
+}
+
+/* Icon wrapper — spring scale + bg fill */
+.why-icon-wrap {
+  transition:
+    background-color 0.3s ease,
+    transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.why-card:hover .why-icon-wrap {
+  background-color: #1A4D8F;
+  transform: scale(1.1) rotate(-5deg);
+}
+
+/* Icon — colour swap to white */
+.why-icon {
+  transition: color 0.25s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.why-card:hover .why-icon {
+  color: #ffffff !important;
+  transform: rotate(5deg);
+}
+
+/* Card title — blue tint on hover */
+.why-card-title {
+  transition: color 0.25s ease;
+}
+
+.why-card:hover .why-card-title {
+  color: #1A4D8F;
+}
+
+/* Right image panel — subtle zoom on hover */
+.why-image-wrap {
+  transition: box-shadow 0.4s ease;
+}
+
+.why-image-wrap:hover {
+  box-shadow: 0 28px 72px rgba(26, 77, 143, 0.18) !important;
+}
+
+.why-image {
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.why-image-wrap:hover .why-image {
+  transform: scale(1.04);
+}
+
+/* ─── Reduced motion overrides ────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .why-card {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .why-card:hover {
+    transform: none;
+  }
+  .why-card-accent {
+    transition: none;
+  }
+  .why-icon-wrap {
+    transition: background-color 0.2s ease;
+  }
+  .why-card:hover .why-icon-wrap {
+    transform: none;
+  }
+  .why-card:hover .why-icon {
+    transform: none;
+  }
+  .why-image {
+    transition: none;
+  }
+  .why-image-wrap:hover .why-image {
+    transform: none;
+  }
+}
+
+/* ─── Hero Slideshow ─────────────────────────────────────────────────
+   Architecture:
+   - .hero-slideshow       absolute full-bleed container, z-index 0
+   - .hero-slide           each slide div, position: absolute, opacity: 0
+   - .hero-slide--active   opacity: 1 (crossfade driven by transition)
+   - .hero-slide-img       100% x 100% cover, Ken Burns animation per slide
+   - .hero-slide-overlay   dark gradient; strong on left, lighter on right
+───────────────────────────────────────────────────────────────────── */
+
+.hero-slideshow {
+  z-index: 0;
+  pointer-events: auto;
+}
+
+/* Each slide — stacked via absolute + opacity crossfade */
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+  overflow: hidden;
+}
+
+.hero-slide--active {
+  opacity: 1;
+}
+
+/* Image fills the slide — Ken Burns animation rotates through 5 variants */
+.hero-slide-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  transform-origin: center center;
+  user-select: none;
+  will-change: transform;
+}
+
+/* Assign a different Ken Burns path to each slide using nth-child */
+.hero-slide:nth-child(1) .hero-slide-img { animation: kb-pan-1 12s ease-in-out infinite alternate; }
+.hero-slide:nth-child(2) .hero-slide-img { animation: kb-pan-2 14s ease-in-out infinite alternate; }
+.hero-slide:nth-child(3) .hero-slide-img { animation: kb-pan-3 13s ease-in-out infinite alternate; }
+.hero-slide:nth-child(4) .hero-slide-img { animation: kb-pan-4 15s ease-in-out infinite alternate; }
+.hero-slide:nth-child(5) .hero-slide-img { animation: kb-pan-5 11s ease-in-out infinite alternate; }
+
+@keyframes kb-pan-1 {
+  from { transform: scale(1.08) translate(0, 0); }
+  to   { transform: scale(1.00) translate(-1.5%, 1%); }
+}
+@keyframes kb-pan-2 {
+  from { transform: scale(1.00) translate(1.5%, -1%); }
+  to   { transform: scale(1.08) translate(0, 0); }
+}
+@keyframes kb-pan-3 {
+  from { transform: scale(1.06) translate(-1%, -1.5%); }
+  to   { transform: scale(1.00) translate(1%, 0.5%); }
+}
+@keyframes kb-pan-4 {
+  from { transform: scale(1.00) translate(0, 1%); }
+  to   { transform: scale(1.07) translate(-1.5%, -0.5%); }
+}
+@keyframes kb-pan-5 {
+  from { transform: scale(1.05) translate(1%, 0); }
+  to   { transform: scale(1.00) translate(-1%, 1.5%); }
+}
+
+/* Multi-stop overlay:
+   - Left column (0-55%): dark enough for white text to pass WCAG AA
+   - Right column (55-100%): progressively lighter so the image breathes */
+.hero-slide-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    rgba(8, 16, 42, 0.62)  0%,
+    rgba(8, 16, 42, 0.54) 28%,
+    rgba(8, 16, 42, 0.32) 52%,
+    rgba(8, 16, 42, 0.12) 72%,
+    rgba(8, 16, 42, 0.03) 100%
+  );
+  pointer-events: none;
+}
+
+/* Reduced motion: disable Ken Burns, keep crossfade */
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide-img {
+    animation: none !important;
+    transform: none !important;
+  }
+  .hero-slide {
+    transition: opacity 0.6s ease;
   }
 }

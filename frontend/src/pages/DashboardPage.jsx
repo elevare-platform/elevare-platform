@@ -4,6 +4,7 @@ import {
   LogOut, Briefcase, ArrowRight, MailCheck,
   Plus, TrendingUp, FileText, CheckCircle,
   Sparkles, Heart, Cpu, LayoutDashboard, Lock,
+  FileSearch
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -11,6 +12,8 @@ import { useJobs } from '@/hooks/useJobs'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import api from '@/lib/api'
+import { EmployerCVParser } from '@/pages/employer/EmployerCVParserPage'
+
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
@@ -37,7 +40,7 @@ function StatCard({ icon: Icon, label, value, colour, loading }) {
 function StatusBadge({ status }) {
   const map = {
     ACTIVE: 'bg-green-100 text-green-700',
-    DRAFT:  'bg-amber-100 text-amber-700',
+    DRAFT: 'bg-amber-100 text-amber-700',
     CLOSED: 'bg-gray-100 text-gray-500',
   }
   return (
@@ -54,7 +57,10 @@ function EmployerDashboard({ user }) {
   const [statsLoading, setStatsLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
-  const { jobs, loading: jobsLoading } = useJobs({ endpoint: '/api/v1/jobs/mine', limit: 5 })
+  const { jobs, loading: jobsLoading } = useJobs({
+    endpoint: '/api/v1/jobs/mine',
+    params: { limit: 10 }
+  })
 
   useEffect(() => {
     api.get('/api/v1/employer/stats')
@@ -64,7 +70,7 @@ function EmployerDashboard({ user }) {
 
     api.get('/api/v1/employer/profile')
       .then(({ data }) => setProfile(data))
-      .catch(() => {})
+      .catch(() => { })
   }, [])
 
   const isProfileComplete = user?.is_profile_complete
@@ -74,6 +80,7 @@ function EmployerDashboard({ user }) {
     { id: 'talent-pipeline', label: 'Talent Pipeline', icon: Sparkles, badge: 'AI' },
     { id: 'saved-candidates', label: 'Saved Candidates', icon: Heart },
     { id: 'ai-recommendations', label: 'AI Recommendations', icon: Cpu, badge: 'AI' },
+    { id: 'cv-parser', label: 'CV Parser', icon: FileSearch }
   ]
 
   return (
@@ -110,7 +117,7 @@ function EmployerDashboard({ user }) {
 
       {/* Main Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
+
         {/* Left column: Navigation tabs list */}
         <nav className="lg:col-span-3 space-y-1.5" aria-label="Dashboard sub-navigation">
           {tabs.map((tab) => {
@@ -120,20 +127,18 @@ function EmployerDashboard({ user }) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold transition-all text-left ${
-                  isActive
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold transition-all text-left ${isActive
                     ? 'bg-brand-blue text-white shadow-md'
                     : 'bg-white text-text-muted border border-border hover:bg-surface-muted hover:text-brand-blue'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Icon size={18} className={isActive ? 'text-white' : 'text-slate-400'} />
                   <span>{tab.label}</span>
                 </div>
                 {tab.badge && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-brand-amber/10 text-brand-amber'
-                  }`}>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${isActive ? 'bg-white/20 text-white' : 'bg-brand-amber/10 text-brand-amber'
+                    }`}>
                     {tab.badge}
                   </span>
                 )}
@@ -148,10 +153,10 @@ function EmployerDashboard({ user }) {
             <>
               {/* Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <StatCard icon={Briefcase}    label="Total jobs"    value={stats?.total_jobs}         colour="bg-brand-blue"  loading={statsLoading} />
-                <StatCard icon={CheckCircle}  label="Active"        value={stats?.active_jobs}         colour="bg-green-500"   loading={statsLoading} />
-                <StatCard icon={FileText}     label="Drafts"        value={stats?.draft_jobs}          colour="bg-brand-amber" loading={statsLoading} />
-                <StatCard icon={TrendingUp}   label="Applications"  value={stats?.total_applications}  colour="bg-purple-500"  loading={statsLoading} />
+                <StatCard icon={Briefcase} label="Total jobs" value={stats?.total_jobs} colour="bg-brand-blue" loading={statsLoading} />
+                <StatCard icon={CheckCircle} label="Active" value={stats?.active_jobs} colour="bg-green-500" loading={statsLoading} />
+                <StatCard icon={FileText} label="Drafts" value={stats?.draft_jobs} colour="bg-brand-amber" loading={statsLoading} />
+                <StatCard icon={TrendingUp} label="Applications" value={stats?.total_applications} colour="bg-purple-500" loading={statsLoading} />
               </div>
 
               {/* Recent jobs */}
@@ -163,7 +168,7 @@ function EmployerDashboard({ user }) {
 
                 {jobsLoading && (
                   <div className="p-4 space-y-3">
-                    {[1,2,3].map(i => (
+                    {[1, 2, 3].map(i => (
                       <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />
                     ))}
                   </div>
@@ -179,17 +184,19 @@ function EmployerDashboard({ user }) {
                 )}
 
                 {!jobsLoading && jobs.length > 0 && (
-                  <ul>
-                    {jobs.map(job => (
-                      <li key={job.id} className="flex items-center gap-3 px-5 py-3 border-b border-border last:border-0 hover:bg-surface-muted transition-colors">
-                        <div className="flex-1 min-w-0">
-                          <Link to={`/jobs/${job.id}`} className="text-sm font-medium text-text hover:text-brand-blue truncate block">{job.title}</Link>
-                          <p className="text-xs text-text-muted truncate">{job.location}</p>
-                        </div>
-                        <StatusBadge status={job.status} />
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="max-h-[280px] overflow-y-auto divide-y divide-border scrollbar-thin scrollbar-thumb-gray-200">
+                    <ul>
+                      {jobs.map(job => (
+                        <li key={job.id} className="flex items-center gap-3 px-5 py-3 border-b border-border last:border-0 hover:bg-surface-muted transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <Link to={`/jobs/${job.id}`} className="text-sm font-medium text-text hover:text-brand-blue truncate block">{job.title}</Link>
+                            <p className="text-xs text-text-muted truncate">{job.location}</p>
+                          </div>
+                          <StatusBadge status={job.status} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
 
@@ -267,6 +274,11 @@ function EmployerDashboard({ user }) {
               </div>
             </div>
           )}
+
+          {activeTab === 'cv-parser' && (
+            <EmployerCVParser />
+          )}
+
         </div>
 
       </div>
