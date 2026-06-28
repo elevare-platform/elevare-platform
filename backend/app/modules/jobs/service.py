@@ -98,6 +98,10 @@ class JobService:
     ) -> JobResponse:
         """Update a job partially. Only the owning employer can modify it.
 
+        If description, required_skills, or seniority_level change, re-fires
+        score_application_task for every active application on this job so
+        ai_score stays consistent with the updated job inputs.
+
         Raises
         ------
             JobNotFoundError: If the job does not exist.
@@ -106,8 +110,31 @@ class JobService:
         """
         job = await self._repo.get_by_id(job_id)
         self._check_ownership(job, current_user)
+
+        # Detect whether any scoring-relevant fields are changing
+        scoring_fields = {"description", "required_skills", "seniority_level"}
+        update_data = data.model_dump(exclude_unset=True)
+        scoring_changed = bool(scoring_fields & update_data.keys())
+
         job = await self._repo.update(job, data)
         await self._db.commit()
+
+        # Re-fire scoring for all applications on this job if inputs changed
+        if scoring_changed:
+            from app.modules.ai.tasks import score_application_task
+            from app.modules.applications.repository import ApplicationRepository
+
+            app_repo = ApplicationRepository(self._db)
+            application_ids = await app_repo.get_application_ids_for_job(job_id)
+            for app_id in application_ids:
+                score_application_task.delay(str(app_id))
+            if application_ids:
+                logger.info(
+                    "update_job: re-queued scoring for %d applications on job %s",
+                    len(application_ids),
+                    job_id,
+                )
+
         return JobResponse.from_job(job)
 
     async def get_job_by_id(self, job_id: UUID) -> JobResponse:

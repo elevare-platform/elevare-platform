@@ -97,7 +97,10 @@ async def db_session():
 
 @pytest_asyncio.fixture
 async def client(db_session):
-    """Async HTTP client with DB and email dependencies overridden for tests."""
+    """Async HTTP client with DB, email, and Redis dependencies overridden for tests."""
+    from unittest.mock import AsyncMock
+
+    from app.core.dependencies import get_redis_client
 
     async def override_get_db():
         yield db_session
@@ -105,8 +108,17 @@ async def client(db_session):
     def override_get_email_service():
         return StubEmailService()
 
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    mock_redis.setex = AsyncMock()
+    mock_redis.aclose = AsyncMock()
+
+    async def override_get_redis():
+        yield mock_redis
+
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_email_service] = override_get_email_service
+    app.dependency_overrides[get_redis_client] = override_get_redis
 
     async with AsyncClient(
         transport=ASGITransport(app=app),

@@ -76,13 +76,17 @@ async def withdraw_application(
 async def get_job_applicants(
     job_id: uuid.UUID,
     status: str | None = Query(default=None),
+    sort: str | None = Query(default=None, description="Sort by 'ai_score' (descending) or omit for default (created_at desc)"),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> ApplicationList:
     """Employer or admin views applicants for a job."""
-    filters = ApplicationFilters(status=status.upper()) if status else ApplicationFilters()
+    filters = ApplicationFilters(
+        status=status.upper() if status else None,
+        sort=sort,
+    )
     return await ApplicationService(db).get_job_applicants(
         job_id=job_id,
         current_user_id=current_user.id,

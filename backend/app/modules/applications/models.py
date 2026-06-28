@@ -12,10 +12,12 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    String,
     Text,
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
@@ -23,7 +25,9 @@ from app.core.database import BaseModel
 from .enums import ApplicationStatus
 
 if TYPE_CHECKING:
+    from app.modules.applications.models import Application
     from app.modules.jobs.models import Job
+    from app.modules.talent_pool.models import TalentPoolProfiles
     from app.modules.users.models import User
 
 
@@ -79,6 +83,37 @@ class Application(BaseModel):
         nullable=True
     )
 
+    ai_score: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    ai_strengths: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True
+    )
+    ai_weaknesses: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    ai_fit_summary: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    ai_score_job_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    ai_score_cv_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    ai_score_computed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+
     # Relationships
     job: Mapped[Job] = relationship("Job", foreign_keys=[job_id])
     # candidate_id is a FK to users.id — relationship resolves to the User,
@@ -93,4 +128,10 @@ class Application(BaseModel):
         foreign_keys=[status_updated_by],
         back_populates="application_updated_by"
     )
+    promoted_talent_pool_application: Mapped[TalentPoolProfiles] = relationship(
+        "TalentPoolProfiles",
+        back_populates="promoted_application",
+        uselist=False
+    )
+
 

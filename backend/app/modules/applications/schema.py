@@ -32,6 +32,12 @@ class ApplicationResponse(BaseModel):
     # AI match score — null until background task computes it
     match_score: int | None = None
     score_computed_at: datetime | None = None
+    # Phase 11.5 composite AI score — distinct from match_score (Phase 6.5 keyword signal)
+    ai_score: int | None = None
+    ai_fit_summary: str | None = None
+    ai_strengths: list[str] | None = None
+    ai_weaknesses: list[str] | None = None
+    ai_score_computed_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,6 +80,11 @@ class ApplicationResponse(BaseModel):
             candidate_profile_id=candidate_profile.id if candidate_profile else None,
             match_score=application.match_score,
             score_computed_at=application.score_computed_at,
+            ai_score=application.ai_score,
+            ai_fit_summary=application.ai_fit_summary,
+            ai_strengths=application.ai_strengths,
+            ai_weaknesses=application.ai_weaknesses,
+            ai_score_computed_at=application.ai_score_computed_at,
         )
 
 
@@ -85,10 +96,12 @@ class ApplicationList(BaseModel):
     count: int
     total: int = 0
 
+
 class ApplicationFilters(BaseModel):
     """Query filters for listing applications."""
 
     status: ApplicationStatus | None = None
+    sort: str | None = None  # "ai_score" → descending by ai_score; default is created_at desc
 
 
 class ApplicationCreateRequest(BaseModel):

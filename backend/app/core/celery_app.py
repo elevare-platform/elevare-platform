@@ -28,7 +28,8 @@ celery = Celery(
     broker=_broker_url,
     backend=_backend_url,
     include=[
-        "core.tasks",  # health check task
+        "core.tasks",          # health check task
+        "app.modules.ai.tasks", # CV parsing pipeline
     ],
 )
 

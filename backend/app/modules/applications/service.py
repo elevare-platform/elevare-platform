@@ -19,6 +19,7 @@ from app.core.exceptions import (
     ProfileNotFoundException,
 )
 from app.modules.ai.service import AIService, get_ai_service
+from app.modules.ai.tasks import score_application_task
 from app.modules.applications.enums import ApplicationStatus
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.applications.schema import (
@@ -142,6 +143,9 @@ class ApplicationService:
             job.required_skills or [],
             get_ai_service(),
         )
+        # Queue Phase 11.5 composite AI scoring (deterministic + LLM reasoning).
+        # Runs independently of match_score — both fields coexist on the application.
+        score_application_task.delay(str(application.id))
 
         await self._db.commit()
 

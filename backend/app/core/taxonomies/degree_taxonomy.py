@@ -1,0 +1,31 @@
+DEGREE_TAXONOMY = {
+    # Nigerian qualifications
+    "b.sc", "bsc", "bachelor of science",
+    "b.eng", "beng", "bachelor of engineering",
+    "b.tech", "btech", "bachelor of technology",
+    "b.a", "ba", "bachelor of arts",
+    "b.ed", "bed", "bachelor of education",
+    "b.pharm", "bpharm", "bachelor of pharmacy",
+    "mbbs", "bachelor of medicine",
+    "llb", "bachelor of law",
+    "hnd", "higher national diploma",
+    "ond", "ordinary national diploma",
+    "m.sc", "msc", "master of science",
+    "mba", "master of business administration",
+    "m.eng", "meng", "master of engineering",
+    "m.a", "ma", "master of arts",
+    "pgd", "postgraduate diploma",
+    "ph.d", "phd", "doctor of philosophy",
+    "d.sc", "dsc", "doctor of science",
+    "nce", "nigeria certificate in education",
+    "fslc", "first school leaving certificate",
+    "waec", "west african examinations council",
+    "neco", "national examinations council",
+    "ssce", "senior secondary certificate examination",
+    "nabteb",
+
+    # International qualifications
+    "associate degree", "bachelor", "master", "doctorate",
+    "diploma", "certificate", "a-levels", "o-levels",
+    "btec", "nvq", "gnvq",
+}

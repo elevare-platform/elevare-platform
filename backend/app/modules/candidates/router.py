@@ -2,10 +2,11 @@
 
 import uuid
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_db, require_role
+from app.core.dependencies import get_db, get_redis_client, require_role
 from app.core.schemas import SuccessResponse
 from app.core.storage import StorageService, get_storage_service
 from app.modules.candidates.schema import (
@@ -29,9 +30,10 @@ router = APIRouter()
 def get_service(
     db: AsyncSession = Depends(get_db),
     storage: StorageService = Depends(get_storage_service),
+    redis: aioredis.Redis = Depends(get_redis_client),
 ) -> CandidateService:
-    """Construct a :class:`CandidateService` with injected DB session and storage."""
-    return CandidateService(db, storage)
+    """Construct a :class:`CandidateService` with injected DB session, storage, and Redis."""
+    return CandidateService(db, storage, redis)
 
 
 # ------------------------------------------------------------------

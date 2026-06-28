@@ -66,5 +66,17 @@ class Settings(BaseSettings):
     sales_email: str = "hr@elevare.com.ng"
     site_url: str = "https://elevare-platform.vercel.app/"
 
+    # Claude API KEY
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-3-5-sonnet-20241022"
+
+    # HMAC secret for CV text cache keys
+    hmac_secret: str = "change-me-in-production"
+
+    # AI scoring visibility — candidates never see ai_score unless this is True
+    show_ai_score_to_candidates: bool = False
+    # Default expiry for job access tokens in days
+    default_access_token_expiry_days: int = 30
+
 
 settings = Settings()

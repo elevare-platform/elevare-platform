@@ -65,7 +65,10 @@ class UserRepository:
             self._db.add(employer_profile)
             await self._db.flush()
         elif user.role == UserRole.CANDIDATE.value:
-            candidate_profile = CandidateProfile(user_id=user.id)
+            candidate_profile = CandidateProfile(
+                user_id=user.id,
+                cv_sharing_consent=data.get("cv_sharing_consent", False),
+            )
             self._db.add(candidate_profile)
             await self._db.flush()
 

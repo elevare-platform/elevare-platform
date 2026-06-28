@@ -101,9 +101,10 @@ function AppRoutes() {
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/unauthorised" element={<UnauthorisedPage />} />
 
-        {/* Public job routes */}
+        {/* Public routes — no auth */}
         <Route path="/jobs" element={<JobBoardPage />} />
         <Route path="/jobs/:id" element={<JobDetailPage />} />
+        <Route path="/shared/jobs/:token" element={<SharedApplicantsPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
@@ -120,9 +121,6 @@ function AppRoutes() {
           <Route path="/employer/talent-pool" element={<TalentPoolPage />} />
         </Route>
 
-        {/* Public shared applicant view — no auth */}
-        <Route path="/shared/jobs/:token" element={<SharedApplicantsPage />} />
-
         {/* Admin-only routes */}
         <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
           <Route path="/admin/invite" element={<AdminInvitePage />} />
@@ -132,6 +130,7 @@ function AppRoutes() {
           <Route path="/admin/applications" element={<AdminApplicationsPage />} />
           <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
           <Route path="/admin/cv-parser" element={<AdminCVParserPage />} />
+          <Route path="/admin/talent-pool" element={<TalentPoolPage />} />
         </Route>
 
         {/* Candidate-only routes */}

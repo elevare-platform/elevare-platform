@@ -236,6 +236,47 @@ async def export_applications(
 
 
 # ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+@router.get("/settings", status_code=200)
+async def get_settings(
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """Return current platform settings visible to admins."""
+    return {
+        "show_ai_score_to_candidates": settings.show_ai_score_to_candidates,
+        "default_access_token_expiry_days": settings.default_access_token_expiry_days,
+    }
+
+
+@router.patch("/settings/ai-score-visibility", status_code=200)
+async def toggle_ai_score_visibility(
+    enabled: bool,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """Toggle whether candidates can see their ai_score. Writes an audit log entry."""
+    old_value = settings.show_ai_score_to_candidates
+    # Runtime toggle — affects the in-memory settings object for this process.
+    # A deploy/restart resets to the env value, which is intentional.
+    settings.show_ai_score_to_candidates = enabled
+
+    service = AdminService(db)
+    await service._repo.write_audit_log(
+        admin_id=admin_user.id,
+        action="toggled_ai_score_visibility",
+        reason=None,
+        target_type="platform_settings",
+        target_id=admin_user.id,  # no specific target — use admin's own id as a placeholder
+        log_metadata={"old_value": old_value, "new_value": enabled},
+    )
+    await db.commit()
+
+    return {"show_ai_score_to_candidates": settings.show_ai_score_to_candidates}
+
+
+# ---------------------------------------------------------------------------
 # Audit Log
 # ---------------------------------------------------------------------------
 

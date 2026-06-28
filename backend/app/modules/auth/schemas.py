@@ -99,6 +99,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., exclude=True)
     role: UserRole
+    cv_sharing_consent: bool = False  # candidates only; ignored for other roles
 
     @field_validator("role")
     @classmethod

@@ -71,6 +71,25 @@ class CandidateRepository:
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def create(
+        self,
+        user_id: uuid.UUID | None = None,
+        skills: list[str] | None = None,
+        years_of_experience: int | None = None,
+        linkedin_url: str | None = None,
+    ) -> CandidateProfile:
+        """Create a new candidate profile, optionally linked to a user account."""
+        profile = CandidateProfile(
+            user_id=user_id,
+            skills=skills,
+            years_of_experience=years_of_experience,
+            linkedin_url=linkedin_url,
+        )
+        self._db.add(profile)
+        await self._db.flush()
+        await self._db.refresh(profile)
+        return profile
+
     async def get_by_id(self, profile_id: uuid.UUID) -> CandidateProfile | None:
         """Fetch a candidate profile by its own PK."""
         stmt = (

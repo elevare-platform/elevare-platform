@@ -50,7 +50,7 @@ _EXT_TO_MIME: dict[str, str] = {
 class CandidateService:
     """Orchestrates business logic for candidate profiles, CVs, and documents."""
 
-    def __init__(self, db: AsyncSession, storage: StorageService) -> None:
+    def __init__(self, db: AsyncSession, storage: StorageService, redis=None) -> None:
         """Initialise the service with a database session and storage backend.
 
         Args:
@@ -61,6 +61,7 @@ class CandidateService:
         """
         self._db = db
         self._storage = storage
+        self._redis = redis
         self._repo = CandidateRepository(db)
 
     # ------------------------------------------------------------------
@@ -191,6 +192,8 @@ class CandidateService:
             CVErrorException: If the storage upload fails.
 
         """
+        from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
+
         validate_pdf_upload(file, filename)
 
         profile = await self._repo.get_by_user_id(user_id)
@@ -213,6 +216,71 @@ class CandidateService:
             raise CVErrorException(str(e)) from e
 
         cv = await self._repo.save_cv(profile.id, uploaded_key, filename, is_default=is_first)
+
+        # Trigger CV parsing pipeline — create a ParsedCVSubmission row for tracking
+        try:
+            import hashlib
+            import hmac as hmac_module
+            import json
+
+            from app.core.config import settings
+            from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
+            from app.modules.ai.enums import CVParsingStatus
+            from app.modules.ai.models import ParsedCVSubmission
+
+            text_result = extract_text_from_pdf(file)
+            cv_text_hash = hmac_module.new(
+                settings.hmac_secret.encode(),
+                (text_result.text or "").encode(),
+                hashlib.sha256,
+            ).hexdigest()
+            cache_key = f"cv_parse:{cv_text_hash}"
+
+            # Check Redis cache
+            cached = None
+            if self._redis:
+                try:
+                    cached = await self._redis.get(cache_key)
+                except Exception:
+                    pass
+
+            if cached:
+                logger.info("CV ALREADY PARSED IN REDIS")
+                parsed_data = json.loads(cached)
+                submission = ParsedCVSubmission(
+                    uploaded_by=user_id,
+                    filename=filename,
+                    r2_key=uploaded_key,
+                    cv_text_hash=cv_text_hash,
+                    parse_status=CVParsingStatus.COMPLETED.value,
+                    parsed_data=parsed_data,
+                )
+                self._db.add(submission)
+                await self._db.flush()
+                cv.cv_parse_status = CVParsingStatus.COMPLETED.value
+                cv.submission_id = submission.id
+            else:
+                submission = ParsedCVSubmission(
+                    uploaded_by=user_id,
+                    filename=filename,
+                    r2_key=uploaded_key,
+                    cv_text_hash=cv_text_hash,
+                    parse_status=CVParsingStatus.PENDING.value,
+                )
+                self._db.add(submission)
+                await self._db.flush()
+                cv.submission_id = submission.id
+
+                from app.modules.ai.tasks import run_full_pipeline_task
+                run_full_pipeline_task.delay(
+                    submission_id=str(submission.id),
+                    cache_key=cache_key,
+                    file=file,
+                )
+
+        except Exception as e:
+            logger.error(f"CV parsing trigger failed for user {user_id}: {e}")
+            # Don't fail the upload — parsing is best-effort
 
         # Recompute profile completion — a CV is required for is_profile_complete=True.
         # Expire the cached profile so the reload picks up the newly inserted CV row.

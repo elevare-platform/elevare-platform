@@ -24,6 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
+from app.modules.ai.enums import CVParsingStatus
 from app.modules.candidates.enums import VisibilityStatus
 from app.modules.jobs.enums import WorkModel
 
@@ -54,7 +55,7 @@ class CandidateProfile(BaseModel):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         unique=True,
     )
 
@@ -88,6 +89,13 @@ class CandidateProfile(BaseModel):
         nullable=False,
         default=VisibilityStatus.APPLIED_ONLY.value,
         server_default="APPLIED_ONLY",
+    )
+
+    cv_sharing_consent: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.false(),
     )
 
     # Relationships
@@ -135,6 +143,23 @@ class CandidateCvs(BaseModel):
         nullable=False,
         # DB enforces at most one is_default=True per candidate_id
         # via partial unique index: one_default_cv_per_candidate
+    )
+    cv_parse_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+    submission_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("parsed_cv_submissions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    cv_parse_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=CVParsingStatus.PENDING.value,
+        server_default=CVParsingStatus.PENDING.value,
     )
 
     # Relationships

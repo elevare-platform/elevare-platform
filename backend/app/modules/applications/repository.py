@@ -15,7 +15,10 @@ from app.modules.users.models import User
 
 
 class ApplicationRepository:
+    """Data-access layer for :class:`Application` records."""
+
     def __init__(self, db: AsyncSession) -> None:
+        """Initialise the repository with an async database session."""
         self._db = db
 
     def _base_options(self):
@@ -31,6 +34,7 @@ class ApplicationRepository:
         ]
 
     async def get_by_id(self, application_id: uuid.UUID) -> Application | None:
+        """Fetch an application by its primary key with all relationships eager-loaded."""
         stmt = (
             select(Application)
             .where(Application.id == application_id)
@@ -46,6 +50,7 @@ class ApplicationRepository:
         cv_id: uuid.UUID | None,
         cover_letter: str | None,
     ) -> Application:
+        """Persist a new application record and return it."""
         application = Application(
             candidate_id=candidate_id,
             job_id=job_id,
@@ -87,6 +92,7 @@ class ApplicationRepository:
         return {row[0] for row in result.fetchall()}
 
     async def update(self, application_id: uuid.UUID, data: dict) -> Application:
+        """Apply a partial update dict to an application and return the updated record."""
         application = await self.get_by_id(application_id)
         for key, value in data.items():
             setattr(application, key, value)
@@ -101,6 +107,7 @@ class ApplicationRepository:
         cursor: str | None = None,
         limit: int = 20,
     ):
+        """Return a paginated cursor result of all applications for a candidate."""
         stmt = (
             select(Application)
             .where(Application.candidate_id == candidate_id)
@@ -113,6 +120,12 @@ class ApplicationRepository:
 
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
+    async def get_application_ids_for_job(self, job_id: uuid.UUID) -> list[uuid.UUID]:
+        """Return all application IDs for a given job. Used to re-fire scoring tasks."""
+        stmt = select(Application.id).where(Application.job_id == job_id)
+        result = await self._db.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+
     async def get_job_applicants(
         self,
         job_id: uuid.UUID,
@@ -120,19 +133,25 @@ class ApplicationRepository:
         cursor: str | None = None,
         limit: int = 20,
     ):
+        """Return a paginated cursor result of applicants for a specific job."""
+        # Default order: created_at desc. If sort=ai_score, order by ai_score desc nulls last.
+        order_by = (
+            Application.ai_score.desc().nulls_last()
+            if filters and filters.sort == "ai_score"
+            else Application.created_at.desc()
+        )
+
         stmt = (
             select(Application)
             .where(Application.job_id == job_id)
             .options(
-                # job → employer → employer_profile (company info)
                 selectinload(Application.job)
                 .selectinload(Job.employer)
                 .selectinload(User.employer_profile),
-                # candidate (User) → candidate_profile (location, experience)
                 selectinload(Application.candidate)
                 .selectinload(User.candidate_profile),
             )
-            .order_by(Application.created_at.desc())
+            .order_by(order_by)
         )
 
         if filters and filters.status:

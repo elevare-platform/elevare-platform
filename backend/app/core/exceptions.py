@@ -369,6 +369,34 @@ class ApplicationNotFound(NotFoundException):
         super().__init__(message, code, status_code, details)
 
 
+class SubmissionNotFound(NotFoundException):
+    """Raised when a CV submission record is not found."""
+
+    def __init__(
+        self,
+        message: str = "Submission not found",
+        code: str = "SUBMISSION_NOT_FOUND",
+        status_code: int = 404,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class TokenNotFoundError(NotFoundException):
+    """Raised when a token record cannot be found by its identifier."""
+
+    def __init__(
+        self,
+        message: str = "Token not found",
+        code: str = "TOKEN_NOT_FOUND",
+        status_code: int = 404,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
 # ---------------------------------------------------------------------------
 # Validation  (HTTP 422)
 # ---------------------------------------------------------------------------

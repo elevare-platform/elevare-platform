@@ -76,6 +76,8 @@ class CandidateCvsResponse(BaseModel):
     key: str
     filename: str
     is_default: bool
+    cv_parse_status: str = "pending"
+    submission_id: UUID | None = None
     created_at: datetime
     url: str | None = None  # populated on demand via presigned URL
 

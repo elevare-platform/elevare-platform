@@ -16,6 +16,7 @@ from .enums import AccountStatus, UserRole
 
 if TYPE_CHECKING:
     from app.modules.admin.models import AuditLog
+    from app.modules.ai.models import ParsedCVSubmission
     from app.modules.applications.models import Application
     from app.modules.auth.models import (
         EmailVerificationToken,
@@ -23,7 +24,8 @@ if TYPE_CHECKING:
         RefreshToken,
     )
     from app.modules.candidates.models import CandidateProfile, ProfileView
-    from app.modules.jobs.models import Job
+    from app.modules.jobs.models import Job, JobAccessTokens
+    from app.modules.talent_pool.models import TalentPoolProfiles
 
 
 class User(BaseModel):
@@ -134,12 +136,32 @@ class User(BaseModel):
         "AuditLog",
         back_populates="admin"
     )
+    cv_uploader: Mapped[list[ParsedCVSubmission]] = relationship(
+        "ParsedCVSubmission",
+        back_populates="uploader"
+    )
+    job_access_tokens_created_by: Mapped[list[JobAccessTokens]] = relationship(
+        "JobAccessTokens",
+        back_populates="created_by",
+        foreign_keys="JobAccessTokens.created_by_id",
+    )
+    job_access_tokens_revoked_by: Mapped[list[JobAccessTokens]] = relationship(
+        "JobAccessTokens",
+        back_populates="revoked_by",
+        foreign_keys="JobAccessTokens.revoked_by_id",
+    )
+    talent_pool_added_by: Mapped[list[TalentPoolProfiles]] = relationship(
+        "TalentPoolProfiles",
+        back_populates="added_by_user",
+        foreign_keys="TalentPoolProfiles.added_by",
+    )
+
 
 
 
 
 class UserProfile(BaseModel):
-    """Optional candidate profile — avatar and location details."""
+    """Optional user profile — avatar and location details for any user type."""
 
     __tablename__ = "user_profiles"
 

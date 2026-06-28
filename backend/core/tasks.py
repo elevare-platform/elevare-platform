@@ -6,7 +6,7 @@ business domain — currently just the worker health check.
 
 import logging
 
-from config.celery_app import celery
+from app.core.celery_app import celery
 
 logger = logging.getLogger(__name__)
 

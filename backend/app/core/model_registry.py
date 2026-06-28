@@ -13,6 +13,7 @@ issues during initialization.
 """
 
 from app.modules.admin.models import AuditLog
+from app.modules.ai.models import CVParsingCost, ParsedCVSubmission
 from app.modules.applications.models import Application
 from app.modules.auth.models import EmailVerificationToken, InviteToken, RefreshToken
 from app.modules.candidates.models import (
@@ -24,7 +25,8 @@ from app.modules.candidates.models import (
     WorkExperience,
 )
 from app.modules.contact.models import ContactSubmission
-from app.modules.jobs.models import Job
+from app.modules.jobs.models import Job, JobAccessTokens
+from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.users.models import EmployerProfile, User, UserProfile
 
 __all__ = [
@@ -38,10 +40,14 @@ __all__ = [
     "Certification",
     "Education",
     "Job",
+    "JobAccessTokens",
+    "TalentPoolProfiles",
     "User",
     "UserProfile",
     "EmployerProfile",
     "Application",
     "AuditLog",
     "ContactSubmission",
+    "ParsedCVSubmission",
+    "CVParsingCost",
 ]

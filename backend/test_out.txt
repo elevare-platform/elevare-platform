@@ -1,0 +1,115 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.7, pytest-8.2.0, pluggy-1.6.0 -- /home/d3mxn/Documents/elevare-platform/backend/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/d3mxn/Documents/elevare-platform/backend
+configfile: pyproject.toml
+plugins: cov-5.0.0, anyio-4.13.0, asyncio-0.23.6
+asyncio: mode=Mode.AUTO
+collecting ... collected 6 items / 5 deselected / 1 selected
+
+tests/ai/test_cv_parsing_integration.py::test_submit_cv_creates_submission FAILED [100%]
+
+=================================== FAILURES ===================================
+______________________ test_submit_cv_creates_submission _______________________
+tests/ai/test_cv_parsing_integration.py:95: in test_submit_cv_creates_submission
+    assert len(submissions) == 1
+E   assert 14 == 1
+E    +  where 14 = len([<app.modules.ai.models.ParsedCVSubmission object at 0x7ff7175f2a20>, <app.modules.ai.models.ParsedCVSubmission object at 0x7ff7175f2a80>, <app.modules.ai.models.ParsedCVSubmission object at 0x7ff7175f2b10>, <app.modules.ai.models.ParsedCVSubmission object at 0x7ff7175f2b70>, <app.modules.ai.models.ParsedCVSubmission object at 0x7ff7175f2c00>, <app.modules.ai.models.ParsedCVSubmission object at 0x7ff7175f2c60>, ...])
+---------------------------- Captured stdout setup -----------------------------
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "app.main", "message": "Starting Elevare API", "taskName": "Task-2", "environment": "development", "version": "0.1.0"}
+2026-06-16 15:02:59,914 INFO sqlalchemy.engine.Engine select pg_catalog.version()
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "select pg_catalog.version()", "taskName": "Task-2"}
+2026-06-16 15:02:59,914 INFO sqlalchemy.engine.Engine [raw sql] ()
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "[raw sql] ()", "taskName": "Task-2"}
+2026-06-16 15:02:59,916 INFO sqlalchemy.engine.Engine select current_schema()
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "select current_schema()", "taskName": "Task-2"}
+2026-06-16 15:02:59,917 INFO sqlalchemy.engine.Engine [raw sql] ()
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "[raw sql] ()", "taskName": "Task-2"}
+2026-06-16 15:02:59,919 INFO sqlalchemy.engine.Engine show standard_conforming_strings
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "show standard_conforming_strings", "taskName": "Task-2"}
+2026-06-16 15:02:59,919 INFO sqlalchemy.engine.Engine [raw sql] ()
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "[raw sql] ()", "taskName": "Task-2"}
+2026-06-16 15:02:59,922 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "BEGIN (implicit)", "taskName": "Task-2"}
+2026-06-16 15:02:59,922 INFO sqlalchemy.engine.Engine SELECT 1
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "SELECT 1", "taskName": "Task-2"}
+2026-06-16 15:02:59,922 INFO sqlalchemy.engine.Engine [generated in 0.00047s] ()
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "[generated in 0.00047s] ()", "taskName": "Task-2"}
+2026-06-16 15:02:59,924 INFO sqlalchemy.engine.Engine ROLLBACK
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "sqlalchemy.engine.Engine", "message": "ROLLBACK", "taskName": "Task-3"}
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "app.main", "message": "Database connection verified", "taskName": "Task-2"}
+{"asctime": "2026-06-16T15:02:59Z", "levelname": "INFO", "name": "app.main", "message": "Redis connection verified", "taskName": "Task-2"}
+{"asctime": "2026-06-16T15:03:02Z", "levelname": "INFO", "name": "app.main", "message": "spaCy model loaded", "taskName": "Task-2"}
+----------------------------- Captured stdout call -----------------------------
+{"asctime": "2026-06-16T15:03:02Z", "levelname": "INFO", "name": "app.core.middleware", "message": "Request started | request_id=8bea74a1-5ea1-4e8e-9463-aafdc474caec method=POST path=/api/v1/auth/register client_ip=127.0.0.1", "taskName": "Task-8"}
+{"asctime": "2026-06-16T15:03:02Z", "levelname": "INFO", "name": "app.modules.auth.service", "message": "Registering user...", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "INFO", "name": "app.modules.auth.service", "message": "User registered successfully with email: user_4e974ee2@example.com", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "INFO", "name": "app.modules.auth.service", "message": "Verification token (stub mode): TbABxmH1UwS91jObQQaqkwRvk_L7uE8IoKGar8xJkiA", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "INFO", "name": "app.core.middleware", "message": "Request completed | request_id=8bea74a1-5ea1-4e8e-9463-aafdc474caec status_code=201 duration_ms=1320.19", "taskName": "Task-8"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "INFO", "name": "httpx", "message": "HTTP Request: POST http://test/api/v1/auth/register \"HTTP/1.1 201 Created\"", "taskName": "Task-8"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "INFO", "name": "app.core.middleware", "message": "Request started | request_id=843ae373-4c35-411a-b8fb-5b1e9674695b method=POST path=/api/v1/cv-parsing/submit client_ip=127.0.0.1", "taskName": "Task-8"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_part_begin with no data", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_header_field with data[0:19]", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_header_value with data[21:62]", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_header_end with no data", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_header_field with data[64:76]", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_header_value with data[78:93]", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_header_end with no data", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_headers_finished with no data", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_part_data with data[0:78]", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_part_end with no data", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:03Z", "levelname": "DEBUG", "name": "multipart.multipart", "message": "Calling on_end with no data", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:07Z", "levelname": "DEBUG", "name": "httpx", "message": "load_ssl_context verify=True cert=None trust_env=True http2=False", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:07Z", "levelname": "DEBUG", "name": "httpx", "message": "load_verify_locations cafile='/home/d3mxn/Documents/elevare-platform/backend/.venv/lib/python3.12/site-packages/certifi/cacert.pem'", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:07Z", "levelname": "DEBUG", "name": "pdfminer.psparser", "message": "seek: 0", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:07Z", "levelname": "DEBUG", "name": "pdfminer.psparser", "message": "seek: 0", "taskName": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro"}
+{"asctime": "2026-06-16T15:03:07Z", "levelname": "INFO", "name": "app.core.middleware", "message": "Request completed | request_id=843ae373-4c35-411a-b8fb-5b1e9674695b status_code=201 duration_ms=3526.89", "taskName": "Task-8"}
+{"asctime": "2026-06-16T15:03:07Z", "levelname": "INFO", "name": "httpx", "message": "HTTP Request: POST http://test/api/v1/cv-parsing/submit \"HTTP/1.1 201 Created\"", "taskName": "Task-8"}
+------------------------------ Captured log call -------------------------------
+INFO     app.core.middleware:middleware.py:28 Request started | request_id=8bea74a1-5ea1-4e8e-9463-aafdc474caec method=POST path=/api/v1/auth/register client_ip=127.0.0.1
+INFO     app.modules.auth.service:service.py:94 Registering user...
+INFO     app.modules.auth.service:service.py:122 User registered successfully with email: user_4e974ee2@example.com
+INFO     app.modules.auth.service:service.py:127 Verification token (stub mode): TbABxmH1UwS91jObQQaqkwRvk_L7uE8IoKGar8xJkiA
+INFO     app.core.middleware:middleware.py:63 Request completed | request_id=8bea74a1-5ea1-4e8e-9463-aafdc474caec status_code=201 duration_ms=1320.19
+INFO     httpx:_client.py:1773 HTTP Request: POST http://test/api/v1/auth/register "HTTP/1.1 201 Created"
+INFO     app.core.middleware:middleware.py:28 Request started | request_id=843ae373-4c35-411a-b8fb-5b1e9674695b method=POST path=/api/v1/cv-parsing/submit client_ip=127.0.0.1
+DEBUG    multipart.multipart:multipart.py:626 Calling on_part_begin with no data
+DEBUG    multipart.multipart:multipart.py:623 Calling on_header_field with data[0:19]
+DEBUG    multipart.multipart:multipart.py:623 Calling on_header_value with data[21:62]
+DEBUG    multipart.multipart:multipart.py:626 Calling on_header_end with no data
+DEBUG    multipart.multipart:multipart.py:623 Calling on_header_field with data[64:76]
+DEBUG    multipart.multipart:multipart.py:623 Calling on_header_value with data[78:93]
+DEBUG    multipart.multipart:multipart.py:626 Calling on_header_end with no data
+DEBUG    multipart.multipart:multipart.py:626 Calling on_headers_finished with no data
+DEBUG    multipart.multipart:multipart.py:623 Calling on_part_data with data[0:78]
+DEBUG    multipart.multipart:multipart.py:626 Calling on_part_end with no data
+DEBUG    multipart.multipart:multipart.py:626 Calling on_end with no data
+DEBUG    httpx:_config.py:80 load_ssl_context verify=True cert=None trust_env=True http2=False
+DEBUG    httpx:_config.py:146 load_verify_locations cafile='/home/d3mxn/Documents/elevare-platform/backend/.venv/lib/python3.12/site-packages/certifi/cacert.pem'
+DEBUG    pdfminer.psparser:psparser.py:219 seek: 0
+DEBUG    pdfminer.psparser:psparser.py:219 seek: 0
+INFO     app.core.middleware:middleware.py:63 Request completed | request_id=843ae373-4c35-411a-b8fb-5b1e9674695b status_code=201 duration_ms=3526.89
+INFO     httpx:_client.py:1773 HTTP Request: POST http://test/api/v1/cv-parsing/submit "HTTP/1.1 201 Created"
+--------------------------- Captured stdout teardown ---------------------------
+{"asctime": "2026-06-16T15:03:08Z", "levelname": "INFO", "name": "app.main", "message": "Shutting down Elevare API", "taskName": "Task-32"}
+{"asctime": "2026-06-16T15:03:08Z", "levelname": "DEBUG", "name": "asyncio", "message": "Using selector: EpollSelector", "taskName": null}
+---------------------------- Captured log teardown -----------------------------
+INFO     app.main:main.py:95 Shutting down Elevare API
+DEBUG    asyncio:selector_events.py:64 Using selector: EpollSelector
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/spacy/cli/_util.py:23
+  /home/d3mxn/Documents/elevare-platform/backend/.venv/lib/python3.12/site-packages/spacy/cli/_util.py:23: DeprecationWarning: Importing 'parser.split_arg_string' is deprecated, it will only be available in 'shell_completion' in Click 9.0.
+    from click.parser import split_arg_string
+
+.venv/lib/python3.12/site-packages/pytesseract/pytesseract.py:32
+  /home/d3mxn/Documents/elevare-platform/backend/.venv/lib/python3.12/site-packages/pytesseract/pytesseract.py:32: DeprecationWarning: 'pkgutil.find_loader' is deprecated and slated for removal in Python 3.14; use importlib.util.find_spec() instead
+    numpy_installed = find_loader('numpy') is not None
+
+.venv/lib/python3.12/site-packages/pytesseract/pytesseract.py:36
+  /home/d3mxn/Documents/elevare-platform/backend/.venv/lib/python3.12/site-packages/pytesseract/pytesseract.py:36: DeprecationWarning: 'pkgutil.find_loader' is deprecated and slated for removal in Python 3.14; use importlib.util.find_spec() instead
+    pandas_installed = find_loader('pandas') is not None
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/ai/test_cv_parsing_integration.py::test_submit_cv_creates_submission
+================= 1 failed, 5 deselected, 3 warnings in 9.19s ==================

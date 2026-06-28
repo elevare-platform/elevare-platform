@@ -7,7 +7,7 @@ Also creates in-app Notification records for user-facing events.
 
 import logging
 
-from app.core.celery_app import celery_app
+from app.core.celery_app import celery
 from app.core.email import get_email_service
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 email_service = get_email_service()
 
 
-@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 async def send_application_confirmation(self, candidate_email, job_title, company_name):
     """Send an application confirmation email to the candidate."""
     try:
@@ -29,7 +29,7 @@ async def send_application_confirmation(self, candidate_email, job_title, compan
         raise self.retry(exc=exc) from exc
 
 
-@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 async def send_status_update(self, candidate_email, job_title, new_status):
     """Send an application status update email to the candidate."""
     try:
@@ -44,7 +44,7 @@ async def send_status_update(self, candidate_email, job_title, new_status):
         raise self.retry(exc=exc) from exc
 
 
-@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 async def send_employer_notification(self, employer_email, job_title, candidate_name):
     """Send a new-application notification email to the employer."""
     try:
@@ -59,7 +59,7 @@ async def send_employer_notification(self, employer_email, job_title, candidate_
         raise self.retry(exc=exc) from exc
 
 
-@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 async def send_verification_email(self, token: str, email: str) -> None:
     """Send account verification email with retry logic."""
     try:
@@ -71,3 +71,4 @@ async def send_verification_email(self, token: str, email: str) -> None:
     except Exception as exc:
         logger.error(f"Failed to send verification email to {email}: {exc}")
         raise self.retry(exc=exc) from exc
+

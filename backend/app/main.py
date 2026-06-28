@@ -9,6 +9,7 @@ import logging
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
+import spacy
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,14 +28,17 @@ from app.core.exceptions import PlatformError
 from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.modules.admin.router import router as admin_router
+from app.modules.ai.cv_parsing_router import router as cv_parsing_router
 from app.modules.ai.router import router as ai_router
 from app.modules.applications.router import router as app_router
 from app.modules.auth.router import router as auth_router
 from app.modules.candidates.router import router as candidates_router
 from app.modules.contact.router import router as contact_router
 from app.modules.employer.router import router as employer_router
+from app.modules.jobs.access_token_router import router as access_token_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.sitemaps.router import router as sitemap_router
+from app.modules.talent_pool.router import router as talent_pool_router
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +82,14 @@ async def lifespan(app: FastAPI):
             logger.info("Redis connection verified")
     except Exception:
         logger.error("Redis connection failed", exc_info=True)
+
+    # Load spaCy model once at startup
+    try:
+        app.state.nlp = spacy.load("en_core_web_sm")
+        logger.info("spaCy model loaded")
+    except Exception:
+        logger.error("spaCy model failed to load", exc_info=True)
+        app.state.nlp = None
 
     yield
 
@@ -123,12 +135,14 @@ async def health_check() -> dict:
 
 # ---- Routers ----
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
+app.include_router(cv_parsing_router, prefix="/api/v1/cv-parsing", tags=["cv-parsing"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
+app.include_router(access_token_router, prefix="/api/v1", tags=["access-tokens"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(employer_router, prefix="/api/v1/employer", tags=["employer"])
 app.include_router(candidates_router, prefix="/api/v1/candidates", tags=["candidates"])
 app.include_router(app_router, prefix="/api/v1/applications", tags=["applications"])
 app.include_router(contact_router, prefix="/api/v1/contact", tags=["contact"])
 app.include_router(sitemap_router, prefix="", tags=["Sitemap"])
-
+app.include_router(talent_pool_router, prefix="/api/v1/talent-pool", tags=["talent-pool"])

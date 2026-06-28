@@ -117,6 +117,7 @@ class AuthService:
             "phone_number": data.phone_number,
             "password_hash": hash_password(data.password),
             "role": data.role.value,
+            "cv_sharing_consent": data.cv_sharing_consent,
         })
 
         logger.info(f"User registered successfully with email: {user.email}")

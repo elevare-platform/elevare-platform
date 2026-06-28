@@ -7,9 +7,11 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+import sqlalchemy as sa
 from sqlalchemy import (
     ARRAY,
     UUID,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -33,6 +35,7 @@ from .enums import (
 
 if TYPE_CHECKING:
     from app.modules.applications.models import Application
+    from app.modules.talent_pool.models import TalentPoolProfiles
     from app.modules.users.models import User
 
 
@@ -116,6 +119,77 @@ class Job(BaseModel):
     applications: Mapped[list[Application]] = relationship(
         "Application",
         back_populates="job"
+    )
+    talent_pool_job: Mapped[list[TalentPoolProfiles]] = relationship(
+        "TalentPoolProfiles",
+        back_populates="sourced_for_job"
+    )
+    job_access_tokens: Mapped[list[JobAccessTokens]] = relationship(
+        "JobAccessTokens",
+        back_populates="job"
+    )
+
+
+class JobAccessTokens(BaseModel):
+    """A shareable access token granting external users read access to a job's applicants."""
+
+    __tablename__ = "job_access_tokens"
+
+    token: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        index=True,
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),  # token is meaningless without its job
+        nullable=False,
+    )
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=False,
+    )
+    disclose_names: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=sa.false()
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=sa.true()
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    revoked_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Relationships
+    job: Mapped[Job] = relationship(
+        "Job",
+        back_populates="job_access_tokens"
+    )
+    created_by: Mapped[User] = relationship(
+        "User",
+        foreign_keys=[created_by_id],
+        back_populates="job_access_tokens_created_by"
+    )
+    revoked_by: Mapped[User] = relationship(
+        "User",
+        foreign_keys=[revoked_by_id],
+        back_populates="job_access_tokens_revoked_by"
     )
 
 
