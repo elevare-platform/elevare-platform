@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db, require_role
@@ -109,6 +109,61 @@ async def close_job(
 ) -> JobResponse:
     """Close a job (ACTIVE → CLOSED). Employer (own jobs) or Admin (any job)."""
     return await JobService(db).close_job(job_id, current_user)
+
+
+@router.post("/{job_id}/cv-upload", status_code=201)
+async def upload_cvs_for_job(
+    job_id: UUID,
+    files: list[UploadFile] = File(...),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Employer uploads CVs received externally for their own job.
+
+    CVs are parsed and scored against this job. Results are stored as
+    employer-scoped ParsedCVSubmissions — they are NOT added to the
+    global talent pipeline. Ownership enforced: only the job's employer
+    or an admin can upload.
+    """
+    import redis.asyncio as aioredis
+    from app.core.config import settings
+    from app.core.storage import get_storage_service
+    from app.modules.ai.cv_parsing_service import CVParsingService
+    from app.modules.ai.service import get_ai_service
+    from app.modules.ai.tasks import score_application_task
+    from app.modules.jobs.repository import JobRepository
+    from app.core.exceptions import JobNotFoundError, PermissionDeniedException
+
+    job_repo = JobRepository(db)
+    job = await job_repo.get_by_id(job_id)
+    if not job:
+        raise JobNotFoundError()
+    if current_user.role != "ADMIN" and job.employer_id != current_user.id:
+        raise PermissionDeniedException("You do not own this job")
+
+    redis = aioredis.from_url(settings.redis_url)
+    cv_service = CVParsingService(
+        db=db,
+        storage=get_storage_service(),
+        redis=redis,
+        ai_service=get_ai_service(),
+        nlp=None,
+    )
+
+    results = []
+    for upload in files:
+        file_bytes = await upload.read()
+        try:
+            submission = await cv_service.submit_cv_for_parsing(
+                uploaded_by=current_user,
+                file=file_bytes,
+                filename=upload.filename,
+            )
+            results.append({"filename": upload.filename, "submission_id": str(submission.id), "status": "queued"})
+        except Exception as e:
+            results.append({"filename": upload.filename, "status": "failed", "error": str(e)})
+
+    return {"uploaded": len(results), "results": results}
 
 
 # ---------------------------------------------------------------------------

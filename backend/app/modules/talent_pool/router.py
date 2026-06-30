@@ -44,7 +44,7 @@ async def submit_cv(
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> TalentPoolProfileResponse:
-    """Upload a sourced CV into the talent pool."""
+    """Upload a single sourced CV into the talent pool."""
     data = TalentPoolSubmitRequest(
         source=source,
         source_note=source_note,
@@ -52,6 +52,35 @@ async def submit_cv(
     )
     file_bytes = await file.read()
     return await service.submit(file_bytes, file.filename, data, current_user)
+
+
+@router.post("/submit-batch", status_code=201)
+async def submit_cv_batch(
+    files: list[UploadFile] = File(...),
+    source: str = Form(default="other"),
+    source_note: str | None = Form(default=None),
+    sourced_for_job_id: uuid.UUID | None = Form(default=None),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: TalentPoolService = Depends(_get_talent_pool_service),
+) -> dict:
+    """Upload multiple CVs into the talent pool in one request.
+
+    Returns per-file status. Each file is processed independently —
+    a failure on one does not affect others.
+    """
+    data = TalentPoolSubmitRequest(
+        source=source,
+        source_note=source_note,
+        sourced_for_job_id=sourced_for_job_id,
+    )
+    file_pairs = [(await f.read(), f.filename) for f in files]
+    results = await service.submit_batch(file_pairs, data, current_user)
+    return {
+        "total": len(results),
+        "queued": sum(1 for r in results if r["status"] == "queued"),
+        "failed": sum(1 for r in results if r["status"] == "failed"),
+        "results": results,
+    }
 
 
 @router.get("", response_model=dict)
@@ -65,7 +94,7 @@ async def list_talent_pool(
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> dict:
     """List talent pool profiles with optional filters."""
-    return await service.list_profiles(status, source, job_id, cursor, limit)
+    return await service.list_profiles(status, source, job_id, cursor, limit, current_user)
 
 
 @router.get("/{profile_id}", response_model=TalentPoolProfileResponse)
@@ -95,3 +124,15 @@ async def promote_to_candidate(
 ) -> TalentPoolPromoteResponse:
     """Begin promotion — sends invite to candidate. Application created only after confirmation."""
     return await service.promote(profile_id, current_user)
+
+@router.post("/score-against-job", status_code=202)
+async def score_against_job(
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: TalentPoolService = Depends(_get_talent_pool_service),
+) -> dict:
+    """Queue scoring for all unscored pipeline profiles against a given job.
+
+    Returns immediately with a count of queued tasks — scoring runs in the background.
+    """
+    return await service.score_against_job(job_id)

@@ -116,33 +116,31 @@ class AccessTokenService:
         token_str: str
     ) -> PublicApplicantsResponse:
         token = await self._repo.get_valid_by_token(token_str)
-        
-        # Return 404 for invalid, expired, or revoked tokens - never confirm existence
+
         if not token:
             raise JobNotFoundError()
-        
+
         job = await self._job_repo.get_by_id(token.job_id)
 
-        # Load applicants sorted by ai_score desc
+        # ── 1. Platform applicants ──────────────────────────────────────────
         paginated = await self._app_repo.get_job_applicants(
             job_id=token.job_id,
             filters=ApplicationFilters(sort="ai_score"),
             limit=200,
-            cursor=None
+            cursor=None,
         )
 
-        applicants = []
+        combined: list[PublicApplicantsItem] = []
+
         for application in paginated["items"]:
             candidate = application.candidate
             candidate_profile = getattr(candidate, "candidate_profile", None)
 
-            # Build initials from first + last name
             first = candidate.first_name or ""
             last = candidate.last_name or ""
             initials = f"{first[:1]}{last[:1]}".upper()
 
-
-            # Name only disclosed if token allows it AND candidate consented
+            # Name gate: token-level AND per-candidate consent
             full_name = None
             if (
                 token.disclose_names
@@ -150,16 +148,14 @@ class AccessTokenService:
                 and candidate_profile.cv_sharing_consent
             ):
                 full_name = f"{first} {last}".strip()
-            
 
-            # CV snippet from parsed_data.summary - never full CV text
             cv_snippet = None
             cv = getattr(application, "cv", None)
             if cv and hasattr(cv, "submission") and cv.submission:
                 summary = (cv.submission.parsed_data or {}).get("summary") or ""
-                cv_snippet = summary[:200] + "..." if len(summary) > 200 else summary
-            
-            applicants.append(PublicApplicantsItem(
+                cv_snippet = summary[:200] if summary else None
+
+            combined.append(PublicApplicantsItem(
                 initials=initials,
                 full_name=full_name,
                 ai_score=application.ai_score,
@@ -167,11 +163,65 @@ class AccessTokenService:
                 ai_strengths=application.ai_strengths,
                 ai_weaknesses=application.ai_weaknesses,
                 cv_snippet=cv_snippet,
+                source="applicant",
             ))
-        
+
+        # ── 2. External talent pool profiles scored against this job ────────
+        from sqlalchemy import select
+        from app.modules.talent_pool.models import TalentPoolProfiles
+        from app.modules.ai.repository import AIRepository
+
+        ai_repo = AIRepository(self._db)
+        tp_result = await self._db.execute(
+            select(TalentPoolProfiles)
+            .where(TalentPoolProfiles.sourced_for_job_id == token.job_id)
+            .where(TalentPoolProfiles.ai_score.is_not(None))
+        )
+        pool_profiles = list(tp_result.scalars().all())
+
+        for profile in pool_profiles:
+            parsed_data = {}
+            if profile.parsed_submission_id:
+                submission = await ai_repo.get_submission_by_id(profile.parsed_submission_id)
+                if submission and submission.parsed_data:
+                    parsed_data = submission.parsed_data
+
+            full_name_raw = parsed_data.get("full_name") or (
+                f"{parsed_data.get('first_name', '')} {parsed_data.get('last_name', '')}".strip() or None
+            )
+            # Initials from parsed name, fall back to "EX" (external)
+            initials = (
+                "".join(w[0].upper() for w in (full_name_raw or "").split()[:2])
+                or "EX"
+            )
+            # External CVs: always initials-only on shared links.
+            # These candidates have no relationship with Elevare and gave no consent.
+            # Token-level disclosure does not override this — only platform candidates
+            # with cv_sharing_consent=True can have their name disclosed.
+            full_name = None
+
+            summary = parsed_data.get("summary") or ""
+            cv_snippet = summary[:200] if summary else None
+
+            combined.append(PublicApplicantsItem(
+                initials=initials,
+                full_name=full_name,
+                ai_score=profile.ai_score,
+                ai_fit_summary=profile.ai_fit_summary,
+                ai_strengths=profile.ai_strengths,
+                ai_weaknesses=profile.ai_weaknesses,
+                cv_snippet=cv_snippet,
+                source="external",
+            ))
+
+        # ── 3. Merge and rank by ai_score descending, nulls last ────────────
+        combined.sort(
+            key=lambda x: (x.ai_score is None, -(x.ai_score or 0))
+        )
+
         return PublicApplicantsResponse(
             job_title=job.title,
             expires_at=token.expires_at,
-            applicants=applicants,
+            applicants=combined,
         )
 

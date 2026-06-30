@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import UUID, DateTime, ForeignKey, String, Text
+from sqlalchemy import UUID, DateTime, ForeignKey, String, Text, Integer
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
@@ -15,6 +16,7 @@ from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
 
 if TYPE_CHECKING:
     from app.modules.ai.models import ParsedCVSubmission
+    from app.modules.candidates.models import CandidateProfile
     from app.modules.jobs.models import Job
     from app.modules.applications.models import Application
     from app.modules.users.models import User
@@ -23,10 +25,18 @@ if TYPE_CHECKING:
 class TalentPoolProfiles(BaseModel):
     __tablename__ = "talent_pool_profiles"
 
-    parsed_submission_id: Mapped[uuid.UUID] = mapped_column(
+    parsed_submission_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("parsed_cv_submissions.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,  # null for self-registered candidates who have no CV submission
+    )
+    # Links self-registered candidates back to their structured profile
+    # Unique — one pool entry per candidate profile, ever
+    candidate_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"),
+        nullable=True,
+        unique=True,
     )
     source: Mapped[str] = mapped_column(
         String(20),  # stored as plain string — enum used only for Python-side validation
@@ -73,10 +83,46 @@ class TalentPoolProfiles(BaseModel):
         nullable=True,
     )
 
+
+    ai_score: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    ai_strengths: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True
+    )
+    ai_weaknesses: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    ai_fit_summary: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    ai_score_job_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    ai_score_cv_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    ai_score_computed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
+
+
     # Relationships
-    parsed_submission: Mapped["ParsedCVSubmission"] = relationship(
+    parsed_submission: Mapped["ParsedCVSubmission | None"] = relationship(
         "ParsedCVSubmission",
-        back_populates="talent_pool_profile",  # matches the name on ParsedCVSubmission
+        back_populates="talent_pool_profile",
+    )
+    candidate_profile: Mapped["CandidateProfile | None"] = relationship(
+        "CandidateProfile",
+        foreign_keys=[candidate_profile_id],
+        back_populates="talent_pool_profile",
     )
     sourced_for_job: Mapped["Job"] = relationship(
         "Job",

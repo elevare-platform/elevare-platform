@@ -21,7 +21,8 @@ class TalentPoolStatusUpdateRequest(BaseModel):
 
 class TalentPoolProfileResponse(BaseModel):
     id: uuid.UUID
-    parsed_submission_id: uuid.UUID
+    parsed_submission_id: uuid.UUID | None = None
+    candidate_profile_id: uuid.UUID | None = None
     source: str
     source_note: str | None = None
     sourced_for_job_id: uuid.UUID | None = None
@@ -31,6 +32,17 @@ class TalentPoolProfileResponse(BaseModel):
     promoted_at: datetime | None = None
     last_invite_sent_at: datetime | None = None
     created_at: datetime
+
+    # Enriched from parsed_data — not stored on the model, populated by the service
+    candidate_name: str | None = None
+    candidate_email: str | None = None
+    candidate_current_title: str | None = None
+
+    ai_score: int | None = None
+    ai_fit_summary: str | None = None
+    ai_strengths: list[str] | None = None
+    ai_weaknesses: list[str] | None = None
+    ai_score_computed_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

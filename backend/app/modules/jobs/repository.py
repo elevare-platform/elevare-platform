@@ -138,8 +138,19 @@ class JobRepository:
                 .group_by(Application.job_id)
             )
             counts = {row.job_id: row.cnt for row in counts_result}
+
+            # Single query: count talent pool profiles grouped by job_id
+            from app.modules.talent_pool.models import TalentPoolProfiles
+            pipeline_result = await self._db.execute(
+                select(TalentPoolProfiles.sourced_for_job_id, func.count(TalentPoolProfiles.id).label("cnt"))
+                .where(TalentPoolProfiles.sourced_for_job_id.in_(job_ids))
+                .group_by(TalentPoolProfiles.sourced_for_job_id)
+            )
+            pipeline_counts = {row.sourced_for_job_id: row.cnt for row in pipeline_result}
+
             for job in jobs:
                 job.application_count = counts.get(job.id, 0)
+                job.pipeline_count = pipeline_counts.get(job.id, 0)
 
         return result
 

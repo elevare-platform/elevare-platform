@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lobster+Two:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -18,6 +18,7 @@
 
   /* Typography */
   --font-sans: 'Inter', system-ui, sans-serif;
+  --font-heading: 'Lobster Two', cursive;
 
   /* Border radius */
   --radius-sm: 6px;
@@ -41,6 +42,78 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* Global headings with Lobster Two display font */
+h1, h2, h3, .font-heading {
+  font-family: var(--font-heading);
+}
+
+/* Spacing and weight adjustments for heading style readability */
+h1 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Premium design utilities */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+
+.glass-panel-dark {
+  background: rgba(14, 31, 58, 0.78) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #1A4D8F 0%, #E87722 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-bg-premium {
+  background: linear-gradient(135deg, #0e1f3a 0%, #153d72 50%, #1A4D8F 100%);
+}
+
+.premium-shadow {
+  box-shadow: 0 20px 40px -15px rgba(26, 77, 143, 0.15) !important;
+}
+
+.premium-card {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.premium-card:hover {
+  transform: translateY(-6px) scale(1.01) !important;
+  box-shadow: 0 30px 60px -20px rgba(26, 77, 143, 0.2) !important;
+}
+
+/* Curved & Wave Dividers */
+.curve-divider-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  line-height: 0;
+}
+.curve-divider-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  line-height: 0;
+}
+
 
 /* ─── Keyframe animations ─────────────────────────────────────────── */
 
@@ -288,13 +361,14 @@ body {
 
 /* Background grid drift animation for ambient depth */
 @keyframes hero-grid-drift {
-  0% { transform: translate(0, 0); }
-  50% { transform: translate(-8px, -8px); }
-  100% { transform: translate(0, 0); }
+  0% { transform: scale(1.05) translate(0, 0); }
+  50% { transform: scale(1.05) translate(-8px, -8px); }
+  100% { transform: scale(1.05) translate(0, 0); }
 }
 
 .hero-grid-pattern {
-  inset: -16px;
+  inset: 0;
+  transform: scale(1.05);
   animation: hero-grid-drift 32s ease-in-out infinite;
   will-change: transform;
 }

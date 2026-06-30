@@ -79,26 +79,30 @@ export default function PricingPage() {
       <main className="pt-16 bg-[#fafbfc]">
 
         {/* ── Hero ── */}
-        <section className="relative overflow-hidden bg-brand-blue py-20 lg:py-24 text-white">
-          <div
-            className="absolute inset-0 opacity-10 pointer-events-none"
-            style={{
-              backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)
-              `,
-              backgroundSize: '40px 40px',
-            }}
+        <section className="relative overflow-hidden py-24 lg:py-32 text-white">
+          <div 
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000 scale-105"
+            style={{ backgroundImage: "url('/hero-images/img25.jpg')" }}
           />
-          <div className="absolute inset-0 bg-gradient-to-tr from-brand-blue via-brand-blue-dark to-brand-blue-light opacity-80" />
-          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-4">Pricing</p>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
-              Simple, Transparent Pricing
-            </h1>
-            <p className="text-lg text-blue-100 max-w-2xl mx-auto leading-relaxed">
-              Start free and scale as you grow. No hidden fees, no surprises.
-            </p>
+          <div className="absolute inset-0 bg-gradient-to-r from-brand-blue-dark/95 via-brand-blue/85 to-transparent backdrop-blur-[2px]" />
+          
+          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl space-y-6">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35">
+                Pricing
+              </span>
+              <h1 className="text-4xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight leading-tight" style={{ fontFamily: "'Lobster Two', cursive" }}>
+                Simple, Transparent Pricing
+              </h1>
+              <p className="text-lg lg:text-xl text-blue-100/90 leading-relaxed max-w-2xl">
+                Start free and scale as you grow. No hidden fees, no surprises.
+              </p>
+            </div>
+          </div>
+          <div className="curve-divider-bottom" style={{ height: '3vw' }}>
+            <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+              <path d="M0,64L120,80C240,96,480,128,720,128C960,128,1200,96,1320,80L1440,64L1440,120L1320,120C1200,120,960,120,720,120C480,120,240,120,120,120L0,120Z" fill="#fafbfc" />
+            </svg>
           </div>
         </section>
 
@@ -108,10 +112,10 @@ export default function PricingPage() {
             {TIERS.map((tier) => (
               <div
                 key={tier.name}
-                className={`relative rounded-2xl border p-8 flex flex-col gap-6 transition-shadow ${
+                className={`premium-card relative rounded-2xl border p-8 flex flex-col gap-6 ${
                   tier.highlight
                     ? 'bg-brand-blue text-white border-brand-blue shadow-2xl scale-[1.03]'
-                    : 'bg-white border-border shadow-sm hover:shadow-md'
+                    : 'bg-white border-border premium-shadow'
                 }`}
               >
                 {tier.badge && (

@@ -37,12 +37,23 @@ export default function EmployerStrip({ onBookConsultation }) {
   return (
     <section
       aria-label="For employers"
+      className="relative overflow-hidden"
       style={{
-        // Requirements 4.3 — visually distinct dark brand-blue background
-        background: '#1A4D8F',
         padding: '5rem 1rem',
       }}
     >
+      {/* Background image */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"
+        style={{ backgroundImage: "url('/hero-images/img15.jpg')" }}
+        aria-hidden="true"
+      />
+      {/* Dark gradient overlay */}
+      <div
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(135deg, rgba(14,31,58,0.94) 0%, rgba(26,77,143,0.92) 100%)' }}
+        aria-hidden="true"
+      />
       <div
         style={{
           maxWidth: '72rem',
@@ -51,6 +62,8 @@ export default function EmployerStrip({ onBookConsultation }) {
           display: 'grid',
           gridTemplateColumns: '1fr',
           gap: '3rem',
+          position: 'relative',
+          zIndex: 10,
         }}
         className="employer-strip-grid"
       >
@@ -78,6 +91,7 @@ export default function EmployerStrip({ onBookConsultation }) {
               fontWeight: 800,
               color: '#ffffff',
               lineHeight: 1.2,
+              fontFamily: "'Lobster Two', cursive",
             }}
           >
             We Solve Your Toughest

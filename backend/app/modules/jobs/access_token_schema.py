@@ -30,7 +30,8 @@ class PublicApplicantsItem(BaseModel):
     ai_fit_summary: str | None = None
     ai_strengths: list[str] | None = None
     ai_weaknesses: list[str] | None = None
-    cv_snippet: str | None = None  # First 200 chars of parsed_data.summary, never full CV
+    cv_snippet: str | None = None
+    source: str = "applicant"  # "applicant" (registered) | "external" (uploaded CV)
 class PublicApplicantsResponse(BaseModel):
     job_title: str
     expires_at: datetime

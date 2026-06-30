@@ -63,11 +63,9 @@ function StatCard({ stat, isActive }) {
 
   return (
     <div
+      className="glass-panel-dark premium-card"
       style={{
-        background: '#ffffff',
         borderRadius: '0.75rem',
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
         padding: 'clamp(1.5rem, 4vw, 2.5rem) clamp(1rem, 3vw, 2rem)',
         textAlign: 'center',
         minWidth: 0,
@@ -79,7 +77,7 @@ function StatCard({ stat, isActive }) {
           margin: 0,
           fontSize: 'clamp(2rem, 5vw, 3rem)',
           fontWeight: 800,
-          color: '#1A4D8F',
+          color: '#ffffff',
           lineHeight: 1,
           letterSpacing: '-0.02em',
         }}
@@ -102,7 +100,7 @@ function StatCard({ stat, isActive }) {
         style={{
           margin: '0.75rem 0 0',
           fontSize: 'clamp(0.8125rem, 1.5vw, 0.9375rem)',
-          color: '#64748b',
+          color: 'rgba(255,255,255,0.7)',
           lineHeight: 1.5,
         }}
       >
@@ -122,11 +120,24 @@ export default function StatsSection() {
     <section
       ref={sectionRef}
       aria-label="Platform statistics"
+      className="relative overflow-hidden"
       style={{
-        background: '#ffffff',
-        padding: '4rem 1rem',
+        background: 'linear-gradient(135deg, #0e1f3a 0%, #153d72 50%, #1A4D8F 100%)',
+        padding: '5rem 1rem',
       }}
     >
+      {/* Subtle grid pattern */}
+      <div
+        className="absolute inset-0 opacity-10 pointer-events-none"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px',
+        }}
+        aria-hidden="true"
+      />
       <div
         style={{
           maxWidth: '56rem',

@@ -29,9 +29,16 @@ function ApplicantCard({ applicant, rank }) {
 
         {/* Name / initials */}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-text text-sm">
-            {applicant.full_name ?? applicant.initials}
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold text-text text-sm">
+              {applicant.full_name ?? applicant.initials}
+            </p>
+            {applicant.source === 'external' && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200">
+                External CV
+              </span>
+            )}
+          </div>
           {applicant.cv_snippet && (
             <p className="text-xs text-text-muted mt-0.5 line-clamp-1">{applicant.cv_snippet}</p>
           )}

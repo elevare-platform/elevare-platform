@@ -82,6 +82,7 @@ export default function Testimonials() {
             color: '#1e293b',
             marginBottom: '3rem',
             lineHeight: 1.2,
+            fontFamily: "'Lobster Two', cursive",
           }}
         >
           What Our Clients Say
@@ -177,20 +178,10 @@ export default function Testimonials() {
           <button
             onClick={handlePrev}
             aria-label="Previous testimonial"
+            className="absolute top-1/2 -translate-y-1/2 -left-3 md:-left-12 flex items-center justify-center w-10 h-10 rounded-full cursor-pointer"
             style={{
-              position: 'absolute',
-              top: '50%',
-              left: '-3rem',
-              transform: 'translateY(-50%)',
               background: '#ffffff',
               border: '1px solid #e2e8f0',
-              borderRadius: '50%',
-              width: 40,
-              height: 40,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
               boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
               transition: 'box-shadow 0.2s',
             }}
@@ -204,20 +195,10 @@ export default function Testimonials() {
           <button
             onClick={handleNext}
             aria-label="Next testimonial"
+            className="absolute top-1/2 -translate-y-1/2 -right-3 md:-right-12 flex items-center justify-center w-10 h-10 rounded-full cursor-pointer"
             style={{
-              position: 'absolute',
-              top: '50%',
-              right: '-3rem',
-              transform: 'translateY(-50%)',
               background: '#ffffff',
               border: '1px solid #e2e8f0',
-              borderRadius: '50%',
-              width: 40,
-              height: 40,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
               boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
               transition: 'box-shadow 0.2s',
             }}

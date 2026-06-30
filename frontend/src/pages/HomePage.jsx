@@ -5,15 +5,19 @@ import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import HeroSection from '@/components/home/HeroSection'
 import SocialProofBar from '@/components/home/SocialProofBar'
-import StatsSection from '@/components/home/StatsSection'
+import PartnersSection from '@/components/home/PartnersSection'
+import JobBoardPreview from '@/components/home/JobBoardPreview'
+import StorySlider from '@/components/home/StorySlider'
+import EmployerJourney from '@/components/home/EmployerJourney'
+import ImpactMetrics from '@/components/home/ImpactMetrics'
 import ServicesSection from '@/components/home/ServicesSection'
 import WhyChooseUs from '@/components/home/WhyChooseUs'
 import EmployerStrip from '@/components/home/EmployerStrip'
+import CandidateSuccess from '@/components/home/CandidateSuccess'
 import HowItWorks from '@/components/home/HowItWorks'
+import RecruitmentExcellence from '@/components/home/RecruitmentExcellence'
 import Testimonials from '@/components/home/Testimonials'
-import JobBoardPreview from '@/components/home/JobBoardPreview'
 import InsightsStrip from '@/components/home/InsightsStrip'
-import PartnersSection from '@/components/home/PartnersSection'
 import FinalCTA from '@/components/home/FinalCTA'
 import { ConsultationModal } from '@/components/ui/ConsultationModal'
 import { FloatingWhatsApp } from '@/components/ui/FloatingWhatsApp'
@@ -39,19 +43,42 @@ export default function HomePage() {
       <main>
         {/* Requirements 1.1–1.5 */}
         <HeroSection onBookConsultation={openModal} />
+        
+        {/* Credibility & Activity Sections moved immediately after Hero area */}
         <SocialProofBar />
-        <StatsSection />
+        <PartnersSection />
+        <JobBoardPreview />
+        
+        {/* SECTION TYPE A — Background Image Story Slider */}
+        <StorySlider />
+
+        {/* SECTION TYPE B — Employer Journey Showcase */}
+        <EmployerJourney />
+
+        {/* SECTION TYPE D — Impact Metrics Section (Replaces old static StatsSection) */}
+        <ImpactMetrics />
+
         {/* Requirements 3.1, 3.2 */}
         <ServicesSection />
+        
         <WhyChooseUs />
+        
         {/* Requirements 4.1–4.4 */}
         <EmployerStrip onBookConsultation={openModal} />
+
+        {/* SECTION TYPE C — Candidate Success Showcase */}
+        <CandidateSuccess />
+        
         <HowItWorks />
+
+        {/* SECTION TYPE E — Recruitment Excellence Banner */}
+        <RecruitmentExcellence onBookConsultation={openModal} />
+        
         <Testimonials />
-        <JobBoardPreview />
+        
         {/* Requirements 10.1–10.4 */}
         <InsightsStrip />
-        <PartnersSection />
+        
         <FinalCTA />
       </main>
       <Footer onBookConsultation={openModal} />

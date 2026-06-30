@@ -259,6 +259,18 @@ export default function EmployerDashboardPage() {
                 <p className="text-text-muted text-xs mt-0.5">Upload CVs and extract candidate data</p>
               </div>
             </Link>
+            <Link
+              to="/employer/talent-pool"
+              className="rounded-xl border border-border bg-white p-5 hover:border-brand-blue/40 hover:shadow-sm transition-all group flex items-center gap-4"
+            >
+              <div className="w-9 h-9 rounded-lg bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+                <TrendingUp size={18} className="text-brand-blue" />
+              </div>
+              <div>
+                <p className="font-semibold text-text text-sm">Talent Pool</p>
+                <p className="text-text-muted text-xs mt-0.5">Browse and rank sourced candidates</p>
+              </div>
+            </Link>
           </div>
 
         </div>

@@ -70,7 +70,7 @@ export default function WhyChooseUs() {
     <section
       ref={sectionRef}
       aria-label="Why choose Elevare"
-      style={{ background: '#F8F9FA', padding: '5rem 1rem' }}
+      style={{ background: '#F8F9FA', padding: '5rem 1rem', overflow: 'hidden' }}
     >
       <div
         style={{
@@ -117,6 +117,7 @@ export default function WhyChooseUs() {
               fontWeight: 800,
               color: '#1e293b',
               lineHeight: 1.2,
+              fontFamily: "'Lobster Two', cursive",
             }}
           >
             Why Leading Companies Choose Elevare
@@ -219,7 +220,7 @@ export default function WhyChooseUs() {
           }}
         >
           <img
-            src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1200&h=900&fit=crop&crop=center"
+            src="/hero-images/img7.jpg"
             alt="A diverse group of professionals collaborating in a modern office"
             className="why-image"
             style={{

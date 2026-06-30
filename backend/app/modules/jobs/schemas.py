@@ -114,6 +114,7 @@ class JobResponse(BaseModel):
     created_at: datetime | None = None
     application_deadline: datetime | None = None
     application_count: int = 0
+    pipeline_count: int = 0  # talent pool profiles sourced for this job
     required_skills: list[str] | None = None
     seniority_level: SeniorityLevel | None = None
     openings_count: int = 1
@@ -148,6 +149,7 @@ class JobResponse(BaseModel):
             created_at=job.created_at,
             application_deadline=job.application_deadline,
             application_count=getattr(job, "application_count", 0),
+            pipeline_count=getattr(job, "pipeline_count", 0),
             required_skills=job.required_skills,
             seniority_level=job.seniority_level,
             openings_count=job.openings_count,

@@ -236,6 +236,7 @@ export default function ServicesSection() {
               color: '#1e293b',
               lineHeight: 1.2,
               letterSpacing: '-0.02em',
+              fontFamily: "'Lobster Two', cursive",
             }}
           >
             Workforce Solutions Built for Growth
@@ -268,12 +269,19 @@ export default function ServicesSection() {
         </div>
 
         {/* View All Services CTA */}
-        <div style={{ textAlign: 'center', marginTop: '4rem' }}>
+        <div style={{ textAlign: 'center', marginTop: '4rem' }} className="flex flex-col sm:flex-row justify-center items-center gap-3">
           <Link
             to="/services"
             className="inline-flex items-center gap-2 px-8 py-3.5 text-sm font-semibold text-white bg-brand-blue hover:bg-brand-blue-dark rounded-md transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
           >
             View All Services
+            <ArrowRight size={16} strokeWidth={2.5} aria-hidden="true" />
+          </Link>
+          <Link
+            to="/talent-pipeline"
+            className="inline-flex items-center gap-2 px-8 py-3.5 text-sm font-semibold text-brand-blue bg-brand-blue-light hover:bg-brand-blue hover:text-white rounded-md transition-all shadow-sm hover:shadow-md"
+          >
+            Explore AI Recruiter
             <ArrowRight size={16} strokeWidth={2.5} aria-hidden="true" />
           </Link>
         </div>

@@ -226,18 +226,18 @@ function EmployerDashboard({ user }) {
 
           {activeTab === 'talent-pipeline' && (
             <div className="bg-white rounded-xl border border-border p-8 text-center max-w-xl mx-auto space-y-4">
-              <div className="w-12 h-12 rounded-full bg-brand-amber/10 text-brand-amber flex items-center justify-center mx-auto shadow border border-brand-amber/20 animate-bounce">
+              <div className="w-12 h-12 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center mx-auto">
                 <Sparkles size={22} />
               </div>
-              <h2 className="text-xl font-bold text-text">AI Talent Pipeline</h2>
+              <h2 className="text-xl font-bold text-text">Talent Pool</h2>
               <p className="text-text-muted text-sm leading-relaxed">
-                Feature coming soon. Lock in automated candidate tracking, smart resume matching, and continuous sourcing workflows directly connected to your open headcount slots.
+                Browse your talent pipeline, upload sourced CVs, score candidates against open roles, and promote top matches.
               </p>
-              <div className="flex justify-center gap-2 pt-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-muted text-text-muted border border-border text-[11px] font-bold">
-                  <Lock size={12} /> Closed Beta Slot
-                </span>
-              </div>
+              <Link to="/employer/talent-pool">
+                <Button className="flex items-center gap-2 mx-auto">
+                  Open Talent Pool <ArrowRight size={15} />
+                </Button>
+              </Link>
             </div>
           )}
 

@@ -4,6 +4,7 @@ import {
   User, ArrowLeft, ChevronDown, X, MapPin, Briefcase, FileText,
   Star, GraduationCap, Award, Globe, ExternalLink,
   DollarSign, Clock, Share2, Link as LinkIcon, Copy, Check as CheckIcon,
+  Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -793,6 +794,197 @@ function SkeletonCard() {
   )
 }
 
+// ─── Talent Pool Profile Panel (Item 3) ──────────────────────────────────────
+
+function TalentPoolProfilePanel({ profile, onClose }) {
+  if (!profile) return null
+  const scoreColor = (s) => {
+    if (s == null) return 'bg-gray-100 text-gray-500'
+    if (s >= 75) return 'bg-green-100 text-green-700'
+    if (s >= 50) return 'bg-amber-100 text-amber-700'
+    return 'bg-red-100 text-red-600'
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+      <div
+        className="relative w-full max-w-md bg-white h-full overflow-y-auto shadow-xl flex flex-col"
+        onClick={e => e.stopPropagation()}
+        role="dialog" aria-modal="true" aria-label="Talent pool profile"
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-white z-10">
+          <h2 className="font-semibold text-text">Talent Pool Profile</h2>
+          <button onClick={onClose} className="p-1.5 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex-1 px-6 py-5 space-y-6">
+          {/* Identity */}
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+              <Users size={24} className="text-brand-blue" />
+            </div>
+            <div>
+              <p className="font-semibold text-text text-base">
+                {profile.candidate_name ?? profile.candidate_email ?? 'Unnamed Candidate'}
+              </p>
+              {profile.candidate_current_title && (
+                <p className="text-sm text-text-muted mt-0.5">{profile.candidate_current_title}</p>
+              )}
+              {profile.candidate_email && (
+                <p className="text-xs text-text-muted">{profile.candidate_email}</p>
+              )}
+            </div>
+          </div>
+
+          {/* AI Score */}
+          {profile.ai_score != null && (
+            <div className="rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
+                  <Brain size={12} /> AI Assessment
+                </p>
+                <span className={cn('px-2.5 py-0.5 rounded-full text-sm font-bold', scoreColor(profile.ai_score))}>
+                  {profile.ai_score}/100
+                </span>
+              </div>
+              {profile.ai_fit_summary && (
+                <p className="text-sm text-text leading-relaxed">{profile.ai_fit_summary}</p>
+              )}
+              {profile.ai_strengths?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">Strengths</p>
+                  <ul className="space-y-1">
+                    {profile.ai_strengths.map((s, i) => (
+                      <li key={i} className="text-xs text-text flex items-start gap-1.5">
+                        <span className="text-green-500 mt-0.5 flex-shrink-0">✓</span>{s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {profile.ai_weaknesses?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Considerations</p>
+                  <ul className="space-y-1">
+                    {profile.ai_weaknesses.map((w, i) => (
+                      <li key={i} className="text-xs text-text flex items-start gap-1.5">
+                        <span className="text-amber-500 mt-0.5 flex-shrink-0">·</span>{w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Source info */}
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Source</p>
+            <div className="flex items-center gap-2 text-sm text-text">
+              <span className="capitalize">{profile.source}</span>
+              {profile.source_note && <span className="text-text-muted">· {profile.source_note}</span>}
+            </div>
+          </div>
+
+          {profile.ai_score == null && (
+            <div className="rounded-lg bg-surface-muted border border-border px-4 py-3 text-sm text-text-muted text-center">
+              AI scoring not yet computed. Attach this profile to a job and trigger scoring.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Pipeline Tab (Item 2) ────────────────────────────────────────────────────
+
+function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh }) {
+  const scoreColor = (s) => {
+    if (s == null) return 'bg-gray-100 text-gray-400 border-gray-200'
+    if (s >= 75) return 'bg-green-100 text-green-700 border-green-200'
+    if (s >= 50) return 'bg-amber-100 text-amber-700 border-amber-200'
+    return 'bg-red-100 text-red-600 border-red-200'
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-text-muted">
+          External CVs uploaded and scored against this job.
+        </p>
+        <div className="flex items-center gap-2">
+          <button onClick={onRefresh} className="text-xs text-brand-blue hover:underline">Refresh</button>
+          <Link
+            to={`/employer/talent-pool?job_id=${jobId}`}
+            className="text-xs text-brand-blue hover:underline"
+          >
+            Manage in Talent Pool →
+          </Link>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl bg-white border border-border animate-pulse" />)}
+        </div>
+      )}
+
+      {!loading && profiles.length === 0 && (
+        <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+          <Users size={28} className="mx-auto text-text-muted mb-3" />
+          <p className="font-medium text-text text-sm mb-1">No pipeline profiles yet</p>
+          <p className="text-xs text-text-muted mb-4">Upload CVs from the Talent Pool to score them against this job.</p>
+          <Link
+            to={`/employer/talent-pool?job_id=${jobId}`}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-blue px-3 py-1.5 rounded-lg hover:bg-brand-blue-dark transition-colors"
+          >
+            <Upload size={12} /> Upload CVs
+          </Link>
+        </div>
+      )}
+
+      {!loading && profiles.length > 0 && (
+        <div className="space-y-2">
+          {profiles.map((p, i) => (
+            <button
+              key={p.id}
+              onClick={() => onProfileClick(p)}
+              className="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all text-left group"
+            >
+              <span className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold flex items-center justify-center flex-shrink-0">
+                {i + 1}
+              </span>
+              <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+                <Users size={15} className="text-brand-blue" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-text truncate">
+                  {p.candidate_name ?? p.candidate_email ?? 'Unnamed Candidate'}
+                </p>
+                <p className="text-xs text-text-muted truncate">
+                  {[p.candidate_current_title, p.candidate_email].filter(Boolean).join(' · ') || 'No details yet'}
+                </p>
+              </div>
+              <div className={cn(
+                'w-11 h-11 rounded-full border-2 flex items-center justify-center text-sm font-bold flex-shrink-0',
+                scoreColor(p.ai_score)
+              )}>
+                {p.ai_score != null ? p.ai_score : '—'}
+              </div>
+              <span className="text-xs text-text-muted capitalize px-2.5 py-0.5 rounded-full border border-border">
+                {(p.status || '').replace('_', ' ')}
+              </span>
+              <Brain size={14} className="text-text-muted group-hover:text-brand-blue transition-colors flex-shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── ApplicantsPage ───────────────────────────────────────────────────────────
 
 export default function ApplicantsPage() {
@@ -808,6 +1000,11 @@ export default function ApplicantsPage() {
   const [cursor, setCursor] = useState(null)
   const [hasMore, setHasMore] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  // Pipeline tab — talent pool profiles sourced for this job
+  const [mainTab, setMainTab] = useState('applicants') // 'applicants' | 'pipeline'
+  const [pipeline, setPipeline] = useState([])
+  const [pipelineLoading, setPipelineLoading] = useState(false)
+  const [selectedProfile, setSelectedProfile] = useState(null) // for detail panel
 
   const showToast = useCallback((msg) => {
     setToast(msg)
@@ -855,6 +1052,16 @@ export default function ApplicantsPage() {
     fetchApplicants(activeTab, null, true)
   }, [activeTab, sortBy, fetchApplicants])
 
+  // Load pipeline profiles when Pipeline tab is activated
+  useEffect(() => {
+    if (mainTab !== 'pipeline') return
+    setPipelineLoading(true)
+    api.get('/api/v1/talent-pool', { params: { job_id: jobId, limit: 100 } })
+      .then(({ data }) => setPipeline(data.items ?? []))
+      .catch(() => {})
+      .finally(() => setPipelineLoading(false))
+  }, [mainTab, jobId])
+
   const sortedApplicants = [...applicants].sort((a, b) => {
     if (sortBy === 'match_score') {
       return (b.match_score ?? -1) - (a.match_score ?? -1)
@@ -887,7 +1094,41 @@ export default function ApplicantsPage() {
             </Button>
           </div>
 
+          {/* Main tab switcher — Applicants vs Pipeline */}
+          <div className="flex gap-1 p-1 bg-surface-muted rounded-xl border border-border mb-6 w-fit">
+            {[
+              { key: 'applicants', label: 'Applicants' },
+              { key: 'pipeline', label: 'Talent Pipeline' },
+            ].map(({ key, label }) => (
+              <button key={key} onClick={() => setMainTab(key)}
+                className={cn(
+                  'px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
+                  mainTab === key
+                    ? 'bg-white text-text shadow-sm border border-border'
+                    : 'text-text-muted hover:text-text'
+                )}>
+                {label}
+              </button>
+            ))}
+          </div>
+
           {/* Filter tabs + sort control */}
+          {mainTab === 'pipeline' ? (
+            <PipelineTab
+              profiles={pipeline}
+              loading={pipelineLoading}
+              jobId={jobId}
+              onProfileClick={setSelectedProfile}
+              onRefresh={() => {
+                setPipelineLoading(true)
+                api.get('/api/v1/talent-pool', { params: { job_id: jobId, limit: 100 } })
+                  .then(({ data }) => setPipeline(data.items ?? []))
+                  .catch(() => {})
+                  .finally(() => setPipelineLoading(false))
+              }}
+            />
+          ) : (
+          <>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter applicants by status">
               {FILTER_TABS.map((tab) => (
                 <button
@@ -970,6 +1211,8 @@ export default function ApplicantsPage() {
               </Button>
             </div>
           )}
+          </>
+          )}
 
         </div>
       </main>
@@ -987,6 +1230,14 @@ export default function ApplicantsPage() {
 
       {/* Share modal */}
       {shareOpen && <ShareModal jobId={jobId} onClose={() => setShareOpen(false)} />}
+
+      {/* Talent pool profile detail panel */}
+      {selectedProfile && (
+        <TalentPoolProfilePanel
+          profile={selectedProfile}
+          onClose={() => setSelectedProfile(null)}
+        />
+      )}
 
       <Footer />
     </>

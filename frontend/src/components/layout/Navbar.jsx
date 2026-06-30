@@ -255,6 +255,16 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
               <MobileAccordionItem label="For Employers" items={EMPLOYERS_ITEMS} onClose={onClose} />
               <MobileAccordionItem label="For Candidates" items={CANDIDATES_ITEMS} onClose={onClose} />
               <Link
+                to="/talent-pipeline"
+                onClick={onClose}
+                className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue flex items-center justify-between"
+              >
+                <span>AI Recruiter</span>
+                <span className="bg-brand-amber/15 text-brand-amber text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider border border-brand-amber/35">
+                  AI Powered
+                </span>
+              </Link>
+              <Link
                 to="/about"
                 onClick={onClose}
                 className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue"
@@ -391,6 +401,15 @@ export default function Navbar({ onBookConsultation }) {
               onOpen={() => { setCandidatesOpen(true); setEmployersOpen(false) }}
               onClose={() => setCandidatesOpen(false)}
             />
+            <Link
+              to="/talent-pipeline"
+              className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap flex items-center gap-1.5"
+            >
+              AI Recruiter
+              <span className="bg-brand-amber/15 text-brand-amber text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider animate-pulse border border-brand-amber/35">
+                AI
+              </span>
+            </Link>
             <Link
               to="/about"
               className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap"

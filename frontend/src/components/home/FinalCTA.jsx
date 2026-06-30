@@ -2,61 +2,76 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 
 // ─── FinalCTA ─────────────────────────────────────────────────────────────────
-// Requirements: 10.1, 10.2, 10.3, 10.4
-// Brand Blue background with radial gradient overlay, centred heading +
-// subheading, Amber filled "Start Hiring →" and white outlined "Find a Job".
+// Premium CTA with background image, gradient overlay, Lobster Two heading,
+// and conversion-focused dual CTAs.
 
 export default function FinalCTA() {
   return (
     <section
-      className="relative overflow-hidden py-24 px-4"
+      className="relative overflow-hidden py-28 px-4"
       aria-label="Final call to action"
-      style={{ background: '#1A4D8F' }}
     >
-      {/* Radial gradient overlay — slightly lighter blue texture (Req 10.4) */}
+      {/* Background image */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"
+        style={{ backgroundImage: "url('/hero-images/img6.jpg')" }}
+        aria-hidden="true"
+      />
+      {/* Dark gradient overlay */}
       <div
         aria-hidden="true"
+        className="absolute inset-0"
         style={{
-          position: 'absolute',
-          inset: 0,
           background:
-            'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.08) 0%, transparent 70%)',
+            'linear-gradient(135deg, rgba(14,31,58,0.92) 0%, rgba(26,77,143,0.88) 50%, rgba(14,31,58,0.92) 100%)',
+        }}
+      />
+      {/* Radial glow */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(ellipse at 50% 0%, rgba(232,119,34,0.12) 0%, transparent 60%)',
           pointerEvents: 'none',
         }}
       />
 
-      {/* Content — centred (Req 10.1) */}
+      {/* Content */}
       <div className="relative z-10 max-w-3xl mx-auto text-center">
-        {/* Heading — white (Req 10.2) */}
-        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35 mb-6">
+          Get Started Today
+        </span>
+
+        <h2
+          className="text-3xl sm:text-4xl lg:text-6xl font-bold text-white mb-5"
+          style={{ fontFamily: "'Lobster Two', cursive" }}
+        >
           Ready to Make Hiring Simple?
         </h2>
 
-        {/* Subheading — white at 80% opacity (Req 10.2) */}
         <p
-          className="text-lg sm:text-xl mb-10"
-          style={{ color: 'rgba(255,255,255,0.8)' }}
+          className="text-lg sm:text-xl mb-10 leading-relaxed"
+          style={{ color: 'rgba(255,255,255,0.82)' }}
         >
           Join 100+ companies that trust Elevare to find exceptional talent.
         </p>
 
-        {/* CTA buttons (Req 10.3) */}
+        {/* CTA buttons */}
         <div className="flex flex-wrap justify-center gap-4">
-          {/* Amber filled "Start Hiring →" */}
           <Link to="/register">
             <Button
               size="lg"
-              className="bg-brand-amber hover:bg-brand-amber-dark text-white border-0 transition-transform duration-200 hover:scale-[1.02]"
+              className="bg-brand-amber hover:bg-brand-amber-dark text-white border-0 transition-all duration-300 hover:scale-[1.03] shadow-lg hover:shadow-xl px-8 py-4 text-base font-bold"
             >
               Start Hiring →
             </Button>
           </Link>
 
-          {/* White outlined "Find a Job" */}
           <Link to="/jobs">
             <Button
               size="lg"
-              className="bg-transparent border border-white text-white hover:bg-white/10 transition-transform duration-200 hover:scale-[1.02]"
+              className="bg-white/10 backdrop-blur border border-white/30 text-white hover:bg-white/20 transition-all duration-300 hover:scale-[1.03] px-8 py-4 text-base font-bold"
             >
               Find a Job
             </Button>

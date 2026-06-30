@@ -122,26 +122,30 @@ export default function ContactPage() {
       <main className="pt-16 bg-[#fafbfc]">
 
         {/* ── Hero ── */}
-        <section className="relative overflow-hidden bg-brand-blue py-20 lg:py-24 text-white">
-          <div
-            className="absolute inset-0 opacity-10 pointer-events-none"
-            style={{
-              backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)
-              `,
-              backgroundSize: '40px 40px',
-            }}
+        <section className="relative overflow-hidden py-24 lg:py-32 text-white">
+          <div 
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000 scale-105"
+            style={{ backgroundImage: "url('/hero-images/img20.jpg')" }}
           />
-          <div className="absolute inset-0 bg-gradient-to-tr from-brand-blue via-brand-blue-dark to-brand-blue-light opacity-80" />
-          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-4">Contact Us</p>
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">
-              Get in Touch
-            </h1>
-            <p className="text-lg text-blue-100 max-w-xl mx-auto">
-              We typically respond within 24 hours on business days.
-            </p>
+          <div className="absolute inset-0 bg-gradient-to-r from-brand-blue-dark/95 via-brand-blue/85 to-transparent backdrop-blur-[2px]" />
+          
+          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl space-y-6">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35">
+                Contact Us
+              </span>
+              <h1 className="text-4xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight leading-tight" style={{ fontFamily: "'Lobster Two', cursive" }}>
+                Get in Touch
+              </h1>
+              <p className="text-lg lg:text-xl text-blue-100/90 leading-relaxed max-w-xl">
+                We typically respond within 24 hours on business days.
+              </p>
+            </div>
+          </div>
+          <div className="curve-divider-bottom" style={{ height: '3vw' }}>
+            <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+              <path d="M0,64L120,80C240,96,480,128,720,128C960,128,1200,96,1320,80L1440,64L1440,120L1320,120C1200,120,960,120,720,120C480,120,240,120,120,120L0,120Z" fill="#fafbfc" />
+            </svg>
           </div>
         </section>
 

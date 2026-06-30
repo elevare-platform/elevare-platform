@@ -68,53 +68,46 @@ class CVParsingService:
         file: bytes,
         filename: str,
     ) -> ParsedCVSubmission:
-        # Validate Pdf
+        # Validate PDF — synchronous, fast
         validate_pdf_upload(file, filename)
 
-        # Layer 1 - Text extraction
+        # Layer 1: text extraction — synchronous, keeps cache check on the fast path
         text_result = extract_text_from_pdf(file)
-
-        # Compute HMAC hash for cache lookup
         cv_text_hash = self._compute_hash(text_result.text or "")
-
-        # Check Redis cache
         cache_key = f"cv_parse:{cv_text_hash}"
-        cached = await self._redis.get(cache_key)
 
+        # Cache hit — return immediately, no pipeline needed
+        cached = await self._redis.get(cache_key)
         if cached:
-            # Cache hit - create submission row with cached result, no pipeline needed.
             parsed_data = json.loads(cached)
             submission = await self._repo.submit_cv_for_parsing(
                 filename,
                 uploaded_by.id,
                 cv_text_hash,
                 CVParsingStatus.COMPLETED.value,
-                parsed_data
+                parsed_data,
             )
             await self._db.commit()
             logger.info("CV Parse cache hit", extra={"hash": cv_text_hash})
             return submission
-        
-        # Cache miss - upload to R2 and create pending submission
-        timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
-        r2_key = f"cv-parsing/{uploaded_by.id}/{timestamp}_{filename}"
-        await self._storage.upload_file(file, r2_key, "application/pdf")
 
+        # Cache miss — create PENDING row immediately and return.
+        # R2 upload + full pipeline runs in Celery, so the response is instant.
         submission = await self._repo.submit_cv_for_parsing(
             filename,
             uploaded_by.id,
             cv_text_hash,
             parse_status=CVParsingStatus.PENDING.value,
-            r2_key=r2_key
+            r2_key=None,  # set by the Celery task once uploaded
         )
+        await self._db.commit()
 
-        # Fire Celery task — only pass JSON-serialisable values
+        # Fire Celery task — passes raw file bytes, task handles R2 upload + pipeline
         run_full_pipeline_task.delay(
             submission_id=str(submission.id),
             cache_key=cache_key,
             file=file,
         )
-        await self._db.commit()
 
         return submission
     

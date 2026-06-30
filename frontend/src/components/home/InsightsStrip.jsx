@@ -54,6 +54,7 @@ function ArticleCard({ article }) {
 
   return (
     <article
+      className="premium-card"
       style={{
         background: '#ffffff',
         borderRadius: '0.75rem',
@@ -173,6 +174,7 @@ export default function InsightsStrip() {
               fontWeight: 800,
               color: '#1e293b',
               lineHeight: 1.2,
+              fontFamily: "'Lobster Two', cursive",
             }}
           >
             HR Expertise, Straight from the Source

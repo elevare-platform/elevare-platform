@@ -36,10 +36,29 @@ export default function TalentPipelinePage() {
     <>
       <Navbar onBookConsultation={openModal} />
 
-      <main className="pt-16 min-h-screen bg-gradient-to-b from-slate-900 via-brand-blue to-slate-950 text-white flex flex-col justify-between">
-        
+      <main className="relative pt-16 min-h-screen bg-slate-950 text-white flex flex-col justify-between overflow-hidden">
+        {/* Background Image Overlay */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-10 pointer-events-none scale-105"
+          style={{ backgroundImage: "url('/hero-images/img30.jpg')" }}
+        />
+        {/* Grid pattern overlay */}
+        <div 
+          className="absolute inset-0 opacity-10 pointer-events-none"
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)
+            `,
+            backgroundSize: '40px 40px',
+          }}
+        />
+        {/* Glowing gradients */}
+        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-brand-blue/30 blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-96 h-96 rounded-full bg-brand-amber/15 blur-[100px] pointer-events-none" />
+
         {/* Main Content */}
-        <div className="flex-grow flex items-center py-16 sm:py-24">
+        <div className="relative z-10 flex-grow flex items-center py-16 sm:py-24">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
             
             {/* Left Column: Heading, Waitlist, Tagline */}

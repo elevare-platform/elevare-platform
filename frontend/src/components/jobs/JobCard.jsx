@@ -178,6 +178,11 @@ function EmployerActions({ job, onPublish, onClose }) {
               {job.application_count > 99 ? '99+' : job.application_count}
             </span>
           )}
+          {job.pipeline_count != null && job.pipeline_count > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center px-1.5 h-4 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold leading-none whitespace-nowrap">
+              +{job.pipeline_count} ext.
+            </span>
+          )}
         </Button>
       </Link>
       <Button
