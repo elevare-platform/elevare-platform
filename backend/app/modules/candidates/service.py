@@ -89,6 +89,11 @@ class CandidateService:
         """
         profile = await self._repo.update(user_id, data)
         await self._db.commit()
+
+        # Re-generate embedding if profile content changed
+        from app.modules.ai.tasks import generate_candidate_embedding_task
+        generate_candidate_embedding_task.delay(str(profile.id))
+
         return ProfileResponse.model_validate(profile)
 
     async def get_profile_by_id(

@@ -252,17 +252,55 @@ async def _score_application_async(application_id_str: str) -> None:
                 )
                 return
             
-            # --- Deterministic score (no LLM)
+            # --- Deterministic score — use embedding similarity when both vectors exist,
+            # fall back to keyword-based scoring when either embedding is missing.
             parsed = submission.parsed_data
-            det_score = compute_deterministic_score(
-                candidate_skills=parsed.get("skills") or [],
-                candidate_years_experience=parsed.get("years_experience"),
-                candidate_seniority=parsed.get("seniority_level"),
-                job_required_skills=job.required_skills or [],
-                job_seniority_level=job.seniority_level,
-                job_min_years_experience=job.required_years_experience,
-                job_max_years_experience=None,
+
+            # Load candidate profile to check for stored embedding
+            from app.modules.candidates.models import CandidateProfile
+            from sqlalchemy import select as _select
+            candidate_profile_result = await db.execute(
+                _select(CandidateProfile).where(CandidateProfile.user_id == application.candidate_id)
             )
+            candidate_profile = candidate_profile_result.scalar_one_or_none()
+
+            if (
+                candidate_profile is not None
+                and candidate_profile.profile_embedding is not None
+                and job.job_embedding is not None
+            ):
+                from app.modules.ai.service import EmbeddingAIService
+                embedding_service = EmbeddingAIService()
+                skills_score = await embedding_service.compute_similarity_score(
+                    candidate_profile.profile_embedding,
+                    job.job_embedding,
+                )
+                # Blend: 50% embedding similarity + 30% experience + 20% seniority
+                from app.modules.ai.scoring_service import _experience_score, _seniority_score
+                experience_score = _experience_score(
+                    parsed.get("years_experience"),
+                    job.required_years_experience,
+                    None,
+                )
+                seniority_score = _seniority_score(
+                    parsed.get("seniority_level"),
+                    job.seniority_level,
+                )
+                det_score = max(0, min(100, round(
+                    skills_score * 0.5 + experience_score * 0.3 + seniority_score * 0.2
+                )))
+                logger.info("score_application: used embedding similarity for application %s", application_id)
+            else:
+                det_score = compute_deterministic_score(
+                    candidate_skills=parsed.get("skills") or [],
+                    candidate_years_experience=parsed.get("years_experience"),
+                    candidate_seniority=parsed.get("seniority_level"),
+                    job_required_skills=job.required_skills or [],
+                    job_seniority_level=job.seniority_level,
+                    job_min_years_experience=job.required_years_experience,
+                    job_max_years_experience=None,
+                )
+                logger.info("score_application: used keyword fallback for application %s", application_id)
 
             # --- LLM Layer ---
             ai_service = AnthropicCVExtractionService()
@@ -281,11 +319,11 @@ async def _score_application_async(application_id_str: str) -> None:
                     deterministic_score=det_score
                 )
             finally:
-                    try:
-                        await ai_service._client.close()
-                    except Exception:
-                        pass
-            
+                try:
+                    await ai_service._client.close()
+                except Exception:
+                    pass
+
             await app_repo.update(application_id, {
                 "ai_score": det_score,
                 "ai_strengths": reasoning.strengths,
@@ -403,17 +441,56 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                 )
                 return
             
-            # --- Deterministic score (no LLM)
+            # --- Deterministic score — use embedding similarity when both vectors exist,
+            # fall back to keyword-based scoring when either embedding is missing.
             parsed = submission.parsed_data
-            det_score = compute_deterministic_score(
-                candidate_skills=parsed.get("skills") or [],
-                candidate_years_experience=parsed.get("years_experience"),
-                candidate_seniority=parsed.get("seniority_level"),
-                job_required_skills=job.required_skills or [],
-                job_seniority_level=job.seniority_level,
-                job_min_years_experience=job.required_years_experience,
-                job_max_years_experience=None,
-            )
+
+            # Load candidate profile embedding if linked
+            from app.modules.candidates.models import CandidateProfile
+            from sqlalchemy import select as _select
+            candidate_profile = None
+            if talent_pool.candidate_profile_id:
+                cp_result = await db.execute(
+                    _select(CandidateProfile).where(CandidateProfile.id == talent_pool.candidate_profile_id)
+                )
+                candidate_profile = cp_result.scalar_one_or_none()
+
+            if (
+                candidate_profile is not None
+                and candidate_profile.profile_embedding is not None
+                and job.job_embedding is not None
+            ):
+                from app.modules.ai.service import EmbeddingAIService
+                from app.modules.ai.scoring_service import _experience_score, _seniority_score
+                embedding_service = EmbeddingAIService()
+                skills_score = await embedding_service.compute_similarity_score(
+                    candidate_profile.profile_embedding,
+                    job.job_embedding,
+                )
+                experience_score = _experience_score(
+                    parsed.get("years_experience"),
+                    job.required_years_experience,
+                    None,
+                )
+                seniority_score = _seniority_score(
+                    parsed.get("seniority_level"),
+                    job.seniority_level,
+                )
+                det_score = max(0, min(100, round(
+                    skills_score * 0.5 + experience_score * 0.3 + seniority_score * 0.2
+                )))
+                logger.info("score_talent_pool_profile: used embedding similarity for profile %s", profile_id)
+            else:
+                det_score = compute_deterministic_score(
+                    candidate_skills=parsed.get("skills") or [],
+                    candidate_years_experience=parsed.get("years_experience"),
+                    candidate_seniority=parsed.get("seniority_level"),
+                    job_required_skills=job.required_skills or [],
+                    job_seniority_level=job.seniority_level,
+                    job_min_years_experience=job.required_years_experience,
+                    job_max_years_experience=None,
+                )
+                logger.info("score_talent_pool_profile: used keyword fallback for profile %s", profile_id)
 
             # --- LLM Layer ---
             ai_service = AnthropicCVExtractionService()
@@ -432,11 +509,11 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                     deterministic_score=det_score
                 )
             finally:
-                    try:
-                        await ai_service._client.close()
-                    except Exception:
-                        pass
-            
+                try:
+                    await ai_service._client.close()
+                except Exception:
+                    pass
+
             await talent_pool_repo.update(profile_id, {
                 "ai_score": det_score,
                 "ai_strengths": reasoning.strengths,
@@ -454,3 +531,191 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
         finally:
             await engine.dispose()
 
+
+
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def generate_candidate_embedding_task(self, profile_id: str) -> None:
+    """Generate and store a profile embedding for a candidate.
+
+    Skips if the embedding source hash hasn't changed since last generation.
+    """
+    asyncio.run(_generate_candidate_embedding_async(profile_id))
+
+
+async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
+    from datetime import UTC as _UTC, datetime as _datetime
+
+    from app.modules.ai.scoring_service import hash_candidate_embedding_source
+    from app.modules.ai.service import EmbeddingAIService
+
+    profile_id = uuid.UUID(profile_id_str)
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with SessionLocal() as db:
+        try:
+            candidate_repo = CandidateRepository(db)
+            ai_repo = AIRepository(db)
+
+            profile = await candidate_repo.get_by_id(profile_id)
+            if not profile:
+                logger.warning("generate_candidate_embedding: profile %s not found", profile_id)
+                return
+
+            # Resolve parsed CV summary via the default CV → submission chain
+            parsed_cv_summary: str | None = None
+            default_cv = next((cv for cv in profile.cvs if cv.is_default), None)
+            if default_cv and default_cv.submission_id:
+                submission = await ai_repo.get_submission_by_id(default_cv.submission_id)
+                if submission and submission.parsed_data:
+                    parsed_cv_summary = submission.parsed_data.get("summary")
+
+            # Hash check — skip if source content hasn't changed
+            new_hash = hash_candidate_embedding_source(
+                skills=profile.skills,
+                bio=profile.bio,
+                parsed_cv_summary=parsed_cv_summary,
+            )
+            if profile.embedding_source_hash == new_hash and profile.profile_embedding is not None:
+                logger.info("generate_candidate_embedding: hash unchanged for profile %s, skipping", profile_id)
+                return
+
+            # Build embedding text and generate vector
+            embedding_text = (
+                f"Skills: {', '.join(profile.skills or [])}\n"
+                f"Bio: {profile.bio or ''}\n"
+                f"Summary: {parsed_cv_summary or ''}"
+            )
+
+            ai_service = EmbeddingAIService()
+            embedding = await ai_service.generate_embedding(embedding_text)
+
+            # Persist
+            profile.profile_embedding = embedding
+            profile.embedding_source_hash = new_hash
+            profile.embedding_generated_at = _datetime.now(_UTC)
+            await db.commit()
+
+            logger.info("generate_candidate_embedding: stored embedding for profile %s", profile_id)
+
+        except Exception:
+            logger.exception("generate_candidate_embedding: failed for profile %s", profile_id)
+            raise
+        finally:
+            await engine.dispose()
+
+
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def generate_job_embedding_task(self, job_id: str) -> None:
+    """Generate and store a job embedding.
+
+    Skips if the embedding source hash hasn't changed since last generation.
+    """
+    asyncio.run(_generate_job_embedding_async(job_id))
+
+
+async def _generate_job_embedding_async(job_id_str: str) -> None:
+    from datetime import UTC as _UTC, datetime as _datetime
+
+    from app.modules.ai.scoring_service import hash_job_embedding_source
+    from app.modules.ai.service import EmbeddingAIService
+
+    job_id = uuid.UUID(job_id_str)
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with SessionLocal() as db:
+        try:
+            job_repo = JobRepository(db)
+
+            job = await job_repo.get_by_id(job_id)
+            if not job:
+                logger.warning("generate_job_embedding: job %s not found", job_id)
+                return
+
+            # Hash check — skip if source content hasn't changed
+            new_hash = hash_job_embedding_source(
+                description=job.description,
+                required_skills=job.required_skills,
+            )
+            if job.embedding_source_hash == new_hash and job.job_embedding is not None:
+                logger.info("generate_job_embedding: hash unchanged for job %s, skipping", job_id)
+                return
+
+            # Build embedding text and generate vector
+            embedding_text = (
+                f"Job description: {job.description or ''}\n"
+                f"Required skills: {', '.join(job.required_skills or [])}"
+            )
+
+            ai_service = EmbeddingAIService()
+            embedding = await ai_service.generate_embedding(embedding_text)
+
+            # Persist
+            job.job_embedding = embedding
+            job.embedding_source_hash = new_hash
+            job.embedding_generated_at = _datetime.now(_UTC)
+            await db.commit()
+
+            logger.info("generate_job_embedding: stored embedding for job %s", job_id)
+
+        except Exception:
+            logger.exception("generate_job_embedding: failed for job %s", job_id)
+            raise
+        finally:
+            await engine.dispose()
+
+
+@celery.task
+def recompute_stale_scores_task() -> None:
+    """Nightly Celery beat task — re-queues scoring for applications where the
+    candidate's profile was updated after ai_score was last computed.
+
+    Runs off-peak (configured in celery beat schedule).
+    Only touches applications that are genuinely stale — bounded and cheap.
+    """
+    asyncio.run(_recompute_stale_scores_async())
+
+
+async def _recompute_stale_scores_async() -> None:
+    from sqlalchemy import select as _select
+
+    from app.modules.applications.models import Application
+    from app.modules.candidates.models import CandidateProfile
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with SessionLocal() as db:
+        try:
+            # Find applications where the candidate's profile was updated
+            # after the ai_score was last computed — these scores are stale.
+            stmt = (
+                _select(Application.id)
+                .join(
+                    CandidateProfile,
+                    CandidateProfile.user_id == Application.candidate_id,
+                )
+                .where(
+                    Application.ai_score.is_not(None),
+                    Application.ai_score_computed_at.is_not(None),
+                    CandidateProfile.updated_at > Application.ai_score_computed_at,
+                )
+            )
+            result = await db.execute(stmt)
+            stale_ids = result.scalars().all()
+
+            for app_id in stale_ids:
+                score_application_task.delay(str(app_id))
+
+            logger.info(
+                "recompute_stale_scores: re-queued %d stale application(s)", len(stale_ids)
+            )
+
+        except Exception:
+            logger.exception("recompute_stale_scores: failed")
+            raise
+        finally:
+            await engine.dispose()

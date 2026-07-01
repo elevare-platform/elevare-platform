@@ -43,7 +43,6 @@ def compute_deterministic_score(
 
     return max(0, min(100, round(composite)))
 
-
 # ---------------------------------------------------------------------------
 # Component functions
 # ---------------------------------------------------------------------------
@@ -123,7 +122,6 @@ def _seniority_score(candidate_seniority: str | None, job_seniority: str | None)
     else:
         return 0.0  # distant (2+ levels)
 
-
 def hash_job_scoring_inputs(
     description: str,
     required_skills: list[str] | None,
@@ -138,7 +136,6 @@ def hash_job_scoring_inputs(
 
     return hashlib.sha256(payload.encode()).hexdigest()
 
-
 def hash_cv_scoring_inputs(
     parsed_data: dict
 ) -> str:
@@ -150,4 +147,19 @@ def hash_cv_scoring_inputs(
     )
     return hashlib.sha256(payload.encode()).hexdigest()
 
-    
+def hash_candidate_embedding_source(
+    skills: list[str] | None,
+    bio: str | None,
+    parsed_cv_summary: str | None,
+) -> str:
+    """SHA-256 of candidate fields that affect the embedding."""
+    payload = f"{sorted(skills or [])}|{bio or ''}|{parsed_cv_summary or ''}"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+def hash_job_embedding_source(
+    description: str | None,
+    required_skills: list[str] | None,
+) -> str:
+    """SHA-256 of job fields that affect the embedding."""
+    payload = f"{description or ''}|{sorted(required_skills or [])}"
+    return hashlib.sha256(payload.encode()).hexdigest()

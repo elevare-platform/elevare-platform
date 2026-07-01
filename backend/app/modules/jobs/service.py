@@ -49,6 +49,10 @@ class JobService:
             raise ProfileIncompleteException()
         job = await self._repo.create(data, employer_id=employer.id)
         await self._db.commit()
+
+        from app.modules.ai.tasks import generate_job_embedding_task
+        generate_job_embedding_task.delay(str(job.id))
+
         return JobResponse.from_job(job)
 
     async def publish_job(self, job_id: UUID, current_user: User) -> JobResponse:
@@ -118,6 +122,12 @@ class JobService:
 
         job = await self._repo.update(job, data)
         await self._db.commit()
+
+        # Re-generate embedding if embedding-relevant fields changed
+        embedding_fields = {"description", "required_skills"}
+        if bool(embedding_fields & update_data.keys()):
+            from app.modules.ai.tasks import generate_job_embedding_task
+            generate_job_embedding_task.delay(str(job.id))
 
         # Re-fire scoring for all applications on this job if inputs changed
         if scoring_changed:

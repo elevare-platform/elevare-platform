@@ -49,7 +49,9 @@ class UserRepository:
             The newly created and refreshed User ORM instance.
 
         """
-        user = User(**data)
+        # cv_sharing_consent belongs on CandidateProfile, not User — strip it before construction
+        user_data = {k: v for k, v in data.items() if k != "cv_sharing_consent"}
+        user = User(**user_data)
         self._db.add(user)
         await self._db.flush()
 

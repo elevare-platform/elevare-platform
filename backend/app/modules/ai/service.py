@@ -4,6 +4,9 @@ import re
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 
+import numpy as np
+from openai import AsyncOpenAI
+
 from app.core.config import settings
 from app.core.cv_pipeline.layer3_sections import DetectedSections
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
@@ -58,6 +61,20 @@ class AIService(ABC):
     ) -> "FitReasoningResult":
         """Generate qualitative fit reasoning for a candidate-job pair."""
         ...
+    
+    @abstractmethod
+    async def generate_embedding(self, text: str) -> list[float]:
+        """Generate a 1536-dim embedding vector for the given text."""
+        ...
+    
+    @abstractmethod
+    async def compute_similarity_score(
+        self,
+        candidate_embedding: list[float],
+        job_embedding: list[float],
+    ) -> int:
+        """Compute cosine similarity between two embeddings, scaled to 0-100."""
+        ...
 
 
 class KeywordAIService(AIService):
@@ -110,6 +127,18 @@ class KeywordAIService(AIService):
             candidate_summary, job_description, deterministic_score
         )
 
+    async def generate_embedding(self, text: str) -> list[float]:
+        """Generate a 1536-dim embedding vector for the given text."""
+        raise NotImplementedError()
+    
+    async def compute_similarity_score(
+        self,
+        candidate_embedding: list[float],
+        job_embedding: list[float],
+    ) -> int:
+        """Compute cosine similarity between two embeddings, scaled to 0-100."""
+        raise NotImplementedError()
+
 
 class MockAIService(AIService):
     """Fixed-score implementation for tests — no real computation."""
@@ -149,6 +178,18 @@ class MockAIService(AIService):
             weaknesses=["Limited leadership exposure"],
             fit_summary="Candidate shows solid alignment with core requirements. Minor gaps in seniority expectations.",
         )
+    
+    async def generate_embedding(self, text: str) -> list[float]:
+        """Generate a 1536-dim embedding vector for the given text."""
+        return [0.1] * 1536
+    
+    async def compute_similarity_score(
+        self,
+        candidate_embedding: list[float],
+        job_embedding: list[float],
+    ) -> int:
+        """Compute cosine similarity between two embeddings, scaled to 0-100."""
+        return 75
 
 
 class AnthropicCVExtractionService(AIService):
@@ -349,9 +390,59 @@ class AnthropicCVExtractionService(AIService):
                 }
             )
             return FitReasoningResult()
+    
+    async def generate_embedding(self, text: str) -> list[float]:
+        """Generate a 1536-dim embedding vector for the given text."""
+        raise NotImplementedError()
+    
+    async def compute_similarity_score(
+        self,
+        candidate_embedding: list[float],
+        job_embedding: list[float],
+    ) -> int:
+        """Compute cosine similarity between two embeddings, scaled to 0-100."""
+        raise NotImplementedError()
+
+
+class EmbeddingAIService(AIService):
+    """Embedding-based scoring service backed by the openAI embedding API"""
+
+    def __init__(self) -> None:
+        self._client = AsyncOpenAI(
+            api_key=settings.openai_api_key
+        )
+    
+    async def generate_embedding(self, text: str) -> list[float]:
+        """Call OpenAI text-embedding-3-small and return the 1536-dim vector."""
+        response = await self._client.embeddings.create(
+            input=text,
+            model="text-embedding-3-small",
+        )
+        return response.data[0].embedding
+    
+    async def compute_similarity_score(
+        self,
+        candidate_embedding: list[float],
+        job_embedding: list[float]
+    ) -> int:
+        """Cosine similarity scaled to 0-100."""
+        a = np.array(candidate_embedding)
+        b = np.array(job_embedding)
+
+        similarity = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+        return max(0, min(100, round((similarity + 1) / 2 * 100)))
+    
+    async def compute_match_score(self, candidate_skills, job_description, job_title, required_skills=None):
+        raise NotImplementedError("EmbeddingAIService does not use keyword match scoring.")
+
+    async def extract_cv_data(self, sections, already_extracted):
+        raise NotImplementedError("EmbeddingAIService does not extract CV data.")
+
+    async def generate_fit_reasoning(self, candidate_summary, job_description, deterministic_score):
+        raise NotImplementedError("EmbeddingAIService does not generate fit reasoning.")
 
 
 def get_ai_service() -> AIService:
     """FastAPI dependency — returns KeywordAIService. Swap for EmbeddingAIService in Phase 12."""
-    return KeywordAIService()
+    return EmbeddingAIService()
 

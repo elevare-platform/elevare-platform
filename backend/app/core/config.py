@@ -78,5 +78,8 @@ class Settings(BaseSettings):
     # Default expiry for job access tokens in days
     default_access_token_expiry_days: int = 30
 
+    # OpenAI
+    openai_api_key: str | None = None
+
 
 settings = Settings()

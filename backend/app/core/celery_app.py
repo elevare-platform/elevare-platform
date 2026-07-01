@@ -52,4 +52,12 @@ celery.conf.update(
     # Worker
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=1000,
+    # Beat schedule — nightly off-peak jobs
+    beat_schedule={
+        "recompute-stale-scores-nightly": {
+            "task": "app.modules.ai.tasks.recompute_stale_scores_task",
+            "schedule": 60 * 60 * 24,  # every 24 hours
+            "options": {"expires": 60 * 60},  # discard if not picked up within 1 hour
+        },
+    },
 )

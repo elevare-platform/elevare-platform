@@ -6,6 +6,8 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
+from pgvector.sqlalchemy import Vector
+
 import sqlalchemy as sa
 from sqlalchemy import (
     ARRAY,
@@ -98,6 +100,10 @@ class CandidateProfile(BaseModel):
         default=False,
         server_default=sa.false(),
     )
+
+    profile_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    embedding_source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedding_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     user: Mapped[User] = relationship(back_populates="candidate_profile")

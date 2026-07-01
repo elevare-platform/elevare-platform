@@ -64,12 +64,14 @@ multidict==6.7.1
 murmurhash==1.0.15
 mypy_extensions==1.1.0
 numpy==2.4.6
+openai==2.44.0
 orjson==3.11.9
 packaging==26.2
 pathspec==1.1.1
 pdf2image==1.17.0
 pdfminer.six==20221105
 pdfplumber==0.10.3
+pgvector==0.3.6
 pillow==12.2.0
 platformdirs==4.10.0
 pluggy==1.6.0
