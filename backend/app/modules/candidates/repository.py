@@ -266,7 +266,9 @@ class CandidateRepository:
     async def list_all(self) -> list[CandidateProfile]:
         """Return all candidate profiles with CVs and documents eagerly loaded."""
         result = await self._db.execute(
-            select(CandidateProfile).options(
+            select(CandidateProfile)
+            .where(CandidateProfile.user_id.is_not(None))
+            .options(
                 selectinload(CandidateProfile.user),
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),

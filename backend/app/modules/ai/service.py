@@ -433,7 +433,10 @@ class EmbeddingAIService(AIService):
         return max(0, min(100, round((similarity + 1) / 2 * 100)))
     
     async def compute_match_score(self, candidate_skills, job_description, job_title, required_skills=None):
-        raise NotImplementedError("EmbeddingAIService does not use keyword match scoring.")
+        """Delegate to KeywordAIService for keyword-based match scoring."""
+        return await KeywordAIService().compute_match_score(
+            candidate_skills, job_description, job_title, required_skills
+        )
 
     async def extract_cv_data(self, sections, already_extracted):
         raise NotImplementedError("EmbeddingAIService does not extract CV data.")

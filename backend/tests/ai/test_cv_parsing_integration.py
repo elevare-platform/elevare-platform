@@ -101,7 +101,16 @@ async def test_submit_cv_creates_submission(client, db_session):
 async def test_submit_cv_cache_hit_returns_completed(client, db_session, mock_redis):
     import json
     cached_data = {"full_name": "John Doe", "email": "john@example.com", "skills": []}
-    mock_redis.get = AsyncMock(return_value=json.dumps(cached_data).encode())
+    # Re-register the override so the client fixture's mock_redis uses our cached response
+    from app.core.dependencies import get_redis_client
+    configured_mock = AsyncMock()
+    configured_mock.get = AsyncMock(return_value=json.dumps(cached_data).encode())
+    configured_mock.setex = AsyncMock()
+
+    async def override_with_cache():
+        yield configured_mock
+
+    app.dependency_overrides[get_redis_client] = override_with_cache
 
     token = await get_token(client, db_session, "ADMIN")
 
@@ -172,6 +181,8 @@ async def test_employer_cannot_see_other_employer_submission(client, db_session)
 @pytest.mark.asyncio
 async def test_same_cv_twice_no_second_llm_call(client, db_session, mock_celery_task, mock_redis):
     import json
+    from app.core.dependencies import get_redis_client
+
     token = await get_token(client, db_session, "ADMIN")
 
     # First submission — cache miss, fires Celery
@@ -182,9 +193,16 @@ async def test_same_cv_twice_no_second_llm_call(client, db_session, mock_celery_
     )
     assert mock_celery_task.delay.call_count == 1
 
-    # Now simulate cache populated
+    # Simulate cache populated — re-register override with cached response
     cached_data = {"full_name": "Test", "skills": []}
-    mock_redis.get = AsyncMock(return_value=json.dumps(cached_data).encode())
+    cache_mock = AsyncMock()
+    cache_mock.get = AsyncMock(return_value=json.dumps(cached_data).encode())
+    cache_mock.setex = AsyncMock()
+
+    async def override_with_cache():
+        yield cache_mock
+
+    app.dependency_overrides[get_redis_client] = override_with_cache
 
     # Second submission — cache hit, no new Celery task
     await client.post(

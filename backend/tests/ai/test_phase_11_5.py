@@ -296,12 +296,21 @@ class TestJobAccessTokens:
     async def test_expired_token_returns_404_not_data(self, client, db_session):
         from app.modules.jobs.models import JobAccessTokens
         import secrets
+        from tests.conftest import make_employer, make_job
+
+        employer = make_employer()
+        db_session.add(employer)
+        await db_session.flush()
+
+        job = make_job(employer.id)
+        db_session.add(job)
+        await db_session.flush()
 
         token_str = secrets.token_urlsafe(32)
         expired_token = JobAccessTokens(
             token=token_str,
-            job_id=uuid4(),
-            created_by_id=uuid4(),
+            job_id=job.id,
+            created_by_id=employer.id,
             disclose_names=False,
             expires_at=datetime.now(UTC) - timedelta(hours=1),  # already expired
             is_active=True,
@@ -316,12 +325,21 @@ class TestJobAccessTokens:
     async def test_revoked_token_returns_404_immediately(self, client, db_session):
         from app.modules.jobs.models import JobAccessTokens
         import secrets
+        from tests.conftest import make_employer, make_job
+
+        employer = make_employer()
+        db_session.add(employer)
+        await db_session.flush()
+
+        job = make_job(employer.id)
+        db_session.add(job)
+        await db_session.flush()
 
         token_str = secrets.token_urlsafe(32)
         revoked_token = JobAccessTokens(
             token=token_str,
-            job_id=uuid4(),
-            created_by_id=uuid4(),
+            job_id=job.id,
+            created_by_id=employer.id,
             disclose_names=False,
             expires_at=datetime.now(UTC) + timedelta(days=7),
             is_active=False,  # revoked
@@ -402,22 +420,21 @@ class TestTalentPoolSubmission:
             pdf_bytes = b"%PDF-1.4 fake pdf content for testing"
             resp = await client.post(
                 "/api/v1/talent-pool/submit",
-                content=pdf_bytes,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "multipart/form-data",
-                },
+                headers={"Authorization": f"Bearer {token}"},
                 files={"file": ("test_cv.pdf", pdf_bytes, "application/pdf")},
                 data={"source": "referral"},
             )
 
-        # Profile was created regardless of parsing outcome
+        assert resp.status_code == 201
+        profile_id = resp.json()["id"]
+
+        # Verify the specific profile that was just created
+        from uuid import UUID
         result = await db_session.execute(
-            select(TalentPoolProfiles).where(TalentPoolProfiles.added_by == user.id)
+            select(TalentPoolProfiles).where(TalentPoolProfiles.id == UUID(profile_id))
         )
-        profiles = result.scalars().all()
-        assert len(profiles) >= 1
-        assert profiles[0].source == "referral"
+        profile = result.scalar_one()
+        assert profile.source == "referral"
 
     @pytest.mark.asyncio
     async def test_candidate_auto_enrolled_on_registration(self, client, db_session):

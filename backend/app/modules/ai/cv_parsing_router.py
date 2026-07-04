@@ -27,7 +27,7 @@ async def get_cv_parsing_service(
         storage=storage,
         redis=redis,
         ai_service=AnthropicCVExtractionService(),
-        nlp=request.app.state.nlp,
+        nlp=getattr(request.app.state, "nlp", None),
     )
 
 @router.post("/submit", status_code=201)
