@@ -66,6 +66,7 @@ class TalentPoolRepository:
 
             from app.modules.users.enums import UserRole
             from app.modules.users.models import User as UserModel
+
             # Subquery: is the added_by user an admin?
             admin_subq = (
                 select(UserModel.id)

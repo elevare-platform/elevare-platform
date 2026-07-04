@@ -175,7 +175,7 @@ class TestDeterministicScore:
 
     def test_missing_data_neutral_not_zero(self):
         """Missing experience/seniority should use neutral 50, not penalise."""
-        score_with = compute_deterministic_score(
+        compute_deterministic_score(
             candidate_skills=["Python"],
             candidate_years_experience=3,
             candidate_seniority="MID",
@@ -393,7 +393,6 @@ class TestNameDisclosure:
 
     def test_external_cv_always_initials_only(self):
         """External talent pool candidates have no consent — always initials regardless of token."""
-        disclose_names = True  # token enables names
         # But external CVs hardcode full_name = None
         full_name = None  # as implemented in access_token_service.py
         assert full_name is None

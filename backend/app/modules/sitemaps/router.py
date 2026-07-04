@@ -16,6 +16,7 @@ async def get_sitemap(
     redis: aioredis.Redis = Depends(get_redis_client),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
+    """Return the sitemap XML, served from Redis cache when available."""
     service = SitemapService(db, redis)
     xml = await service.get_sitemap_xml()
     return Response(content=xml, media_type="application/xml")
@@ -23,6 +24,7 @@ async def get_sitemap(
 
 @router.get("/robots.txt")
 async def get_robots() -> Response:
+    """Return the robots.txt with crawl rules and sitemap location."""
     content = f"""User-agent: *
 Allow: /
 Allow: /jobs

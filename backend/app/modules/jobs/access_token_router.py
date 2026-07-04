@@ -45,6 +45,7 @@ async def delete_access_token(
     current_user: User = Depends(require_role("ADMIN", "EMPLOYER")),
     db: AsyncSession = Depends(get_db),
 ):
+    """Delete a job access token. Only the job owner or an admin can delete."""
     service = AccessTokenService(db)
     await service.delete_access_token(job_id, token_id, current_user)
     return SuccessResponse(message="Access token deleted successfully")

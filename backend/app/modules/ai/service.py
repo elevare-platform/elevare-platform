@@ -1,3 +1,4 @@
+"""AI service module — AIService interface and concrete implementations."""
 import json
 import logging
 import re
@@ -346,6 +347,7 @@ class AnthropicCVExtractionService(AIService):
         job_description: str,
         deterministic_score: int,
     ) -> "FitReasoningResult":
+        """Generate a qualitative fit summary and strengths/weaknesses via Claude."""
         from app.modules.ai.prompts.fit_reasoning import (
             FIT_REASONING_SYSTEM_PROMPT,
             build_fit_reasoning_prompt,
@@ -405,9 +407,10 @@ class AnthropicCVExtractionService(AIService):
 
 
 class EmbeddingAIService(AIService):
-    """Embedding-based scoring service backed by the openAI embedding API"""
+    """Embedding-based scoring service backed by the OpenAI embedding API."""
 
     def __init__(self) -> None:
+        """Initialise the OpenAI async client using the configured API key."""
         self._client = AsyncOpenAI(
             api_key=settings.openai_api_key
         )
@@ -439,9 +442,11 @@ class EmbeddingAIService(AIService):
         )
 
     async def extract_cv_data(self, sections, already_extracted):
+        """Not implemented — EmbeddingAIService does not extract CV data."""
         raise NotImplementedError("EmbeddingAIService does not extract CV data.")
 
     async def generate_fit_reasoning(self, candidate_summary, job_description, deterministic_score):
+        """Not implemented — EmbeddingAIService does not generate fit reasoning."""
         raise NotImplementedError("EmbeddingAIService does not generate fit reasoning.")
 
 

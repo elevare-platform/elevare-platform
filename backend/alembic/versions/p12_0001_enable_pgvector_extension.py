@@ -6,6 +6,7 @@ Create Date: 2026-06-30
 
 """
 from typing import Union
+
 from alembic import op
 
 revision: str = 'p12_0001'

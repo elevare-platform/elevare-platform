@@ -49,6 +49,7 @@ class AuthService:
     """Handles registration, login, token refresh, and logout business logic."""
 
     def __init__(self, db: AsyncSession):
+        """Initialise the service with an async database session."""
         self._db = db
         self._user_repo = UserRepository(db)
         self._auth_repo = AuthRepository(db)

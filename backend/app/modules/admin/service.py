@@ -60,6 +60,7 @@ class AdminService:
     async def update_user_status(
         self, admin_id: UUID, user_id: UUID, new_status: str
     ) -> object:
+        """Update a user's account status and write an audit log entry."""
         user = await self._repo.get_user_by_id(user_id)
         if not user:
             raise UserNotFoundException()
@@ -81,6 +82,7 @@ class AdminService:
     async def bulk_update_user_status(
         self, admin_id: UUID, user_ids: list[UUID], action: str
     ) -> dict:
+        """Update status for multiple users in one operation (max 100)."""
         if len(user_ids) > _BULK_LIMIT:
             raise ValidationException(
                 message=f"Bulk operations are limited to {_BULK_LIMIT} records"
@@ -121,6 +123,7 @@ class AdminService:
     async def moderate_job(
         self, admin_id: UUID, job_id: UUID, action: str, reason: str | None = None
     ) -> object:
+        """Approve, reject, or close a job, write an audit log entry, and notify the employer."""
         logger.info(f"\n\n\n\n\n========================Action: {action}=========================\n\n\n\n\n\n")
         action = action.upper()
         logger.info(f"\n\n\n\n\n========================Action: {action}=========================\n\n\n\n\n\n")
@@ -163,6 +166,7 @@ class AdminService:
     async def bulk_update_job_status(
         self, admin_id: UUID, job_ids: list[UUID], action: str
     ) -> dict:
+        """Update status for multiple jobs in one operation (max 100)."""
         if len(job_ids) > _BULK_LIMIT:
             raise ValidationException(
                 message=f"Bulk operations are limited to {_BULK_LIMIT} records"

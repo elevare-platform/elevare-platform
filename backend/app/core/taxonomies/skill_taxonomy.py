@@ -1,3 +1,4 @@
+"""Curated taxonomy of normalised skill names and variant aliases for CV matching."""
 SKILLS_TAXONOMY = {
     # ── PROGRAMMING LANGUAGES ──
     "python", "javascript", "typescript", "java", "c", "c++", "c#",

@@ -1,3 +1,4 @@
+"""Curated taxonomy of degree and qualification names for CV matching."""
 DEGREE_TAXONOMY = {
     # Nigerian qualifications
     "b.sc", "bsc", "bachelor of science",

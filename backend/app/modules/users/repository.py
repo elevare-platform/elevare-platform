@@ -15,6 +15,7 @@ class UserRepository:
     """Handles all database operations for User and UserProfile models."""
 
     def __init__(self, db):
+        """Initialise with an async database session."""
         self._db = db
 
     async def get_user_by_email(self, email: str) -> User | None:

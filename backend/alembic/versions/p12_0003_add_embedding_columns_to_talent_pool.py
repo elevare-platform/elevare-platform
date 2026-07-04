@@ -9,6 +9,7 @@ from typing import Union
 
 import pgvector.sqlalchemy
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = 'p12_0003'

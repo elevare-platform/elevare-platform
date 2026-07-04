@@ -15,6 +15,7 @@ class AuthRepository:
     """Data-access layer for refresh token persistence."""
 
     def __init__(self, db: AsyncSession):
+        """Initialise the repository with an async database session."""
         self._db = db
 
     async def create_refresh_token(self, user_id: UUID, raw_token: str, expires_at: datetime):

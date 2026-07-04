@@ -19,6 +19,7 @@ class UserService:
     """Business logic for user profile management."""
 
     def __init__(self, db: AsyncSession):
+        """Initialise the service with an async database session."""
         self._db = db
         self._user_repo = UserRepository(db)
 

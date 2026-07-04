@@ -12,6 +12,7 @@ class EmployerService:
     """Business logic for employer-specific operations."""
 
     def __init__(self, db: AsyncSession):
+        """Initialise the service with an async database session."""
         self._db = db
         self._repo = EmployerRepository(db)
 

@@ -1,3 +1,4 @@
+"""Celery tasks for the AI module — CV parsing pipeline, scoring, and embeddings."""
 import asyncio
 import json
 import logging
@@ -53,10 +54,7 @@ async def _run_pipeline_async(
     import dataclasses
 
     import redis.asyncio as aioredis
-    from sqlalchemy.ext.asyncio import (
-        async_sessionmaker,
-        create_async_engine,
-    )
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.core.config import settings
     from app.core.cv_pipeline.pipeline import run_extraction_pipeline

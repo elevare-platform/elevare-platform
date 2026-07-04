@@ -123,7 +123,7 @@ async def complete_candidate_profile(client, db_session, token: str, user_id) ->
     from app.modules.candidates.models import CandidateProfile
 
     # Update via API
-    resp = await client.put(
+    await client.put(
         "/api/v1/candidates/me",
         json={
             "bio": "Experienced software developer.",

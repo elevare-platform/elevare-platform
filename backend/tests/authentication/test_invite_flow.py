@@ -16,9 +16,7 @@ from uuid import uuid4
 import pytest
 from fastapi import Response
 
-from app.core.exceptions import (
-    VerificationTokenExpiredException,
-)
+from app.core.exceptions import VerificationTokenExpiredException
 from app.modules.auth.models import InviteToken
 from app.modules.auth.security import generate_token, hash_token
 from app.modules.auth.service import AuthService

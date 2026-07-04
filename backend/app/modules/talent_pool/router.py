@@ -1,3 +1,4 @@
+"""HTTP endpoints for the talent pool module."""
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
@@ -120,6 +121,7 @@ async def get_talent_pool_profile(
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> TalentPoolProfileResponse:
+    """Return a single talent pool profile by ID."""
     return await service.get_profile(profile_id)
 
 
@@ -130,6 +132,7 @@ async def update_status(
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> TalentPoolProfileResponse:
+    """Update the status of a talent pool profile."""
     return await service.update_status(profile_id, data)
 
 

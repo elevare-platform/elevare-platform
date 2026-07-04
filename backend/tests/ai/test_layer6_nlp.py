@@ -7,11 +7,11 @@ from app.core.cv_pipeline.layer6_nlp import extract_nlp
 
 
 def make_sections(**kwargs) -> DetectedSections:
-    defaults = dict(
-        summary=None, experience=None, education=None,
-        skills=None, certifications=None, projects=None,
-        references=None, unclassified="",
-    )
+    defaults = {
+        "summary": None, "experience": None, "education": None,
+        "skills": None, "certifications": None, "projects": None,
+        "references": None, "unclassified": "",
+    }
     defaults.update(kwargs)
     return DetectedSections(**defaults)
 
@@ -21,11 +21,11 @@ def make_mock_nlp(entities=None, matcher_matches=None):
     entities = entities or []
     matcher_matches = matcher_matches or []
 
-    mock_ent = lambda text, label: MagicMock(text=text, label_=label,
-                                              start_char=0)
+    def make_mock_ent(text, label):
+        return MagicMock(text=text, label_=label, start_char=0)
 
     mock_doc = MagicMock()
-    mock_doc.ents = [mock_ent(t, l) for t, l in entities]
+    mock_doc.ents = [make_mock_ent(t, lbl) for t, lbl in entities]
 
     mock_nlp = MagicMock()
     mock_nlp.return_value = mock_doc

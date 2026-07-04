@@ -11,12 +11,12 @@ from app.modules.ai.service import MockAIService
 
 
 def make_sections(**kwargs) -> DetectedSections:
-    defaults = dict(
-        summary=None, experience="Worked at Google as Software Engineer 2020-2023.",
-        education="BSc Computer Science, Lagos 2018.",
-        skills=None, certifications=None, projects=None,
-        references=None, unclassified="John Doe\njohn@email.com",
-    )
+    defaults = {
+        "summary": None, "experience": "Worked at Google as Software Engineer 2020-2023.",
+        "education": "BSc Computer Science, Lagos 2018.",
+        "skills": None, "certifications": None, "projects": None,
+        "references": None, "unclassified": "John Doe\njohn@email.com",
+    }
     defaults.update(kwargs)
     return DetectedSections(**defaults)
 

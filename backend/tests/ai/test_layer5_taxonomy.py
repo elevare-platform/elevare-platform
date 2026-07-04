@@ -6,11 +6,11 @@ from app.core.cv_pipeline.layer5_taxonomy import match_taxonomy
 
 
 def make_sections(**kwargs) -> DetectedSections:
-    defaults = dict(
-        summary=None, experience=None, education=None,
-        skills=None, certifications=None, projects=None,
-        references=None, unclassified="",
-    )
+    defaults = {
+        "summary": None, "experience": None, "education": None,
+        "skills": None, "certifications": None, "projects": None,
+        "references": None, "unclassified": "",
+    }
     defaults.update(kwargs)
     return DetectedSections(**defaults)
 

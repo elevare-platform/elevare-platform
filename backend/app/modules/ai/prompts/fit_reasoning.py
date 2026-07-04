@@ -1,3 +1,5 @@
+"""Claude prompts for qualitative candidate-job fit reasoning."""
+
 FIT_REASONING_SYSTEM_PROMPT = """
 You are a recruitment analyst evaluating candidate-job fit.
 
@@ -41,6 +43,7 @@ def build_fit_reasoning_prompt(
     job_description: str,
     deterministic_score: int,
 ) -> str:
+    """Build the user-turn prompt for fit reasoning with score and candidate context."""
     return FIT_REASONING_USER_PROMPT.format(
         score=deterministic_score,
         candidate_summary=candidate_summary,

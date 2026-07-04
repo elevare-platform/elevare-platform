@@ -1,3 +1,4 @@
+"""HTTP endpoints for the auth module."""
 import logging
 
 from fastapi import APIRouter, Cookie, Depends, Request, Response

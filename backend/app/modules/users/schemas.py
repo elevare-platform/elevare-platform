@@ -19,6 +19,7 @@ class EmployerProfileUpdateRequest(BaseModel):
     @field_validator("company_name")
     @classmethod
     def validate_company_name(cls, v: str) -> str:
+        """Strip whitespace and enforce a minimum length of 2 characters."""
         v = v.strip()
         if len(v) < 2:
             raise ValueError("Company name must be at least 2 characters")
@@ -27,6 +28,7 @@ class EmployerProfileUpdateRequest(BaseModel):
     @field_validator("industry")
     @classmethod
     def validate_industry(cls, v: str) -> str:
+        """Strip whitespace and ensure the field is not blank."""
         v = v.strip()
         if not v:
             raise ValueError("Industry is required")
@@ -35,6 +37,7 @@ class EmployerProfileUpdateRequest(BaseModel):
     @field_validator("company_size")
     @classmethod
     def validate_company_size(cls, v: str) -> str:
+        """Strip whitespace and ensure the field is not blank."""
         v = v.strip()
         if not v:
             raise ValueError("Company size is required")
@@ -43,6 +46,7 @@ class EmployerProfileUpdateRequest(BaseModel):
     @field_validator("website")
     @classmethod
     def validate_website(cls, v: str | None) -> str | None:
+        """Strip whitespace and enforce an http/https prefix when provided."""
         if not v:
             return None
         v = v.strip()

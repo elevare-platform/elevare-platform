@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 
 class TalentPoolProfiles(BaseModel):
+    """A talent pipeline entry — either a sourced external CV or a self-registered candidate."""
+
     __tablename__ = "talent_pool_profiles"
 
     parsed_submission_id: Mapped[uuid.UUID | None] = mapped_column(

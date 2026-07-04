@@ -235,6 +235,7 @@ class AdminRepository:
         log_metadata: dict | None = None,
         reason: str | None = None,
     ) -> AuditLog:
+        """Create and flush an AuditLog entry for the given admin action."""
         entry = AuditLog(
             admin_id=admin_id,
             action=action,

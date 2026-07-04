@@ -6,14 +6,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import (
-    ARRAY,
-    UUID,
-    ForeignKey,
-    Index,
-    String,
-    Text,
-)
+from sqlalchemy import ARRAY, UUID, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

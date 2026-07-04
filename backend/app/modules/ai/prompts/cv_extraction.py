@@ -1,3 +1,4 @@
+"""Claude prompts and schema for structured CV data extraction."""
 import json
 
 CV_EXTRACTION_SYSTEM_PROMPT = """
@@ -118,6 +119,7 @@ def build_user_prompt(
     experience_text: str,
     education_text: str,
 ) -> str:
+    """Build the user-turn prompt for CV extraction with already-extracted context."""
     return CV_EXTRACTION_USER_PROMPT.format(
         already_extracted=json.dumps(already_extracted, indent=2),
         experience_text=experience_text or "",

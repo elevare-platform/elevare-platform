@@ -34,15 +34,16 @@ async def get_cv_parsing_service(
 async def submit_cv(
     file: UploadFile = File(...),
     current_user: User = Depends(require_role("ADMIN", "EMPLOYER")),
-    service: CVParsingService = Depends(get_cv_parsing_service)
+    service: CVParsingService = Depends(get_cv_parsing_service),
 ):
+    """Upload a single CV for parsing. Returns a ParsedCVSubmission record."""
     file_bytes = await file.read()
-    submission = await service.submit_cv_for_parsing(
+    return await service.submit_cv_for_parsing(
         current_user,
         file_bytes,
         file.filename,
     )
-    return submission
+
 
 @router.get("/submissions", status_code=200)
 async def get_submissions(
@@ -53,6 +54,7 @@ async def get_submissions(
     current_user: User = Depends(require_role("ADMIN", "EMPLOYER")),
     service: CVParsingService = Depends(get_cv_parsing_service),
 ):
+    """Return paginated CV parsing submissions. Employers see only their own."""
     return await service.list_submissions(
         current_user,
         status=status,
@@ -60,20 +62,25 @@ async def get_submissions(
         limit=limit,
     )
 
+
 @router.get("/submissions/{id}", status_code=200)
 async def get_submission(
     id: uuid.UUID,
     current_user: User = Depends(require_role("ADMIN", "EMPLOYER")),
     service: CVParsingService = Depends(get_cv_parsing_service),
 ):
+    """Return a single CV parsing submission by ID."""
     return await service.get_submission(id, current_user)
+
 
 @router.get("/costs", status_code=200)
 async def get_costs(
     current_user: User = Depends(require_role("ADMIN")),
     service: CVParsingService = Depends(get_cv_parsing_service),
 ):
+    """Return the current month's LLM cost summary. Admin only."""
     return await service.get_monthly_cost_summary()
+
 
 # TODO: MAKE THIS A PRO PLAN WHERE HR CAN BATCH ADD MULTIPLE PDFS AT ONCE
 @router.post("/submit/batch", status_code=201)
@@ -82,6 +89,7 @@ async def submit_pdf_batch(
     current_user: User = Depends(require_role("ADMIN", "EMPLOYER")),
     service: CVParsingService = Depends(get_cv_parsing_service),
 ):
+    """Upload up to 20 CVs for parsing in a single request."""
     if len(files) > 20:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="Maximum 20 files per batch")
@@ -95,6 +103,7 @@ async def submit_pdf_batch(
         results.append(submission)
     return results
 
+
 @router.get("/submissions/{id}/download", status_code=200)
 async def download_cv(
     request: Request,
@@ -102,6 +111,7 @@ async def download_cv(
     current_user: User = Depends(require_role("ADMIN", "EMPLOYER")),
     service: CVParsingService = Depends(get_cv_parsing_service),
 ):
+    """Generate a 15-minute presigned download URL for a parsed CV."""
     return await service.generate_cv_url(id, current_user)
 
 @router.post("/submissions/{id}/create-candidate", status_code=410)

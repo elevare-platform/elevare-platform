@@ -12,6 +12,7 @@ class EmployerRepository:
     """Handles database queries scoped to a specific employer."""
 
     def __init__(self, db: AsyncSession):
+        """Initialise with an async database session."""
         self._db = db
 
     async def get_stats(self, employer_id) -> EmployerStats:

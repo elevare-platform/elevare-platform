@@ -1,3 +1,4 @@
+"""Pydantic schemas for the talent pool module."""
 import uuid
 from datetime import datetime
 
@@ -16,10 +17,14 @@ class TalentPoolSubmitRequest(BaseModel):
 
 
 class TalentPoolStatusUpdateRequest(BaseModel):
+    """Payload for updating a talent pool profile's status."""
+
     status: str  # new, shortlisted, archived
 
 
 class TalentPoolProfileResponse(BaseModel):
+    """Full talent pool profile returned by the API, enriched with parsed CV data."""
+
     id: uuid.UUID
     parsed_submission_id: uuid.UUID | None = None
     candidate_profile_id: uuid.UUID | None = None
@@ -48,6 +53,8 @@ class TalentPoolProfileResponse(BaseModel):
 
 
 class TalentPoolPromoteResponse(BaseModel):
+    """Response after a talent pool promotion attempt."""
+
     message: str
     status: str  # "invite_sent" or "conflict"
     conflict_email: str | None = None  # populated when an active user already exists
