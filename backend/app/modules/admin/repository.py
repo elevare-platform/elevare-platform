@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,6 +24,7 @@ class AdminRepository:
     """Database queries for admin service operations."""
 
     def __init__(self, db: AsyncSession) -> None:
+        """Initialise the repository with an async database session."""
         self._db = db
 
     # -----------------------------------------------------------------------
@@ -38,6 +39,7 @@ class AdminRepository:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return a paginated cursor result of users with optional filters."""
         stmt = select(User)
         if role:
             stmt = stmt.where(User.role == role)
@@ -51,6 +53,7 @@ class AdminRepository:
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
     async def get_user_by_id(self, user_id: UUID) -> User | None:
+        """Fetch a user by UUID with employer and candidate profiles loaded."""
         stmt = (
             select(User)
             .where(User.id == user_id)
@@ -63,6 +66,7 @@ class AdminRepository:
         return result.scalar_one_or_none()
 
     async def set_user_status(self, user: User, status: str) -> User:
+        """Update a user's account_status and flush the session."""
         user.account_status = status
         await self._db.flush()
         return user
@@ -79,6 +83,7 @@ class AdminRepository:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return a paginated cursor result of jobs with optional filters."""
         stmt = select(Job).options(
             selectinload(Job.employer).selectinload(User.employer_profile)
         )
@@ -94,6 +99,7 @@ class AdminRepository:
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
     async def get_job_by_id(self, job_id: UUID) -> Job | None:
+        """Fetch a job by UUID with employer and employer_profile loaded."""
         stmt = (
             select(Job)
             .where(Job.id == job_id)
@@ -103,6 +109,7 @@ class AdminRepository:
         return result.scalar_one_or_none()
 
     async def set_job_moderation_status(self, job: Job, moderation_status: str) -> Job:
+        """Set a job's moderation_status and return the job to DRAFT if rejected."""
         job.moderation_status = moderation_status
         if moderation_status == ModerationStatus.REJECTED.value:
             # Return to DRAFT so employer can edit and resubmit — CLOSED is permanent
@@ -111,6 +118,7 @@ class AdminRepository:
         return job
 
     async def set_job_status(self, job: Job, status: str) -> Job:
+        """Set a job's status field directly."""
         job.status = status
         await self._db.flush()
         return job
@@ -125,6 +133,7 @@ class AdminRepository:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return a paginated cursor result of all applications platform-wide."""
         stmt = select(Application).options(
             selectinload(Application.candidate),
             selectinload(Application.job),
@@ -134,6 +143,7 @@ class AdminRepository:
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
     async def get_all_applications_for_export(self) -> list[Application]:
+        """Fetch all applications with employer profile data for CSV export."""
         stmt = select(Application).options(
             selectinload(Application.candidate),
             selectinload(Application.job).selectinload(Job.employer).selectinload(User.employer_profile),
@@ -146,7 +156,8 @@ class AdminRepository:
     # -----------------------------------------------------------------------
 
     async def get_platform_stats(self) -> dict:
-        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        """Return aggregated counts for users, jobs, and applications."""
+        thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
         # Users — single query with FILTER
         user_stats = await self._db.execute(
@@ -241,6 +252,7 @@ class AdminRepository:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return paginated audit log entries ordered by most recent first."""
         stmt = (
             select(AuditLog)
             .options(selectinload(AuditLog.admin))
@@ -253,6 +265,7 @@ class AdminRepository:
     # -----------------------------------------------------------------------
 
     def build_applications_csv(self, applications: list[Application]) -> str:
+        """Build a CSV string from a list of Application ORM objects."""
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([

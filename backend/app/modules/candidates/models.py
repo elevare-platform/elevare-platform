@@ -6,9 +6,8 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from pgvector.sqlalchemy import Vector
-
 import sqlalchemy as sa
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
     UUID,
@@ -32,8 +31,8 @@ from app.modules.jobs.enums import WorkModel
 
 if TYPE_CHECKING:
     from app.modules.jobs.models import Job
-    from app.modules.users.models import User
     from app.modules.talent_pool.models import TalentPoolProfiles
+    from app.modules.users.models import User
 
 
 class CandidateProfile(BaseModel):
@@ -113,7 +112,7 @@ class CandidateProfile(BaseModel):
     educations: Mapped[list[Education]] = relationship(back_populates="candidate_profile")
     certifications: Mapped[list[Certification]] = relationship(back_populates="candidate_profile")
     profile_views: Mapped[list[ProfileView]] = relationship(back_populates="candidate_profile")
-    talent_pool_profile: Mapped["TalentPoolProfiles | None"] = relationship(
+    talent_pool_profile: Mapped[TalentPoolProfiles | None] = relationship(
         "TalentPoolProfiles",
         back_populates="candidate_profile",
         uselist=False,

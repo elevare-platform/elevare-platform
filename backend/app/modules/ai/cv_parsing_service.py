@@ -1,22 +1,4 @@
-from app.modules.candidates.models import CandidateProfile
-from app.modules.users.repository import UserRepository
-from app.modules.candidates.repository import CandidateRepository
-from app.modules.auth.repository import AuthRepository
-from app.core.cv_pipeline.layer4_deterministic import DeterministicExtractionResult
-from app.modules.users.enums import UserRole
-from app.core.schemas import PaginationResponse
-from app.core.pagination import paginate_cursor
-from sqlalchemy import select
-from app.core.exceptions import PermissionDeniedException
-from app.modules.ai.cv_parsing_repo import CVParsingRepo
-from app.modules.ai.enums import CVParsingStatus
-from app.modules.ai.tasks import run_full_pipeline_task
-from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
-from app.core.file_validation import validate_pdf_upload
-from app.modules.users.models import User
-from app.core.config import settings
-from app.modules.ai.service import AIService
-from app.core.storage import StorageService
+"""Service layer for CV parsing — submission, retrieval, and candidate creation."""
 import hashlib
 import hmac
 import json
@@ -25,17 +7,33 @@ import uuid
 from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
-from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
+from app.core.exceptions import PermissionDeniedException
+from app.core.file_validation import validate_pdf_upload
+from app.core.storage import StorageService
+from app.modules.ai.cv_parsing_repo import CVParsingRepo
+from app.modules.ai.enums import CVParsingStatus
 from app.modules.ai.models import ParsedCVSubmission
-
+from app.modules.ai.service import AIService
+from app.modules.ai.tasks import run_full_pipeline_task
+from app.modules.auth.repository import AuthRepository
+from app.modules.candidates.models import CandidateProfile
+from app.modules.candidates.repository import CandidateRepository
+from app.modules.users.enums import UserRole
+from app.modules.users.models import User
+from app.modules.users.repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
 CACHE_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
+
 class CVParsingService:
+    """Orchestrates CV upload, text extraction, cache lookup, and pipeline dispatch."""
+
     def __init__(
         self,
         db: AsyncSession,
@@ -44,6 +42,7 @@ class CVParsingService:
         ai_service: AIService,
         nlp,
     ) -> None:
+        """Initialise the service with all required dependencies."""
         self._db = db
         self._storage = storage
         self._redis = redis
@@ -53,9 +52,9 @@ class CVParsingService:
         self._auth_repo = AuthRepository(db)
         self._user_repo = UserRepository(db)
         self._candidate_repo = CandidateRepository(db)
-    
+
     def _compute_hash(self, text: str) -> str:
-        """HMAC-SHA256 hash of CV text - used as a Redis cache key."""
+        """HMAC-SHA256 hash of CV text — used as a Redis cache key."""
         return hmac.new(
             settings.hmac_secret.encode(),
             text.encode(),
@@ -68,6 +67,11 @@ class CVParsingService:
         file: bytes,
         filename: str,
     ) -> ParsedCVSubmission:
+        """Validate, hash, cache-check, and dispatch a CV for async parsing.
+
+        Returns a ParsedCVSubmission row immediately — either COMPLETED (cache
+        hit) or PENDING (cache miss, Celery task queued).
+        """
         # Validate PDF — synchronous, fast
         validate_pdf_upload(file, filename)
 
@@ -110,14 +114,14 @@ class CVParsingService:
         )
 
         return submission
-    
+
     async def get_submission(
         self,
         submission_id: uuid.UUID,
         requesting_user: User,
     ) -> ParsedCVSubmission:
-        from app.core.exceptions import SubmissionNotFound, PermissionDeniedException
-        from app.modules.users.enums import UserRole
+        """Fetch a submission by ID, enforcing ownership for employer users."""
+        from app.core.exceptions import PermissionDeniedException, SubmissionNotFound
 
         submission = await self._repo.get_by_id(submission_id)
         if not submission:
@@ -129,7 +133,7 @@ class CVParsingService:
                 raise PermissionDeniedException()
 
         return submission
-    
+
     async def list_submissions(
         self,
         requesting_user: User,
@@ -137,6 +141,7 @@ class CVParsingService:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return paginated submissions, serialised as SubmissionResponse objects."""
         from app.modules.ai.schema import SubmissionResponse
 
         result = await self._repo.list_submission(
@@ -146,8 +151,9 @@ class CVParsingService:
             SubmissionResponse.from_submission(s) for s in result["items"]
         ]
         return result
-    
+
     async def get_monthly_cost_summary(self) -> dict:
+        """Return the current month's total LLM cost and call count."""
         now = datetime.now(UTC)
         row = await self._repo.get_monthly_cost_summary()
         return {
@@ -157,20 +163,25 @@ class CVParsingService:
         }
 
     async def generate_cv_url(self, submission_id: uuid.UUID, requesting_user: User) -> str:
+        """Generate a 15-minute presigned URL for a parsed CV, enforcing ownership."""
         submission = await self._repo.get_by_id(submission_id)
 
         if submission.uploaded_by != requesting_user.id and requesting_user.role != UserRole.ADMIN.value:
             raise PermissionDeniedException()
 
         return await self._storage.generate_presigned_url(submission.r2_key, 60 * 15)
-    
+
     async def create_candidate_from_submission(
         self,
         submission_id: uuid.UUID,
         requesting_user: User,
     ) -> CandidateProfile:
+        """Create or merge a CandidateProfile from parsed CV submission data."""
         from app.core.exceptions import SubmissionNotFound
-        from app.modules.candidates.schema import EducationCreateSchema, WorkExperienceCreateSchema
+        from app.modules.candidates.schema import (
+            EducationCreateSchema,
+            WorkExperienceCreateSchema,
+        )
 
         submission = await self._repo.get_by_id(submission_id)
         if not submission:

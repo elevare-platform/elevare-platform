@@ -312,6 +312,7 @@ async def test_update_other_employers_job_returns_403(client, db_session):
 async def test_publish_job(client, db_session):
     """POST /jobs/{id}/publish transitions DRAFT → ACTIVE."""
     from uuid import UUID
+
     from app.modules.jobs.models import Job
 
     token = await register_and_promote(client, db_session, "EMPLOYER")
@@ -343,7 +344,9 @@ async def test_publish_job(client, db_session):
 async def test_invalid_transition_returns_422(client, db_session):
     """Publishing an already ACTIVE job returns 422."""
     from uuid import UUID
+
     from sqlalchemy import select
+
     from app.modules.jobs.models import Job
 
     token = await register_and_promote(client, db_session, "EMPLOYER")

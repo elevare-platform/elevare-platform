@@ -21,4 +21,3 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.alter_column('candidate_profile', 'user_id', nullable=False)
- 

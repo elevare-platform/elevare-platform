@@ -25,7 +25,7 @@ async def ai_match(
     candidate = await CandidateRepository(db).get_by_user_id(data.candidate_id)
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    
+
 
     job = await JobRepository(db).get_by_id(data.job_id)
     if not job:

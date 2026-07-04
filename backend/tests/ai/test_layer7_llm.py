@@ -1,8 +1,9 @@
 """Unit tests for Layer 7: LLM extraction — MockLLMService, zero real API calls."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 import json
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.core.cv_pipeline.layer3_sections import DetectedSections
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult

@@ -1,7 +1,8 @@
+"""HTTP endpoints for sitemap.xml and robots.txt."""
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-import redis.asyncio as aioredis
 
 from app.core.config import settings
 from app.core.dependencies import get_db, get_redis_client

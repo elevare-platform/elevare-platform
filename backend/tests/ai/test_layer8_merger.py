@@ -1,7 +1,5 @@
 """Unit tests for Layer 8: Normalisation, merging, and confidence scoring."""
 
-import pytest
-from datetime import datetime, timezone
 
 from app.core.cv_pipeline.layer1_extraction import TextExtractionResult
 from app.core.cv_pipeline.layer2_language import LanguageDetectionResult
@@ -10,13 +8,12 @@ from app.core.cv_pipeline.layer5_taxonomy import TaxonomyMatchResult
 from app.core.cv_pipeline.layer6_nlp import NLPExtractionResult
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
 from app.core.cv_pipeline.layer8_merger import (
+    CONFIDENCE_WEIGHTS,
     _compute_overall_confidence,
     _deduplicate_skills,
     _validate_fields,
     merge_and_score,
-    CONFIDENCE_WEIGHTS,
 )
-
 
 # ── Confidence scoring ────────────────────────────────────────────────────────
 

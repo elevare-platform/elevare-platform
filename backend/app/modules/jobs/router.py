@@ -126,13 +126,13 @@ async def upload_cvs_for_job(
     or an admin can upload.
     """
     import redis.asyncio as aioredis
+
     from app.core.config import settings
+    from app.core.exceptions import JobNotFoundError, PermissionDeniedException
     from app.core.storage import get_storage_service
     from app.modules.ai.cv_parsing_service import CVParsingService
     from app.modules.ai.service import get_ai_service
-    from app.modules.ai.tasks import score_application_task
     from app.modules.jobs.repository import JobRepository
-    from app.core.exceptions import JobNotFoundError, PermissionDeniedException
 
     job_repo = JobRepository(db)
     job = await job_repo.get_by_id(job_id)

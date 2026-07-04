@@ -40,8 +40,7 @@ SKILLS_TAXONOMY = {
     "celery", "rabbitmq", "sqs", "pubsub",
 
     # ── MOBILE ──
-    "react native", "flutter", "android", "ios", "swift", "kotlin",
-    "xamarin", "ionic", "expo",
+    "react native", "flutter", "android", "ios", "xamarin", "ionic", "expo",
 
     # ── TESTING ──
     "pytest", "jest", "mocha", "cypress", "selenium", "playwright",
@@ -86,7 +85,7 @@ SKILLS_TAXONOMY = {
     "google ads", "meta ads", "facebook ads",
 
     # ── SALES ──
-    "sales management", "business development", "key account management",
+    "sales management", "key account management",
     "crm", "salesforce crm", "cold calling", "b2b sales", "b2c sales",
     "solution selling", "consultative selling", "sales forecasting",
     "territory management", "channel sales",
@@ -114,7 +113,7 @@ SKILLS_TAXONOMY = {
 
     # ── NIGERIAN PROFESSIONAL CERTIFICATIONS ──
     "ican", "ican fellow", "acca", "cfa", "cpa", "cima", "cibn",
-    "cipm", "cipd", "pmp", "prince2", "cisa", "cism", "cissp",
+    "cipm", "cipd", "cisa", "cism", "cissp",
     "aws certified", "azure certified", "google certified",
     "ican membership", "nysc", "fca", "aca",
 

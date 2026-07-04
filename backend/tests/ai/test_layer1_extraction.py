@@ -1,10 +1,8 @@
 """Unit tests for Layer 1: PDF text extraction."""
 
-import io
-import pytest
 from unittest.mock import MagicMock, patch
 
-from app.core.cv_pipeline.layer1_extraction import TextExtractionResult, extract_text_from_pdf
+from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
 
 
 def make_minimal_pdf() -> bytes:

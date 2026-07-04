@@ -1,7 +1,11 @@
+"""Layer 4 — deterministic field extraction using regex patterns.
 
-from dataclasses import dataclass
+Extracts well-structured fields (email, phone, LinkedIn, GitHub, website,
+dates) using regex patterns without relying on any ML model.
+"""
+
 import re
-
+from dataclasses import dataclass
 
 EMAIL_PATTERN = r"""
 [a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?
@@ -25,6 +29,8 @@ DATE_PATTERNS = [
 
 @dataclass
 class DeterministicExtractionResult:
+    """Fields extracted deterministically via regex patterns."""
+
     email: str | None
     phone: str | None
     linkedin_url: str | None
@@ -34,6 +40,7 @@ class DeterministicExtractionResult:
     field_confidence: dict[str, str]
 
 def _normalize_phone(raw: str) -> str:
+    """Normalise a phone number to E.164 format with +234 country code."""
     cleaned = re.sub(r"[\s\-]", "", raw)
 
     if cleaned.startswith("0"):
@@ -43,6 +50,7 @@ def _normalize_phone(raw: str) -> str:
 
 
 def extract_deterministic(text: str) -> DeterministicExtractionResult:
+    """Extract contact and link fields from CV text using regex patterns."""
     # Get email
     email_match = re.search(EMAIL_PATTERN, text, re.VERBOSE)
     email = email_match.group(0) if email_match else None
@@ -55,8 +63,8 @@ def extract_deterministic(text: str) -> DeterministicExtractionResult:
             # Normalize phone
             phone = _normalize_phone(phone_match.group(0))
             break
-            
-    
+
+
     # Get LinkedIn
     linkedin_match = re.search(LINKEDIN_PATTERN, text)
     linkedin_url = linkedin_match.group(0) if linkedin_match else None

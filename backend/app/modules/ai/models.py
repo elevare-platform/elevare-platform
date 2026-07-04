@@ -1,3 +1,5 @@
+"""SQLAlchemy ORM models for CV parsing submissions and cost tracking."""
+
 from __future__ import annotations
 
 import uuid
@@ -19,11 +21,13 @@ from app.core.database import BaseModel
 from app.modules.ai.enums import CVParsingStatus
 
 if TYPE_CHECKING:
-    from app.modules.users.models import User
     from app.modules.talent_pool.models import TalentPoolProfiles
+    from app.modules.users.models import User
 
 
 class ParsedCVSubmission(BaseModel):
+    """Tracks the lifecycle of a CV parsing request from upload to completion."""
+
     __tablename__ = "parsed_cv_submissions"
 
     __table_args__ = (
@@ -61,7 +65,7 @@ class ParsedCVSubmission(BaseModel):
         "CVParsingCost",
         back_populates="submission",
     )
-    talent_pool_profile: Mapped["TalentPoolProfiles"] = relationship(
+    talent_pool_profile: Mapped[TalentPoolProfiles] = relationship(
         "TalentPoolProfiles",
         back_populates="parsed_submission",
         uselist=False,
@@ -69,6 +73,8 @@ class ParsedCVSubmission(BaseModel):
 
 
 class CVParsingCost(BaseModel):
+    """Records the token cost for a single LLM CV parsing call."""
+
     __tablename__ = "cv_parsing_costs"
 
     __table_args__ = (

@@ -67,6 +67,8 @@ class SuccessResponse(BaseModel):
 
 
 class PaginationMeta(BaseModel):
+    """Metadata for a paginated response page."""
+
     page: int
     limit: int
     total: int
@@ -76,6 +78,8 @@ class PaginationMeta(BaseModel):
 
 
 class PaginationResponse(BaseModel):
+    """Standard paginated list response envelope."""
+
     status: Literal["success"] = "success"
     message: str
     data: list[Any]

@@ -1,3 +1,8 @@
+"""File storage abstraction with R2 and mock implementations.
+
+Provides StorageService (abstract), R2StorageService (Cloudflare R2 via aioboto3),
+and MockStorageService (in-memory, for tests). Wire via get_storage_service().
+"""
 from abc import ABC, abstractmethod
 
 import aioboto3
@@ -28,16 +33,20 @@ class MockStorageService(StorageService):
     """In-memory storage for tests. No network calls, no credentials."""
 
     def __init__(self) -> None:
+        """Initialise an empty in-memory store."""
         self._store: dict[str, bytes] = {}
 
     async def upload_file(self, file: bytes, key: str, content_type: str) -> str:
+        """Store file bytes in memory and return the key."""
         self._store[key] = file
         return key
 
     async def delete_file(self, key: str) -> None:
+        """Remove a file from the in-memory store."""
         self._store.pop(key, None)
 
     async def generate_presigned_url(self, key: str, expires_seconds: int) -> str:
+        """Return a mock URL for the given key."""
         return f"https://mock-storage/{key}"
 
 
@@ -45,6 +54,7 @@ class R2StorageService(StorageService):
     """Concrete R2 implementation using aioboto3."""
 
     def __init__(self) -> None:
+        """Initialise the R2 client, raising RuntimeError if credentials are missing."""
         if not all([
             settings.r2_access_key_id,
             settings.r2_secret_access_key,
@@ -66,6 +76,7 @@ class R2StorageService(StorageService):
         self._endpoint_url = settings.r2_endpoint_url
 
     async def upload_file(self, file: bytes, key: str, content_type: str) -> str:
+        """Upload file bytes to R2 and return the object key."""
         async with self._session.client("s3", endpoint_url=self._endpoint_url) as s3:
             await s3.put_object(
                 Bucket=self._bucket,
@@ -76,10 +87,12 @@ class R2StorageService(StorageService):
         return key
 
     async def delete_file(self, key: str) -> None:
+        """Delete an object from R2 by its key."""
         async with self._session.client("s3", endpoint_url=self._endpoint_url) as s3:
             await s3.delete_object(Bucket=self._bucket, Key=key)
 
     async def generate_presigned_url(self, key: str, expires_seconds: int) -> str:
+        """Generate a pre-signed GET URL for a private R2 object."""
         async with self._session.client("s3", endpoint_url=self._endpoint_url) as s3:
             return await s3.generate_presigned_url(
                 "get_object",

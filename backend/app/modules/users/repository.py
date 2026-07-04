@@ -75,8 +75,8 @@ class UserRepository:
             await self._db.flush()
 
             # Auto-enroll self-registered candidates in the talent pipeline
-            from app.modules.talent_pool.models import TalentPoolProfiles
             from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
+            from app.modules.talent_pool.models import TalentPoolProfiles
             pool_entry = TalentPoolProfiles(
                 candidate_profile_id=candidate_profile.id,
                 added_by=user.id,  # candidate added themselves via registration

@@ -1,46 +1,48 @@
-from app.modules.ai.tasks import score_talent_pool_profile_task
-from app.modules.users.enums import UserRole
-from app.modules.users.enums import AccountStatus
-from app.modules.auth.service import AuthService
-from app.modules.users.repository import UserRepository
-from app.modules.ai.repository import AIRepository
-from app.modules.talent_pool.schema import TalentPoolPromoteResponse
-import uuid
+"""Business logic for the talent pool — CV submission, listing, promotion, and scoring."""
 import logging
-from datetime import datetime, UTC
-
+import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.talent_pool.schema import TalentPoolStatusUpdateRequest
-from app.modules.talent_pool.schema import TalentPoolProfileResponse
-from app.modules.talent_pool.enums import TalentPoolStatus
-from app.modules.talent_pool.repository import TalentPoolRepository
-from app.modules.users.models import User
-from app.modules.talent_pool.schema import TalentPoolSubmitRequest
 from app.core.exceptions import (
     JobNotFoundError,
-    PermissionDeniedException,
     SubmissionNotFound,
-    ValidationException
+    ValidationException,
 )
 from app.modules.ai.cv_parsing_service import CVParsingService
-
+from app.modules.ai.repository import AIRepository
+from app.modules.ai.tasks import score_talent_pool_profile_task
+from app.modules.auth.service import AuthService
+from app.modules.talent_pool.enums import TalentPoolStatus
+from app.modules.talent_pool.repository import TalentPoolRepository
+from app.modules.talent_pool.schema import (
+    TalentPoolProfileResponse,
+    TalentPoolPromoteResponse,
+    TalentPoolStatusUpdateRequest,
+    TalentPoolSubmitRequest,
+)
+from app.modules.users.enums import AccountStatus, UserRole
+from app.modules.users.models import User
+from app.modules.users.repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
 
 class TalentPoolService:
+    """Orchestrates talent pool CV submissions, scoring, and candidate promotion."""
+
     def __init__(self, db: AsyncSession, cv_service: CVParsingService):
+        """Initialise with a database session and a CVParsingService dependency."""
         self._db = db
         self._cv_service = cv_service
         self._repo = TalentPoolRepository(db)
         self._ai_repo = AIRepository(db)
         self._user_repo = UserRepository(db)
         self._auth_service = AuthService(db)
-    
+
     async def _enrich(self, profile, response: TalentPoolProfileResponse) -> TalentPoolProfileResponse:
-        """Load candidate_name/email from parsed_data if available."""
+        """Populate candidate_name, email, and current_title from parsed CV data."""
         if profile.parsed_submission_id:
             submission = await self._ai_repo.get_submission_by_id(profile.parsed_submission_id)
             if submission and submission.parsed_data:
@@ -60,12 +62,13 @@ class TalentPoolService:
         data: TalentPoolSubmitRequest,
         current_user: User,
     ):
+        """Submit a single CV into the talent pool and queue parsing/scoring."""
         submission = await self._cv_service.submit_cv_for_parsing(
             uploaded_by=current_user,
             file=file,
             filename=filename
         )
-        
+
         # Create talent pool profile
         profile = await self._repo.create({
             "parsed_submission_id": submission.id,
@@ -114,7 +117,7 @@ class TalentPoolService:
                 logger.error("Batch submit failed for %s: %s", filename, e)
                 results.append({"filename": filename, "status": "failed", "error": str(e)})
         return results
-    
+
     async def list_profiles(
         self,
         status: str | None,
@@ -124,6 +127,7 @@ class TalentPoolService:
         limit: int,
         current_user,
     ) -> dict:
+        """Return paginated talent pool profiles, enriched with parsed CV data."""
         is_admin = current_user.role == UserRole.ADMIN.value
         result = await self._repo.list(
             status=status,
@@ -141,18 +145,24 @@ class TalentPoolService:
             enriched.append(resp)
         result["items"] = enriched
         return result
-    
+
     async def get_profile(self, id: uuid.UUID) -> TalentPoolProfileResponse:
+        """Fetch a single talent pool profile by ID, or raise SubmissionNotFound."""
         profile = await self._repo.get_by_id(id)
         if not profile:
             raise SubmissionNotFound()
         return TalentPoolProfileResponse.model_validate(profile)
-    
+
     async def update_status(
         self,
         profile_id: uuid.UUID,
         data: TalentPoolStatusUpdateRequest,
     ) -> TalentPoolProfileResponse:
+        """Update the status of a talent pool profile.
+
+        Sends a shortlist notification email when status transitions to SHORTLISTED.
+        Raises ValidationException for disallowed status values (PROMOTED/PROMOTED_PENDING).
+        """
         allowed_status = {s.value for s in TalentPoolStatus} - {
             TalentPoolStatus.PROMOTED.value,
             TalentPoolStatus.PROMOTED_PENDING.value,
@@ -170,8 +180,8 @@ class TalentPoolService:
                 submission = await self._ai_repo.get_submission_by_id(profile.parsed_submission_id)
                 candidate_email = (submission.parsed_data or {}).get("email") if submission else None
                 if candidate_email:
-                    from app.core.email import get_email_service
                     from app.core.config import settings
+                    from app.core.email import get_email_service
                     email_service = get_email_service()
                     if settings.email_stub_mode:
                         logger.info("Talent pool shortlist notification → %s", candidate_email)
@@ -186,25 +196,31 @@ class TalentPoolService:
 
         await self._db.commit()
         return TalentPoolProfileResponse.model_validate(profile)
-    
+
     async def promote(
         self,
         profile_id: uuid.UUID,
-        current_user
+        current_user,
     ) -> TalentPoolPromoteResponse:
+        """Begin promotion — send an invite to the candidate.
+
+        Returns a conflict response if an active user already exists for
+        the parsed email. The application is created only after the
+        candidate confirms via the invite link.
+        """
         profile = await self._repo.get_by_id(profile_id)
         if not profile:
             raise SubmissionNotFound()
-        
+
         # Load Parsed data to get email
         submission = await self._ai_repo.get_submission_by_id(profile.parsed_submission_id)
         if not submission or not submission.parsed_data:
             raise ValidationException("Parsed data not available.")
-        
+
         email = (submission.parsed_data or {}).get("email")
         if not email:
             raise ValidationException("Parsed CV has no email address — cannot send invite")
-        
+
         existing_user = await self._user_repo.get_user_by_email(email)
         if existing_user and existing_user.account_status == AccountStatus.ACTIVE.value:
             return TalentPoolPromoteResponse(
@@ -212,16 +228,15 @@ class TalentPoolService:
                 status="conflict",
                 conflict_email=email,
             )
-        
+
         # Trigger invite via existing auth flow
-        raw_token = await self._auth_service.create_invite(
+        await self._auth_service.create_invite(
             email,
             role=UserRole.CANDIDATE.value,
-            admin_id=current_user.id
+            admin_id=current_user.id,
         )
 
-        if hasattr(self._db, '_app') or True:  # always log in stub mode check
-            logger.info("Talent pool promote invite sent to %s (token logged in stub mode)", email)
+        logger.info("Talent pool promote invite sent to %s", email)
 
         await self._repo.update(profile_id, {
             "status": TalentPoolStatus.PROMOTED_PENDING.value,
@@ -233,15 +248,15 @@ class TalentPoolService:
             message="Invite sent. Profile will be promoted once candidate confirms.",
             status="invite_sent",
         )
-    
+
     async def score_against_job(
         self,
         job_id: uuid.UUID,
     ) -> dict:
         """Queue scoring for all unscored pipeline profiles against a given job.
 
-        Only fires for profiles that have a parsed_submission_id and haven't
-        been scored against this specific job yet (hash check handles idempotency).
+        Only fires for profiles that have a parsed_submission_id.
+        Hash-based idempotency in the task prevents redundant LLM calls.
         """
         from app.modules.ai.tasks import score_talent_pool_profile_task
         from app.modules.jobs.repository import JobRepository
@@ -260,4 +275,4 @@ class TalentPoolService:
             queued += 1
 
         return {"queued": queued, "job_id": str(job_id)}
-        
+

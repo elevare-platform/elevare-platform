@@ -1,3 +1,4 @@
+"""SQLAlchemy ORM model for the admin audit log."""
 
 from __future__ import annotations
 
@@ -5,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, UUID, func, Text
+from sqlalchemy import UUID, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,13 +18,14 @@ if TYPE_CHECKING:
 
 
 class AuditLog(Base):
+    """Records every significant admin action for audit and compliance purposes."""
 
     __tablename__ = "admin_audit_log"
     __table_args__ = (
         Index('idx_target_type_id', 'target_type', 'target_id'),
     )
 
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,

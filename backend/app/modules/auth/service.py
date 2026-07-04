@@ -127,7 +127,9 @@ class AuthService:
         # In production, ResendEmailService sends the real email.
         verification_token = await self.create_verification_token(user.id)
         next_url = "/employer/onboarding" if user.role == "EMPLOYER" else None
-        from app.modules.applications.tasks import send_verification_email as send_verification_email_task
+        from app.modules.applications.tasks import (
+            send_verification_email as send_verification_email_task,
+        )
         send_verification_email_task.delay(verification_token, user.email, next_url)
 
         token_pair = create_token_pair(user.id, user.role)

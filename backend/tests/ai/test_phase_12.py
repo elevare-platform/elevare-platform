@@ -9,9 +9,8 @@ Covers the Phase 12 completion checklist:
 - MockEmbeddingAIService used throughout — zero real API calls
 """
 
-import hashlib
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import numpy as np
@@ -25,7 +24,6 @@ from app.modules.ai.scoring_service import (
 )
 from app.modules.ai.service import EmbeddingAIService, MockEmbeddingAIService
 from tests.conftest import make_register_data
-
 
 # ---------------------------------------------------------------------------
 # Helpers (reuse pattern from test_phase_11_5)
@@ -435,8 +433,8 @@ class TestNightlyRecompute:
         db_session.add(candidate)
         await db_session.flush()
 
-        from app.modules.jobs.models import Job
         from app.modules.jobs.enums import ContractType, WorkLocation
+        from app.modules.jobs.models import Job
 
         job = Job(
             employer_id=employer.id,
@@ -462,7 +460,7 @@ class TestNightlyRecompute:
 
         # Manually set updated_at to simulate a recent profile update
         await db_session.execute(
-            text(f"UPDATE candidate_profile SET updated_at = :t WHERE id = :id"),
+            text("UPDATE candidate_profile SET updated_at = :t WHERE id = :id"),
             {"t": now - timedelta(minutes=30), "id": profile.id},
         )
 
@@ -510,8 +508,8 @@ class TestNightlyRecompute:
         db_session.add(candidate)
         await db_session.flush()
 
-        from app.modules.jobs.models import Job
         from app.modules.jobs.enums import ContractType, WorkLocation
+        from app.modules.jobs.models import Job
 
         employer = User(
             first_name="E2", last_name="User",
@@ -589,8 +587,8 @@ class TestNightlyRecompute:
         db_session.add(profile)
         await db_session.flush()
 
-        from app.modules.jobs.models import Job
         from app.modules.jobs.enums import ContractType, WorkLocation
+        from app.modules.jobs.models import Job
 
         employer = User(
             first_name="E3", last_name="User",

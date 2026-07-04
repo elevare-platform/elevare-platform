@@ -1,8 +1,15 @@
+"""Layer 7 — LLM extraction result dataclass.
+
+Defines the structured output expected from the LLM extraction step
+(Claude). The actual API call is made in the AI service layer.
+"""
 from dataclasses import dataclass, field
 
 
 @dataclass
 class LLMExtractionResult:
+    """Structured output from the LLM CV extraction step."""
+
     skills: list[str] = field(default_factory=list)
     years_experience: int | None = None
     current_title: str | None = None

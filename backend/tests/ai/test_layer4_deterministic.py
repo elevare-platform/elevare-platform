@@ -1,6 +1,5 @@
 """Unit tests for Layer 4: Deterministic extraction."""
 
-import pytest
 from app.core.cv_pipeline.layer4_deterministic import extract_deterministic
 
 SAMPLE_TEXT = """

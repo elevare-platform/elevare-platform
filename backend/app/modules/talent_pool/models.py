@@ -7,19 +7,19 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import UUID, DateTime, ForeignKey, String, Text, Integer
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from pgvector.sqlalchemy import Vector
 
 from app.core.database import BaseModel
 from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
 
 if TYPE_CHECKING:
     from app.modules.ai.models import ParsedCVSubmission
+    from app.modules.applications.models import Application
     from app.modules.candidates.models import CandidateProfile
     from app.modules.jobs.models import Job
-    from app.modules.applications.models import Application
     from app.modules.users.models import User
 
 
@@ -121,26 +121,26 @@ class TalentPoolProfiles(BaseModel):
 
 
     # Relationships
-    parsed_submission: Mapped["ParsedCVSubmission | None"] = relationship(
+    parsed_submission: Mapped[ParsedCVSubmission | None] = relationship(
         "ParsedCVSubmission",
         back_populates="talent_pool_profile",
     )
-    candidate_profile: Mapped["CandidateProfile | None"] = relationship(
+    candidate_profile: Mapped[CandidateProfile | None] = relationship(
         "CandidateProfile",
         foreign_keys=[candidate_profile_id],
         back_populates="talent_pool_profile",
     )
-    sourced_for_job: Mapped["Job"] = relationship(
+    sourced_for_job: Mapped[Job] = relationship(
         "Job",
         foreign_keys=[sourced_for_job_id],
         back_populates="talent_pool_job",
     )
-    promoted_application: Mapped["Application"] = relationship(
+    promoted_application: Mapped[Application] = relationship(
         "Application",
         foreign_keys=[promoted_application_id],
         back_populates="promoted_talent_pool_application",
     )
-    added_by_user: Mapped["User"] = relationship(
+    added_by_user: Mapped[User] = relationship(
         "User",
         foreign_keys=[added_by],
         back_populates="talent_pool_added_by",

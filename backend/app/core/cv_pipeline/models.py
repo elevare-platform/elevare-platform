@@ -1,9 +1,12 @@
+"""Domain models (dataclasses) for the CV extraction pipeline results."""
 from dataclasses import dataclass
 from datetime import datetime
 
 
 @dataclass
 class WorkEntry:
+    """A single work experience entry extracted from a CV."""
+
     company: str | None
     title: str | None
     start_date: str | None
@@ -12,16 +15,22 @@ class WorkEntry:
     description: str | None
     is_current: bool
 
+
 @dataclass
 class EducationEntry:
+    """A single education entry extracted from a CV."""
+
     institution: str | None
     degree: str | None
     field: str | None
     graduation_year: int | None
     qualification_type: str | None
 
+
 @dataclass
 class CVExtractionResult:
+    """Final merged result from all 8 CV extraction pipeline layers."""
+
     # Identity
     full_name: str | None
     email: str | None

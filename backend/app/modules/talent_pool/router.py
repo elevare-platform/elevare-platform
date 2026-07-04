@@ -20,6 +20,7 @@ router = APIRouter()
 def _get_talent_pool_service(db: AsyncSession = Depends(get_db)) -> TalentPoolService:
     """Build TalentPoolService with its CVParsingService dependency."""
     import redis.asyncio as aioredis
+
     from app.core.config import settings
     from app.core.storage import get_storage_service
     from app.modules.ai.cv_parsing_service import CVParsingService

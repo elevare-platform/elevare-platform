@@ -1,7 +1,13 @@
-from dataclasses import dataclass
-from spacy.matcher import Matcher
-from app.core.cv_pipeline.layer3_sections import DetectedSections
+"""Layer 6 — NLP-based entity extraction using spaCy.
 
+Extracts full names, organisations, and job titles from CV text using
+spaCy's named entity recognition and a custom Matcher for job titles.
+"""
+from dataclasses import dataclass
+
+from spacy.matcher import Matcher
+
+from app.core.cv_pipeline.layer3_sections import DetectedSections
 
 TITLE_PATTERNS = [
     [
@@ -18,12 +24,15 @@ TITLE_PATTERNS = [
 
 @dataclass
 class NLPExtractionResult:
+    """Results of NLP entity extraction from CV text."""
+
     full_name: str | None
     organisations: list[str]
     job_titles: list[str]
     field_confidence: dict[str, str]
 
 def _extract_name(text: str, nlp) -> tuple[str | None, str]:
+    """Extract the candidate's full name from the first 20 lines of the CV."""
     lines = text.splitlines()
     first_20 = "\n".join(lines[:20])
 
@@ -37,10 +46,11 @@ def _extract_name(text: str, nlp) -> tuple[str | None, str]:
 
             confidence = "high" if line_number < 5 else "medium"
             return ent.text, confidence
-    
+
     return None, "not_found"
 
 def _extract_organisations(experience_text: str, nlp) -> list[str]:
+    """Extract organisation names from the experience section using NER."""
     if not experience_text:
         return []
 
@@ -53,6 +63,7 @@ def _extract_organisations(experience_text: str, nlp) -> list[str]:
 
 
 def _extract_job_titles(experience_text: str, nlp) -> list[str]:
+    """Extract job titles from the experience section using a spaCy Matcher."""
     if not experience_text:
         return []
 
@@ -71,6 +82,7 @@ def _extract_job_titles(experience_text: str, nlp) -> list[str]:
 
 
 def extract_nlp(text: str, sections: DetectedSections, nlp) -> NLPExtractionResult:
+    """Run NLP extraction on CV text and sections, returning entities."""
     full_name, name_confidence = _extract_name(text, nlp)
     organisations = _extract_organisations(sections.experience or "", nlp)
     job_titles = _extract_job_titles(sections.experience or "", nlp)

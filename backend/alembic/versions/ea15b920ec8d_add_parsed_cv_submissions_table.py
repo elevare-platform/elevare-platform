@@ -40,7 +40,7 @@ def upgrade() -> None:
     op.create_index('ix_parsed_cv_submissions_cv_text_hash', 'parsed_cv_submissions', ['cv_text_hash'], unique=False)
     op.create_index('ix_parsed_cv_submissions_parse_status', 'parsed_cv_submissions', ['parse_status'], unique=False)
     op.create_index('ix_parsed_cv_submissions_uploaded_by', 'parsed_cv_submissions', ['uploaded_by'], unique=False)
- 
+
     # ### end Alembic commands ###
 
 

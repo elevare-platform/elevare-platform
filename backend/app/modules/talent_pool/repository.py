@@ -1,3 +1,4 @@
+"""Data-access layer for TalentPoolProfiles."""
 from __future__ import annotations
 
 import uuid
@@ -10,26 +11,31 @@ from app.modules.talent_pool.models import TalentPoolProfiles
 
 
 class TalentPoolRepository:
+    """Handles all database operations for TalentPoolProfiles."""
+
     def __init__(self, db: AsyncSession) -> None:
+        """Initialise with an async database session."""
         self._db = db
-    
+
     async def create(self, profile_data: dict) -> TalentPoolProfiles:
+        """Create a new talent pool profile and return it."""
         profile = TalentPoolProfiles(**profile_data)
         self._db.add(profile)
         await self._db.flush()
         await self._db.refresh(profile)
         return profile
-    
+
     async def get_by_id(
         self,
-        profile_id: uuid.UUID
+        profile_id: uuid.UUID,
     ) -> TalentPoolProfiles | None:
+        """Fetch a talent pool profile by its primary key, or None if not found."""
         result = await self._db.execute(
             select(TalentPoolProfiles).where(TalentPoolProfiles.id == profile_id)
         )
         return result.scalar_one_or_none()
 
-    
+
     async def list(
         self,
         status: str | None = None,
@@ -40,6 +46,11 @@ class TalentPoolRepository:
         viewer_id: uuid.UUID | None = None,
         is_admin: bool = False,
     ) -> dict:
+        """Return paginated talent pool profiles with optional filters.
+
+        Non-admins only see entries they uploaded or entries added by admins.
+        When ``job_id`` is provided, results are ordered by ai_score descending.
+        """
         order_by = (
             TalentPoolProfiles.ai_score.desc().nulls_last()
             if job_id
@@ -52,9 +63,9 @@ class TalentPoolRepository:
         # Admins see everything
         if not is_admin and viewer_id:
             from sqlalchemy import or_
+
             from app.modules.users.enums import UserRole
             from app.modules.users.models import User as UserModel
-            from sqlalchemy import exists
             # Subquery: is the added_by user an admin?
             admin_subq = (
                 select(UserModel.id)
@@ -80,6 +91,7 @@ class TalentPoolRepository:
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
     async def update(self, profile_id: uuid.UUID, data: dict) -> TalentPoolProfiles | None:
+        """Apply a partial update dict to a profile and return it, or None if not found."""
         profile = await self.get_by_id(profile_id)
         if not profile:
             return None
@@ -90,7 +102,7 @@ class TalentPoolRepository:
         return profile
 
     async def list_unscored_for_job(self, job_id: uuid.UUID):
-        """Return profiles that have a parsed submission and need scoring against a job.
+        """Return profiles with a parsed submission that haven't been scored against this job yet.
 
         Includes profiles already sourced for this job that haven't been scored yet,
         plus pipeline profiles (no job) that can be scored retroactively.

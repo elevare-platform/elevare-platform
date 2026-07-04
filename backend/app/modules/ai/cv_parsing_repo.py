@@ -1,3 +1,4 @@
+"""Data-access layer for CV parsing submissions."""
 import uuid
 
 from sqlalchemy import func, select
@@ -13,11 +14,14 @@ from app.modules.users.models import User
 
 
 class CVParsingRepo:
+    """Repository for creating, updating, and querying ParsedCVSubmission records."""
+
     def __init__(
         self,
         db: AsyncSession,
         storage: StorageService,
     ) -> None:
+        """Initialise with a database session and storage service."""
         self._db = db
         self._storage = storage
 
@@ -30,6 +34,7 @@ class CVParsingRepo:
         parsed_data: dict | None = None,
         r2_key: str | None = None,
     ) -> ParsedCVSubmission:
+        """Create a new ParsedCVSubmission record and return it."""
         submission = ParsedCVSubmission(
             uploaded_by=uploaded_by_id,
             filename=filename,
@@ -47,6 +52,7 @@ class CVParsingRepo:
         self,
         submission_id: uuid.UUID,
     ) -> ParsedCVSubmission | None:
+        """Fetch a submission by its primary key with the uploader relationship loaded."""
         stmt = (
             select(ParsedCVSubmission)
             .options(selectinload(ParsedCVSubmission.uploader))
@@ -60,6 +66,7 @@ class CVParsingRepo:
         submission_id: uuid.UUID,
         data: dict,
     ) -> ParsedCVSubmission:
+        """Apply a partial update dict to a submission and return the updated record."""
         submission = await self.get_by_id(submission_id)
         if not submission:
             raise SubmissionNotFound()
@@ -79,6 +86,7 @@ class CVParsingRepo:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return paginated submissions — employers see only their own."""
         from app.modules.users.enums import UserRole
 
         stmt = select(ParsedCVSubmission).options(
@@ -95,6 +103,7 @@ class CVParsingRepo:
         return await paginate_cursor(stmt, self._db, cursor=cursor, limit=limit)
 
     async def get_monthly_cost_summary(self):
+        """Return aggregated total cost and call count for the current calendar month."""
         result = await self._db.execute(
             select(
                 func.sum(CVParsingCost.cost_usd).label("total_cost"),

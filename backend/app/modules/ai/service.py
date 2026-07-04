@@ -61,12 +61,12 @@ class AIService(ABC):
     ) -> "FitReasoningResult":
         """Generate qualitative fit reasoning for a candidate-job pair."""
         ...
-    
+
     @abstractmethod
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate a 1536-dim embedding vector for the given text."""
         ...
-    
+
     @abstractmethod
     async def compute_similarity_score(
         self,
@@ -130,7 +130,7 @@ class KeywordAIService(AIService):
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate a 1536-dim embedding vector for the given text."""
         raise NotImplementedError()
-    
+
     async def compute_similarity_score(
         self,
         candidate_embedding: list[float],
@@ -178,11 +178,11 @@ class MockAIService(AIService):
             weaknesses=["Limited leadership exposure"],
             fit_summary="Candidate shows solid alignment with core requirements. Minor gaps in seniority expectations.",
         )
-    
+
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate a 1536-dim embedding vector for the given text."""
         return [0.1] * 1536
-    
+
     async def compute_similarity_score(
         self,
         candidate_embedding: list[float],
@@ -390,11 +390,11 @@ class AnthropicCVExtractionService(AIService):
                 }
             )
             return FitReasoningResult()
-    
+
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate a 1536-dim embedding vector for the given text."""
         raise NotImplementedError()
-    
+
     async def compute_similarity_score(
         self,
         candidate_embedding: list[float],
@@ -411,7 +411,7 @@ class EmbeddingAIService(AIService):
         self._client = AsyncOpenAI(
             api_key=settings.openai_api_key
         )
-    
+
     async def generate_embedding(self, text: str) -> list[float]:
         """Call OpenAI text-embedding-3-small and return the 1536-dim vector."""
         response = await self._client.embeddings.create(
@@ -419,7 +419,7 @@ class EmbeddingAIService(AIService):
             model="text-embedding-3-small",
         )
         return response.data[0].embedding
-    
+
     async def compute_similarity_score(
         self,
         candidate_embedding: list[float],
@@ -431,7 +431,7 @@ class EmbeddingAIService(AIService):
 
         similarity = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
         return max(0, min(100, round((similarity + 1) / 2 * 100)))
-    
+
     async def compute_match_score(self, candidate_skills, job_description, job_title, required_skills=None):
         """Delegate to KeywordAIService for keyword-based match scoring."""
         return await KeywordAIService().compute_match_score(

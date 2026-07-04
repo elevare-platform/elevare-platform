@@ -1,3 +1,4 @@
+"""Structured JSON logging configuration for the Elevare platform."""
 import logging
 import sys
 
@@ -5,6 +6,12 @@ from pythonjsonlogger import jsonlogger
 
 
 def setup_logging(debug: bool = False) -> None:
+    """Configure the root logger with a JSON formatter.
+
+    In debug mode the log level is set to DEBUG; otherwise INFO.
+    SQLAlchemy loggers are redirected to the root handler so all output
+    goes through the same JSON formatter.
+    """
     log_level = logging.DEBUG if debug else logging.INFO
 
     logger = logging.getLogger()

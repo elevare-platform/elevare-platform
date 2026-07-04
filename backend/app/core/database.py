@@ -1,3 +1,4 @@
+"""Database engine, session factory, and abstract base models."""
 
 import uuid
 from datetime import datetime
@@ -24,7 +25,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 class Base(DeclarativeBase):
-    pass
+    """SQLAlchemy declarative base for all ORM models."""
 
 
 class BaseModel(Base):

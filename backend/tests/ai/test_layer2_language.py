@@ -1,9 +1,8 @@
 """Unit tests for Layer 2: Language detection."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from app.core.cv_pipeline.layer2_language import LanguageDetectionResult, language_detection
+from app.core.cv_pipeline.layer2_language import language_detection
 
 
 def make_lang_result(lang, prob):

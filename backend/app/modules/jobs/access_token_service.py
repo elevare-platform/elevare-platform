@@ -1,47 +1,62 @@
-from datetime import datetime, timedelta, UTC
+"""Service layer for job access tokens and public applicant views."""
 import logging
 import secrets
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import JobNotFoundError, PermissionDeniedException, TokenNotFoundError
-from app.modules.applications.schema import ApplicationFilters
+from app.core.exceptions import (
+    JobNotFoundError,
+    PermissionDeniedException,
+    TokenNotFoundError,
+)
 from app.modules.applications.repository import ApplicationRepository
-from app.modules.users.models import User
-from app.modules.users.enums import UserRole
+from app.modules.applications.schema import ApplicationFilters
+from app.modules.jobs.access_token_repository import AccessTokenRepository
 from app.modules.jobs.access_token_schema import (
     AccessTokenResponse,
     CreateAccessTokenRequest,
     PublicApplicantsItem,
     PublicApplicantsResponse,
 )
-from app.modules.jobs.access_token_repository import AccessTokenRepository
 from app.modules.jobs.repository import JobRepository
+from app.modules.users.enums import UserRole
+from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
 
 
 class AccessTokenService:
+    """Manages creation, retrieval, revocation, and public applicant views for job access tokens."""
+
     def __init__(self, db: AsyncSession):
+        """Initialise with an async database session."""
         self._db = db
         self._repo = AccessTokenRepository(db)
         self._job_repo = JobRepository(db)
         self._app_repo = ApplicationRepository(db)
-    
+
     async def create_access_token(
         self, job_id: uuid.UUID,
         data: CreateAccessTokenRequest,
-        current_user: User
+        current_user: User,
     ) -> AccessTokenResponse:
+        """Create a shareable access token for a job's applicant list.
+
+        Raises:
+            JobNotFoundError: If the job does not exist.
+            PermissionDeniedException: If the caller does not own the job.
+
+        """
         job = await self._job_repo.get_by_id(job_id)
         if not job:
             raise JobNotFoundError()
-        
+
         # Only the job's employer or an admin can generate a token
         if current_user.role != UserRole.ADMIN.value and current_user.id != job.employer_id:
             raise PermissionDeniedException("You do not own this job")
-        
+
         token = await self._repo.create(
             {
                 "token": secrets.token_urlsafe(32),
@@ -56,12 +71,19 @@ class AccessTokenService:
         return AccessTokenResponse.model_validate(
             token
         )
-    
+
     async def get_all_access_tokens(
         self,
         job_id: uuid.UUID,
-        current_user: User
+        current_user: User,
     ) -> list[AccessTokenResponse]:
+        """Return all access tokens for a job.
+
+        Raises:
+            JobNotFoundError: If the job does not exist.
+            PermissionDeniedException: If the caller does not own the job.
+
+        """
         job = await self._job_repo.get_by_id(job_id)
         if not job:
             raise JobNotFoundError()
@@ -72,36 +94,51 @@ class AccessTokenService:
 
         tokens = await self._repo.get_all_by_job(job_id)
         return [AccessTokenResponse.model_validate(token) for token in tokens]
-    
+
     async def delete_access_token(
         self,
         job_id: uuid.UUID,
         token_id: uuid.UUID,
-        current_user: User
+        current_user: User,
     ):
+        """Delete an access token.
+
+        Raises:
+            JobNotFoundError: If the job does not exist.
+            PermissionDeniedException: If the caller does not own the job.
+            TokenNotFoundError: If the token does not exist.
+
+        """
         job = await self._job_repo.get_by_id(job_id)
         if not job:
             raise JobNotFoundError()
-        
+
         # Only the job's employer or an admin can delete a token
         if current_user.role != UserRole.ADMIN.value and current_user.id != job.employer_id:
             raise PermissionDeniedException("You do not own this job")
-        
+
         token = await self._repo.get_by_id(token_id)
         if not token:
             raise TokenNotFoundError()
-        
+
         await self._repo.delete(token)
-    
+
     async def revoke_token(
         self,
         token_id: uuid.UUID,
-        current_user: User
+        current_user: User,
     ) -> AccessTokenResponse:
+        """Revoke an access token immediately.
+
+        Raises:
+            TokenNotFoundError: If the token does not exist.
+            PermissionDeniedException: If the caller does not own the job.
+
+        """
         token = await self._repo.get_by_id(token_id)
         if not token:
             raise TokenNotFoundError()
-        
+
         job = await self._job_repo.get_by_id(token.job_id)
 
         if current_user.role != UserRole.ADMIN.value and job.employer_id != current_user.id:
@@ -110,11 +147,16 @@ class AccessTokenService:
         token = await self._repo.revoke(token_id, current_user.id)
         await self._db.commit()
         return AccessTokenResponse.model_validate(token)
-    
+
     async def get_public_applicants(
         self,
-        token_str: str
+        token_str: str,
     ) -> PublicApplicantsResponse:
+        """Return ranked applicants for a public shared link.
+
+        Combines platform applicants and externally uploaded CV profiles,
+        sorted by AI score descending. Returns 404 for invalid/expired tokens.
+        """
         token = await self._repo.get_valid_by_token(token_str)
 
         if not token:
@@ -168,8 +210,9 @@ class AccessTokenService:
 
         # ── 2. External talent pool profiles scored against this job ────────
         from sqlalchemy import select
-        from app.modules.talent_pool.models import TalentPoolProfiles
+
         from app.modules.ai.repository import AIRepository
+        from app.modules.talent_pool.models import TalentPoolProfiles
 
         ai_repo = AIRepository(self._db)
         tp_result = await self._db.execute(

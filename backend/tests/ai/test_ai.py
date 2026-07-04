@@ -8,20 +8,17 @@ Covers:
 - Applicant list response includes match_score field
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from sqlalchemy import select
 
-from app.modules.ai.schema import MatchResult
-from app.modules.ai.service import KeywordAIService, MockAIService, get_ai_service
-from app.modules.applications.models import Application
-from app.core.dependencies import get_db
 from app.core.storage import MockStorageService, get_storage_service
 from app.main import app
-from tests.conftest import make_register_data
-
-from datetime import UTC, datetime, timedelta
+from app.modules.ai.schema import MatchResult
+from app.modules.ai.service import KeywordAIService
 from app.modules.users.models import EmployerProfile
-
+from tests.conftest import make_register_data
 
 # ---------------------------------------------------------------------------
 # Helpers (mirrors pattern from test_applications_router.py)
@@ -84,9 +81,6 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
 
 
 async def create_and_publish_job(client, db_session, employer_token: str, **overrides) -> dict:
-    from app.modules.auth.jwt_handler import create_token_pair
-    from app.modules.users.models import User
-    from sqlalchemy import select as sa_select
 
     resp = await client.post(
         "/api/v1/jobs",
@@ -125,6 +119,7 @@ async def upload_cv(client, token: str) -> None:
 async def complete_candidate_profile(client, db_session, token: str, user_id) -> None:
     """Set required profile fields directly in DB and upload a CV."""
     from sqlalchemy import select as sa_select
+
     from app.modules.candidates.models import CandidateProfile
 
     # Update via API

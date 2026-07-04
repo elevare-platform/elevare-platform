@@ -4,20 +4,19 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.core.model_registry  # noqa: F401 — ensures all mappers are registered before any DB use
 from app.core.celery_app import celery
 from app.core.config import settings
 from app.modules.ai.enums import CVParsingStatus
+from app.modules.ai.repository import AIRepository
 from app.modules.ai.scoring_service import (
     compute_deterministic_score,
     hash_cv_scoring_inputs,
     hash_job_scoring_inputs,
 )
 from app.modules.ai.service import AnthropicCVExtractionService
-from app.modules.ai.repository import AIRepository
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.jobs.repository import JobRepository
@@ -27,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 def _json_serialise(obj):
     """Custom JSON serialiser for types not handled by stdlib json."""
-    from datetime import datetime, date
-    if isinstance(obj, (datetime, date)):
+    from datetime import date, datetime
+    if isinstance(obj, datetime | date):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serialisable")
 
@@ -52,10 +51,12 @@ async def _run_pipeline_async(
     file: bytes,
 ) -> None:
     import dataclasses
-    import json
 
     import redis.asyncio as aioredis
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import (
+        async_sessionmaker,
+        create_async_engine,
+    )
 
     from app.core.config import settings
     from app.core.cv_pipeline.pipeline import run_extraction_pipeline
@@ -83,8 +84,8 @@ async def _run_pipeline_async(
         try:
             # Upload to R2 first — was previously done in the service (sync),
             # now done here so the HTTP response returns immediately
-            from app.core.config import settings as _settings
-            from datetime import UTC as _UTC, datetime as _datetime
+            from datetime import UTC as _UTC
+            from datetime import datetime as _datetime
             timestamp = _datetime.now(_UTC).strftime("%Y%m%d%H%M%S")
             submission_obj = await repo.get_by_id(submission_id)
             r2_key = f"cv-parsing/{submission_obj.uploaded_by}/{timestamp}_{submission_obj.filename}"
@@ -137,6 +138,7 @@ async def _run_pipeline_async(
             # Handles the race where scoring was queued before parsing completed
             try:
                 from sqlalchemy import select as _select
+
                 from app.modules.talent_pool.models import TalentPoolProfiles
                 tp_result = await db.execute(
                     _select(TalentPoolProfiles)
@@ -147,7 +149,9 @@ async def _run_pipeline_async(
                         score_talent_pool_profile_task.delay(str(tp.id), str(tp.sourced_for_job_id))
                         logger.info("Pipeline complete — queued talent pool scoring for profile %s", tp.id)
                     # Always queue embedding generation regardless of job context
-                    from app.modules.ai.tasks import generate_talent_pool_embedding_task as _gen_tp_emb
+                    from app.modules.ai.tasks import (
+                        generate_talent_pool_embedding_task as _gen_tp_emb,
+                    )
                     _gen_tp_emb.delay(str(tp.id))
             except Exception:
                 logger.warning("Failed to trigger talent pool scoring after pipeline", exc_info=True)
@@ -205,35 +209,35 @@ async def _score_application_async(application_id_str: str) -> None:
                     f"score_application: Application {application_id} not found."
                 )
                 return
-            
+
             # --- Load parsed CV data via the chain: Application -> CandidateCVs -> ParsedCVSubmission
             if not application.cv_id:
                 logger.info(
                     "score_application: No CV for application {application_id}. Skipping."
                 )
                 return
-            
+
             cv = await candidate_repo.get_cv(application.cv_id)
             if not cv:
                 logger.warning(
                     "score_application: No CV found for application {application_id}"
                 )
                 return
-            
+
             submission = await ai_repo.get_submission_by_id(cv.submission_id)
             if not submission or not submission.parsed_data:
                 logger.info(
                     "score_application: No parsed submission for application {application_id}. Skipping."
                 )
                 return
-            
+
             job = await job_repo.get_by_id(application.job_id)
             if not job:
                 logger.warning(
                     f"score_application: Job not found for application {application_id}. Skipping."
                 )
                 return
-            
+
             # --- Hash-based cache check - skip LLM if nothing changed
             job_hash = hash_job_scoring_inputs(
                 job.description or "",
@@ -251,17 +255,18 @@ async def _score_application_async(application_id_str: str) -> None:
                 and application.ai_score is not None
             ):
                 logger.info(
-                    f"score_application: Cache hit for application {application_id}. Skipping LLM."   
+                    f"score_application: Cache hit for application {application_id}. Skipping LLM."
                 )
                 return
-            
+
             # --- Deterministic score — use embedding similarity when both vectors exist,
             # fall back to keyword-based scoring when either embedding is missing.
             parsed = submission.parsed_data
 
             # Load candidate profile to check for stored embedding
-            from app.modules.candidates.models import CandidateProfile
             from sqlalchemy import select as _select
+
+            from app.modules.candidates.models import CandidateProfile
             candidate_profile_result = await db.execute(
                 _select(CandidateProfile).where(CandidateProfile.user_id == application.candidate_id)
             )
@@ -279,7 +284,10 @@ async def _score_application_async(application_id_str: str) -> None:
                     job.job_embedding,
                 )
                 # Blend: 50% embedding similarity + 30% experience + 20% seniority
-                from app.modules.ai.scoring_service import _experience_score, _seniority_score
+                from app.modules.ai.scoring_service import (
+                    _experience_score,
+                    _seniority_score,
+                )
                 experience_score = _experience_score(
                     parsed.get("years_experience"),
                     job.required_years_experience,
@@ -369,7 +377,6 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
         try:
             talent_pool_repo = TalentPoolRepository(db)
             ai_repo = AIRepository(db)
-            candidate_repo = CandidateRepository(db)
             job_repo = JobRepository(db)
 
             talent_pool = await talent_pool_repo.get_by_id(profile_id)
@@ -378,14 +385,14 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                     f"score_talent_pool_profile: Talent pool profile {profile_id} not found."
                 )
                 return
-            
+
             # --- Load parsed CV data via the chain: TalentPool -> ParsedCVSubmission
             if not talent_pool.parsed_submission_id:
                 logger.info(
                     "score_talent_pool_profile: No parsed submission for talent pool profile {profile_id}. Skipping."
                 )
                 return
-            
+
             submission = await ai_repo.get_submission_by_id(talent_pool.parsed_submission_id)
             if not submission:
                 logger.warning("score_talent_pool_profile: submission not found for profile %s", profile_id)
@@ -422,7 +429,7 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                     f"score_talent_pool_profile: Job not found for talent pool profile {profile_id}. Skipping."
                 )
                 return
-            
+
             # --- Hash-based cache check - skip LLM if nothing changed
             job_hash = hash_job_scoring_inputs(
                 job.description or "",
@@ -440,17 +447,18 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                 and talent_pool.ai_score is not None
             ):
                 logger.info(
-                    f"score_talent_profile_pool: Cache hit for talent_profile_pool {profile_id}. Skipping LLM."   
+                    f"score_talent_profile_pool: Cache hit for talent_profile_pool {profile_id}. Skipping LLM."
                 )
                 return
-            
+
             # --- Deterministic score — use embedding similarity when both vectors exist,
             # fall back to keyword-based scoring when either embedding is missing.
             parsed = submission.parsed_data
 
             # Load candidate profile embedding if linked
-            from app.modules.candidates.models import CandidateProfile
             from sqlalchemy import select as _select
+
+            from app.modules.candidates.models import CandidateProfile
             candidate_profile = None
             if talent_pool.candidate_profile_id:
                 cp_result = await db.execute(
@@ -469,8 +477,11 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                 tp_embedding is not None
                 and job_emb is not None
             ):
+                from app.modules.ai.scoring_service import (
+                    _experience_score,
+                    _seniority_score,
+                )
                 from app.modules.ai.service import EmbeddingAIService
-                from app.modules.ai.scoring_service import _experience_score, _seniority_score
                 embedding_service = EmbeddingAIService()
                 skills_score = await embedding_service.compute_similarity_score(
                     tp_embedding,
@@ -552,7 +563,8 @@ def generate_candidate_embedding_task(self, profile_id: str) -> None:
 
 
 async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
-    from datetime import UTC as _UTC, datetime as _datetime
+    from datetime import UTC as _UTC
+    from datetime import datetime as _datetime
 
     from app.modules.ai.scoring_service import hash_candidate_embedding_source
     from app.modules.ai.service import EmbeddingAIService
@@ -625,7 +637,8 @@ def generate_job_embedding_task(self, job_id: str) -> None:
 
 
 async def _generate_job_embedding_async(job_id_str: str) -> None:
-    from datetime import UTC as _UTC, datetime as _datetime
+    from datetime import UTC as _UTC
+    from datetime import datetime as _datetime
 
     from app.modules.ai.scoring_service import hash_job_embedding_source
     from app.modules.ai.service import EmbeddingAIService
@@ -740,7 +753,8 @@ def generate_talent_pool_embedding_task(self, profile_id: str) -> None:
 
 
 async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
-    from datetime import UTC as _UTC, datetime as _datetime
+    from datetime import UTC as _UTC
+    from datetime import datetime as _datetime
 
     from app.modules.ai.scoring_service import hash_talent_pool_embedding_source
     from app.modules.ai.service import EmbeddingAIService

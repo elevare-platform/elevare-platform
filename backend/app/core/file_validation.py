@@ -1,3 +1,8 @@
+"""File upload validation utilities.
+
+Validates PDF and document uploads by checking file size, extension,
+and MIME type (via magic bytes inspection).
+"""
 import re
 
 import magic
@@ -6,7 +11,10 @@ from app.core.exceptions import PlatformError
 
 
 class FileTooLargeException(PlatformError):
+    """Raised when an uploaded file exceeds the 5MB size limit."""
+
     def __init__(self) -> None:
+        """Initialise with a fixed file-too-large message."""
         super().__init__(
             message="File exceeds the 5MB size limit",
             code="FILE_TOO_LARGE",
@@ -15,7 +23,10 @@ class FileTooLargeException(PlatformError):
 
 
 class InvalidFileTypeException(PlatformError):
+    """Raised when an uploaded file has an unsupported extension."""
+
     def __init__(self) -> None:
+        """Initialise with a fixed invalid-file-type message."""
         super().__init__(
             message="Invalid file type. Only PDF files are accepted for CVs",
             code="INVALID_FILE_TYPE",
@@ -24,7 +35,10 @@ class InvalidFileTypeException(PlatformError):
 
 
 class InvalidFileContentException(PlatformError):
+    """Raised when a file's magic bytes do not match its declared extension."""
+
     def __init__(self) -> None:
+        """Initialise with a fixed invalid-content message."""
         super().__init__(
             message="File content does not match the expected type",
             code="INVALID_FILE_CONTENT",

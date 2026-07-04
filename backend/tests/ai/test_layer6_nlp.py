@@ -1,10 +1,9 @@
 """Unit tests for Layer 6: NLP extraction — uses MockNLP to avoid loading spaCy."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 from app.core.cv_pipeline.layer3_sections import DetectedSections
-from app.core.cv_pipeline.layer6_nlp import NLPExtractionResult, extract_nlp
+from app.core.cv_pipeline.layer6_nlp import extract_nlp
 
 
 def make_sections(**kwargs) -> DetectedSections:

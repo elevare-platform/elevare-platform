@@ -54,7 +54,7 @@ def _skills_coverage(candidate_skills: list[str], required_skills: list[str]) ->
     """
     if not required_skills:
         return 100.0
-    
+
     candidate_lower = {s.lower() for s in candidate_skills}
 
     matched = sum(1 for s in required_skills if s.lower() in candidate_lower)
@@ -75,13 +75,13 @@ def _experience_score(
     """
     if candidate_years is None or (job_min_years is None and job_max_years is None):
         return 50.0  # Neutral when data is missing
-    
+
     min_years = job_min_years or 0
     max_years = job_max_years or float("inf")
 
     if min_years <= candidate_years <= max_years:
         return 100.0
-    
+
     # How far outside the range?
     delta = (
         min_years - candidate_years
@@ -91,7 +91,7 @@ def _experience_score(
 
     if delta <= 2:
         return 60.0
-    
+
     return 20.0
 
 def _seniority_score(candidate_seniority: str | None, job_seniority: str | None) -> float:
@@ -105,14 +105,14 @@ def _seniority_score(candidate_seniority: str | None, job_seniority: str | None)
     """
     if not candidate_seniority or not job_seniority:
         return 50.0  # neutral data when data is missing
-    
+
 
     c = candidate_seniority.upper().strip()
     j = job_seniority.upper().strip()
 
     if c not in _SENIORITY_ORDER or j not in _SENIORITY_ORDER:
         return 50.0  # unrecognized value - neutral
-    
+
     distance = abs(_SENIORITY_ORDER.index(c) - _SENIORITY_ORDER.index(j))
 
     if distance == 0:

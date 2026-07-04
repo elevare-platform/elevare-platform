@@ -12,7 +12,7 @@ Covers the spec's Task 12 checklist plus add-on work:
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -26,7 +26,6 @@ from app.modules.ai.scoring_service import (
 from app.modules.jobs.enums import ContractType, WorkModel
 from app.modules.users.models import EmployerProfile, User
 from tests.conftest import make_register_data
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -250,8 +249,8 @@ class TestJobAccessTokens:
         job_id = jobs_resp.json()["items"][0]["id"]
 
         # Approve job so it's active
-        from app.modules.jobs.models import Job
         from app.modules.jobs.enums import ModerationStatus
+        from app.modules.jobs.models import Job
         job = await db_session.get(Job, job_id)
         job.moderation_status = ModerationStatus.APPROVED.value
         job.status = "ACTIVE"
@@ -294,8 +293,9 @@ class TestJobAccessTokens:
 
     @pytest.mark.asyncio
     async def test_expired_token_returns_404_not_data(self, client, db_session):
-        from app.modules.jobs.models import JobAccessTokens
         import secrets
+
+        from app.modules.jobs.models import JobAccessTokens
         from tests.conftest import make_employer, make_job
 
         employer = make_employer()
@@ -323,8 +323,9 @@ class TestJobAccessTokens:
 
     @pytest.mark.asyncio
     async def test_revoked_token_returns_404_immediately(self, client, db_session):
-        from app.modules.jobs.models import JobAccessTokens
         import secrets
+
+        from app.modules.jobs.models import JobAccessTokens
         from tests.conftest import make_employer, make_job
 
         employer = make_employer()
@@ -406,9 +407,8 @@ class TestTalentPoolSubmission:
 
     @pytest.mark.asyncio
     async def test_submission_creates_talent_pool_profile(self, client, db_session):
-        from app.modules.talent_pool.models import TalentPoolProfiles
         from app.core.storage import MockStorageService, get_storage_service
-        from app.modules.ai.tasks import run_full_pipeline_task
+        from app.modules.talent_pool.models import TalentPoolProfiles
 
         token, user = await register_and_activate(client, db_session, "EMPLOYER")
 
@@ -440,7 +440,6 @@ class TestTalentPoolSubmission:
     async def test_candidate_auto_enrolled_on_registration(self, client, db_session):
         """Self-registered candidates are automatically added to the talent pool."""
         from app.modules.talent_pool.models import TalentPoolProfiles
-        from app.modules.candidates.models import CandidateProfile
 
         _, user = await register_and_activate(client, db_session, "CANDIDATE")
 
@@ -463,8 +462,8 @@ class TestTalentPoolPromotion:
     @pytest.mark.asyncio
     async def test_promotion_conflict_when_active_user_exists(self, client, db_session):
         """Promoting a profile whose email belongs to an active user → conflict, not merge."""
-        from app.modules.ai.models import ParsedCVSubmission
         from app.modules.ai.enums import CVParsingStatus
+        from app.modules.ai.models import ParsedCVSubmission
         from app.modules.talent_pool.models import TalentPoolProfiles
 
         admin_token, admin = await register_and_activate(client, db_session, "ADMIN")

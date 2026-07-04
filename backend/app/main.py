@@ -13,15 +13,14 @@ import spacy
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy import text
 
 import app.core.model_registry  # noqa: F401
 from app.core.config import settings
 from app.core.database import engine
-from app.core.limiter import limiter
 from app.core.exception_handler import (
     handle_generic_exception,
     handle_http_exception,
@@ -29,6 +28,7 @@ from app.core.exception_handler import (
     handle_pydantic_validation_error,
 )
 from app.core.exceptions import PlatformError
+from app.core.limiter import limiter
 from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 from app.modules.admin.router import router as admin_router

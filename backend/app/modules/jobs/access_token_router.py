@@ -1,18 +1,18 @@
-from typing import List
+"""HTTP endpoints for job access tokens and public applicant views."""
 import uuid
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import require_role, get_db
+from app.core.dependencies import get_db, require_role
 from app.core.schemas import SuccessResponse
-from app.modules.users.models import User
 from app.modules.jobs.access_token_schema import (
     AccessTokenResponse,
     CreateAccessTokenRequest,
-    PublicApplicantsResponse
+    PublicApplicantsResponse,
 )
 from app.modules.jobs.access_token_service import AccessTokenService
+from app.modules.users.models import User
 
 router = APIRouter()
 
@@ -28,12 +28,13 @@ async def create_access_token(
     return await service.create_access_token(job_id, data, current_user)
 
 
-@router.get("/jobs/{job_id}/access-tokens", response_model=List[AccessTokenResponse])
+@router.get("/jobs/{job_id}/access-tokens", response_model=list[AccessTokenResponse])
 async def get_access_tokens(
     job_id: uuid.UUID,
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> list[AccessTokenResponse]:
+    """Return all access tokens for a job."""
     service = AccessTokenService(db)
     return await service.get_all_access_tokens(job_id, current_user)
 

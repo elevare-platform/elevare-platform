@@ -1,5 +1,10 @@
-from dataclasses import dataclass
+"""Layer 3 — section detection for CV text.
 
+Identifies common CV sections (summary, experience, education, skills,
+certifications, projects, references) by matching known header strings.
+Returns a DetectedSections dataclass with each section's text content.
+"""
+from dataclasses import dataclass
 
 SECTION_HEADERS = {
     "summary": [
@@ -36,6 +41,8 @@ SECTION_HEADERS = {
 
 @dataclass
 class DetectedSections:
+    """Text content for each detected CV section."""
+
     summary: str | None
     experience: str | None
     education: str | None
@@ -46,9 +53,15 @@ class DetectedSections:
     unclassified: str   # everything not matched to a section
 
 def _normalize_header(line: str) -> str:
+    """Normalise a potential section header line for matching."""
     return " ".join(line.strip().lower().rstrip(":").split())
 
 def detect_sections(text: str) -> DetectedSections:
+    """Parse CV text into labelled sections based on known header strings.
+
+    Lines matching a known section header switch the current section context.
+    Lines before any header land in ``unclassified``.
+    """
     section_buffers: dict[str, list[str]] = {
         "summary": [],
         "experience": [],
@@ -72,7 +85,7 @@ def detect_sections(text: str) -> DetectedSections:
             if normalized in headers:
                 matched_section = section_name
                 break
-        
+
         if matched_section:
             current_section = matched_section
             continue
@@ -81,7 +94,7 @@ def detect_sections(text: str) -> DetectedSections:
             unclassified.append(line)
         else:
             section_buffers[current_section].append(line)
-    
+
     return DetectedSections(
         summary="\n".join(section_buffers["summary"]).strip() or None,
         experience="\n".join(section_buffers["experience"]).strip() or None,

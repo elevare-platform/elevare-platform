@@ -1,9 +1,14 @@
-from dataclasses import dataclass
-import re
-from app.core.taxonomies.skill_taxonomy import SKILLS_NORMALISATION, SKILLS_TAXONOMY
-from app.core.taxonomies.degree_taxonomy import DEGREE_TAXONOMY
-from app.core.cv_pipeline.layer3_sections import DetectedSections
+"""Layer 5 — taxonomy-based skill and degree matching.
 
+Matches CV text against curated lists of skills and degrees.
+Also identifies Nigerian professional certifications.
+"""
+import re
+from dataclasses import dataclass
+
+from app.core.cv_pipeline.layer3_sections import DetectedSections
+from app.core.taxonomies.degree_taxonomy import DEGREE_TAXONOMY
+from app.core.taxonomies.skill_taxonomy import SKILLS_NORMALISATION, SKILLS_TAXONOMY
 
 NIGERIAN_CERTS = {
     'ican', 'acca', 'cfa', 'cima', 'cibn', 'cipm',
@@ -13,16 +18,20 @@ NIGERIAN_CERTS = {
 
 @dataclass
 class TaxonomyMatchResult:
+    """Results of matching CV text against skill and degree taxonomies."""
+
     matched_skills: list[str]
     matched_degrees: list[str]
     nigerian_certifications: list[str]
     field_confidence: dict[str, str]
 
 def _skill_matches(skill: str, text: str) -> bool:
+    """Return True if the skill appears as a whole word in the text."""
     pattern = r'\b' + re.escape(skill) + r'\b'
     return bool(re.search(pattern, text, re.IGNORECASE))
 
 def _normalise_text(text: str) -> str:
+    """Apply skill normalisation variants to lowercase text."""
     normalised = text.lower()
     for variant, canonical in SKILLS_NORMALISATION.items():
         pattern = r'\b' + re.escape(variant) + r'\b'
@@ -30,6 +39,7 @@ def _normalise_text(text: str) -> str:
     return normalised
 
 def match_taxonomy(sections: DetectedSections) -> TaxonomyMatchResult:
+    """Match skills and degrees from section text against the taxonomy lists."""
     # Build skills search text from skills + experience sections
     skills_text = " ".join(filter(None, [sections.skills, sections.experience]))
     normalised_skills_text = _normalise_text(skills_text)

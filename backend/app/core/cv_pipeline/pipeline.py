@@ -1,14 +1,25 @@
-from app.core.cv_pipeline.layer2_language import LanguageDetectionResult
-from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
-from app.core.cv_pipeline.layer4_deterministic import DeterministicExtractionResult
+"""CV extraction pipeline — orchestrates all 8 extraction layers.
+
+Runs text extraction → language detection → section detection →
+deterministic extraction → taxonomy matching → NLP extraction →
+LLM extraction → merge and score, returning a CVExtractionResult.
+"""
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
-from app.core.cv_pipeline.layer2_language import language_detection
+from app.core.cv_pipeline.layer2_language import (
+    LanguageDetectionResult,
+    language_detection,
+)
 from app.core.cv_pipeline.layer3_sections import detect_sections
-from app.core.cv_pipeline.layer4_deterministic import extract_deterministic
+from app.core.cv_pipeline.layer4_deterministic import (
+    DeterministicExtractionResult,
+    extract_deterministic,
+)
 from app.core.cv_pipeline.layer5_taxonomy import match_taxonomy
 from app.core.cv_pipeline.layer6_nlp import extract_nlp
+from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
 from app.core.cv_pipeline.layer8_merger import merge_and_score
 from app.core.cv_pipeline.models import CVExtractionResult
 from app.modules.ai.service import AIService
@@ -16,6 +27,7 @@ from app.modules.ai.service import AIService
 logger = logging.getLogger(__name__)
 
 def _failed_result(error: str) -> CVExtractionResult:
+    """Build a CVExtractionResult representing a failed extraction."""
     return CVExtractionResult(
         full_name=None,
         email=None,
@@ -39,7 +51,7 @@ def _failed_result(error: str) -> CVExtractionResult:
         extraction_layers_used=[],
         is_scanned=False,
         ocr_used=False,
-        extracted_at=datetime.now(timezone.utc),
+        extracted_at=datetime.now(UTC),
     )
 
 async def run_extraction_pipeline(
@@ -47,14 +59,24 @@ async def run_extraction_pipeline(
     nlp,
     ai_service: AIService,
 ) -> tuple[CVExtractionResult, tuple[DeterministicExtractionResult, LLMExtractionResult, LanguageDetectionResult]]:
+    """Run the full 8-layer CV extraction pipeline.
 
+    Args:
+        pdf_bytes: Raw PDF file bytes.
+        nlp: A loaded spaCy language model instance.
+        ai_service: The AI service used for LLM extraction.
+
+    Returns:
+        A tuple of (CVExtractionResult, (deterministic, llm_result, lang_result)).
+
+    """
     # Layer 1 - extract text
     logger.info("Extracting text")
     text_result = extract_text_from_pdf(pdf_bytes)
     if not text_result.success:
         logger.info("Error extracting texts from pdf")
         return _failed_result(text_result.error), (DeterministicExtractionResult(None, None, None, None, None, [], {}), LLMExtractionResult(), LanguageDetectionResult("en", 0.0, False, False, True))
-    
+
     # Layer 2 - detect language
     lang_result = language_detection(text_result.text)
 

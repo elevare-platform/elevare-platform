@@ -4,13 +4,13 @@ import pytest
 
 from app.modules.jobs.enums import JobStatus, ModerationStatus
 
-
 # ─── Contact endpoint ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_contact_valid_submission_returns_200(client, db_session):
     """Valid contact submission is stored in DB and returns 200."""
     from sqlalchemy import select
+
     from app.modules.contact.models import ContactSubmission
 
     payload = {
@@ -38,6 +38,7 @@ async def test_contact_valid_submission_returns_200(client, db_session):
 async def test_contact_honeypot_returns_200_without_db_record(client, db_session):
     """Honeypot-filled submission returns 200 silently but creates no DB record."""
     from sqlalchemy import select
+
     from app.modules.contact.models import ContactSubmission
 
     unique_email = "bot_12345_unique@spam.com"
@@ -93,6 +94,7 @@ async def test_contact_short_message_returns_422(client):
 async def test_contact_employer_inquiry_routes_correctly(client, db_session):
     """Employer inquiry is stored with correct inquiry_type."""
     from sqlalchemy import select
+
     from app.modules.contact.models import ContactSubmission
 
     unique_email = "employer_test_unique@company.com"
@@ -159,8 +161,8 @@ async def test_sitemap_includes_active_approved_jobs(client, db_session):
 @pytest.mark.asyncio
 async def test_sitemap_excludes_draft_and_pending_jobs(client, db_session):
     """Sitemap excludes jobs that are DRAFT or PENDING moderation."""
-    from tests.conftest import make_employer, make_job
     from app.core.dependencies import get_redis_client
+    from tests.conftest import make_employer, make_job
 
     employer = make_employer()
     db_session.add(employer)

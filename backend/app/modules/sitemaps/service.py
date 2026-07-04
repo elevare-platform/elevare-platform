@@ -1,14 +1,18 @@
+"""Sitemap XML generation service with Redis caching."""
+import redis.asyncio as aioredis
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.modules.jobs.repository import JobRepository
-from sqlalchemy.ext.asyncio import AsyncSession
-import redis.asyncio as aioredis
 
 
 class SitemapService:
+    """Builds and caches the sitemap XML for job listings and static pages."""
 
     KEY = "sitemap:xml"
 
     def __init__(self, db: AsyncSession, redis: aioredis.Redis):
+        """Initialise with a database session and Redis client."""
         self._db = db
         self._redis = redis
         self._repo = JobRepository(db)

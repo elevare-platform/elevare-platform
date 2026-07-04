@@ -1,15 +1,16 @@
 """Integration tests for CV parsing endpoints."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.storage import MockStorageService, get_storage_service
 from app.main import app
-from app.modules.ai.models import ParsedCVSubmission
 from app.modules.ai.enums import CVParsingStatus
+from app.modules.ai.models import ParsedCVSubmission
 from tests.conftest import make_register_data
 
 
@@ -19,8 +20,9 @@ def make_pdf_bytes() -> bytes:
 
 async def get_token(client: AsyncClient, db_session: AsyncSession, role: str = "ADMIN") -> str:
     from sqlalchemy import select
-    from app.modules.users.models import User
+
     from app.modules.auth.jwt_handler import create_token_pair
+    from app.modules.users.models import User
 
     data = make_register_data(role="CANDIDATE")
     payload = {
@@ -181,6 +183,7 @@ async def test_employer_cannot_see_other_employer_submission(client, db_session)
 @pytest.mark.asyncio
 async def test_same_cv_twice_no_second_llm_call(client, db_session, mock_celery_task, mock_redis):
     import json
+
     from app.core.dependencies import get_redis_client
 
     token = await get_token(client, db_session, "ADMIN")

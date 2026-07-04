@@ -1,18 +1,17 @@
-from app.core.exceptions import SubmissionNotFound
+"""HTTP endpoints for CV parsing — submit, list, download, and cost tracking."""
 import uuid
 
-from app.modules.ai.enums import CVParsingStatus
-from app.modules.users.models import User
-from app.modules.ai.service import AnthropicCVExtractionService
-from app.modules.ai.cv_parsing_service import CVParsingService
-from app.core.storage import get_storage_service
-from app.core.storage import StorageService
-from app.core.dependencies import get_redis_client
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi.requests import Request
-from fastapi import APIRouter, Depends, UploadFile, File
-from app.core.dependencies import get_db, require_role
 import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.requests import Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.dependencies import get_db, get_redis_client, require_role
+from app.core.storage import StorageService, get_storage_service
+from app.modules.ai.cv_parsing_service import CVParsingService
+from app.modules.ai.enums import CVParsingStatus
+from app.modules.ai.service import AnthropicCVExtractionService
+from app.modules.users.models import User
 
 router = APIRouter()
 
@@ -22,6 +21,7 @@ async def get_cv_parsing_service(
     redis: aioredis.Redis = Depends(get_redis_client),
     storage: StorageService = Depends(get_storage_service),
 ) -> CVParsingService:
+    """Build a CVParsingService with all injected dependencies."""
     return CVParsingService(
         db=db,
         storage=storage,

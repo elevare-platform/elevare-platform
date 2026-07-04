@@ -1,7 +1,5 @@
 """Unit tests for Layer 5: Taxonomy matching."""
 
-import pytest
-from unittest.mock import MagicMock
 
 from app.core.cv_pipeline.layer3_sections import DetectedSections
 from app.core.cv_pipeline.layer5_taxonomy import match_taxonomy

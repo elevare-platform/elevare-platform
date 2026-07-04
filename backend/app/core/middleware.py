@@ -33,10 +33,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
 
     def __init__(self, app, debug: bool = False) -> None:
+        """Initialise middleware with debug flag to control HSTS header."""
         super().__init__(app)
         self._debug = debug
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """Add security headers to every response."""
         response = await call_next(request)
 
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -64,7 +66,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log every inbound request and its completed response with a request ID."""
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """Log request start, call the next handler, then log completion or failure."""
         # Skip logging for CORS preflight requests
         if request.method == "OPTIONS":
             return await call_next(request)

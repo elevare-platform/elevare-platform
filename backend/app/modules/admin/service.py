@@ -1,8 +1,8 @@
 """Business logic for admin operations."""
 
 from __future__ import annotations
-import logging
 
+import logging
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +31,7 @@ class AdminService:
     """Orchestrates admin operations and audit logging."""
 
     def __init__(self, db: AsyncSession) -> None:
+        """Initialise the service with an async database session."""
         self._db = db
         self._repo = AdminRepository(db)
 
@@ -46,9 +47,11 @@ class AdminService:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return a paginated list of users with optional role/status/search filters."""
         return await self._repo.list_users(role, status, search, cursor, limit)
 
     async def get_user_detail(self, user_id: UUID) -> object:
+        """Return full user details or raise UserNotFoundException."""
         user = await self._repo.get_user_by_id(user_id)
         if not user:
             raise UserNotFoundException()
@@ -112,6 +115,7 @@ class AdminService:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return a paginated list of jobs with optional status/moderation/search filters."""
         return await self._repo.list_jobs(status, moderation_status, search, cursor, limit)
 
     async def moderate_job(
@@ -128,10 +132,6 @@ class AdminService:
             raise JobNotFoundError()
 
         before = {"moderation_status": job.moderation_status, "status": job.status}
-        job_data = {
-            'id': job.id,
-            'title': job.title
-        }
 
         if action == "close":
             job = await self._repo.set_job_status(job, "CLOSED")
@@ -195,6 +195,7 @@ class AdminService:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return a paginated list of all applications platform-wide."""
         return await self._repo.list_applications(status, cursor, limit)
 
     # -----------------------------------------------------------------------
@@ -202,6 +203,7 @@ class AdminService:
     # -----------------------------------------------------------------------
 
     async def get_platform_stats(self) -> dict:
+        """Return aggregated user, job, and application statistics."""
         return await self._repo.get_platform_stats()
 
     # -----------------------------------------------------------------------
@@ -209,6 +211,7 @@ class AdminService:
     # -----------------------------------------------------------------------
 
     async def export_applications_csv(self) -> str:
+        """Fetch all applications and build a CSV string for download."""
         applications = await self._repo.get_all_applications_for_export()
         return self._repo.build_applications_csv(applications)
 
@@ -221,4 +224,5 @@ class AdminService:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
+        """Return paginated audit log entries."""
         return await self._repo.list_audit_log(cursor, limit)

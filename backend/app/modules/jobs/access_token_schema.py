@@ -1,10 +1,13 @@
+"""Pydantic schemas for job access tokens and public applicant views."""
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AccessTokenResponse(BaseModel):
+    """Serialised view of a job access token."""
+
     id: uuid.UUID
     token: str
     job_id: uuid.UUID
@@ -18,6 +21,8 @@ class AccessTokenResponse(BaseModel):
 
 
 class CreateAccessTokenRequest(BaseModel):
+    """Payload for generating a new job access token."""
+
     expires_in_days: int = Field(..., ge=1, le=30)
     disclose_names: bool = Field(default=False)
 
@@ -33,6 +38,8 @@ class PublicApplicantsItem(BaseModel):
     cv_snippet: str | None = None
     source: str = "applicant"  # "applicant" (registered) | "external" (uploaded CV)
 class PublicApplicantsResponse(BaseModel):
+    """Response for a public shared applicant view."""
+
     job_title: str
     expires_at: datetime
     applicants: list[PublicApplicantsItem]

@@ -1,6 +1,5 @@
 """Unit tests for Layer 3: Section detection."""
 
-import pytest
 from app.core.cv_pipeline.layer3_sections import detect_sections
 
 SAMPLE_CV = """

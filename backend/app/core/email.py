@@ -319,7 +319,7 @@ class ResendEmailService(EmailService):
             recipients=[recipient],
             html_body=html_body,
         )
-    
+
     async def send_job_moderation_status(
         self, employer_email: str, job_data: dict, action: str, reason: str | None = None
     ) -> None:

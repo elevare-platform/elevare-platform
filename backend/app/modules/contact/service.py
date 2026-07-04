@@ -31,7 +31,7 @@ class ContactService:
     ) -> None:
         """Persist the submission and send the appropriate notification email."""
 
-        submission = await self._contact_repo.create_contact_submission(payload, ip_address)
+        await self._contact_repo.create_contact_submission(payload, ip_address)
 
         # Route email to the correct recipient
         recipient = (

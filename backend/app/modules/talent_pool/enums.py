@@ -1,6 +1,10 @@
+"""Enumerations for the talent pool module."""
 from enum import Enum
 
+
 class SourceType(str, Enum):
+    """How a candidate was sourced into the talent pool."""
+
     EMAIL = "email"
     REFERRAL = "referral"
     LINKEDIN = "linkedin"
@@ -8,6 +12,8 @@ class SourceType(str, Enum):
 
 
 class TalentPoolStatus(str, Enum):
+    """Lifecycle state of a talent pool profile."""
+
     NEW = "new"
     SHORTLISTED = "shortlisted"
     PROMOTED_PENDING = "promoted_pending"  # invite sent, awaiting candidate confirmation
