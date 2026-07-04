@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { CheckCircle2 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { JobForm } from '@/components/employer/JobForm'
+import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 
 /**
@@ -10,11 +12,14 @@ import api from '@/lib/api'
  * Protected: EMPLOYER role only (enforced via ProtectedRoute in App.jsx)
  * Requirements: 5.1, 5.2, 5.3, 5.7, 5.8, 5.9
  */
+const DRAFT_KEY = 'elevare_job_draft'
+
 export default function PostJobPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [profileIncomplete, setProfileIncomplete] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
 
   async function handleSubmit(data) {
     setLoading(true)
@@ -23,16 +28,17 @@ export default function PostJobPage() {
 
     try {
       await api.post('/api/v1/jobs', data)
-      navigate('/employer/jobs')
+      setSubmitted(true)
     } catch (err) {
       const code = err.response?.data?.code
-      const message = err.response?.data?.message ?? ''
-
-      // Specific code for incomplete profile — show actionable banner
+      const body = err.response?.data
       if (code === 'PROFILE_INCOMPLETE') {
         setProfileIncomplete(true)
+      } else if (Array.isArray(body?.details)) {
+        // Custom handler: { details: [{ field, message }] }
+        setError(body.details.map((e) => `${e.field}: ${e.message}`).join(' · '))
       } else {
-        setError(message || 'Something went wrong. Please try again.')
+        setError(body?.message || 'Something went wrong. Please try again.')
       }
     } finally {
       setLoading(false)
@@ -65,13 +71,39 @@ export default function PostJobPage() {
             </div>
           )}
 
-          <div className="rounded-lg border border-border bg-surface p-6 sm:p-8">
-            <JobForm
-              onSubmit={handleSubmit}
-              loading={loading}
-              error={error}
-            />
-          </div>
+          {/* Success state — pending approval notice */}
+          {submitted ? (
+            <div className="rounded-xl border border-green-200 bg-green-50 p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 size={22} className="text-green-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h2 className="font-semibold text-green-900 text-base">Job submitted for review</h2>
+                  <p className="text-sm text-green-800 mt-1 leading-relaxed">
+                    Your listing has been created and is now pending admin approval.
+                    You'll receive an email once it's approved — the email will include
+                    a direct link to publish it and start receiving applications.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <Button onClick={() => navigate('/employer/jobs')} size="sm">
+                  View my jobs
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setSubmitted(false)}>
+                  Post another job
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border bg-surface p-6 sm:p-8">
+              <JobForm
+                onSubmit={handleSubmit}
+                loading={loading}
+                error={error}
+                draftKey={DRAFT_KEY}
+              />
+            </div>
+          )}
         </div>
       </main>
 

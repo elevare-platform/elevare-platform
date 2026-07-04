@@ -443,6 +443,10 @@ class EmbeddingAIService(AIService):
 
 
 def get_ai_service() -> AIService:
-    """FastAPI dependency — returns KeywordAIService. Swap for EmbeddingAIService in Phase 12."""
+    """FastAPI dependency — returns EmbeddingAIService. Falls back to keyword scoring when embeddings missing."""
     return EmbeddingAIService()
+
+
+# Alias used in Phase 12 tests — MockAIService already implements the full interface
+MockEmbeddingAIService = MockAIService
 

@@ -47,15 +47,22 @@ export default function EmployerJobsPage() {
       .catch(() => {})
   }, [])
 
+  const [publishError, setPublishError] = useState(null)
+
   // Req 4.7 — Publish a DRAFT job and update local state on success
   const handlePublish = useCallback(async (job) => {
+    setPublishError(null)
     try {
       await api.post(`/api/v1/jobs/${job.id}/publish`)
       setJobs((prev) =>
         prev.map((j) => (j.id === job.id ? { ...j, status: 'ACTIVE' } : j))
       )
-    } catch {
-      // Silently ignore — the button remains available for retry
+    } catch (err) {
+      const body = err.response?.data
+      const msg = Array.isArray(body?.details)
+        ? body.details.map((e) => e.message).join(', ')
+        : body?.message ?? 'Failed to publish. Please try again.'
+      setPublishError(msg)
     }
   }, [setJobs])
 
@@ -132,6 +139,12 @@ export default function EmployerJobsPage() {
           {/* Error state */}
           {error && !loading && (
             <p className="text-red-600 text-sm mb-6">{error}</p>
+          )}
+
+          {publishError && (
+            <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {publishError}
+            </div>
           )}
 
           {/* Skeleton loading — Req 4.1 */}

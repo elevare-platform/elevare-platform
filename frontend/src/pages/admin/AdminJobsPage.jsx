@@ -96,17 +96,54 @@ export default function AdminJobsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-text">Jobs</h1>
         {selected.length > 0 && (
-          <button
-            onClick={() => setConfirm({
-              label: `Close ${selected.length} jobs?`,
-              confirmLabel: 'Close Jobs',
-              danger: true,
-              onConfirm: () => handleBulk('CLOSED'),
-            })}
-            className="px-3 py-1.5 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
-          >
-            Close ({selected.length})
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setConfirm({
+                label: `Approve ${selected.length} job${selected.length > 1 ? 's' : ''}?`,
+                confirmLabel: 'Approve All',
+                danger: false,
+                onConfirm: async () => {
+                  for (const id of selected) await moderateJob(id, 'APPROVED')
+                  show(`${selected.length} job${selected.length > 1 ? 's' : ''} approved`)
+                  load(true)
+                  setSelected([])
+                  setConfirm(null)
+                },
+              })}
+              className="px-3 py-1.5 text-sm rounded-lg bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+            >
+              Approve ({selected.length})
+            </button>
+            <button
+              onClick={() => setConfirm({
+                label: `Reject ${selected.length} job${selected.length > 1 ? 's' : ''}?`,
+                confirmLabel: 'Reject All',
+                danger: true,
+                isReject: true,
+                onConfirm: async (reason) => {
+                  for (const id of selected) await moderateJob(id, 'REJECTED', reason)
+                  show(`${selected.length} job${selected.length > 1 ? 's' : ''} rejected`)
+                  load(true)
+                  setSelected([])
+                  setConfirm(null)
+                },
+              })}
+              className="px-3 py-1.5 text-sm rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+            >
+              Reject ({selected.length})
+            </button>
+            <button
+              onClick={() => setConfirm({
+                label: `Close ${selected.length} job${selected.length > 1 ? 's' : ''}?`,
+                confirmLabel: 'Close All',
+                danger: true,
+                onConfirm: () => handleBulk('CLOSED'),
+              })}
+              className="px-3 py-1.5 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+            >
+              Close ({selected.length})
+            </button>
+          </div>
         )}
       </div>
 

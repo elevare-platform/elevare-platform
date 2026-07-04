@@ -40,7 +40,8 @@ class ContactService:
             else settings.contact_email
         )
 
-        await self.email_service.send_contact_notification(
+        from .tasks import send_contact_notification_task
+        send_contact_notification_task.delay(
             recipient=recipient,
             name=payload.name,
             sender_email=payload.email,

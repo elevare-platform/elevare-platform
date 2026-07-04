@@ -40,7 +40,7 @@ class EmailService(ABC):
 
     @abstractmethod
     async def send_verification_email(
-        self, email: str, verification_token: str
+        self, email: str, verification_token: str, next_url: str | None = None
     ) -> None:
         """Send email address verification link to a new user."""
         ...
@@ -233,10 +233,13 @@ class ResendEmailService(EmailService):
         )
 
     async def send_verification_email(
-        self, email: str, verification_token: str
+        self, email: str, verification_token: str, next_url: str | None = None
     ) -> None:
         """Send an email address verification link to the newly registered user."""
         verification_link = f"{settings.app_url}/verify-email?token={verification_token}"
+        if next_url:
+            from urllib.parse import quote
+            verification_link += f"&next={quote(next_url, safe='')}"
         html_body = f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -316,6 +319,65 @@ class ResendEmailService(EmailService):
             recipients=[recipient],
             html_body=html_body,
         )
+    
+    async def send_job_moderation_status(
+        self, employer_email: str, job_data: dict, action: str, reason: str | None = None
+    ) -> None:
+        """Notify employer of job approval or rejection, with a publish link on approval."""
+        job_id = job_data['id']
+        job_title = job_data['title']
+
+        if action == "APPROVED":
+            subject = f"Your job listing has been approved — {job_title}"
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
+            action_block = f"""
+          <p style="color:#374151;line-height:1.6;margin:0 0 24px;">
+            Your job listing <strong>{job_title}</strong> has been reviewed and approved.
+            Click below to publish it and start receiving applications.
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 32px 36px;text-align:center;">
+          <a href="{cta_url}" style="display:inline-block;background:#F59E0B;color:#ffffff;padding:13px 36px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:15px;">Publish Job Now</a>"""
+        else:
+            subject = f"Your job listing requires changes — {job_title}"
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
+            reason_block = f"<p style='color:#374151;line-height:1.6;margin:12px 0 0;'><strong>Reason:</strong> {reason}</p>" if reason else ""
+            action_block = f"""
+          <p style="color:#374151;line-height:1.6;margin:0 0 12px;">
+            Your job listing <strong>{job_title}</strong> was not approved at this time.
+          </p>
+          {reason_block}
+          <p style="color:#374151;line-height:1.6;margin:12px 0 24px;">
+            Please review the feedback, update your listing, and resubmit for approval.
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 32px 36px;text-align:center;">
+          <a href="{cta_url}" style="display:inline-block;background:#1E3A5F;color:#ffffff;padding:13px 36px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:15px;">Edit Job Listing</a>"""
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F3F4F6;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <tr><td style="background:#1E3A5F;padding:28px 32px;text-align:center;">
+          <h1 style="color:#ffffff;margin:0;font-size:26px;letter-spacing:1px;">Elevare</h1>
+          <p style="color:#93C5FD;margin:4px 0 0;font-size:13px;">Connecting Talent with Opportunity</p>
+        </td></tr>
+        <tr><td style="padding:36px 32px 24px;">
+          <h2 style="color:#1E3A5F;margin:0 0 16px;font-size:20px;">Job Listing {'Approved' if action == 'APPROVED' else 'Not Approved'}</h2>
+          {action_block}
+        </td></tr>
+        <tr><td style="padding:20px 32px;border-top:1px solid #E5E7EB;text-align:center;">
+          <p style="color:#9CA3AF;font-size:12px;margin:0;">© 2025 Elevare. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+        await self._send_html(subject=subject, recipients=[employer_email], html_body=html_body)
 
 
 class StubEmailService(EmailService):
@@ -355,26 +417,38 @@ class StubEmailService(EmailService):
         )
 
     async def send_verification_email(
-        self, email: str, verification_token: str
+        self, email: str, verification_token: str, next_url: str | None = None
     ) -> None:
-        """Log a stub email verification email."""
+        """Log a stub email verification email with a full clickable link."""
+        from urllib.parse import quote
+        link = f"{settings.app_url}/verify-email?token={verification_token}"
+        if next_url:
+            link += f"&next={quote(next_url, safe='')}"
         logger.info(
-            "STUB EMAIL SENT to %s: Verification email (token: %s)",
+            "STUB VERIFICATION EMAIL to %s — click to verify:\n%s",
             email,
-            verification_token,
+            link,
         )
 
     async def send_job_moderation_status(
       self, employer_email: str, job_data: dict, action: str, reason: str | None = None
     ) -> None:
-      """Send Job's moderation status to respective employers."""
+      """Log stub job moderation status with the correct action link."""
+      job_id = job_data['id']
+      if action == "APPROVED":
+          cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
+          label = "Publish link"
+      else:
+          cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
+          label = "Edit link"
       logger.info(
-        "STUB EMAIL SENT to %s: Action Taken on Job ID: %s - %s -> (action: %s) (reason: %s)",
+        "STUB JOB MODERATION to %s: Job '%s' action=%s reason=%s\n%s: %s",
         employer_email,
-        job_data['id'],
         job_data['title'],
         action,
         reason,
+        label,
+        cta_url,
       )
 
     async def send_contact_notification(

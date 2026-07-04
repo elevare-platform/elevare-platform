@@ -106,10 +106,16 @@ class JobResponse(BaseModel):
     status: str
     employer_id: UUID | None
     company_name: str | None = None
+    moderation_status: str | None = None
     company_logo_url: str | None = None
     company_website: str | None = None
     company_description: str | None = None
     company_industry: str | None = None
+    company_size: str | None = None
+    employer_first_name: str | None = None
+    employer_last_name: str | None = None
+    employer_email: str | None = None
+    employer_phone: str | None = None
     work_location: WorkLocation
     created_at: datetime | None = None
     application_deadline: datetime | None = None
@@ -126,8 +132,9 @@ class JobResponse(BaseModel):
     def from_job(cls, job) -> "JobResponse":
         """Build a JobResponse from a Job ORM instance."""
         profile = None
-        if job.employer and job.employer.employer_profile:
-            profile = job.employer.employer_profile
+        employer = job.employer
+        if employer and employer.employer_profile:
+            profile = employer.employer_profile
 
         return cls(
             id=job.id,
@@ -140,12 +147,18 @@ class JobResponse(BaseModel):
             salary_max=job.salary_max,
             status=job.status,
             employer_id=job.employer_id,
+            moderation_status=job.moderation_status,
             work_location=job.work_location,
             company_name=profile.company_name if profile else None,
             company_logo_url=profile.company_logo_url if profile else None,
             company_website=profile.website if profile else None,
             company_description=profile.company_description if profile else None,
             company_industry=profile.industry if profile else None,
+            company_size=profile.company_size if profile else None,
+            employer_first_name=employer.first_name if employer else None,
+            employer_last_name=employer.last_name if employer else None,
+            employer_email=employer.email if employer else None,
+            employer_phone=employer.phone_number if employer else None,
             created_at=job.created_at,
             application_deadline=job.application_deadline,
             application_count=getattr(job, "application_count", 0),

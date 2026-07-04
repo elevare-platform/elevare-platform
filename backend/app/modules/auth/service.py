@@ -122,10 +122,13 @@ class AuthService:
 
         logger.info(f"User registered successfully with email: {user.email}")
 
-        # Generate verification token — returned in response in stub mode, emailed in production
+        # Generate token then dispatch email task — always, regardless of stub mode.
+        # In stub mode, StubEmailService logs the full verification link to console.
+        # In production, ResendEmailService sends the real email.
         verification_token = await self.create_verification_token(user.id)
-        if settings.email_stub_mode:
-            logger.info(f"Verification token (stub mode): {verification_token}")
+        next_url = "/employer/onboarding" if user.role == "EMPLOYER" else None
+        from app.modules.applications.tasks import send_verification_email as send_verification_email_task
+        send_verification_email_task.delay(verification_token, user.email, next_url)
 
         token_pair = create_token_pair(user.id, user.role)
 

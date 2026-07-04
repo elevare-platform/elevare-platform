@@ -61,16 +61,16 @@ function BrandPanel() {
           Connect talent<br />with opportunity.
         </h1>
         <p className="text-white/70 text-lg leading-relaxed">
-          Join thousands of professionals and enterprises building careers and teams on Elevare.
+          Join professionals and enterprises building careers and teams with Africa's trusted recruitment partner.
         </p>
         <div className="flex gap-8">
           <div>
-            <p className="text-3xl font-bold text-brand-amber">500+</p>
-            <p className="text-white/60 text-sm">Companies hiring</p>
+            <p className="text-3xl font-bold text-brand-amber">12+</p>
+            <p className="text-white/60 text-sm">Years in recruitment</p>
           </div>
           <div>
-            <p className="text-3xl font-bold text-brand-amber">12k+</p>
-            <p className="text-white/60 text-sm">Active candidates</p>
+            <p className="text-3xl font-bold text-brand-amber">480+</p>
+            <p className="text-white/60 text-sm">Clients served</p>
           </div>
         </div>
       </div>
@@ -200,9 +200,11 @@ function RegisterForm({ role, onBack }) {
         role,
         cv_sharing_consent: values.cv_sharing_consent ?? false,
       })
-      // Store intended destination so VerifyEmailPage can redirect there after verification
-      if (next) storePostVerifyNext(next)
-      navigate(next || getPostAuthRedirect(user), { replace: true })
+      // Store intended destination so VerifyEmailPage can redirect there after verification.
+      const postVerifyDest = next || getPostAuthRedirect(user)
+      storePostVerifyNext(postVerifyDest)
+      // Always go to verify-email page first — user needs to verify before accessing the app
+      navigate('/verify-email', { replace: true })
     } catch (err) {
       const status = err.response?.status
       const data = err.response?.data
@@ -407,6 +409,8 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (authReady && user) {
+      // Don't redirect away from register if the user just registered and is pending verification
+      if (user.account_status === 'PENDING_VERIFICATION') return
       navigate(next || getPostAuthRedirect(user), { replace: true })
     }
   }, [authReady, user, next, navigate])

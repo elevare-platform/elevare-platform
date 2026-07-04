@@ -163,3 +163,12 @@ def hash_job_embedding_source(
     """SHA-256 of job fields that affect the embedding."""
     payload = f"{description or ''}|{sorted(required_skills or [])}"
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def hash_talent_pool_embedding_source(
+    skills: list[str] | None,
+    summary: str | None,
+) -> str:
+    """SHA-256 of talent pool profile fields that affect the embedding."""
+    payload = f"{sorted(skills or [])}|{summary or ''}"
+    return hashlib.sha256(payload.encode()).hexdigest()

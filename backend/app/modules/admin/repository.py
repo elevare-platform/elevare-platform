@@ -105,7 +105,8 @@ class AdminRepository:
     async def set_job_moderation_status(self, job: Job, moderation_status: str) -> Job:
         job.moderation_status = moderation_status
         if moderation_status == ModerationStatus.REJECTED.value:
-            job.status = JobStatus.CLOSED.value
+            # Return to DRAFT so employer can edit and resubmit — CLOSED is permanent
+            job.status = JobStatus.DRAFT.value
         await self._db.flush()
         return job
 
@@ -218,10 +219,10 @@ class AdminRepository:
         self,
         admin_id: UUID,
         action: str,
-        reason: str,
         target_type: str,
         target_id: UUID,
         log_metadata: dict | None = None,
+        reason: str | None = None,
     ) -> AuditLog:
         entry = AuditLog(
             admin_id=admin_id,

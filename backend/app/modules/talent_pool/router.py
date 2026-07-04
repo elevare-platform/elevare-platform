@@ -1,9 +1,10 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db, require_role
+from app.core.limiter import limiter
 from app.modules.talent_pool.schema import (
     TalentPoolProfileResponse,
     TalentPoolPromoteResponse,
@@ -35,6 +36,19 @@ def _get_talent_pool_service(db: AsyncSession = Depends(get_db)) -> TalentPoolSe
     return TalentPoolService(db=db, cv_service=cv_service)
 
 
+def _user_id_key(request: Request) -> str:
+    """Rate limit key based on authenticated user ID, not IP.
+
+    Used for endpoints where per-user limiting is more appropriate than per-IP
+    (e.g. employers behind a shared corporate proxy).
+    """
+    user = getattr(request.state, "user", None)
+    if user:
+        return str(user.id)
+    from slowapi.util import get_remote_address
+    return get_remote_address(request)
+
+
 @router.post("/submit", response_model=TalentPoolProfileResponse, status_code=201)
 async def submit_cv(
     file: UploadFile = File(...),
@@ -55,7 +69,9 @@ async def submit_cv(
 
 
 @router.post("/submit-batch", status_code=201)
+@limiter.limit("20/hour", key_func=_user_id_key)
 async def submit_cv_batch(
+    request: Request,
     files: list[UploadFile] = File(...),
     source: str = Form(default="other"),
     source_note: str | None = Form(default=None),

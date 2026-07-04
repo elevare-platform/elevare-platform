@@ -34,6 +34,7 @@ const JobDetailPage = lazy(() => import('@/pages/jobs/JobDetailPage'))
 const EmployerJobsPage = lazy(() => import('@/pages/employer/EmployerJobsPage'))
 const PostJobPage = lazy(() => import('@/pages/employer/PostJobPage'))
 const EditJobPage = lazy(() => import('@/pages/employer/EditJobPage'))
+const PublishJobPage = lazy(() => import('@/pages/employer/PublishJobPage'))
 const OnboardingPage = lazy(() => import('@/pages/employer/OnboardingPage'))
 const ApplicantsPage = lazy(() => import('@/pages/employer/ApplicantsPage'))
 const EmployerCVParserPage = lazy(() => import('@/pages/employer/EmployerCVParserPage'))
@@ -116,6 +117,7 @@ function AppRoutes() {
           <Route path="/employer/jobs" element={<EmployerJobsPage />} />
           <Route path="/employer/jobs/new" element={<PostJobPage />} />
           <Route path="/employer/jobs/:id/edit" element={<EditJobPage />} />
+          <Route path="/employer/jobs/:id/publish" element={<PublishJobPage />} />
           <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
           <Route path="/employer/cv-parser" element={<EmployerCVParserPage />} />
           <Route path="/employer/talent-pool" element={<TalentPoolPage />} />

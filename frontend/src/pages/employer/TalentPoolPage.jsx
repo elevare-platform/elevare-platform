@@ -71,9 +71,13 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [results, setResults] = useState([])
+  const [progress, setProgress] = useState(null) // { done, total } for polling
   const [error, setError] = useState(null)
 
-  const reset = () => { setFiles([]); setSourceNote(''); setJobId(''); setError(null); setResults([]) }
+  const reset = () => {
+    setFiles([]); setSourceNote(''); setJobId('')
+    setError(null); setResults([]); setProgress(null)
+  }
 
   const addFiles = (newFiles) => {
     const pdfs = newFiles.filter(f => f.type === 'application/pdf')
@@ -85,6 +89,30 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
     addFiles(Array.from(e.dataTransfer.files))
   }
 
+  // Poll submission statuses until all reach a terminal state
+  const pollUntilDone = useCallback(async (submissionIds) => {
+    const TERMINAL = ['completed', 'failed', 'flagged']
+    const total = submissionIds.length
+    const pending = new Set(submissionIds)
+
+    setProgress({ done: 0, total })
+
+    while (pending.size > 0) {
+      await new Promise(r => setTimeout(r, 2500))
+      for (const sid of [...pending]) {
+        try {
+          const { data } = await api.get(`/api/v1/ai/cv-parsing/${sid}`)
+          if (TERMINAL.includes(data.parse_status)) {
+            pending.delete(sid)
+            setProgress(p => ({ ...p, done: total - pending.size }))
+          }
+        } catch { pending.delete(sid) }
+      }
+    }
+    setProgress(p => ({ ...p, done: total }))
+    onUploaded()
+  }, [onUploaded])
+
   const handleSubmit = async () => {
     if (!files.length) return
     setUploading(true); setError(null); setResults([])
@@ -95,9 +123,19 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
       if (sourceNote) form.append('source_note', sourceNote)
       if (jobId) form.append('sourced_for_job_id', jobId)
       const { data } = await api.post('/api/v1/talent-pool/submit-batch', form)
-      setResults(data.results ?? [])
+      const batchResults = data.results ?? []
+      setResults(batchResults)
       setFiles([])
-      onUploaded()
+
+      // Start polling for queued submissions
+      const submissionIds = batchResults
+        .filter(r => r.status === 'queued' && r.submission_id)
+        .map(r => r.submission_id)
+      if (submissionIds.length > 0) {
+        pollUntilDone(submissionIds)
+      } else {
+        onUploaded()
+      }
     } catch (err) {
       setError(err.response?.data?.detail ?? 'Upload failed. Please try again.')
     } finally {
@@ -184,6 +222,26 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
             </div>
           )}
 
+          {/* Parsing progress bar */}
+          {progress && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-text-muted">
+                <span>
+                  {progress.done < progress.total
+                    ? `Parsing & scoring… ${progress.done} / ${progress.total}`
+                    : `All ${progress.total} CV${progress.total > 1 ? 's' : ''} processed`}
+                </span>
+                <span>{Math.round((progress.done / progress.total) * 100)}%</span>
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-surface-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-brand-blue transition-all duration-500"
+                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Source */}
           <div>
             <label className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2 block">Source</label>
@@ -248,9 +306,17 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
                 : 'Add to Talent Pool'}
           </Button>
           {results.length > 0 && (
-            <button onClick={() => { reset(); onClose() }} className="w-full text-xs text-text-muted hover:text-text transition-colors py-1">
-              Done — close drawer
-            </button>
+            <div className="flex flex-col gap-1.5">
+              <button
+                onClick={() => { onUploaded(); onClose() }}
+                className="w-full text-xs font-medium text-brand-blue hover:text-brand-blue-dark transition-colors py-1.5 rounded-lg border border-brand-blue/20 hover:bg-brand-blue/5"
+              >
+                Run in background — close drawer
+              </button>
+              <button onClick={() => { reset(); onClose() }} className="w-full text-xs text-text-muted hover:text-text transition-colors py-1">
+                Done — close drawer
+              </button>
+            </div>
           )}
         </div>
       </div>

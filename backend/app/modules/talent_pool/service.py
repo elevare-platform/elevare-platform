@@ -109,7 +109,7 @@ class TalentPoolService:
                 if data.sourced_for_job_id:
                     score_talent_pool_profile_task.delay(str(profile.id))
                 await self._db.commit()
-                results.append({"filename": filename, "status": "queued", "profile_id": str(profile.id)})
+                results.append({"filename": filename, "status": "queued", "profile_id": str(profile.id), "submission_id": str(submission.id)})
             except Exception as e:
                 logger.error("Batch submit failed for %s: %s", filename, e)
                 results.append({"filename": filename, "status": "failed", "error": str(e)})

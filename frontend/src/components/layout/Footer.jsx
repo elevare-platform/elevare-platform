@@ -36,9 +36,8 @@ function InstagramIcon({ size = 16 }) {
 }
 
 // ─── Footer ───────────────────────────────────────────────────────────────────
-// Requirements: 12.1–12.6, 11.3–11.5
 
-const RC_NUMBER = 'RC: 1234567'
+const RC_NUMBER = 'RC: 8724076'
 
 // Column 2 — Learn More
 const LEARN_MORE_LINKS = [
@@ -297,7 +296,7 @@ export default function Footer({ onBookConsultation }) {
                     onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.6)')}
                   >
                     <Mail size={16} aria-hidden="true" />
-                    info@elevare.com.ng
+                    info_admin@elevare.com.ng
                   </a>
                 </li>
               </ul>

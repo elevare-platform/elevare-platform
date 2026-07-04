@@ -115,6 +115,11 @@ class JobService:
         job = await self._repo.get_by_id(job_id)
         self._check_ownership(job, current_user)
 
+        # If the job was rejected, reset moderation to PENDING so it
+        # resurfaces in the admin queue for re-review.
+        if job.moderation_status == ModerationStatus.REJECTED.value:
+            job.moderation_status = ModerationStatus.PENDING.value
+
         # Detect whether any scoring-relevant fields are changing
         scoring_fields = {"description", "required_skills", "seniority_level"}
         update_data = data.model_dump(exclude_unset=True)

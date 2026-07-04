@@ -267,6 +267,7 @@ class CandidateRepository:
         """Return all candidate profiles with CVs and documents eagerly loaded."""
         result = await self._db.execute(
             select(CandidateProfile).options(
+                selectinload(CandidateProfile.user),
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),
                 selectinload(CandidateProfile.work_experiences),

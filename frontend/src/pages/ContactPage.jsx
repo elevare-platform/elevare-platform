@@ -94,11 +94,14 @@ export default function ContactPage() {
         trackEvent('Contact', 'employer_inquiry')
       }
     } catch (err) {
-      const detail = err.response?.data?.detail
-      if (Array.isArray(detail)) {
-        setErrorMsg(detail.map((d) => d.msg).join(' '))
-      } else if (typeof detail === 'string') {
-        setErrorMsg(detail)
+      const data = err.response?.data
+      // Custom envelope: { details: [{ field, message }] }
+      if (Array.isArray(data?.details) && data.details.length > 0) {
+        setErrorMsg(data.details.map((d) => d.message).join(' '))
+      } else if (typeof data?.message === 'string') {
+        setErrorMsg(data.message)
+      } else if (typeof data?.detail === 'string') {
+        setErrorMsg(data.detail)
       } else {
         setErrorMsg('Something went wrong. Please try again.')
       }

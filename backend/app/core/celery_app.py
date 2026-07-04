@@ -30,6 +30,7 @@ celery = Celery(
     include=[
         "core.tasks",          # health check task
         "app.modules.ai.tasks", # CV parsing pipeline
+        "app.modules.applications.tasks",
     ],
 )
 

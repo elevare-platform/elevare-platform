@@ -10,6 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy import UUID, DateTime, ForeignKey, String, Text, Integer
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 from app.core.database import BaseModel
 from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
@@ -112,6 +113,11 @@ class TalentPoolProfiles(BaseModel):
         sa.DateTime(timezone=True),
         nullable=True,
     )
+
+    # Embedding columns — generated from parsed CV data
+    profile_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    embedding_source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedding_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
     # Relationships

@@ -81,6 +81,7 @@ def make_job(employer_id, **overrides) -> Job:
         "work_model": WorkModel.HYBRID.value,
         "work_location": "LOCAL",
         "status": JobStatus.ACTIVE.value,
+        "moderation_status": "APPROVED",
         "employer_id": employer_id,
     }
     defaults.update(overrides)
@@ -101,6 +102,7 @@ async def client(db_session):
     from unittest.mock import AsyncMock
 
     from app.core.dependencies import get_redis_client
+    from app.core.limiter import limiter
 
     async def override_get_db():
         yield db_session
@@ -119,6 +121,9 @@ async def client(db_session):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_email_service] = override_get_email_service
     app.dependency_overrides[get_redis_client] = override_get_redis
+
+    # Reset rate limiter storage so tests don't hit 429s from prior test runs
+    limiter.reset()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),

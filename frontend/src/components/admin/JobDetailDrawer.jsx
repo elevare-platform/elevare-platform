@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, MapPin, Briefcase, Calendar, Building2, Users } from 'lucide-react'
+import { X, MapPin, Briefcase, Calendar, Building2, Users, Mail, Phone, Globe, ExternalLink } from 'lucide-react'
 import StatusBadge from './StatusBadge'
 import api from '@/lib/api'
 
@@ -71,21 +71,65 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
               </div>
             </div>
 
-            {/* Company info */}
-            {job.employer?.employer_profile && (
-              <div className="flex items-center gap-3 p-3 rounded-xl border border-border">
-                <Building2 size={18} className="text-text-muted flex-shrink-0" />
-                <div>
-                  <p className="font-medium text-sm text-text">
-                    {job.employer.employer_profile.company_name ?? '—'}
+            {/* Company + Employer info */}
+            <div className="rounded-xl border border-border divide-y divide-border">
+              {/* Company section */}
+              <div className="flex items-start gap-3 p-4">
+                <Building2 size={16} className="text-text-muted flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm text-text">
+                    {job.company_name ?? '—'}
                   </p>
-                  <p className="text-xs text-text-muted">
-                    {job.employer.employer_profile.industry}
-                    {job.employer.employer_profile.company_size && ` · ${job.employer.employer_profile.company_size} employees`}
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {[job.company_industry, job.company_size ? `${job.company_size} employees` : null]
+                      .filter(Boolean).join(' · ') || 'No company details'}
                   </p>
+                  {job.company_website && (
+                    <a
+                      href={job.company_website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-brand-blue hover:underline mt-1"
+                    >
+                      <Globe size={11} />
+                      {job.company_website}
+                      <ExternalLink size={10} />
+                    </a>
+                  )}
+                  {job.company_description && (
+                    <p className="text-xs text-text-muted mt-1.5 leading-relaxed">{job.company_description}</p>
+                  )}
                 </div>
               </div>
-            )}
+
+              {/* Employer contact section */}
+              <div className="p-4 space-y-2">
+                <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Employer Contact</p>
+                {(job.employer_first_name || job.employer_last_name) && (
+                  <p className="text-sm text-text font-medium">
+                    {[job.employer_first_name, job.employer_last_name].filter(Boolean).join(' ')}
+                  </p>
+                )}
+                {job.employer_email && (
+                  <a
+                    href={`mailto:${job.employer_email}`}
+                    className="flex items-center gap-2 text-xs text-brand-blue hover:underline"
+                  >
+                    <Mail size={12} />
+                    {job.employer_email}
+                  </a>
+                )}
+                {job.employer_phone && (
+                  <div className="flex items-center gap-2 text-xs text-text-muted">
+                    <Phone size={12} />
+                    {job.employer_phone}
+                  </div>
+                )}
+                {!job.employer_email && !job.employer_phone && (
+                  <p className="text-xs text-text-muted italic">No contact details available</p>
+                )}
+              </div>
+            </div>
 
             {/* Meta */}
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -144,7 +188,7 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
             {/* Description */}
             <div>
               <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Description</p>
-              <p className="text-sm text-text leading-relaxed whitespace-pre-line line-clamp-10">
+              <p className="text-sm text-text leading-relaxed whitespace-pre-line">
                 {job.description}
               </p>
             </div>

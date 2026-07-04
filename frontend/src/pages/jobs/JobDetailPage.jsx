@@ -156,10 +156,14 @@ export default function JobDetailPage() {
     }
   }
 
-  const salaryText =
-    job?.salary_min != null && job?.salary_max != null
-      ? `${formatSalary(job.salary_min)} – ${formatSalary(job.salary_max)}`
-      : null
+  const salaryText = (() => {
+    const min = job?.salary_min != null ? Number(job.salary_min) : null
+    const max = job?.salary_max != null ? Number(job.salary_max) : null
+    if (min != null && max != null) return `${formatSalary(min)} – ${formatSalary(max)}`
+    if (min != null) return `From ${formatSalary(min)}`
+    if (max != null) return `Up to ${formatSalary(max)}`
+    return null
+  })()
 
   const isOwner = job ? canManageJob(user, job) : false
   const [copied, setCopied] = useState(false)

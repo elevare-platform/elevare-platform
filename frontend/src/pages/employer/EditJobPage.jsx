@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, CheckCircle2 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { JobForm } from '@/components/employer/JobForm'
@@ -35,8 +35,14 @@ export default function EditJobPage() {
       await api.patch(`/api/v1/jobs/${id}`, data)
       navigate('/employer/jobs')
     } catch (err) {
-      const msg = err.response?.data?.message ?? err.response?.data?.detail
-      setSubmitError(typeof msg === 'string' ? msg : 'Something went wrong. Please try again.')
+      const body = err.response?.data
+      if (Array.isArray(body?.details)) {
+        // Custom handler: { details: [{ field, message }] }
+        setSubmitError(body.details.map((e) => `${e.field}: ${e.message}`).join(' · '))
+      } else {
+        const msg = body?.message ?? body?.detail
+        setSubmitError(typeof msg === 'string' ? msg : 'Something went wrong. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -44,14 +50,19 @@ export default function EditJobPage() {
 
   // Map job fields to form defaults — normalise nulls to empty strings
   const defaultValues = job ? {
-    title:         job.title ?? '',
-    description:   job.description ?? '',
-    location:      job.location ?? '',
-    contract_type: job.contract_type ?? undefined,
-    work_model:    job.work_model ?? '',
-    work_location: job.work_location ?? undefined,
-    salary_min:    job.salary_min != null ? String(job.salary_min) : '',
-    salary_max:    job.salary_max != null ? String(job.salary_max) : '',
+    title:                      job.title ?? '',
+    description:                job.description ?? '',
+    location:                   job.location ?? '',
+    contract_type:              job.contract_type ?? undefined,
+    work_model:                 job.work_model ?? '',
+    work_location:              job.work_location ?? undefined,
+    salary_min:                 job.salary_min != null ? String(job.salary_min) : '',
+    salary_max:                 job.salary_max != null ? String(job.salary_max) : '',
+    seniority_level:            job.seniority_level ?? '',
+    required_years_experience:  job.required_years_experience != null ? String(job.required_years_experience) : '',
+    openings_count:             job.openings_count ?? 1,
+    application_deadline:       job.application_deadline ? job.application_deadline.slice(0, 10) : '',
+    required_skills:            job.required_skills ?? [],
   } : undefined
 
   return (

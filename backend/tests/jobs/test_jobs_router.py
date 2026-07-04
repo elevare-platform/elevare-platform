@@ -311,6 +311,9 @@ async def test_update_other_employers_job_returns_403(client, db_session):
 @pytest.mark.asyncio
 async def test_publish_job(client, db_session):
     """POST /jobs/{id}/publish transitions DRAFT → ACTIVE."""
+    from uuid import UUID
+    from app.modules.jobs.models import Job
+
     token = await register_and_promote(client, db_session, "EMPLOYER")
 
     created = await client.post(
@@ -320,6 +323,13 @@ async def test_publish_job(client, db_session):
     )
     job_id = created.json()["id"]
     assert created.json()["status"] == "DRAFT"
+
+    # Approve the job (simulating admin moderation) so publish is allowed
+    from sqlalchemy import select
+    result = await db_session.execute(select(Job).where(Job.id == UUID(job_id)))
+    job = result.scalar_one()
+    job.moderation_status = "APPROVED"
+    await db_session.flush()
 
     response = await client.post(
         f"/api/v1/jobs/{job_id}/publish",
@@ -332,6 +342,10 @@ async def test_publish_job(client, db_session):
 @pytest.mark.asyncio
 async def test_invalid_transition_returns_422(client, db_session):
     """Publishing an already ACTIVE job returns 422."""
+    from uuid import UUID
+    from sqlalchemy import select
+    from app.modules.jobs.models import Job
+
     token = await register_and_promote(client, db_session, "EMPLOYER")
 
     created = await client.post(
@@ -340,6 +354,12 @@ async def test_invalid_transition_returns_422(client, db_session):
         headers={"Authorization": f"Bearer {token}"},
     )
     job_id = created.json()["id"]
+
+    # Approve the job so first publish succeeds
+    result = await db_session.execute(select(Job).where(Job.id == UUID(job_id)))
+    job = result.scalar_one()
+    job.moderation_status = "APPROVED"
+    await db_session.flush()
 
     # Publish once — valid
     await client.post(

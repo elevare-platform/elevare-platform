@@ -145,8 +145,15 @@ async def test_profile_incomplete_when_missing_fields(client, db_session):
 
 @pytest.mark.asyncio
 async def test_profile_complete_when_all_required_fields_set(client, db_session):
-    """is_profile_complete flips to True when all four required fields are set."""
+    """is_profile_complete flips to True when all four required fields and a CV are set."""
     token = await get_active_token(client, db_session)
+
+    # Upload a CV — required for profile completion
+    await client.post(
+        "/api/v1/candidates/me/cv",
+        files={"file": ("resume.pdf", make_pdf_bytes(), "application/pdf")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
     resp = await client.put(
         "/api/v1/candidates/me",

@@ -125,6 +125,8 @@ export function getJobActions(status) {
 function EmployerActions({ job, onPublish, onClose }) {
   const actions = getJobActions(job.status)
   const [copied, setCopied] = useState(false)
+  const isPendingApproval = job.status === 'DRAFT' && job.moderation_status === 'PENDING'
+  const isRejected = job.status === 'DRAFT' && job.moderation_status === 'REJECTED'
 
   const handleShare = (e) => {
     e.preventDefault()
@@ -142,13 +144,29 @@ function EmployerActions({ job, onPublish, onClose }) {
   return (
     <div className="flex flex-wrap gap-2 pt-3 border-t border-border" role="group" aria-label="Job actions">
       {actions.publish && (
-        <Button
-          size="sm"
-          onClick={(e) => { e.preventDefault(); onPublish?.(job) }}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 transition-colors"
-        >
-          Publish
-        </Button>
+        isPendingApproval ? (
+          <span
+            title="Awaiting admin approval before you can publish"
+            className="inline-flex items-center h-8 px-3 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 cursor-not-allowed"
+          >
+            Pending approval
+          </span>
+        ) : isRejected ? (
+          <span
+            title="This listing was rejected. Edit it and save to resubmit for review."
+            className="inline-flex items-center h-8 px-3 rounded-md text-xs font-medium bg-red-50 text-red-600 border border-red-200 cursor-not-allowed"
+          >
+            Rejected — edit to resubmit
+          </span>
+        ) : (
+          <Button
+            size="sm"
+            onClick={(e) => { e.preventDefault(); onPublish?.(job) }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 transition-colors"
+          >
+            Publish
+          </Button>
+        )
       )}
       {actions.close && (
         <Button
@@ -304,10 +322,14 @@ function extractSkills(description = '', max = 4) {
 function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
   const [saved, setSaved] = useState(false)
 
-  const salaryText =
-    job.salary_min != null && job.salary_max != null
-      ? `${formatSalary(Number(job.salary_min))} – ${formatSalary(Number(job.salary_max))}`
-      : null
+  const salaryText = (() => {
+    const min = job.salary_min != null ? Number(job.salary_min) : null
+    const max = job.salary_max != null ? Number(job.salary_max) : null
+    if (min != null && max != null) return `${formatSalary(min)} – ${formatSalary(max)}`
+    if (min != null) return `From ${formatSalary(min)}`
+    if (max != null) return `Up to ${formatSalary(max)}`
+    return null
+  })()
 
   const posted = timeAgo(job.created_at)
 

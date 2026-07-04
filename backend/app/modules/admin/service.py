@@ -7,7 +7,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.email import get_email_service
 from app.core.exceptions import (
     CannotModifyAdminException,
     JobNotFoundError,
@@ -138,12 +137,13 @@ class AdminService:
             job = await self._repo.set_job_status(job, "CLOSED")
         else:
             job = await self._repo.set_job_moderation_status(job, action)
-            email = get_email_service()
-            await email.send_job_moderation_status(
+            from app.modules.applications.tasks import send_job_moderation_email
+            send_job_moderation_email.delay(
                 job.employer.email,
-                job_data,
+                str(job.id),
+                job.title,
                 action,
-                reason
+                reason,
             )
 
         await self._repo.write_audit_log(

@@ -1,6 +1,18 @@
 """Application settings loaded from environment variables and .env file."""
 
+import logging
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+_INSECURE_SECRET_KEY_VALUES = {
+    "",
+    "dev-secret-key-change-in-production",
+    "change-me-in-production",
+    "secret",
+}
 
 
 class Settings(BaseSettings):
@@ -27,7 +39,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
 
-    # Security (populated in Phase 2)
+    # Security
     secret_key: str
 
     # JWT
@@ -47,7 +59,6 @@ class Settings(BaseSettings):
 
     # Invite Setting
     invite_expiry: int = 3
-    email_verification_token_expiry: int
 
     # R2 Storage — all optional so app starts without R2 in CI
     r2_access_key_id: str | None = None
@@ -80,6 +91,39 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str | None = None
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Refuse to start in production with insecure default values."""
+        if self.environment != "production":
+            return self
+
+        errors = []
+
+        if self.secret_key.lower() in _INSECURE_SECRET_KEY_VALUES or len(self.secret_key) < 32:
+            errors.append("SECRET_KEY is insecure or too short (min 32 chars)")
+
+        if self.hmac_secret in _INSECURE_SECRET_KEY_VALUES or len(self.hmac_secret) < 16:
+            errors.append("HMAC_SECRET is insecure or too short (min 16 chars)")
+
+        if not self.cookie_secure:
+            errors.append("COOKIE_SECURE must be true in production")
+
+        if self.debug:
+            errors.append("DEBUG must be false in production")
+
+        if self.email_stub_mode:
+            errors.append("EMAIL_STUB_MODE must be false in production")
+
+        if any("localhost" in origin for origin in self.cors_origins):
+            errors.append("CORS_ORIGINS contains localhost — remove before production deploy")
+
+        if errors:
+            raise ValueError(
+                "Production security checks failed:\n" + "\n".join(f"  - {e}" for e in errors)
+            )
+
+        return self
 
 
 settings = Settings()

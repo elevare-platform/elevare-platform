@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown, Menu, X, User, LogOut, LayoutDashboard, FileText } from 'lucide-react'
+import { ChevronDown, Menu, X, LogOut, LayoutDashboard } from 'lucide-react'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import ehsLogo from '@/assets/ehs-logo.png'
@@ -82,69 +82,44 @@ function NavDropdown({ label, items, isOpen, onOpen, onClose }) {
   )
 }
 
-// ─── Avatar dropdown ──────────────────────────────────────────────────────────
+// ─── Avatar with direct dashboard link ───────────────────────────────────────
 
-function AvatarDropdown({ user, onLogout }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+function AuthNav({ user, onLogout }) {
   const navigate = useNavigate()
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
   const initials = user?.first_name
     ? user.first_name[0].toUpperCase()
     : user?.email?.[0]?.toUpperCase() ?? 'U'
 
   return (
-    <div ref={ref} className="relative">
+    <div className="flex items-center gap-2">
+      {/* Avatar + label — direct link to dashboard */}
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 text-sm font-medium text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded-full"
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-label="User menu"
+        onClick={() => navigate(getPostAuthRedirect(user))}
+        className="flex items-center gap-2 cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded-full"
+        aria-label="Go to dashboard"
+        title="Dashboard"
       >
-        <span className="w-8 h-8 rounded-full bg-brand-blue text-white flex items-center justify-center text-xs font-bold">
+        <span className="w-8 h-8 rounded-full bg-brand-blue group-hover:bg-brand-blue/80 text-white flex items-center justify-center text-xs font-bold transition-colors ring-2 ring-transparent group-hover:ring-brand-blue/30">
           {initials}
         </span>
-        <ChevronDown size={14} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <span className="text-xs font-semibold text-text-muted group-hover:text-brand-blue transition-colors hidden xl:inline">
+          Dashboard
+        </span>
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="absolute top-full right-0 mt-2 w-44 bg-white rounded-lg shadow-lg border border-border py-1 z-50"
-            role="menu"
-          >
-            <button
-              onClick={() => { setOpen(false); navigate(getPostAuthRedirect(user)) }}
-              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-text hover:bg-surface-muted hover:text-brand-blue transition-colors focus:outline-none focus-visible:bg-surface-muted"
-              role="menuitem"
-            >
-              <LayoutDashboard size={14} /> Dashboard
-            </button>
-            <button
-              onClick={() => { setOpen(false); onLogout() }}
-              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-text hover:bg-surface-muted hover:text-red-600 transition-colors focus:outline-none focus-visible:bg-surface-muted"
-              role="menuitem"
-            >
-              <LogOut size={14} /> Sign Out
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Divider */}
+      <span className="w-px h-4 bg-border" aria-hidden="true" />
+
+      {/* Sign out */}
+      <button
+        onClick={onLogout}
+        className="flex items-center gap-1 text-xs text-text-muted hover:text-red-500 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 rounded px-1 py-1"
+        aria-label="Sign out"
+        title="Sign out"
+      >
+        <LogOut size={14} />
+        <span className="hidden xl:inline">Sign out</span>
+      </button>
     </div>
   )
 }
@@ -433,7 +408,7 @@ export default function Navbar({ onBookConsultation }) {
           {/* Right side — desktop only */}
           <div className="hidden lg:flex items-center gap-3">
             {user ? (
-              <AvatarDropdown user={user} onLogout={logout} />
+              <AuthNav user={user} onLogout={logout} />
             ) : (
               <div className="flex items-center gap-3">
                 <Link

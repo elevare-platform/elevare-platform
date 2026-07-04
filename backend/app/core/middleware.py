@@ -4,6 +4,8 @@ Currently provides:
 - ``RequestLoggingMiddleware``: logs every inbound request and its
   completed response, attaching a unique ``X-Request-ID`` header for
   distributed tracing.
+- ``SecurityHeadersMiddleware``: adds HTTP security headers to every
+  response to protect against common web vulnerabilities.
 """
 
 import logging
@@ -15,6 +17,50 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 logger = logging.getLogger(__name__)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add HTTP security headers to every response.
+
+    Headers applied:
+    - X-Content-Type-Options: prevents MIME-type sniffing
+    - X-Frame-Options: prevents clickjacking via iframes
+    - X-XSS-Protection: legacy XSS filter for older browsers
+    - Referrer-Policy: limits referrer info sent to third parties
+    - Permissions-Policy: disables browser features not needed by this API
+    - Strict-Transport-Security: enforces HTTPS (only set when not in debug mode)
+    - Content-Security-Policy: restricts resource loading for API responses
+    """
+
+    def __init__(self, app, debug: bool = False) -> None:
+        super().__init__(app)
+        self._debug = debug
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response = await call_next(request)
+
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; frame-ancestors 'none'"
+        )
+
+        # HSTS — only over HTTPS, not in local dev
+        if not self._debug:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+
+        # Remove server banner to avoid version disclosure
+        if "server" in response.headers:
+            del response.headers["server"]
+
+        return response
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):

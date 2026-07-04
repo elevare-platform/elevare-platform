@@ -263,38 +263,24 @@ export default function HeroSection({ onBookConsultation }) {
             {/* Eyebrow */}
             <div className="hero-text-mask" style={{ marginBottom: '0.9rem' }}>
               <p
-                className="font-semibold text-xs tracking-widest uppercase hero-reveal-line"
-                style={{ color: '#E87722', animationDelay: '150ms' }}
+                className="font-bold text-sm tracking-widest uppercase hero-reveal-line"
+                style={{ color: '#FCD34D', animationDelay: '150ms' }}
               >
                 HR Strategy &amp; Workforce Solutions
               </p>
             </div>
 
-            {/* Headline — each line in its own mask so they cascade one by one */}
+            {/* Headline — merged into a single block to flow naturally and wrap, reducing vertical height */}
             <div style={{ marginBottom: '1.5rem' }}>
               <div className="hero-text-mask">
                 <h1
-                  className="text-4xl sm:text-5xl lg:text-6xl xl:text-6xl font-bold leading-tight hero-reveal-line"
-                  style={{ color: '#ffffff', animationDelay: '400ms', fontFamily: "'Lobster Two', cursive" }}
+                  className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight hero-reveal-line"
+                  style={{ animationDelay: '400ms', fontFamily: "'Lobster Two', cursive", lineHeight: '1.2' }}
                 >
-                  Human Capital Advisory
+                  <span style={{ color: '#ffffff' }}>Human Capital Advisory </span>
+                  <span style={{ color: '#38bdf8' }}>&amp; Workforce Transformation </span>
+                  <span style={{ color: '#E87722' }}>&amp; Recruitment Consulting</span>
                 </h1>
-              </div>
-              <div className="hero-text-mask">
-                <p
-                  className="text-4xl sm:text-5xl lg:text-6xl xl:text-6xl font-bold leading-tight hero-reveal-line"
-                  style={{ color: '#60a5fa', animationDelay: '680ms', fontFamily: "'Lobster Two', cursive" }}
-                >
-                  &amp; Workforce Transformation
-                </p>
-              </div>
-              <div className="hero-text-mask">
-                <p
-                  className="text-4xl sm:text-5xl lg:text-6xl xl:text-6xl font-bold leading-tight hero-reveal-line"
-                  style={{ color: '#E87722', animationDelay: '960ms', fontFamily: "'Lobster Two', cursive" }}
-                >
-                  &amp; Recruitment Consulting
-                </p>
               </div>
             </div>
 

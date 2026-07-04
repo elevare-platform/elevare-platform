@@ -115,35 +115,71 @@ import React from 'react'
  * Includes all job fields: title, description, location, contract type,
  * work model, work location, salary range, seniority, experience,
  * openings, application deadline, and required skills.
+ *
+ * When draftKey is provided, form state is auto-saved to localStorage
+ * and restored on mount — survives page reloads.
  */
-export function JobForm({ defaultValues, onSubmit, loading = false, error = null }) {
+export function JobForm({ defaultValues, onSubmit, loading = false, error = null, draftKey = null }) {
+  const resolvedDefaults = {
+    title: '',
+    description: '',
+    location: '',
+    contract_type: undefined,
+    work_model: '',
+    work_location: undefined,
+    salary_min: '',
+    salary_max: '',
+    seniority_level: '',
+    required_years_experience: '',
+    openings_count: 1,
+    application_deadline: '',
+    required_skills: [],
+    ...defaultValues,
+  }
+
+  // Merge localStorage draft into defaults (create-only, not edit)
+  const initialValues = React.useMemo(() => {
+    if (!draftKey) return resolvedDefaults
+    try {
+      const saved = localStorage.getItem(draftKey)
+      if (saved) return { ...resolvedDefaults, ...JSON.parse(saved) }
+    } catch { /* ignore corrupt draft */ }
+    return resolvedDefaults
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const {
     register,
     handleSubmit,
     control,
+    watch,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(jobSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-      location: '',
-      contract_type: undefined,
-      work_model: '',
-      work_location: undefined,
-      salary_min: '',
-      salary_max: '',
-      seniority_level: '',
-      required_years_experience: '',
-      openings_count: 1,
-      application_deadline: '',
-      required_skills: [],
-      ...defaultValues,
-    },
+    defaultValues: initialValues,
   })
 
+  // Auto-save to localStorage on change (debounced 800ms)
+  const watchedValues = watch()
+  React.useEffect(() => {
+    if (!draftKey) return
+    const timer = setTimeout(() => {
+      try { localStorage.setItem(draftKey, JSON.stringify(watchedValues)) } catch { /* quota */ }
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [watchedValues, draftKey])
+
+  // Strip empty strings from optional enum/string fields before sending to backend
+  const handleFormSubmit = (data) => {
+    const cleaned = { ...data }
+    if (cleaned.seniority_level === '') cleaned.seniority_level = null
+    if (cleaned.work_model === '') cleaned.work_model = null
+    if (cleaned.application_deadline === '') cleaned.application_deadline = null
+    if (draftKey) { try { localStorage.removeItem(draftKey) } catch { /* ignore */ } }
+    onSubmit(cleaned)
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5" noValidate>
 
       {/* Title */}
       <FormField>

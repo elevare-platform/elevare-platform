@@ -146,6 +146,9 @@ async def _run_pipeline_async(
                     if tp.sourced_for_job_id:
                         score_talent_pool_profile_task.delay(str(tp.id), str(tp.sourced_for_job_id))
                         logger.info("Pipeline complete — queued talent pool scoring for profile %s", tp.id)
+                    # Always queue embedding generation regardless of job context
+                    from app.modules.ai.tasks import generate_talent_pool_embedding_task as _gen_tp_emb
+                    _gen_tp_emb.delay(str(tp.id))
             except Exception:
                 logger.warning("Failed to trigger talent pool scoring after pipeline", exc_info=True)
 
@@ -455,17 +458,23 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                 )
                 candidate_profile = cp_result.scalar_one_or_none()
 
+            # Use talent pool profile's own embedding first, fall back to linked candidate profile
+            tp_embedding = talent_pool.profile_embedding
+            job_emb = job.job_embedding
+
+            if tp_embedding is None and candidate_profile is not None:
+                tp_embedding = candidate_profile.profile_embedding
+
             if (
-                candidate_profile is not None
-                and candidate_profile.profile_embedding is not None
-                and job.job_embedding is not None
+                tp_embedding is not None
+                and job_emb is not None
             ):
                 from app.modules.ai.service import EmbeddingAIService
                 from app.modules.ai.scoring_service import _experience_score, _seniority_score
                 embedding_service = EmbeddingAIService()
                 skills_score = await embedding_service.compute_similarity_score(
-                    candidate_profile.profile_embedding,
-                    job.job_embedding,
+                    tp_embedding,
+                    job_emb,
                 )
                 experience_score = _experience_score(
                     parsed.get("years_experience"),
@@ -716,6 +725,76 @@ async def _recompute_stale_scores_async() -> None:
 
         except Exception:
             logger.exception("recompute_stale_scores: failed")
+            raise
+        finally:
+            await engine.dispose()
+
+
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def generate_talent_pool_embedding_task(self, profile_id: str) -> None:
+    """Generate and store a profile embedding for a talent pool profile.
+
+    Skips if the embedding source hash hasn't changed since last generation.
+    """
+    asyncio.run(_generate_talent_pool_embedding_async(profile_id))
+
+
+async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
+    from datetime import UTC as _UTC, datetime as _datetime
+
+    from app.modules.ai.scoring_service import hash_talent_pool_embedding_source
+    from app.modules.ai.service import EmbeddingAIService
+
+    profile_id = uuid.UUID(profile_id_str)
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with SessionLocal() as db:
+        try:
+            talent_pool_repo = TalentPoolRepository(db)
+            ai_repo = AIRepository(db)
+
+            profile = await talent_pool_repo.get_by_id(profile_id)
+            if not profile:
+                logger.warning("generate_talent_pool_embedding: profile %s not found", profile_id)
+                return
+
+            if not profile.parsed_submission_id:
+                logger.info("generate_talent_pool_embedding: no submission for profile %s, skipping", profile_id)
+                return
+
+            submission = await ai_repo.get_submission_by_id(profile.parsed_submission_id)
+            if not submission or not submission.parsed_data:
+                logger.info("generate_talent_pool_embedding: no parsed data for profile %s, skipping", profile_id)
+                return
+
+            parsed = submission.parsed_data
+            skills = parsed.get("skills") or []
+            summary = parsed.get("summary") or ""
+
+            new_hash = hash_talent_pool_embedding_source(skills=skills, summary=summary)
+            if profile.embedding_source_hash == new_hash and profile.profile_embedding is not None:
+                logger.info("generate_talent_pool_embedding: hash unchanged for profile %s, skipping", profile_id)
+                return
+
+            embedding_text = (
+                f"Skills: {', '.join(skills)}\n"
+                f"Summary: {summary}"
+            )
+
+            ai_service = EmbeddingAIService()
+            embedding = await ai_service.generate_embedding(embedding_text)
+
+            profile.profile_embedding = embedding
+            profile.embedding_source_hash = new_hash
+            profile.embedding_generated_at = _datetime.now(_UTC)
+            await db.commit()
+
+            logger.info("generate_talent_pool_embedding: stored embedding for profile %s", profile_id)
+
+        except Exception:
+            logger.exception("generate_talent_pool_embedding: failed for profile %s", profile_id)
             raise
         finally:
             await engine.dispose()

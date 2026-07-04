@@ -14,10 +14,14 @@ from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 import app.core.model_registry  # noqa: F401
 from app.core.config import settings
 from app.core.database import engine
+from app.core.limiter import limiter
 from app.core.exception_handler import (
     handle_generic_exception,
     handle_http_exception,
@@ -26,7 +30,7 @@ from app.core.exception_handler import (
 )
 from app.core.exceptions import PlatformError
 from app.core.logging import setup_logging
-from app.core.middleware import RequestLoggingMiddleware
+from app.core.middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 from app.modules.admin.router import router as admin_router
 from app.modules.ai.cv_parsing_router import router as cv_parsing_router
 from app.modules.ai.router import router as ai_router
@@ -106,31 +110,34 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
 )
 
+# ---- Rate limiter state ----
+app.state.limiter = limiter
+
 # ---- Global Middleware ----
+app.add_middleware(SlowAPIMiddleware)  # must be before other middleware
+app.add_middleware(SecurityHeadersMiddleware, debug=settings.debug)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
 
 # ---- Exception Handlers ----
+
 app.add_exception_handler(PlatformError, handle_platform_exception)
 app.add_exception_handler(RequestValidationError, handle_pydantic_validation_error)
 app.add_exception_handler(HTTPException, handle_http_exception)
 app.add_exception_handler(Exception, handle_generic_exception)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
-    """Return a simple liveness payload with version and environment info."""
-    return {
-        "status": "ok",
-        "version": settings.app_version,
-        "environment": settings.environment,
-    }
+    """Return a simple liveness payload."""
+    return {"status": "ok", "version": settings.app_version, "environment": settings.environment}
 
 
 # ---- Routers ----
