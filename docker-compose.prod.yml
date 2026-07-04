@@ -38,7 +38,7 @@ services:
       - ./backend/.env.production
     environment:
       POSTGRES_USER: elevare
-      POSTGRES_PASSWORD: elevare_dev
+      POSTGRES_PASSWORD: elevare_production
       POSTGRES_DB: elevare_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
