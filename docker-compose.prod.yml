@@ -5,9 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: elevare-api
     ports:
-      - "127.0.0.1:8000:8000"
-    networks:
-      - elevare_network
+      - "127.0.0.1:8080:8000"
     
     env_file:
       - ./backend/.env.production
@@ -142,7 +140,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-
-networks:
-  elevare_network:
-    driver: br
