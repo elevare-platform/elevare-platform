@@ -48,19 +48,27 @@ class AdminService:
         limit: int = 20,
     ) -> dict:
         """Return a paginated list of users with optional role/status/search filters."""
-        return await self._repo.list_users(role, status, search, cursor, limit)
+        from app.modules.admin.schemas import AdminUserResponse
+
+        result = await self._repo.list_users(role, status, search, cursor, limit)
+        result["items"] = [AdminUserResponse.model_validate(u) for u in result["items"]]
+        return result
 
     async def get_user_detail(self, user_id: UUID) -> object:
         """Return full user details or raise UserNotFoundException."""
+        from app.modules.admin.schemas import AdminUserResponse
+
         user = await self._repo.get_user_by_id(user_id)
         if not user:
             raise UserNotFoundException()
-        return user
+        return AdminUserResponse.model_validate(user)
 
     async def update_user_status(
         self, admin_id: UUID, user_id: UUID, new_status: str
     ) -> object:
         """Update a user's account status and write an audit log entry."""
+        from app.modules.admin.schemas import AdminUserResponse
+
         user = await self._repo.get_user_by_id(user_id)
         if not user:
             raise UserNotFoundException()
@@ -77,7 +85,7 @@ class AdminService:
             log_metadata={"before": {"account_status": before}, "after": {"account_status": new_status}},
         )
         await self._db.commit()
-        return user
+        return AdminUserResponse.model_validate(user)
 
     async def bulk_update_user_status(
         self, admin_id: UUID, user_ids: list[UUID], action: str
@@ -206,7 +214,11 @@ class AdminService:
         limit: int = 20,
     ) -> dict:
         """Return a paginated list of all applications platform-wide."""
-        return await self._repo.list_applications(status, cursor, limit)
+        from app.modules.admin.schemas import AdminApplicationResponse
+
+        result = await self._repo.list_applications(status, cursor, limit)
+        result["items"] = [AdminApplicationResponse.from_application(a) for a in result["items"]]
+        return result
 
     # -----------------------------------------------------------------------
     # Stats
