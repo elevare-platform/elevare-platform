@@ -118,7 +118,11 @@ class AdminService:
         limit: int = 20,
     ) -> dict:
         """Return a paginated list of jobs with optional status/moderation/search filters."""
-        return await self._repo.list_jobs(status, moderation_status, search, cursor, limit)
+        from app.modules.jobs.schemas import JobResponse
+
+        result = await self._repo.list_jobs(status, moderation_status, search, cursor, limit)
+        result["items"] = [JobResponse.from_job(job) for job in result["items"]]
+        return result
 
     async def moderate_job(
         self, admin_id: UUID, job_id: UUID, action: str, reason: str | None = None
@@ -161,7 +165,9 @@ class AdminService:
             },
         )
         await self._db.commit()
-        return job
+
+        from app.modules.jobs.schemas import JobResponse
+        return JobResponse.from_job(job)
 
     async def bulk_update_job_status(
         self, admin_id: UUID, job_ids: list[UUID], action: str

@@ -484,7 +484,7 @@ export default function AboutPage() {
 
               {/* TikTok Card */}
               <a
-                href="https://www.tiktok.com/@sexy_jenny13?_r=1&_t=ZS-93UCex6vqKo"
+                href="https://www.tiktok.com/@hrgirloflagos?_r=1&_t=ZS-97lxf4g8ZSX"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group flex items-center gap-4 bg-white/10 hover:bg-black/40 p-5 rounded-xl border border-white/10 hover:border-black/50 transition-all duration-300 shadow sm:col-span-2 lg:col-span-1"
