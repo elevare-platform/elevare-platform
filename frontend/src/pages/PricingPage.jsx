@@ -67,7 +67,7 @@ export default function PricingPage() {
     <>
       <Helmet>
         <title>Pricing | Elevare Human Solutions</title>
-        <meta name="description" content="Simple, transparent pricing for employers. Start free and scale as you grow — Starter, Professional, and Enterprise plans available." />
+        <meta name="description" content="Simple, transparent pricing for employers. Start free and scale as you grow. Starter, Professional, and Enterprise plans available." />
         <meta property="og:title" content="Pricing | Elevare Human Solutions" />
         <meta property="og:description" content="Simple, transparent pricing for employers. Start free and scale as you grow." />
         <meta property="og:url" content="https://elevare.com.ng/pricing" />
@@ -192,7 +192,7 @@ export default function PricingPage() {
             <p className="text-xs font-bold text-brand-amber uppercase tracking-widest mb-2">For Candidates</p>
             <h3 className="text-xl font-extrabold text-text mb-2">Always Free</h3>
             <p className="text-sm text-text-muted mb-6">
-              Creating a profile, uploading your CV, and applying to jobs is completely free — no plan required, no credit card needed.
+              Creating a profile, uploading your CV, and applying to jobs is completely free. No plan required, no credit card needed.
             </p>
             <Link to="/register?role=candidate">
               <Button className="bg-brand-blue hover:bg-brand-blue/90 text-white border-0 px-8 rounded-full text-sm font-bold uppercase tracking-wider">

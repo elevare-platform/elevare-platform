@@ -29,7 +29,7 @@ const SECTIONS = [
   {
     title: 'Intellectual Property',
     content:
-      'All content on the Elevare platform — including design, copy, and software — is owned by Elevare Human Solutions Ltd. You may not reproduce or distribute any content without written permission.',
+      'All content on the Elevare platform (including design, copy, and software) is owned by Elevare Human Solutions Ltd. You may not reproduce or distribute any content without written permission.',
   },
   {
     title: 'Limitation of Liability',
@@ -52,7 +52,7 @@ export default function TermsPage() {
     <>
       <Helmet>
         <title>Terms of Service | Elevare Human Solutions</title>
-        <meta name="description" content="Read Elevare's terms of service — the rules and guidelines governing use of our recruitment platform." />
+        <meta name="description" content="Read Elevare's terms of service, the rules and guidelines governing use of our recruitment platform." />
         <link rel="canonical" href="https://elevare.com.ng/terms" />
       </Helmet>
       <Navbar />

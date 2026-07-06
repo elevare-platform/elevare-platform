@@ -210,7 +210,7 @@ export default function PublishJobPage() {
                     Have external CVs to score against this job?
                   </p>
                   <p className="text-xs text-text-muted">
-                    Upload CVs you've received outside of Elevare — they'll be parsed and ranked against this listing.
+                    Upload CVs you've received outside of Elevare. They'll be parsed and ranked against this listing.
                   </p>
                   <Button
                     size="sm"

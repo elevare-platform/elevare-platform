@@ -122,7 +122,7 @@ function Field({ label, value }) {
   return (
     <div>
       <p className="text-xs text-text-muted">{label}</p>
-      <p className="font-medium text-text">{value ?? '—'}</p>
+      <p className="font-medium text-text">{value ?? 'N/A'}</p>
     </div>
   )
 }

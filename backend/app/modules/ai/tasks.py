@@ -168,9 +168,9 @@ async def _run_pipeline_async(
         finally:
             await redis.aclose()
             await engine.dispose()
-            # Close the Anthropic httpx client before the event loop shuts down
+            # aclose() is the correct async close method for AsyncAnthropic
             try:
-                await ai_service._client.close()
+                await ai_service._client.aclose()
             except Exception:
                 pass
 
@@ -328,10 +328,8 @@ async def _score_application_async(application_id_str: str) -> None:
                     deterministic_score=det_score
                 )
             finally:
-                try:
-                    await ai_service._client.close()
-                except Exception:
-                    pass
+                # Close before the session/engine tears down so the loop is still alive
+                await ai_service._client.aclose()
 
             await app_repo.update(application_id, {
                 "ai_score": det_score,
@@ -527,10 +525,8 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                     deterministic_score=det_score
                 )
             finally:
-                try:
-                    await ai_service._client.close()
-                except Exception:
-                    pass
+                # Close before the session/engine tears down so the loop is still alive
+                await ai_service._client.aclose()
 
             await talent_pool_repo.update(profile_id, {
                 "ai_score": det_score,

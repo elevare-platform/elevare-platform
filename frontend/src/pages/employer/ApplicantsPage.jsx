@@ -95,16 +95,16 @@ function MatchScoreBadge({ score, matchedKeywords = [] }) {
           scoreColour(score)
         )}
       >
-        {hasScore ? `${score}%` : '—'}
+        {hasScore ? `${score}%` : 'N/A'}
       </button>
 
       {tooltipVisible && (
         <div
           role="tooltip"
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10 w-max max-w-xs rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg pointer-events-none"
+          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 w-max max-w-xs rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg pointer-events-none"
         >
           {tooltipText}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-900" />
         </div>
       )}
     </div>
@@ -122,6 +122,7 @@ function formatDate(isoString) {
 
 function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
   const [open, setOpen] = useState(false)
+  const [btnRef, setBtnRef] = useState(null)
   const hasScore = score !== null && score !== undefined
 
   const colour = !hasScore
@@ -132,12 +133,16 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
         ? 'bg-amber-100 text-amber-700 border-amber-200'
         : 'bg-red-100 text-red-600 border-red-200'
 
+  // Position the panel relative to the button using a fixed overlay
+  const btnRect = btnRef?.getBoundingClientRect()
+
   return (
-    <div className="relative">
+    <div className="relative flex-shrink-0">
       <button
+        ref={setBtnRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title="AI Score — click for reasoning"
+        title={hasScore ? 'AI Score (click for reasoning)' : 'AI score not yet computed'}
         aria-label={`AI score: ${hasScore ? score : 'not computed'}`}
         className={cn(
           'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer',
@@ -145,54 +150,62 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
         )}
       >
         <span className="text-[10px] font-bold uppercase tracking-wide opacity-60">AI</span>
-        {hasScore ? score : '—'}
+        {hasScore ? score : 'N/A'}
       </button>
 
-      {open && hasScore && (
-        <div
-          className="absolute right-0 top-full mt-2 z-20 w-72 rounded-xl border border-border bg-white shadow-xl p-4 space-y-3 text-sm"
-          role="dialog"
-          aria-label="AI fit reasoning"
-        >
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="absolute top-3 right-3 text-text-muted hover:text-text"
-            aria-label="Close"
+      {open && hasScore && btnRect && (
+        <>
+          {/* Click-away backdrop */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
+            className="fixed z-50 w-72 rounded-xl border border-border bg-white shadow-xl p-4 space-y-3 text-sm"
+            style={{
+              top: btnRect.bottom + 8,
+              right: window.innerWidth - btnRect.right,
+            }}
+            role="dialog"
+            aria-label="AI fit reasoning"
           >
-            <X size={14} />
-          </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="absolute top-3 right-3 text-text-muted hover:text-text"
+              aria-label="Close"
+            >
+              <X size={14} />
+            </button>
 
-          {fitSummary && (
-            <p className="text-text text-xs leading-relaxed">{fitSummary}</p>
-          )}
+            {fitSummary && (
+              <p className="text-text text-xs leading-relaxed">{fitSummary}</p>
+            )}
 
-          {strengths?.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-green-600 mb-1">Strengths</p>
-              <ul className="space-y-1">
-                {strengths.map((s, i) => (
-                  <li key={i} className="text-xs text-text flex gap-1.5">
-                    <span className="text-green-500 mt-0.5">✓</span>{s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+            {strengths?.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-green-600 mb-1">Strengths</p>
+                <ul className="space-y-1">
+                  {strengths.map((s, i) => (
+                    <li key={i} className="text-xs text-text flex gap-1.5">
+                      <span className="text-green-500 mt-0.5">✓</span>{s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          {weaknesses?.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-red-500 mb-1">Gaps</p>
-              <ul className="space-y-1">
-                {weaknesses.map((w, i) => (
-                  <li key={i} className="text-xs text-text flex gap-1.5">
-                    <span className="text-red-400 mt-0.5">·</span>{w}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+            {weaknesses?.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-red-500 mb-1">Gaps</p>
+                <ul className="space-y-1">
+                  {weaknesses.map((w, i) => (
+                    <li key={i} className="text-xs text-text flex gap-1.5">
+                      <span className="text-red-400 mt-0.5">·</span>{w}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )
@@ -519,7 +532,7 @@ function CandidateProfilePanel({ profileId, jobId, onClose }) {
                         <p className="text-sm font-medium text-text">{w.job_title}</p>
                         <p className="text-xs text-text-muted">{w.company_name}</p>
                         <p className="text-xs text-text-muted">
-                          {w.start_date ?? '—'} → {w.is_current ? 'Present' : (w.end_date ?? '—')}
+                          {w.start_date ?? 'Unknown'} to {w.is_current ? 'Present' : (w.end_date ?? 'Unknown')}
                         </p>
                         {w.description && (
                           <p className="text-xs text-text-muted mt-1 line-clamp-2">{w.description}</p>
@@ -542,7 +555,7 @@ function CandidateProfilePanel({ profileId, jobId, onClose }) {
                           <p className="text-sm font-medium text-text">{e.degree} in {e.field_of_study}</p>
                           <p className="text-xs text-text-muted">{e.institution_name}</p>
                           {(e.start_year || e.end_year) && (
-                            <p className="text-xs text-text-muted">{e.start_year ?? '—'} – {e.end_year ?? 'Present'}</p>
+                          <p className="text-xs text-text-muted">{e.start_year ?? 'Unknown'} to {e.end_year ?? 'Present'}</p>
                           )}
                         </div>
                       </div>
@@ -662,7 +675,7 @@ function ApplicantCard({ application, jobId, onError }) {
     }
   }
 
-  // Candidate name — backend needs to add this field; fall back gracefully
+  // Candidate name: backend may provide it directly or as separate first/last fields
   const candidateName = application.candidate_name
     ?? (application.candidate_first_name
       ? `${application.candidate_first_name} ${application.candidate_last_name ?? ''}`.trim()
@@ -672,7 +685,7 @@ function ApplicantCard({ application, jobId, onError }) {
   return (
     <div className="rounded-lg border border-border bg-surface overflow-hidden">
       {/* Main row */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
+      <div className="flex flex-wrap items-center gap-3 p-4">
         {/* Avatar */}
         <span className="w-10 h-10 rounded-full border border-border bg-background flex items-center justify-center flex-shrink-0" aria-hidden="true">
           <User size={16} className="text-text-muted" />
@@ -690,70 +703,66 @@ function ApplicantCard({ application, jobId, onError }) {
           </div>
         </div>
 
-        {/* Status badge */}
-        <StatusBadge status={status} />
+        {/* Right-side controls — wrap onto next line on small screens */}
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          <StatusBadge status={status} />
 
-        {/* Match score badge — Phase 6.5 keyword signal */}
-        <MatchScoreBadge
-          score={application.match_score}
-          matchedKeywords={application.matched_keywords ?? []}
-        />
+          {/* AI score badge with popout reasoning panel */}
+          <AiScoreBadge
+            score={application.ai_score}
+            fitSummary={application.ai_fit_summary}
+            strengths={application.ai_strengths}
+            weaknesses={application.ai_weaknesses}
+          />
 
-        {/* AI score badge — Phase 11.5 composite score, distinct from match_score */}
-        <AiScoreBadge
-          score={application.ai_score}
-          fitSummary={application.ai_fit_summary}
-          strengths={application.ai_strengths}
-          weaknesses={application.ai_weaknesses}
-        />
+          {/* Status transition dropdown */}
+          {!isTerminal && (
+            <div className="relative flex-shrink-0">
+              <select
+                defaultValue=""
+                disabled={updating}
+                onChange={handleStatusChange}
+                aria-label="Move application to next status"
+                className="appearance-none rounded-md border border-border bg-background pl-3 pr-7 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <option value="" disabled>Move to...</option>
+                {nextStatuses.map((s) => (
+                  <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
+                ))}
+              </select>
+              <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
+            </div>
+          )}
 
-        {/* Status transition dropdown — only shown for non-terminal statuses */}
-        {!isTerminal && (
-          <div className="relative flex-shrink-0">
-            <select
-              defaultValue=""
-              disabled={updating}
-              onChange={handleStatusChange}
-              aria-label="Move application to next status"
-              className="appearance-none rounded-md border border-border bg-background pl-3 pr-7 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          {/* CV download */}
+          {application.cv_url && (
+            <Button size="sm" variant="outline" onClick={handleDownloadCv} className="flex-shrink-0">
+              Download CV
+            </Button>
+          )}
+
+          {/* Expand toggle for cover letter */}
+          {application.cover_letter && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
             >
-              <option value="" disabled>Move to…</option>
-              {nextStatuses.map((s) => (
-                <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
-              ))}
-            </select>
-            <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
-          </div>
-        )}
+              {expanded ? 'Hide letter' : 'Cover letter'}
+            </button>
+          )}
 
-        {/* CV download */}
-        {application.cv_url && (
-          <Button size="sm" variant="outline" onClick={handleDownloadCv} className="flex-shrink-0">
-            Download CV
-          </Button>
-        )}
-
-        {/* Expand toggle for cover letter */}
-        {application.cover_letter && (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
-          >
-            {expanded ? 'Hide letter' : 'Cover letter'}
-          </button>
-        )}
-
-        {/* View profile */}
-        {application.candidate_profile_id && (
-          <button
-            type="button"
-            onClick={() => setProfileOpen(true)}
-            className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
-          >
-            View profile
-          </button>
-        )}
+          {/* View profile */}
+          {application.candidate_profile_id && (
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
+            >
+              View profile
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Cover letter expansion */}
@@ -883,7 +892,7 @@ function TalentPoolProfilePanel({ profile, onClose }) {
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Source</p>
             <div className="flex items-center gap-2 text-sm text-text">
               <span className="capitalize">{profile.source}</span>
-              {profile.source_note && <span className="text-text-muted">· {profile.source_note}</span>}
+              {profile.source_note && <span className="text-text-muted">({profile.source_note})</span>}
             </div>
           </div>
 
@@ -920,7 +929,7 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh }) {
             to={`/employer/talent-pool?job_id=${jobId}`}
             className="text-xs text-brand-blue hover:underline"
           >
-            Manage in Talent Pool →
+            Manage in Talent Pool
           </Link>
         </div>
       </div>
@@ -971,7 +980,7 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh }) {
                 'w-11 h-11 rounded-full border-2 flex items-center justify-center text-sm font-bold flex-shrink-0',
                 scoreColor(p.ai_score)
               )}>
-                {p.ai_score != null ? p.ai_score : '—'}
+                {p.ai_score != null ? p.ai_score : 'N/A'}
               </div>
               <span className="text-xs text-text-muted capitalize px-2.5 py-0.5 rounded-full border border-border">
                 {(p.status || '').replace('_', ' ')}
