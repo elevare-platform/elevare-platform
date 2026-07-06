@@ -31,7 +31,7 @@ export default function SocialProofBar() {
             whiteSpace: 'nowrap',
           }}
         >
-          Trusted by 17+ companies
+          Trusted by 19+ companies
         </p>
 
         <div

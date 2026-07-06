@@ -15,10 +15,10 @@ const PROFILE_CARDS = [
     available: true,
     availableLabel: 'Available now',
     imageUrl: '/hero-images/jennifer.png',
-    imgW: 290,
-    imgH: 230,
+    imgW: 270,
+    imgH: 215,
     delay: '0s',
-    top: 80,
+    top: 70,
     left: 10,
     rotate: '-3deg',
     zIndex: 2,
@@ -30,23 +30,23 @@ const PROFILE_CARDS = [
     available: false,
     availableLabel: 'Open to offers',
     imageUrl: '/hero-images/josephine.png',
-    imgW: 290,
-    imgH: 230,
+    imgW: 270,
+    imgH: 215,
     delay: '0.9s',
-    top: 280,
-    left: 270,
+    top: 270,
+    left: 310,
     rotate: '2deg',
     zIndex: 3,
   },
   {
     id: 3,
-    name: 'Fatima Bello',
-    title: 'Head of Finance',
+    name: 'Stephanie',
+    title: 'Talent Acquisition & Employer Branding Executive',
     available: true,
     availableLabel: 'Available now',
-    imageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=290&h=230&fit=crop&crop=face',
-    imgW: 290,
-    imgH: 230,
+    imageUrl: '/hero-images/stephanie.png',
+    imgW: 270,
+    imgH: 215,
     delay: '1.8s',
     top: 500,
     left: 20,
@@ -255,10 +255,10 @@ export default function HeroSection({ onBookConsultation }) {
 
       {/* Inner grid layout */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-20 sm:py-24 lg:py-0">
-        <div className="grid grid-cols-1 lg:grid-cols-[53fr_47fr] gap-8 lg:gap-0 items-center min-h-screen">
+        <div className="grid grid-cols-1 lg:grid-cols-[55fr_45fr] gap-8 lg:gap-0 items-center min-h-screen">
 
           {/* ── Left: text content ── */}
-          <div className="flex flex-col justify-center lg:pr-24">
+          <div className="flex flex-col justify-center lg:pr-10">
 
             {/* Eyebrow */}
             <div className="hero-text-mask" style={{ marginBottom: '0.9rem' }}>
@@ -359,9 +359,9 @@ export default function HeroSection({ onBookConsultation }) {
             />
 
             {/* Cards container — fixed px sizing so gaps are guaranteed */}
-            <div style={{ position: 'relative', width: 610, height: 860 }}>
+            <div style={{ position: 'relative', width: 620, height: 840 }}>
 
-              {/* Waterfall connector — Jennifer top-centre → Josephine centre only */}
+              {/* Waterfall connector — Jennifer top-centre to Josephine centre */}
               <svg
                 aria-hidden="true"
                 className="hero-entrance-connector"
@@ -374,7 +374,7 @@ export default function HeroSection({ onBookConsultation }) {
                   zIndex: 1,
                   overflow: 'visible',
                 }}
-                viewBox="0 0 610 860"
+                viewBox="0 0 620 840"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
               >
@@ -385,20 +385,18 @@ export default function HeroSection({ onBookConsultation }) {
                 </defs>
 
                 {/*
-                  Jennifer top-centre: left=10, imgW=290 → centre x = 10+145 = 155, top y = 80
-                  Josephine centre: left=270, imgW=290 → centre x = 270+145 = 415, top=280, imgH=230 → centre y = 280+115 = 395
+                  Jennifer top-centre: left=10, imgW=270 → centre x = 10+135 = 145, top y = 70
+                  Josephine centre: left=310, imgW=270 → centre x = 310+135 = 445, top=270, imgH=215 → centre y = 270+107 = 377
                 */}
                 <path
-                  d="M 165 80 C 80 200, 500 180, 425 395"
+                  d="M 155 70 C 60 190, 520 170, 450 377"
                   stroke="#E87722"
                   strokeWidth="1.8"
                   strokeDasharray="7 6"
                   strokeLinecap="round"
                   strokeDashoffset="900"
                   markerEnd="url(#wf-arrow)"
-                  style={{
-                    animation: 'draw-waterfall 5s ease-in-out infinite',
-                  }}
+                  style={{ animation: 'draw-waterfall 5s ease-in-out infinite' }}
                 />
               </svg>
 

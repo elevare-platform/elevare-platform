@@ -158,10 +158,11 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
           <div
-            className="fixed z-50 w-72 rounded-xl border border-border bg-white shadow-xl p-4 space-y-3 text-sm"
+            className="fixed z-50 w-72 rounded-xl border border-border bg-white shadow-xl p-4 space-y-3 text-sm overflow-y-auto"
             style={{
               top: btnRect.bottom + 8,
               right: window.innerWidth - btnRect.right,
+              maxHeight: `calc(100vh - ${btnRect.bottom + 24}px)`,
             }}
             role="dialog"
             aria-label="AI fit reasoning"
