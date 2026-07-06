@@ -3,7 +3,7 @@ import {
   Upload, X, FileText, RefreshCw, ChevronDown, UserPlus,
   Briefcase, Zap, Users, TrendingUp, Search, Filter,
   CheckCircle2, Clock, Archive, Star, ChevronRight,
-  BarChart3, Brain, AlertCircle,
+  BarChart3, Brain, AlertCircle, ExternalLink,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -137,7 +137,21 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
         onUploaded()
       }
     } catch (err) {
-      setError(err.response?.data?.detail ?? 'Upload failed. Please try again.')
+      const status = err.response?.status
+      const detail = err.response?.data?.detail
+      if (status === 413) {
+        setError('Files are too large. Each CV should be under 10 MB — try compressing or splitting the batch.')
+      } else if (status === 415 || (typeof detail === 'string' && detail.toLowerCase().includes('pdf'))) {
+        setError('Only PDF files are accepted. Please check your files and try again.')
+      } else if (status === 429) {
+        setError('Too many uploads. Please wait a moment and try again.')
+      } else if (status === 422) {
+        setError('Invalid request — please check your files and form fields.')
+      } else if (status >= 500) {
+        setError('Server error. Our team has been notified — please try again shortly.')
+      } else {
+        setError(detail ?? 'Upload failed. Please try again.')
+      }
     } finally {
       setUploading(false)
     }
@@ -212,11 +226,25 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
               {results.map((r, i) => (
                 <div key={i} className={cn(
                   'flex items-center gap-2 px-3 py-2 rounded-lg border text-xs',
-                  r.status === 'queued' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
+                  r.status === 'queued'
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : r.status === 'duplicate'
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-red-200 bg-red-50 text-red-700'
                 )}>
-                  {r.status === 'queued' ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                  {r.status === 'queued'
+                    ? <CheckCircle2 size={12} />
+                    : r.status === 'duplicate'
+                    ? <AlertCircle size={12} />
+                    : <AlertCircle size={12} />}
                   <span className="flex-1 truncate">{r.filename}</span>
-                  <span>{r.status === 'queued' ? 'Queued' : r.error}</span>
+                  <span>
+                    {r.status === 'queued'
+                      ? 'Queued'
+                      : r.status === 'duplicate'
+                      ? 'Already in pool'
+                      : r.error}
+                  </span>
                 </div>
               ))}
             </div>
@@ -324,6 +352,56 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
   )
 }
 
+// ─── View CV Button ───────────────────────────────────────────────────────────
+
+function ViewCvButton({ submissionId }) {
+  const [loading, setLoading] = useState(false)
+  const [errMsg, setErrMsg] = useState(null)
+
+  const handleClick = async (e) => {
+    e.stopPropagation()
+    if (!submissionId) return
+    setLoading(true)
+    setErrMsg(null)
+    try {
+      const { data } = await api.get(`/api/v1/cv-parsing/submissions/${submissionId}/download`)
+      window.open(typeof data === 'string' ? data : data.url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      const status = err.response?.status
+      if (status === 425) {
+        setErrMsg('Still processing — try again in a few seconds.')
+      } else if (status === 404) {
+        setErrMsg('CV file not found.')
+      } else {
+        setErrMsg('Could not open CV.')
+      }
+      setTimeout(() => setErrMsg(null), 4000)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!submissionId) return null
+  return (
+    <div className="relative flex flex-col items-end">
+      <button
+        onClick={handleClick}
+        disabled={loading}
+        title="View CV"
+        className="flex items-center gap-1 text-xs font-medium text-text-muted hover:text-brand-blue transition-colors disabled:opacity-50"
+      >
+        {loading ? <RefreshCw size={12} className="animate-spin" /> : <ExternalLink size={12} />}
+        <span>CV</span>
+      </button>
+      {errMsg && (
+        <span className="absolute top-5 right-0 z-10 whitespace-nowrap rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-2.5 py-1.5 shadow-sm">
+          {errMsg}
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ─── Candidate Card (job-scoped ranked view) ──────────────────────────────────
 
 function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
@@ -398,6 +476,8 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
               <Clock size={10} /> Invite sent
             </span>
           )}
+
+          <ViewCvButton submissionId={profile.parsed_submission_id} />
 
           {hasReasoning && (
             <button onClick={() => setExpanded(v => !v)}
@@ -494,6 +574,7 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
             <UserPlus size={11} /> Promote
           </button>
         )}
+        <ViewCvButton submissionId={profile.parsed_submission_id} />
       </div>
     </div>
   )

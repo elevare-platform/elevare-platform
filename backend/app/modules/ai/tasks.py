@@ -810,3 +810,49 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
             raise
         finally:
             await engine.dispose()
+
+
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def upload_cv_to_r2_task(self, submission_id: str, uploaded_by_id: str, filename: str, file: bytes) -> None:
+    """Upload a CV file to R2 and set the r2_key on the submission row.
+
+    Used for cache-hit submissions where parsing is skipped but the file
+    still needs to be stored so the download endpoint works.
+    """
+    asyncio.run(_upload_cv_to_r2_async(submission_id, uploaded_by_id, filename, file))
+
+
+async def _upload_cv_to_r2_async(
+    submission_id_str: str,
+    uploaded_by_id_str: str,
+    filename: str,
+    file: bytes,
+) -> None:
+    from datetime import UTC as _UTC
+    from datetime import datetime as _datetime
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with SessionLocal() as db:
+        try:
+            from app.core.storage import get_storage_service
+            from app.modules.ai.cv_parsing_repo import CVParsingRepo
+
+            repo = CVParsingRepo(db, get_storage_service())
+            storage = get_storage_service()
+
+            timestamp = _datetime.now(_UTC).strftime("%Y%m%d%H%M%S")
+            r2_key = f"cv-parsing/{uploaded_by_id_str}/{timestamp}_{filename}"
+
+            await storage.upload_file(file, r2_key, "application/pdf")
+            await repo.update(uuid.UUID(submission_id_str), {"r2_key": r2_key})
+            await db.commit()
+
+            logger.info("upload_cv_to_r2: stored %s for submission %s", r2_key, submission_id_str)
+
+        except Exception:
+            logger.exception("upload_cv_to_r2: failed for submission %s", submission_id_str)
+            raise
+        finally:
+            await engine.dispose()

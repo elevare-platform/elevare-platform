@@ -69,6 +69,12 @@ class TalentPoolService:
             filename=filename
         )
 
+        # Deduplication — same CV content already exists against this job
+        existing = await self._repo.get_by_cv_hash(submission.cv_text_hash, data.sourced_for_job_id)
+        if existing:
+            response = TalentPoolProfileResponse.model_validate(existing)
+            return await self._enrich(existing, response)
+
         # Create talent pool profile
         profile = await self._repo.create({
             "parsed_submission_id": submission.id,
@@ -101,6 +107,12 @@ class TalentPoolService:
                     file=file_bytes,
                     filename=filename,
                 )
+                # Deduplication — skip if same CV content+job already exists
+                existing = await self._repo.get_by_cv_hash(submission.cv_text_hash, data.sourced_for_job_id)
+                if existing:
+                    results.append({"filename": filename, "status": "duplicate", "profile_id": str(existing.id), "submission_id": str(submission.id)})
+                    continue
+
                 profile = await self._repo.create({
                     "parsed_submission_id": submission.id,
                     "source": data.source,

@@ -25,6 +25,33 @@ class TalentPoolRepository:
         await self._db.refresh(profile)
         return profile
 
+    async def get_by_cv_hash(
+        self,
+        cv_text_hash: str,
+        sourced_for_job_id: uuid.UUID | None,
+    ) -> TalentPoolProfiles | None:
+        """Return an existing profile whose submission has the same cv_text_hash + job, if any.
+
+        This is the correct deduplication key — the submission ID changes on every upload
+        even for identical CV content, but the content hash is stable.
+        """
+        from app.modules.ai.models import ParsedCVSubmission
+
+        stmt = (
+            select(TalentPoolProfiles)
+            .join(
+                ParsedCVSubmission,
+                TalentPoolProfiles.parsed_submission_id == ParsedCVSubmission.id,
+            )
+            .where(
+                ParsedCVSubmission.cv_text_hash == cv_text_hash,
+                TalentPoolProfiles.sourced_for_job_id == sourced_for_job_id,
+            )
+            .limit(1)
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_by_id(
         self,
         profile_id: uuid.UUID,

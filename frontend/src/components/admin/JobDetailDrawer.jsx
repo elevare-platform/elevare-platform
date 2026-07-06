@@ -63,7 +63,7 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
           <div className="flex-1 px-6 py-5 space-y-6">
             {/* Title + badges */}
             <div>
-              <h3 className="text-xl font-bold text-text">{job.title}</h3>
+              <h3 className="text-xl font-bold text-text font-sans">{job.title}</h3>
               <div className="flex flex-wrap gap-2 mt-2">
                 <StatusBadge value={job.status} />
                 <StatusBadge value={job.moderation_status} />

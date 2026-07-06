@@ -494,7 +494,7 @@ export default function AboutPage() {
                 </div>
                 <div>
                   <p className="font-extrabold text-xs uppercase tracking-wide text-blue-200">TikTok</p>
-                  <p className="font-bold text-sm text-white mt-0.5 group-hover:text-red-400 transition-colors">@sexy_jenny13</p>
+                  <p className="font-bold text-sm text-white mt-0.5 group-hover:text-red-400 transition-colors">hrgirloflagos</p>
                 </div>
               </a>
             </div>

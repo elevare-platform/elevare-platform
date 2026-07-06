@@ -84,15 +84,28 @@ class CVParsingService:
         cached = await self._redis.get(cache_key)
         if cached:
             parsed_data = json.loads(cached)
+
+            # Reuse the r2_key from an existing submission with the same content
+            # so the download endpoint works without a redundant upload
+            existing_with_r2 = await self._repo.get_with_r2_key_by_hash(cv_text_hash)
+            r2_key = existing_with_r2.r2_key if existing_with_r2 else None
+
             submission = await self._repo.submit_cv_for_parsing(
                 filename,
                 uploaded_by.id,
                 cv_text_hash,
                 CVParsingStatus.COMPLETED.value,
                 parsed_data,
+                r2_key=r2_key,
             )
             await self._db.commit()
             logger.info("CV Parse cache hit", extra={"hash": cv_text_hash})
+
+            # No existing r2_key — queue a background upload so the file is downloadable
+            if not r2_key:
+                from app.modules.ai.tasks import upload_cv_to_r2_task
+                upload_cv_to_r2_task.delay(str(submission.id), str(uploaded_by.id), filename, file)
+
             return submission
 
         # Cache miss — create PENDING row immediately and return.
@@ -166,8 +179,19 @@ class CVParsingService:
         """Generate a 15-minute presigned URL for a parsed CV, enforcing ownership."""
         submission = await self._repo.get_by_id(submission_id)
 
+        if not submission:
+            from app.core.exceptions import SubmissionNotFound
+            raise SubmissionNotFound()
+
         if submission.uploaded_by != requesting_user.id and requesting_user.role != UserRole.ADMIN.value:
             raise PermissionDeniedException()
+
+        if not submission.r2_key:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=425,
+                detail="CV file is still being processed. Please try again in a few seconds.",
+            )
 
         return await self._storage.generate_presigned_url(submission.r2_key, 60 * 15)
 

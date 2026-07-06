@@ -379,7 +379,7 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
 
       {/* ── Title + location ────────────────────────────────────────────── */}
       <div>
-        <h3 className="font-bold text-slate-800 text-[15px] leading-snug line-clamp-2 mb-1.5">
+        <h3 className="font-bold text-slate-800 text-[15px] leading-snug line-clamp-2 mb-1.5 font-sans">
           {job.title}
         </h3>
         <p className="flex items-center gap-1.5 text-xs text-slate-500">

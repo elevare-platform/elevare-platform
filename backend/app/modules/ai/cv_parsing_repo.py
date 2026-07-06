@@ -61,6 +61,23 @@ class CVParsingRepo:
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_with_r2_key_by_hash(
+        self,
+        cv_text_hash: str,
+    ) -> ParsedCVSubmission | None:
+        """Return the most recent submission for a given hash that has an r2_key set, or None."""
+        stmt = (
+            select(ParsedCVSubmission)
+            .where(
+                ParsedCVSubmission.cv_text_hash == cv_text_hash,
+                ParsedCVSubmission.r2_key.is_not(None),
+            )
+            .order_by(ParsedCVSubmission.created_at.desc())
+            .limit(1)
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def update(
         self,
         submission_id: uuid.UUID,

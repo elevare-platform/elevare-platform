@@ -10,13 +10,13 @@ import { Button } from '@/components/ui/button'
 const PROFILE_CARDS = [
   {
     id: 1,
-    name: 'Amara Okafor',
-    title: 'Senior Product Designer',
+    name: 'Jennifer O. Efe-Odiete',
+    title: 'Founder & Lead Consultant, ACIPM, HRPL',
     available: true,
     availableLabel: 'Available now',
-    imageUrl: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=245&h=195&fit=crop&crop=face',
-    imgW: 245,
-    imgH: 195,
+    imageUrl: '/hero-images/jennifer.png',
+    imgW: 290,
+    imgH: 230,
     delay: '0s',
     top: 80,
     left: 10,
@@ -25,16 +25,16 @@ const PROFILE_CARDS = [
   },
   {
     id: 2,
-    name: 'Chidi Nwosu',
-    title: 'Engineering Manager',
+    name: 'Josephine Joseph Smith',
+    title: 'Talent Acquisition & Business Development',
     available: false,
     availableLabel: 'Open to offers',
-    imageUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=245&h=195&fit=crop&crop=face',
-    imgW: 245,
-    imgH: 195,
+    imageUrl: '/hero-images/josephine.png',
+    imgW: 290,
+    imgH: 230,
     delay: '0.9s',
     top: 280,
-    left: 280,
+    left: 270,
     rotate: '2deg',
     zIndex: 3,
   },
@@ -44,11 +44,11 @@ const PROFILE_CARDS = [
     title: 'Head of Finance',
     available: true,
     availableLabel: 'Available now',
-    imageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=245&h=195&fit=crop&crop=face',
-    imgW: 245,
-    imgH: 195,
+    imageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=290&h=230&fit=crop&crop=face',
+    imgW: 290,
+    imgH: 230,
     delay: '1.8s',
-    top: 480,
+    top: 500,
     left: 20,
     rotate: '-2deg',
     zIndex: 2,
@@ -359,9 +359,9 @@ export default function HeroSection({ onBookConsultation }) {
             />
 
             {/* Cards container — fixed px sizing so gaps are guaranteed */}
-            <div style={{ position: 'relative', width: 540, height: 820 }}>
+            <div style={{ position: 'relative', width: 610, height: 860 }}>
 
-              {/* Waterfall connector — draws top-centre of Amara → Chidi centre → bottom-centre of Fatima */}
+              {/* Waterfall connector — Jennifer top-centre → Josephine centre only */}
               <svg
                 aria-hidden="true"
                 className="hero-entrance-connector"
@@ -374,7 +374,7 @@ export default function HeroSection({ onBookConsultation }) {
                   zIndex: 1,
                   overflow: 'visible',
                 }}
-                viewBox="0 0 540 820"
+                viewBox="0 0 610 860"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
               >
@@ -385,16 +385,11 @@ export default function HeroSection({ onBookConsultation }) {
                 </defs>
 
                 {/*
-                  Chidi centre is now at (320+110, 280+110) = (430, 390)
-                  Amara top-centre: (20+110, 80) = (130, 90)
-                  Fatima bottom-centre: (30+110, 460+260) = (140, 720)
+                  Jennifer top-centre: left=10, imgW=290 → centre x = 10+145 = 155, top y = 80
+                  Josephine centre: left=270, imgW=290 → centre x = 270+145 = 415, top=280, imgH=230 → centre y = 280+115 = 395
                 */}
                 <path
-                  d="
-                    M 130 90
-                    C 40 220, 500 200, 430 390
-                    C 360 560, 220 580, 140 720
-                  "
+                  d="M 165 80 C 80 200, 500 180, 425 395"
                   stroke="#E87722"
                   strokeWidth="1.8"
                   strokeDasharray="7 6"

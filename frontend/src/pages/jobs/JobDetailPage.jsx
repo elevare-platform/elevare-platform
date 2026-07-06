@@ -263,7 +263,7 @@ export default function JobDetailPage() {
                   </span>
                 )}
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold text-text leading-tight mb-1">{job.title}</h1>
+                  <h1 className="text-2xl font-bold text-text leading-tight mb-1 font-sans">{job.title}</h1>
                   <p className="text-text-muted font-medium">{job.company_name ?? 'Unknown Company'}</p>
                   {job.company_industry && (
                     <p className="text-xs text-text-muted mt-0.5">{job.company_industry}</p>
