@@ -66,8 +66,8 @@ function formatSalary(min, max) {
   if (!min && !max) return null
   const fmt = (n) => `₦${Number(n).toLocaleString('en-NG')}`
   if (min && max) return `${fmt(min)} – ${fmt(max)}`
-  if (min) return `From ${fmt(min)}`
-  return `Up to ${fmt(max)}`
+  if (min) return fmt(min)
+  return fmt(max)
 }
 
 // ─── JobCard ──────────────────────────────────────────────────────────────────

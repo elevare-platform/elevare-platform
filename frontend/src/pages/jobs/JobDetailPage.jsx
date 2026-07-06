@@ -160,8 +160,8 @@ export default function JobDetailPage() {
     const min = job?.salary_min != null ? Number(job.salary_min) : null
     const max = job?.salary_max != null ? Number(job.salary_max) : null
     if (min != null && max != null) return `${formatSalary(min)} – ${formatSalary(max)}`
-    if (min != null) return `From ${formatSalary(min)}`
-    if (max != null) return `Up to ${formatSalary(max)}`
+    if (min != null) return formatSalary(min)
+    if (max != null) return formatSalary(max)
     return null
   })()
 
