@@ -106,6 +106,7 @@ rich-toolkit==0.20.1
 rsa==4.9.1
 ruff==0.4.4
 s3transfer==0.10.4
+sentry-sdk[fastapi]==2.19.2
 setuptools==82.0.1
 shellingham==1.5.4
 six==1.17.0

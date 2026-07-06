@@ -8,6 +8,7 @@ shutdown (engine disposal).
 import logging
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 import redis.asyncio as aioredis
 import spacy
 from fastapi import FastAPI
@@ -21,6 +22,16 @@ from sqlalchemy import text
 import app.core.model_registry  # noqa: F401
 from app.core.config import settings
 from app.core.database import engine
+
+# Initialise Sentry before anything else
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        release=settings.app_version,
+        traces_sample_rate=0.2,
+        profiles_sample_rate=0.1,
+    )
 from app.core.exception_handler import (
     handle_generic_exception,
     handle_http_exception,

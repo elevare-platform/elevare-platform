@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str | None = None
 
+    # Sentry
+    sentry_dsn: str | None = None
+
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
         """Refuse to start in production with insecure default values."""

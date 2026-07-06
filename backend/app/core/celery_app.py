@@ -7,11 +7,23 @@ default task execution policies (timeouts, serialization, etc.).
 
 import logging
 
+import sentry_sdk
 from celery import Celery
+from sentry_sdk.integrations.celery import CeleryIntegration
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Initialise Sentry for Celery workers
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        release=settings.app_version,
+        integrations=[CeleryIntegration()],
+        traces_sample_rate=0.2,
+    )
 
 def _redis_url_with_ssl(url: str) -> str:
     """Append ssl_cert_reqs=CERT_NONE for rediss:// URLs (required by Celery)."""

@@ -8,9 +8,9 @@ export function cn(...inputs) {
 }
 
 // formatSalary formats a NGN salary integer into a human-readable string.
-// ≥ 1,000,000 → ₦X.XM (e.g. ₦1.2M)
-// ≥ 1,000     → ₦Xk   (e.g. ₦500k)
-// < 1,000     → ₦X    (e.g. ₦800)
+// ≥ 1,000,000 → ₦X.XM  (e.g. ₦1.2M)
+// ≥ 1,000     → ₦X,XXX (e.g. ₦200,000)
+// < 1,000     → ₦X     (e.g. ₦800)
 // null/undefined → ''
 // timeAgo returns a human-readable relative time string (e.g. "3 days ago").
 // Returns null when the input is null/undefined.
@@ -39,10 +39,5 @@ export function formatSalary(value) {
     const formatted = Number.isInteger(m) ? `${m}` : `${parseFloat(m.toFixed(1))}`
     return `₦${formatted}M`
   }
-  if (value >= 1_000) {
-    const k = value / 1_000
-    const formatted = Number.isInteger(k) ? `${k}` : `${parseFloat(k.toFixed(1))}`
-    return `₦${formatted}k`
-  }
-  return `₦${value}`
+  return `₦${value.toLocaleString('en-NG')}`
 }
