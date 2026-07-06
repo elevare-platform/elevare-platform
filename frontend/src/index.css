@@ -48,6 +48,11 @@ h1, h2, h3, .font-heading {
   font-family: var(--font-heading);
 }
 
+/* Allow font-sans utility to override the heading rule above — used on job titles */
+h1.font-sans, h2.font-sans, h3.font-sans, .font-sans {
+  font-family: var(--font-sans) !important;
+}
+
 /* Spacing and weight adjustments for heading style readability */
 h1 {
   font-weight: 700;

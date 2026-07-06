@@ -76,7 +76,7 @@ function OpportunityCard({ job }) {
       </div>
 
       {/* Role title — Requirement 9.2 */}
-      <h3 className="text-sm font-semibold text-text leading-snug line-clamp-2">
+      <h3 className="text-sm font-semibold text-text leading-snug line-clamp-2 font-sans">
         {job.title}
       </h3>
 

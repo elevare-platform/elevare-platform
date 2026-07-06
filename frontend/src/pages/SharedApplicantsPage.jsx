@@ -146,7 +146,7 @@ export default function SharedApplicantsPage() {
         {/* Header */}
         <div className="space-y-1">
           <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Shared applicant list</p>
-          <h1 className="text-2xl font-bold text-text">{data?.job_title}</h1>
+          <h1 className="text-2xl font-bold text-text font-sans">{data?.job_title}</h1>
           {expiryDate && (
             <p className="text-xs text-text-muted">This link expires on {expiryDate}</p>
           )}
