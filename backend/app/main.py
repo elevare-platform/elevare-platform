@@ -54,6 +54,9 @@ from app.modules.jobs.access_token_router import router as access_token_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.sitemaps.router import router as sitemap_router
 from app.modules.talent_pool.router import router as talent_pool_router
+from app.modules.testimonials.router import router as testimonials_router
+from app.modules.testimonials.router import router as testimonials_router
+
 
 logger = logging.getLogger(__name__)
 
@@ -145,11 +148,17 @@ app.add_exception_handler(Exception, handle_generic_exception)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-@app.get("/health", tags=["system"], methods=["GET", "HEAD"])
-async def health_check() -> dict:
-    """Return a simple liveness payload."""
-    return {"status": "ok", "version": settings.app_version, "environment": settings.environment}
-
+@app.api_route(
+    "/health",
+    methods=["GET", "HEAD"],
+    tags=["system"],
+)
+async def health_check():
+    return {
+        "status": "ok",
+        "version": settings.app_version,
+        "environment": settings.environment,
+    }
 
 # ---- Routers ----
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
@@ -164,3 +173,6 @@ app.include_router(app_router, prefix="/api/v1/applications", tags=["application
 app.include_router(contact_router, prefix="/api/v1/contact", tags=["contact"])
 app.include_router(sitemap_router, prefix="", tags=["Sitemap"])
 app.include_router(talent_pool_router, prefix="/api/v1/talent-pool", tags=["talent-pool"])
+app.include_router(testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"])
+app.include_router(testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"])
+

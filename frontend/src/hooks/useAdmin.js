@@ -55,6 +55,13 @@ export function useAdmin() {
   const getCvUrl = (cvId) =>
     request(() => api.get(`/api/v1/candidates/cv/${cvId}/download`).then((r) => r.data))
 
+  // Testimonials
+  const listTestimonials = (params) =>
+    request(() => api.get('/api/v1/admin/testimonials', { params }).then((r) => r.data))
+
+  const moderateTestimonial = (id, status) =>
+    request(() => api.patch(`/api/v1/admin/testimonials/${id}`, { status }).then((r) => r.data))
+
   return {
     loading,
     error,
@@ -68,5 +75,7 @@ export function useAdmin() {
     getStats,
     listAuditLog,
     getCvUrl,
+    listTestimonials,
+    moderateTestimonial,
   }
 }

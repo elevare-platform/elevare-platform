@@ -27,6 +27,7 @@ from app.modules.candidates.models import (
 from app.modules.contact.models import ContactSubmission
 from app.modules.jobs.models import Job, JobAccessTokens
 from app.modules.talent_pool.models import TalentPoolProfiles
+from app.modules.testimonials.models import Testimonial
 from app.modules.users.models import EmployerProfile, User, UserProfile
 
 __all__ = [
@@ -50,4 +51,5 @@ __all__ = [
     "ContactSubmission",
     "ParsedCVSubmission",
     "CVParsingCost",
+    "Testimonial",
 ]

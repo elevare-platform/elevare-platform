@@ -48,6 +48,8 @@ const AdminJobsPage = lazy(() => import('@/pages/admin/AdminJobsPage'))
 const AdminApplicationsPage = lazy(() => import('@/pages/admin/AdminApplicationsPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/admin/AdminAuditLogPage'))
 const AdminCVParserPage = lazy(() => import('@/pages/admin/AdminCVParserPage'))
+const AdminTestimonialsPage = lazy(() => import('@/pages/admin/AdminTestimonialsPage'))
+const TestimonialSubmitPage = lazy(() => import('@/pages/TestimonialSubmitPage'))
 
 const CandidateDashboardPage = lazy(() => import('@/pages/candidate/CandidateDashboardPage'))
 const CandidateProfilePage = lazy(() => import('@/pages/candidate/CandidateProfilePage'))
@@ -95,6 +97,7 @@ function AppRoutes() {
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/contact" element={<ContactPage />} />
+        <Route path="/testimonials/submit" element={<TestimonialSubmitPage />} />
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -133,6 +136,7 @@ function AppRoutes() {
           <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
           <Route path="/admin/cv-parser" element={<AdminCVParserPage />} />
           <Route path="/admin/talent-pool" element={<TalentPoolPage />} />
+          <Route path="/admin/testimonials" element={<AdminTestimonialsPage />} />
         </Route>
 
         {/* Candidate-only routes */}
