@@ -145,7 +145,7 @@ app.add_exception_handler(Exception, handle_generic_exception)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-@app.get("/health", tags=["system"])
+@app.get("/health", tags=["system"], methods=["GET", "HEAD"])
 async def health_check() -> dict:
     """Return a simple liveness payload."""
     return {"status": "ok", "version": settings.app_version, "environment": settings.environment}
