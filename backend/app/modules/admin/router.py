@@ -21,6 +21,10 @@ from .schemas import (
     UserStatusUpdateRequest,
 )
 from .service import AdminService
+from app.modules.testimonials.enums import TestimonialStatus
+from app.modules.testimonials.schemas import TestimonialAdminRead, TestimonialModerationRequest
+from app.modules.testimonials.service import TestimonialService
+from app.core.storage import get_storage_service, StorageService
 
 router = APIRouter()
 
@@ -290,3 +294,35 @@ async def list_audit_log(
     """Get audit log entries."""
     service = AdminService(db)
     return await service.list_audit_log(cursor=cursor, limit=limit)
+
+
+# ---------------------------------------------------------------------------
+# Testimonials
+# ---------------------------------------------------------------------------
+
+def get_testimonial_service(
+    db: AsyncSession = Depends(get_db),
+    storage_service: StorageService = Depends(get_storage_service),
+) -> TestimonialService:
+    return TestimonialService(db, storage_service)
+
+
+@router.get("/testimonials", response_model=list[TestimonialAdminRead], status_code=200)
+async def admin_list_testimonials(
+    status: TestimonialStatus | None = Query(default=None),
+    admin_user: User = Depends(require_role("ADMIN")),
+    service: TestimonialService = Depends(get_testimonial_service),
+) -> list[TestimonialAdminRead]:
+    """List all testimonials. Filter by status using ?status=pending|approved|rejected."""
+    return await service.admin_list_testimonials(status)
+
+
+@router.patch("/testimonials/{testimonial_id}", response_model=TestimonialAdminRead, status_code=200)
+async def moderate_testimonial(
+    testimonial_id: UUID = Path(...),
+    data: TestimonialModerationRequest = ...,
+    admin_user: User = Depends(require_role("ADMIN")),
+    service: TestimonialService = Depends(get_testimonial_service),
+) -> TestimonialAdminRead:
+    """Approve, reject, or reset a testimonial back to pending."""
+    return await service.moderate_testimonial(testimonial_id, data)
