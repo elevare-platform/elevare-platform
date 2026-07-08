@@ -40,7 +40,9 @@ class AdminRepository:
         limit: int = 20,
     ) -> dict:
         """Return a paginated cursor result of users with optional filters."""
-        stmt = select(User)
+        stmt = select(User).options(
+            selectinload(User.employer_profile),
+        )
         if role:
             stmt = stmt.where(User.role == role)
         if status:
