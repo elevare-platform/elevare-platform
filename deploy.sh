@@ -19,7 +19,7 @@ echo "→ Running migrations..."
 docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 
 echo "→ Waiting for API to be ready..."
-sleep 5
+sleep 10
 
 echo "→ Health check..."
 curl -f http://127.0.0.1:8080/health || (echo "❌ Health check failed" && exit 1)
