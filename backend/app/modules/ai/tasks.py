@@ -170,7 +170,7 @@ async def _run_pipeline_async(
             await engine.dispose()
             # aclose() is the correct async close method for AsyncAnthropic
             try:
-                await ai_service._client.aclose()
+                await ai_service._client.close()
             except Exception:
                 pass
 
@@ -329,7 +329,7 @@ async def _score_application_async(application_id_str: str) -> None:
                 )
             finally:
                 # Close before the session/engine tears down so the loop is still alive
-                await ai_service._client.aclose()
+                await ai_service._client.close()
 
             await app_repo.update(application_id, {
                 "ai_score": det_score,
@@ -526,7 +526,7 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                 )
             finally:
                 # Close before the session/engine tears down so the loop is still alive
-                await ai_service._client.aclose()
+                await ai_service._client.close()
 
             await talent_pool_repo.update(profile_id, {
                 "ai_score": det_score,
