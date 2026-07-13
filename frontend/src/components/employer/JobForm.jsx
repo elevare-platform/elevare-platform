@@ -18,7 +18,7 @@ const jobSchema = z
     key_responsibilities: z.string().min(10, 'Key Responsibilities must be at least 10 characters'),
     requirements: z.string().min(10, 'Requirements must be at least 10 characters'),
     preferred_certifications: z.string().optional().or(z.literal('')),
-    technical_competencies: z.string().min(10, 'Technical Competencies must be at least 10 characters'),
+    technical_competencies: z.string().min(10, 'Technical Competencies must be at least 10 characters').optional().or(z.literal('')),
     what_we_offer: z.string().optional().or(z.literal('')),
     location: z.string().min(1, 'Location is required'),
     contract_type: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT', 'FREELANCE', 'INTERNSHIP'], {
@@ -198,6 +198,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
     if (cleaned.work_model === '') cleaned.work_model = null
     if (cleaned.application_deadline === '') cleaned.application_deadline = null
     if (cleaned.preferred_certifications === '') cleaned.preferred_certifications = null
+    if (cleaned.technical_competencies === '') cleaned.technical_competencies = null
     if (cleaned.what_we_offer === '') cleaned.what_we_offer = null
     if (draftKey) { try { localStorage.removeItem(draftKey) } catch { /* ignore */ } }
     onSubmit(cleaned)
@@ -280,7 +281,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
       {/* Technical Competencies */}
       <FormField>
         <Label htmlFor="technical_competencies">
-          Technical Competencies <span className="text-red-500">*</span>
+          Technical Competencies <span className="text-text-muted text-xs">(optional)</span>
         </Label>
         <textarea
           id="technical_competencies"
