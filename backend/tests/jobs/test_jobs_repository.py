@@ -155,13 +155,19 @@ async def test_list_active_filters_by_work_model(db_session):
     db_session.add(employer)
     await db_session.flush()
 
-    remote = make_job(employer.id, work_model=WorkModel.REMOTE.value, title="Remote Job")
-    onsite = make_job(employer.id, work_model=WorkModel.ONSITE.value, title="Onsite Job")
+    remote = make_job(
+        employer.id, work_model=WorkModel.REMOTE.value, title="Remote Job"
+    )
+    onsite = make_job(
+        employer.id, work_model=WorkModel.ONSITE.value, title="Onsite Job"
+    )
     db_session.add_all([remote, onsite])
     await db_session.flush()
 
     repo = JobRepository(db_session)
-    result = await repo.list_active(JobFilterParams(work_model=WorkModel.REMOTE), limit=20)
+    result = await repo.list_active(
+        JobFilterParams(work_model=WorkModel.REMOTE), limit=20
+    )
 
     titles = [j.title for j in result["items"]]
     assert "Remote Job" in titles

@@ -333,15 +333,15 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
 
   const posted = timeAgo(job.created_at)
 
-  // Prefer server-provided required_skills, fall back to extraction
+  // Prefer server-provided required_skills, fall back to extraction from available text
+  const descText = job.about_the_role || job.description || ''
   const skills = (job.required_skills?.length > 0)
     ? job.required_skills.slice(0, 4)
-    : extractSkills(job.description)
+    : extractSkills(descText)
 
-  const descPreview = job.description
-    ? job.description.length > 110
-      ? job.description.slice(0, 110).trimEnd() + '…'
-      : job.description
+  // Preview: use about_the_role for new jobs, description for old
+  const descPreview = descText
+    ? descText.length > 110 ? descText.slice(0, 110).trimEnd() + '…' : descText
     : null
 
   const seniorityLabel = job.seniority_level ? SENIORITY_LABELS[job.seniority_level] : null

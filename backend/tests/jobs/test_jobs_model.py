@@ -38,7 +38,9 @@ async def test_job_stores_salary_as_decimal(db_session):
     db_session.add(employer)
     await db_session.flush()
 
-    job = make_job(employer.id, salary_min=Decimal("500000.00"), salary_max=Decimal("900000.00"))
+    job = make_job(
+        employer.id, salary_min=Decimal("500000.00"), salary_max=Decimal("900000.00")
+    )
     db_session.add(job)
     await db_session.flush()
     await db_session.refresh(job)

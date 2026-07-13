@@ -1,4 +1,5 @@
 """Claude prompts and schema for structured CV data extraction."""
+
 import json
 
 CV_EXTRACTION_SYSTEM_PROMPT = """

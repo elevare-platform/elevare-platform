@@ -16,7 +16,9 @@ def make_lang_result(lang, prob):
 def test_english_cv_detected_correctly(mock_detect):
     mock_detect.return_value = [make_lang_result("en", 0.95)]
 
-    result = language_detection("This is an English CV with lots of professional experience.")
+    result = language_detection(
+        "This is an English CV with lots of professional experience."
+    )
 
     assert result.language == "en"
     assert result.is_english is True
@@ -49,6 +51,7 @@ def test_low_confidence_detection_flagged(mock_detect):
 @patch("app.core.cv_pipeline.layer2_language.detect_langs")
 def test_detection_failure_returns_safe_default(mock_detect):
     from langdetect import LangDetectException
+
     mock_detect.side_effect = LangDetectException(0, "no features")
 
     result = language_detection("x")

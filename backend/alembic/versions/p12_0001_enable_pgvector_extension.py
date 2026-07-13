@@ -5,12 +5,13 @@ Revises: e046b6082572
 Create Date: 2026-06-30
 
 """
+
 from typing import Union
 
 from alembic import op
 
-revision: str = 'p12_0001'
-down_revision: Union[str, None] = 'e046b6082572'
+revision: str = "p12_0001"
+down_revision: Union[str, None] = "e046b6082572"
 branch_labels = None
 depends_on = None
 

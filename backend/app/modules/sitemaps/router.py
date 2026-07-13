@@ -1,4 +1,5 @@
 """HTTP endpoints for sitemap.xml and robots.txt."""
+
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response

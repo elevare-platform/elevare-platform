@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Upload, X, FileText, RefreshCw, ChevronDown, UserPlus,
   Briefcase, Zap, Users, TrendingUp, Search, Filter,
@@ -15,7 +16,7 @@ import api from '@/lib/api'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const SOURCES = ['email', 'referral', 'linkedin', 'other']
+const SOURCES = ['email', 'gmail_import', 'referral', 'linkedin', 'other']
 const STATUSES = ['new', 'shortlisted', 'promoted_pending', 'promoted', 'archived']
 
 const STATUS_CONFIG = {
@@ -27,7 +28,11 @@ const STATUS_CONFIG = {
 }
 
 const SOURCE_ICONS = {
-  email: '📧', referral: '🤝', linkedin: '💼', other: '📎',
+  email: '📧', gmail_import: '📨', referral: '🤝', linkedin: '💼', other: '📎',
+}
+
+const SOURCE_LABELS = {
+  email: 'Email', gmail_import: 'Gmail', referral: 'Referral', linkedin: 'LinkedIn', other: 'Other',
 }
 
 function scoreColor(score) {
@@ -433,12 +438,14 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
               {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
             </p>
             <span className="text-xs text-text-muted capitalize flex items-center gap-1">
-              {SOURCE_ICONS[profile.source]} {profile.source}
+              {SOURCE_ICONS[profile.source] ?? '📎'} {SOURCE_LABELS[profile.source] ?? profile.source}
             </span>
           </div>
           <p className="text-xs text-text-muted mt-0.5">
             {[profile.candidate_current_title, profile.candidate_email].filter(Boolean).join(' · ') ||
-              `Added ${new Date(profile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+              (profile.source_note
+                ? profile.source_note.replace(/Gmail import — /, '').replace(/ · message .+$/, '')
+                : `Added ${new Date(profile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`)
             }
           </p>
         </div>
@@ -540,9 +547,12 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
           {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
         </p>
         <p className="text-xs text-text-muted flex items-center gap-1.5 mt-0.5">
-          <span>{SOURCE_ICONS[profile.source]}</span>
-          <span className="capitalize">{profile.source}</span>
+          <span>{SOURCE_ICONS[profile.source] ?? '📎'}</span>
+          <span className="capitalize">{SOURCE_LABELS[profile.source] ?? profile.source}</span>
           {profile.candidate_current_title && <><span className="text-border">·</span><span>{profile.candidate_current_title}</span></>}
+          {!profile.candidate_current_title && profile.source_note && (
+            <><span className="text-border">·</span><span className="truncate max-w-[140px]">{profile.source_note.replace(/Gmail import — /, '').replace(/ · message .+$/, '')}</span></>
+          )}
         </p>
       </div>
 
@@ -681,16 +691,17 @@ export default function TalentPoolPage() {
   const { user } = useAuth()
   const { show, ToastContainer } = useToast()
   const isAdmin = user?.role === 'ADMIN'
+  const [searchParams] = useSearchParams()
 
   const [profiles, setProfiles] = useState([])
   const [cursor, setCursor] = useState(null)
   const [loading, setLoading] = useState(true)
   const [jobs, setJobs] = useState([])
 
-  // Filters
-  const [activeJob, setActiveJob] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [sourceFilter, setSourceFilter] = useState('')
+  // Filters — seed from URL params so external links can pre-filter
+  const [activeJob, setActiveJob] = useState(() => searchParams.get('job_id') ?? '')
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') ?? '')
+  const [sourceFilter, setSourceFilter] = useState(() => searchParams.get('source') ?? '')
   const [search, setSearch] = useState('')
 
   // UI state
@@ -840,7 +851,7 @@ export default function TalentPoolPage() {
               <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
                 className="text-sm rounded-lg border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-blue">
                 <option value="">All sources</option>
-                {SOURCES.map(s => <option key={s} value={s}>{SOURCE_ICONS[s]} {s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                {SOURCES.map(s => <option key={s} value={s}>{SOURCE_ICONS[s]} {SOURCE_LABELS[s] ?? s}</option>)}
               </select>
               <button onClick={() => loadProfiles(true)} aria-label="Refresh"
                 className="p-2 rounded-lg border border-border text-text-muted hover:bg-white hover:text-text transition-colors">

@@ -1,4 +1,5 @@
 """HTTP endpoints for the auth module."""
+
 import logging
 
 from fastapi import APIRouter, Cookie, Depends, Request, Response
@@ -93,7 +94,9 @@ async def verify_email(
     return await AuthService(db).verify_email(token)
 
 
-@router.post("/resend-verification-email", status_code=200, response_model=MessageResponse)
+@router.post(
+    "/resend-verification-email", status_code=200, response_model=MessageResponse
+)
 @limiter.limit("3/minute")
 async def resend_verification_email(
     request: Request,

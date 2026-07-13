@@ -45,6 +45,7 @@ from app.modules.users.repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
+
 class AuthService:
     """Handles registration, login, token refresh, and logout business logic."""
 
@@ -71,7 +72,9 @@ class AuthService:
                 # to avoid triggering async lazy-load outside a coroutine.
                 try:
                     profile = user.__dict__.get("employer_profile")
-                    is_profile_complete = profile.is_profile_complete if profile else False
+                    is_profile_complete = (
+                        profile.is_profile_complete if profile else False
+                    )
                 except Exception:
                     is_profile_complete = False
 
@@ -111,15 +114,17 @@ class AuthService:
             raise AlreadyExistsException(message="Phone number already exist")
 
         # Hash password and build user data — account starts as PENDING_VERIFICATION
-        user = await self._user_repo.create_user({
-            "first_name": data.first_name,
-            "last_name": data.last_name,
-            "email": data.email,
-            "phone_number": data.phone_number,
-            "password_hash": hash_password(data.password),
-            "role": data.role.value,
-            "cv_sharing_consent": data.cv_sharing_consent,
-        })
+        user = await self._user_repo.create_user(
+            {
+                "first_name": data.first_name,
+                "last_name": data.last_name,
+                "email": data.email,
+                "phone_number": data.phone_number,
+                "password_hash": hash_password(data.password),
+                "role": data.role.value,
+                "cv_sharing_consent": data.cv_sharing_consent,
+            }
+        )
 
         logger.info(f"User registered successfully with email: {user.email}")
 
@@ -131,6 +136,7 @@ class AuthService:
         from app.modules.applications.tasks import (
             send_verification_email as send_verification_email_task,
         )
+
         send_verification_email_task.delay(verification_token, user.email, next_url)
 
         token_pair = create_token_pair(user.id, user.role)
@@ -189,10 +195,7 @@ class AuthService:
 
         user.last_login_at = datetime.now(UTC)
 
-        token_pair = create_token_pair(
-            user.id,
-            user.role
-        )
+        token_pair = create_token_pair(user.id, user.role)
 
         # set cookie
         response.set_cookie(
@@ -214,7 +217,10 @@ class AuthService:
         await self._db.commit()
 
         return AuthResponse(
-            user=self._build_user_response(user, employer_profile=getattr(user, '__dict__', {}).get('employer_profile')),
+            user=self._build_user_response(
+                user,
+                employer_profile=getattr(user, "__dict__", {}).get("employer_profile"),
+            ),
             access_token=token_pair["access_token"],
             token_type=token_pair["token_type"],
         )
@@ -249,16 +255,17 @@ class AuthService:
         if not user:
             raise TokenInvalidException()
 
-        new_access_token = _create_access_token({
-            "sub": payload.sub,
-            "role": payload.role,
-        })
+        new_access_token = _create_access_token(
+            {
+                "sub": payload.sub,
+                "role": payload.role,
+            }
+        )
 
         return {
             "access_token": new_access_token,
             "token_type": "bearer",
         }
-
 
     async def revoke_refresh_token(self, token: str) -> None:
         """Revoke a refresh token, effectively logging the user out.
@@ -294,7 +301,8 @@ class AuthService:
         await self._auth_repo.create_verification_token(
             user_id,
             hashed_token,
-            datetime.now(UTC) + timedelta(hours=settings.email_verification_token_expiry),
+            datetime.now(UTC)
+            + timedelta(hours=settings.email_verification_token_expiry),
         )
         await self._db.commit()
         return raw_token
@@ -342,7 +350,9 @@ class AuthService:
         """
         user = await self._user_repo.get_user_by_email(email)
         if user:
-            raise AlreadyExistsException(message="A user with this email already exists")
+            raise AlreadyExistsException(
+                message="A user with this email already exists"
+            )
 
         raw_token = generate_token()
         hashed_token = hash_token(raw_token)
@@ -417,17 +427,19 @@ class AuthService:
         # register user
         logger.info(f"Registering {invite.email} as {invite.role}")
 
-        user = await self._user_repo.create_user({
-            "first_name": data.first_name,
-            "last_name": data.last_name,
-            "email": invite.email,
-            "phone_number": data.phone_number,
-            "password_hash": hash_password(data.password),
-            "role": invite.role,
-            "account_status": AccountStatus.ACTIVE.value,
-            "email_verified": True,
-            "email_verified_at": datetime.now(UTC),
-        })
+        user = await self._user_repo.create_user(
+            {
+                "first_name": data.first_name,
+                "last_name": data.last_name,
+                "email": invite.email,
+                "phone_number": data.phone_number,
+                "password_hash": hash_password(data.password),
+                "role": invite.role,
+                "account_status": AccountStatus.ACTIVE.value,
+                "email_verified": True,
+                "email_verified_at": datetime.now(UTC),
+            }
+        )
 
         logger.info("Client successfully registered with invite")
 

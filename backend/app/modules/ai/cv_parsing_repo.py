@@ -1,4 +1,5 @@
 """Data-access layer for CV parsing submissions."""
+
 import uuid
 
 from sqlalchemy import func, select
@@ -65,12 +66,22 @@ class CVParsingRepo:
         self,
         cv_text_hash: str,
     ) -> ParsedCVSubmission | None:
-        """Return the most recent submission for a given hash that has an r2_key set, or None."""
+        """Return the most recent successfully parsed submission for a given hash, or None.
+
+        Only matches COMPLETED or FLAGGED submissions — failed or pending ones
+        should not block a re-parse attempt.
+        """
         stmt = (
             select(ParsedCVSubmission)
             .where(
                 ParsedCVSubmission.cv_text_hash == cv_text_hash,
                 ParsedCVSubmission.r2_key.is_not(None),
+                ParsedCVSubmission.parse_status.in_(
+                    [
+                        CVParsingStatus.COMPLETED.value,
+                        CVParsingStatus.FLAGGED.value,
+                    ]
+                ),
             )
             .order_by(ParsedCVSubmission.created_at.desc())
             .limit(1)

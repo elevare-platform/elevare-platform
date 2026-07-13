@@ -46,44 +46,39 @@ class Job(BaseModel):
     __tablename__ = "jobs"
 
     __table_args__ = (
-        Index('ix_job_status_created_at', 'status', 'created_at'),
-        Index('ix_jobs_employer_id', 'employer_id'),
+        Index("ix_job_status_created_at", "status", "created_at"),
+        Index("ix_jobs_employer_id", "employer_id"),
         Index("ix_jobs_work_model", "work_model"),
         Index("ix_jobs_location", "location"),
     )
 
     employer_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     title: Mapped[str] = mapped_column(String(150), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Legacy field — kept nullable for existing jobs. New jobs use the structured fields below.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Structured description fields (new jobs)
+    about_the_role: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_responsibilities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preferred_certifications: Mapped[str | None] = mapped_column(Text, nullable=True)
+    technical_competencies: Mapped[str | None] = mapped_column(Text, nullable=True)
+    what_we_offer: Mapped[str | None] = mapped_column(Text, nullable=True)
     salary_min: Mapped[Decimal] = mapped_column(
-        Numeric(precision=12, scale=2),
-        nullable=True
+        Numeric(precision=12, scale=2), nullable=True
     )
     salary_max: Mapped[Decimal] = mapped_column(
-        Numeric(precision=12, scale=2),
-        nullable=True
+        Numeric(precision=12, scale=2), nullable=True
     )
     status: Mapped[JobStatus] = mapped_column(
-        String(20),
-        default=JobStatus.DRAFT,
-        nullable=False
+        String(20), default=JobStatus.DRAFT, nullable=False
     )
-    work_model: Mapped[WorkModel] = mapped_column(
-        String(20),
-        nullable=True
-    )
-    contract_type: Mapped[ContractType] = mapped_column(
-        String(20),
-        nullable=False
-    )
-    location: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False
-    )
+    work_model: Mapped[WorkModel] = mapped_column(String(20), nullable=True)
+    contract_type: Mapped[ContractType] = mapped_column(String(20), nullable=False)
+    location: Mapped[str] = mapped_column(String(255), nullable=False)
 
     work_location: Mapped[WorkLocation] = mapped_column(
         String(20),
@@ -93,15 +88,21 @@ class Job(BaseModel):
         index=True,
     )
     application_deadline: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        index=True
+        DateTime(timezone=True), nullable=True, index=True
     )
 
-    required_skills: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-    seniority_level: Mapped[SeniorityLevel | None] = mapped_column(String(20), nullable=True)
-    openings_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
-    required_years_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    required_skills: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+    seniority_level: Mapped[SeniorityLevel | None] = mapped_column(
+        String(20), nullable=True
+    )
+    openings_count: Mapped[int] = mapped_column(
+        Integer, default=1, nullable=False, server_default="1"
+    )
+    required_years_experience: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
 
     moderation_status: Mapped[ModerationStatus] = mapped_column(
         String(20),
@@ -110,11 +111,13 @@ class Job(BaseModel):
         default=ModerationStatus.PENDING.value,
     )
 
-    job_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    job_embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(1536), nullable=True
+    )
     embedding_source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    embedding_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
+    embedding_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # relationship
     employer: Mapped[User] = relationship(
@@ -123,16 +126,13 @@ class Job(BaseModel):
         foreign_keys=[employer_id],
     )
     applications: Mapped[list[Application]] = relationship(
-        "Application",
-        back_populates="job"
+        "Application", back_populates="job"
     )
     talent_pool_job: Mapped[list[TalentPoolProfiles]] = relationship(
-        "TalentPoolProfiles",
-        back_populates="sourced_for_job"
+        "TalentPoolProfiles", back_populates="sourced_for_job"
     )
     job_access_tokens: Mapped[list[JobAccessTokens]] = relationship(
-        "JobAccessTokens",
-        back_populates="job"
+        "JobAccessTokens", back_populates="job"
     )
 
 
@@ -148,7 +148,9 @@ class JobAccessTokens(BaseModel):
     )
     job_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("jobs.id", ondelete="CASCADE"),  # token is meaningless without its job
+        ForeignKey(
+            "jobs.id", ondelete="CASCADE"
+        ),  # token is meaningless without its job
         nullable=False,
     )
     created_by_id: Mapped[uuid.UUID] = mapped_column(
@@ -157,9 +159,7 @@ class JobAccessTokens(BaseModel):
         nullable=False,
     )
     disclose_names: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False,
-        server_default=sa.false()
+        Boolean, default=False, server_default=sa.false()
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -167,9 +167,7 @@ class JobAccessTokens(BaseModel):
         index=True,
     )
     is_active: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True,
-        server_default=sa.true()
+        Boolean, default=True, server_default=sa.true()
     )
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -183,20 +181,14 @@ class JobAccessTokens(BaseModel):
     )
 
     # Relationships
-    job: Mapped[Job] = relationship(
-        "Job",
-        back_populates="job_access_tokens"
-    )
+    job: Mapped[Job] = relationship("Job", back_populates="job_access_tokens")
     created_by: Mapped[User] = relationship(
         "User",
         foreign_keys=[created_by_id],
-        back_populates="job_access_tokens_created_by"
+        back_populates="job_access_tokens_created_by",
     )
     revoked_by: Mapped[User] = relationship(
         "User",
         foreign_keys=[revoked_by_id],
-        back_populates="job_access_tokens_revoked_by"
+        back_populates="job_access_tokens_revoked_by",
     )
-
-
-

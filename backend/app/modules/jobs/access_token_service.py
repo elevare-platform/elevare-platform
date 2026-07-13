@@ -1,4 +1,5 @@
 """Service layer for job access tokens and public applicant views."""
+
 import logging
 import secrets
 import uuid
@@ -38,7 +39,8 @@ class AccessTokenService:
         self._app_repo = ApplicationRepository(db)
 
     async def create_access_token(
-        self, job_id: uuid.UUID,
+        self,
+        job_id: uuid.UUID,
         data: CreateAccessTokenRequest,
         current_user: User,
     ) -> AccessTokenResponse:
@@ -54,7 +56,10 @@ class AccessTokenService:
             raise JobNotFoundError()
 
         # Only the job's employer or an admin can generate a token
-        if current_user.role != UserRole.ADMIN.value and current_user.id != job.employer_id:
+        if (
+            current_user.role != UserRole.ADMIN.value
+            and current_user.id != job.employer_id
+        ):
             raise PermissionDeniedException("You do not own this job")
 
         token = await self._repo.create(
@@ -68,9 +73,7 @@ class AccessTokenService:
         )
 
         await self._db.commit()
-        return AccessTokenResponse.model_validate(
-            token
-        )
+        return AccessTokenResponse.model_validate(token)
 
     async def get_all_access_tokens(
         self,
@@ -89,7 +92,10 @@ class AccessTokenService:
             raise JobNotFoundError()
 
         # Only the job's employer or an admin can view tokens
-        if current_user.role != UserRole.ADMIN.value and current_user.id != job.employer_id:
+        if (
+            current_user.role != UserRole.ADMIN.value
+            and current_user.id != job.employer_id
+        ):
             raise PermissionDeniedException("You do not own this job")
 
         tokens = await self._repo.get_all_by_job(job_id)
@@ -114,7 +120,10 @@ class AccessTokenService:
             raise JobNotFoundError()
 
         # Only the job's employer or an admin can delete a token
-        if current_user.role != UserRole.ADMIN.value and current_user.id != job.employer_id:
+        if (
+            current_user.role != UserRole.ADMIN.value
+            and current_user.id != job.employer_id
+        ):
             raise PermissionDeniedException("You do not own this job")
 
         token = await self._repo.get_by_id(token_id)
@@ -141,7 +150,10 @@ class AccessTokenService:
 
         job = await self._job_repo.get_by_id(token.job_id)
 
-        if current_user.role != UserRole.ADMIN.value and job.employer_id != current_user.id:
+        if (
+            current_user.role != UserRole.ADMIN.value
+            and job.employer_id != current_user.id
+        ):
             raise PermissionDeniedException("You do not own this job")
 
         token = await self._repo.revoke(token_id, current_user.id)
@@ -197,16 +209,18 @@ class AccessTokenService:
                 summary = (cv.submission.parsed_data or {}).get("summary") or ""
                 cv_snippet = summary[:200] if summary else None
 
-            combined.append(PublicApplicantsItem(
-                initials=initials,
-                full_name=full_name,
-                ai_score=application.ai_score,
-                ai_fit_summary=application.ai_fit_summary,
-                ai_strengths=application.ai_strengths,
-                ai_weaknesses=application.ai_weaknesses,
-                cv_snippet=cv_snippet,
-                source="applicant",
-            ))
+            combined.append(
+                PublicApplicantsItem(
+                    initials=initials,
+                    full_name=full_name,
+                    ai_score=application.ai_score,
+                    ai_fit_summary=application.ai_fit_summary,
+                    ai_strengths=application.ai_strengths,
+                    ai_weaknesses=application.ai_weaknesses,
+                    cv_snippet=cv_snippet,
+                    source="applicant",
+                )
+            )
 
         # ── 2. External talent pool profiles scored against this job ────────
         from sqlalchemy import select
@@ -225,17 +239,19 @@ class AccessTokenService:
         for profile in pool_profiles:
             parsed_data = {}
             if profile.parsed_submission_id:
-                submission = await ai_repo.get_submission_by_id(profile.parsed_submission_id)
+                submission = await ai_repo.get_submission_by_id(
+                    profile.parsed_submission_id
+                )
                 if submission and submission.parsed_data:
                     parsed_data = submission.parsed_data
 
             full_name_raw = parsed_data.get("full_name") or (
-                f"{parsed_data.get('first_name', '')} {parsed_data.get('last_name', '')}".strip() or None
+                f"{parsed_data.get('first_name', '')} {parsed_data.get('last_name', '')}".strip()
+                or None
             )
             # Initials from parsed name, fall back to "EX" (external)
             initials = (
-                "".join(w[0].upper() for w in (full_name_raw or "").split()[:2])
-                or "EX"
+                "".join(w[0].upper() for w in (full_name_raw or "").split()[:2]) or "EX"
             )
             # External CVs: always initials-only on shared links.
             # These candidates have no relationship with Elevare and gave no consent.
@@ -246,25 +262,24 @@ class AccessTokenService:
             summary = parsed_data.get("summary") or ""
             cv_snippet = summary[:200] if summary else None
 
-            combined.append(PublicApplicantsItem(
-                initials=initials,
-                full_name=full_name,
-                ai_score=profile.ai_score,
-                ai_fit_summary=profile.ai_fit_summary,
-                ai_strengths=profile.ai_strengths,
-                ai_weaknesses=profile.ai_weaknesses,
-                cv_snippet=cv_snippet,
-                source="external",
-            ))
+            combined.append(
+                PublicApplicantsItem(
+                    initials=initials,
+                    full_name=full_name,
+                    ai_score=profile.ai_score,
+                    ai_fit_summary=profile.ai_fit_summary,
+                    ai_strengths=profile.ai_strengths,
+                    ai_weaknesses=profile.ai_weaknesses,
+                    cv_snippet=cv_snippet,
+                    source="external",
+                )
+            )
 
         # ── 3. Merge and rank by ai_score descending, nulls last ────────────
-        combined.sort(
-            key=lambda x: (x.ai_score is None, -(x.ai_score or 0))
-        )
+        combined.sort(key=lambda x: (x.ai_score is None, -(x.ai_score or 0)))
 
         return PublicApplicantsResponse(
             job_title=job.title,
             expires_at=token.expires_at,
             applicants=combined,
         )
-

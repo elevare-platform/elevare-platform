@@ -1,4 +1,5 @@
 """Domain models (dataclasses) for the CV extraction pipeline results."""
+
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -63,4 +64,3 @@ class CVExtractionResult:
     is_scanned: bool
     ocr_used: bool
     extracted_at: datetime
-

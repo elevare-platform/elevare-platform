@@ -59,15 +59,8 @@ function Badge({ value }) {
   )
 }
 
-/**
- * Returns true iff the authenticated user is the employer who owns this job.
- */
 export function canManageJob(user, job) {
-  return (
-    user != null &&
-    user.role === 'EMPLOYER' &&
-    user.id === job.employer_id
-  )
+  return user != null && user.role === 'EMPLOYER' && user.id === job.employer_id
 }
 
 function SkeletonDetail() {
@@ -90,6 +83,18 @@ function SkeletonDetail() {
   )
 }
 
+// ─── Structured description section ──────────────────────────────────────────
+
+function DescriptionSection({ title, content }) {
+  if (!content) return null
+  return (
+    <section>
+      <h2 className="text-base font-semibold text-text mb-2">{title}</h2>
+      <div className="whitespace-pre-wrap text-sm leading-relaxed text-text-muted">{content}</div>
+    </section>
+  )
+}
+
 // ─── JobDetailPage ────────────────────────────────────────────────────────────
 
 export default function JobDetailPage() {
@@ -103,10 +108,10 @@ export default function JobDetailPage() {
   const [error, setError] = useState(null)
   const [actionError, setActionError] = useState(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-
     const fetchJob = async () => {
       setLoading(true)
       setNotFound(false)
@@ -125,7 +130,6 @@ export default function JobDetailPage() {
         if (!cancelled) setLoading(false)
       }
     }
-
     fetchJob()
     return () => { cancelled = true }
   }, [id])
@@ -156,18 +160,6 @@ export default function JobDetailPage() {
     }
   }
 
-  const salaryText = (() => {
-    const min = job?.salary_min != null ? Number(job.salary_min) : null
-    const max = job?.salary_max != null ? Number(job.salary_max) : null
-    if (min != null && max != null) return `${formatSalary(min)} – ${formatSalary(max)}`
-    if (min != null) return formatSalary(min)
-    if (max != null) return formatSalary(max)
-    return null
-  })()
-
-  const isOwner = job ? canManageJob(user, job) : false
-  const [copied, setCopied] = useState(false)
-
   const handleShare = () => {
     const url = window.location.href
     if (navigator.share) {
@@ -179,6 +171,17 @@ export default function JobDetailPage() {
       })
     }
   }
+
+  const salaryText = (() => {
+    const min = job?.salary_min != null ? Number(job.salary_min) : null
+    const max = job?.salary_max != null ? Number(job.salary_max) : null
+    if (min != null && max != null) return `${formatSalary(min)} – ${formatSalary(max)}`
+    if (min != null) return formatSalary(min)
+    if (max != null) return formatSalary(max)
+    return null
+  })()
+
+  const isOwner = job ? canManageJob(user, job) : false
 
   return (
     <>
@@ -239,14 +242,14 @@ export default function JobDetailPage() {
           {!loading && error && (
             <div className="text-center py-20">
               <p className="text-red-600 mb-4">{error}</p>
-              <Button variant="outline" onClick={() => window.location.reload()}>
-                Retry
-              </Button>
+              <Button variant="outline" onClick={() => window.location.reload()}>Retry</Button>
             </div>
           )}
 
           {!loading && job && (
             <article>
+
+              {/* Company + title header */}
               <div className="flex items-start gap-4 mb-6">
                 {job.company_logo_url ? (
                   <img
@@ -271,6 +274,7 @@ export default function JobDetailPage() {
                 </div>
               </div>
 
+              {/* Badges */}
               <div className="flex flex-wrap gap-2 mb-4">
                 <Badge value={job.contract_type} />
                 <Badge value={job.work_model} />
@@ -278,11 +282,12 @@ export default function JobDetailPage() {
                 <Badge value={job.status} />
                 {job.seniority_level && (
                   <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', 'bg-violet-100 text-violet-700')}>
-                    {{JUNIOR:'Junior',MID:'Mid-level',SENIOR:'Senior',LEAD:'Lead',EXECUTIVE:'Executive'}[job.seniority_level] ?? job.seniority_level}
+                    {{ JUNIOR: 'Junior', MID: 'Mid-level', SENIOR: 'Senior', LEAD: 'Lead', EXECUTIVE: 'Executive' }[job.seniority_level] ?? job.seniority_level}
                   </span>
                 )}
               </div>
 
+              {/* Meta row */}
               <div className="flex flex-wrap gap-4 text-sm text-text-muted mb-6">
                 <span>📍 {job.location}</span>
                 {job.required_years_experience != null && (
@@ -299,19 +304,15 @@ export default function JobDetailPage() {
                   const label = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
                   const urgent = daysLeft <= 3
                   return (
-                    <span className={cn(
-                      'inline-flex items-center gap-1.5 font-medium',
-                      urgent ? 'text-red-600' : 'text-amber-600'
-                    )}>
+                    <span className={cn('inline-flex items-center gap-1.5 font-medium', urgent ? 'text-red-600' : 'text-amber-600')}>
                       <Calendar size={14} />
-                      {urgent
-                        ? `Applications close in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`
-                        : `Applications close ${label}`}
+                      {urgent ? `Applications close in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}` : `Applications close ${label}`}
                     </span>
                   )
                 })()}
               </div>
 
+              {/* Owner management bar */}
               {isOwner && (
                 <div className="flex flex-wrap gap-2 mb-6 p-4 rounded-lg border border-border bg-surface">
                   <span className="text-sm text-text-muted self-center mr-2">Manage:</span>
@@ -334,11 +335,23 @@ export default function JobDetailPage() {
                 </div>
               )}
 
-              <div className="prose prose-sm max-w-none text-text">
-                <h2 className="text-lg font-semibold text-text mb-3">Job Description</h2>
-                <div className="whitespace-pre-wrap text-sm leading-relaxed text-text-muted">
-                  {job.description}
-                </div>
+              {/* ── Job description — structured (new) or legacy fallback ── */}
+              <div className="space-y-6">
+                {job.about_the_role ? (
+                  <>
+                    <DescriptionSection title="About the Role" content={job.about_the_role} />
+                    <DescriptionSection title="Key Responsibilities" content={job.key_responsibilities} />
+                    <DescriptionSection title="Requirements" content={job.requirements} />
+                    <DescriptionSection title="Preferred Certifications" content={job.preferred_certifications} />
+                    <DescriptionSection title="Technical Competencies" content={job.technical_competencies} />
+                    <DescriptionSection title="What We Offer" content={job.what_we_offer} />
+                  </>
+                ) : job.description ? (
+                  <section>
+                    <h2 className="text-lg font-semibold text-text mb-3">Job Description</h2>
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-text-muted">{job.description}</div>
+                  </section>
+                ) : null}
               </div>
 
               {/* Required skills */}
@@ -358,7 +371,7 @@ export default function JobDetailPage() {
                 </div>
               )}
 
-              {/* Company info section */}
+              {/* Company info */}
               {(job.company_description || job.company_website || job.company_industry) && (
                 <div className="mt-8 rounded-xl border border-border bg-surface p-5 space-y-3">
                   <div className="flex items-center gap-3">
@@ -380,11 +393,9 @@ export default function JobDetailPage() {
                       )}
                     </div>
                   </div>
-
                   {job.company_description && (
                     <p className="text-sm text-text-muted leading-relaxed">{job.company_description}</p>
                   )}
-
                   {job.company_website && (
                     <a
                       href={job.company_website}
@@ -403,6 +414,7 @@ export default function JobDetailPage() {
               <div className="mt-8">
                 <ApplyButton jobId={job.id} jobStatus={job.status} />
               </div>
+
             </article>
           )}
 

@@ -68,6 +68,7 @@ async def test_update_user_status_creates_audit_log(db_session):
     )
 
     from sqlalchemy import select
+
     stmt = select(AuditLog).where(AuditLog.target_id == target.id)
     result = await db_session.execute(stmt)
     log_entry = result.scalar_one_or_none()
@@ -133,6 +134,7 @@ async def test_bulk_update_creates_audit_logs_per_record(db_session):
     assert result["updated"] == 2
 
     from sqlalchemy import select
+
     stmt = select(AuditLog).where(AuditLog.admin_id == admin.id)
     result = await db_session.execute(stmt)
     logs = result.scalars().all()
@@ -175,6 +177,7 @@ async def test_moderate_job_updates_status_and_logs(db_session):
     assert result.moderation_status == ModerationStatus.APPROVED.value
 
     from sqlalchemy import select
+
     stmt = select(AuditLog).where(AuditLog.target_id == job.id)
     audit_result = await db_session.execute(stmt)
     log_entry = audit_result.scalar_one_or_none()
@@ -224,6 +227,7 @@ async def test_stats_endpoint_returns_correct_counts(db_session):
     await db_session.flush()
 
     from app.modules.users.models import EmployerProfile
+
     profile = EmployerProfile(
         user_id=employer.id,
         company_name="Test",

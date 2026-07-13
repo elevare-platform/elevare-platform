@@ -1,4 +1,5 @@
 """Enumerations for candidate profile visibility."""
+
 from enum import Enum
 
 

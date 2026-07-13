@@ -1,4 +1,5 @@
 """Sitemap XML generation service with Redis caching."""
+
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 

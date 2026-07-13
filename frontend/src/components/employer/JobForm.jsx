@@ -1,3 +1,4 @@
+import React from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -12,7 +13,13 @@ import { cn } from '@/lib/utils'
 const jobSchema = z
   .object({
     title: z.string().min(3, 'Title must be at least 3 characters').max(150),
-    description: z.string().min(10, 'Description must be at least 10 characters'),
+    // Structured description fields
+    about_the_role: z.string().min(10, 'About the Role must be at least 10 characters'),
+    key_responsibilities: z.string().min(10, 'Key Responsibilities must be at least 10 characters'),
+    requirements: z.string().min(10, 'Requirements must be at least 10 characters'),
+    preferred_certifications: z.string().optional().or(z.literal('')),
+    technical_competencies: z.string().min(10, 'Technical Competencies must be at least 10 characters'),
+    what_we_offer: z.string().optional().or(z.literal('')),
     location: z.string().min(1, 'Location is required'),
     contract_type: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT', 'FREELANCE', 'INTERNSHIP'], {
       error: 'Select a contract type',
@@ -53,6 +60,12 @@ const selectClass = cn(
   'flex h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm',
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
   'disabled:cursor-not-allowed disabled:opacity-50'
+)
+
+const textareaClass = cn(
+  'flex w-full rounded-md border border-border bg-surface px-3 py-2 text-sm',
+  'placeholder:text-text-muted resize-y',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
 )
 
 // ─── Skills tag input ─────────────────────────────────────────────────────────
@@ -107,14 +120,22 @@ function SkillsTagInput({ value = [], onChange }) {
   )
 }
 
-// Need React for useState in SkillsTagInput
-import React from 'react'
+// ─── Section divider ──────────────────────────────────────────────────────────
+
+function SectionDivider({ title }) {
+  return (
+    <div className="pt-4 pb-1 border-t border-border">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">{title}</p>
+    </div>
+  )
+}
 
 /**
  * JobForm — shared create/edit form for job postings.
- * Includes all job fields: title, description, location, contract type,
- * work model, work location, salary range, seniority, experience,
- * openings, application deadline, and required skills.
+ *
+ * Uses structured description fields (about_the_role, key_responsibilities,
+ * requirements, preferred_certifications, technical_competencies, what_we_offer)
+ * instead of a single generic description textarea.
  *
  * When draftKey is provided, form state is auto-saved to localStorage
  * and restored on mount — survives page reloads.
@@ -122,7 +143,12 @@ import React from 'react'
 export function JobForm({ defaultValues, onSubmit, loading = false, error = null, draftKey = null }) {
   const resolvedDefaults = {
     title: '',
-    description: '',
+    about_the_role: '',
+    key_responsibilities: '',
+    requirements: '',
+    preferred_certifications: '',
+    technical_competencies: '',
+    what_we_offer: '',
     location: '',
     contract_type: undefined,
     work_model: '',
@@ -137,7 +163,6 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
     ...defaultValues,
   }
 
-  // Merge localStorage draft into defaults (create-only, not edit)
   const initialValues = React.useMemo(() => {
     if (!draftKey) return resolvedDefaults
     try {
@@ -158,7 +183,6 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
     defaultValues: initialValues,
   })
 
-  // Auto-save to localStorage on change (debounced 800ms)
   const watchedValues = watch()
   React.useEffect(() => {
     if (!draftKey) return
@@ -168,12 +192,13 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
     return () => clearTimeout(timer)
   }, [watchedValues, draftKey])
 
-  // Strip empty strings from optional enum/string fields before sending to backend
   const handleFormSubmit = (data) => {
     const cleaned = { ...data }
     if (cleaned.seniority_level === '') cleaned.seniority_level = null
     if (cleaned.work_model === '') cleaned.work_model = null
     if (cleaned.application_deadline === '') cleaned.application_deadline = null
+    if (cleaned.preferred_certifications === '') cleaned.preferred_certifications = null
+    if (cleaned.what_we_offer === '') cleaned.what_we_offer = null
     if (draftKey) { try { localStorage.removeItem(draftKey) } catch { /* ignore */ } }
     onSubmit(cleaned)
   }
@@ -188,22 +213,103 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
         <FormMessage>{errors.title?.message}</FormMessage>
       </FormField>
 
-      {/* Description */}
+      <SectionDivider title="About the Role" />
+
+      {/* About the Role */}
       <FormField>
-        <Label htmlFor="description">Description <span className="text-red-500">*</span></Label>
+        <Label htmlFor="about_the_role">
+          About the Role <span className="text-red-500">*</span>
+        </Label>
         <textarea
-          id="description"
-          rows={6}
-          placeholder="Describe the role, responsibilities, and requirements…"
-          className={cn(
-            'flex w-full rounded-md border border-border bg-surface px-3 py-2 text-sm',
-            'placeholder:text-text-muted resize-y',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
-          )}
-          {...register('description')}
+          id="about_the_role"
+          rows={4}
+          placeholder="Give an overview of the role and its purpose within the organisation…"
+          className={textareaClass}
+          {...register('about_the_role')}
         />
-        <FormMessage>{errors.description?.message}</FormMessage>
+        <FormMessage>{errors.about_the_role?.message}</FormMessage>
       </FormField>
+
+      {/* Key Responsibilities */}
+      <FormField>
+        <Label htmlFor="key_responsibilities">
+          Key Responsibilities <span className="text-red-500">*</span>
+        </Label>
+        <textarea
+          id="key_responsibilities"
+          rows={5}
+          placeholder="List the main duties and day-to-day responsibilities…"
+          className={textareaClass}
+          {...register('key_responsibilities')}
+        />
+        <FormMessage>{errors.key_responsibilities?.message}</FormMessage>
+      </FormField>
+
+      <SectionDivider title="Candidate Profile" />
+
+      {/* Requirements */}
+      <FormField>
+        <Label htmlFor="requirements">
+          Requirements <span className="text-red-500">*</span>
+        </Label>
+        <textarea
+          id="requirements"
+          rows={4}
+          placeholder="Qualifications, experience, and must-have criteria…"
+          className={textareaClass}
+          {...register('requirements')}
+        />
+        <FormMessage>{errors.requirements?.message}</FormMessage>
+      </FormField>
+
+      {/* Preferred Certifications */}
+      <FormField>
+        <Label htmlFor="preferred_certifications">
+          Preferred Certifications <span className="text-text-muted text-xs">(optional)</span>
+        </Label>
+        <textarea
+          id="preferred_certifications"
+          rows={2}
+          placeholder="e.g. PMP, AWS Certified, CPA — nice-to-haves only…"
+          className={textareaClass}
+          {...register('preferred_certifications')}
+        />
+        <FormMessage>{errors.preferred_certifications?.message}</FormMessage>
+      </FormField>
+
+      {/* Technical Competencies */}
+      <FormField>
+        <Label htmlFor="technical_competencies">
+          Technical Competencies <span className="text-red-500">*</span>
+        </Label>
+        <textarea
+          id="technical_competencies"
+          rows={3}
+          placeholder="Specific tools, platforms, or technical skills required…"
+          className={textareaClass}
+          {...register('technical_competencies')}
+        />
+        <FormMessage>{errors.technical_competencies?.message}</FormMessage>
+      </FormField>
+
+      <SectionDivider title="Compensation & Benefits" />
+
+      {/* What We Offer */}
+      <FormField>
+        <Label htmlFor="what_we_offer">
+          What We Offer <span className="text-text-muted text-xs">(optional)</span>
+        </Label>
+        <textarea
+          id="what_we_offer"
+          rows={3}
+          placeholder="Benefits, perks, culture highlights, growth opportunities…"
+          className={textareaClass}
+          {...register('what_we_offer')}
+        />
+        <FormMessage>{errors.what_we_offer?.message}</FormMessage>
+      </FormField>
+
+      <SectionDivider title="Job Details" />
 
       {/* Location */}
       <FormField>
@@ -285,25 +391,13 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField>
           <Label htmlFor="salary_min">Salary min (₦, optional)</Label>
-          <Input
-            id="salary_min"
-            type="number"
-            min={0}
-            placeholder="e.g. 500000"
-            {...register('salary_min')}
-          />
+          <Input id="salary_min" type="number" min={0} placeholder="e.g. 500000" {...register('salary_min')} />
           <FormMessage>{errors.salary_min?.message}</FormMessage>
         </FormField>
 
         <FormField>
           <Label htmlFor="salary_max">Salary max (₦, optional)</Label>
-          <Input
-            id="salary_max"
-            type="number"
-            min={0}
-            placeholder="e.g. 900000"
-            {...register('salary_max')}
-          />
+          <Input id="salary_max" type="number" min={0} placeholder="e.g. 900000" {...register('salary_max')} />
           <FormMessage>{errors.salary_max?.message}</FormMessage>
         </FormField>
       </div>
@@ -326,24 +420,13 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField>
           <Label htmlFor="openings_count">Number of openings</Label>
-          <Input
-            id="openings_count"
-            type="number"
-            min={1}
-            max={999}
-            placeholder="1"
-            {...register('openings_count')}
-          />
+          <Input id="openings_count" type="number" min={1} max={999} placeholder="1" {...register('openings_count')} />
           <FormMessage>{errors.openings_count?.message}</FormMessage>
         </FormField>
 
         <FormField>
           <Label htmlFor="application_deadline">Application deadline</Label>
-          <Input
-            id="application_deadline"
-            type="date"
-            {...register('application_deadline')}
-          />
+          <Input id="application_deadline" type="date" {...register('application_deadline')} />
           <FormMessage>{errors.application_deadline?.message}</FormMessage>
         </FormField>
       </div>

@@ -51,7 +51,12 @@ export default function EditJobPage() {
   // Map job fields to form defaults — normalise nulls to empty strings
   const defaultValues = job ? {
     title:                      job.title ?? '',
-    description:                job.description ?? '',
+    about_the_role:             job.about_the_role ?? '',
+    key_responsibilities:       job.key_responsibilities ?? '',
+    requirements:               job.requirements ?? '',
+    preferred_certifications:   job.preferred_certifications ?? '',
+    technical_competencies:     job.technical_competencies ?? '',
+    what_we_offer:              job.what_we_offer ?? '',
     location:                   job.location ?? '',
     contract_type:              job.contract_type ?? undefined,
     work_model:                 job.work_model ?? '',

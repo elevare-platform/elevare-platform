@@ -1,4 +1,5 @@
 """HTTP endpoints for job access tokens and public applicant views."""
+
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -16,7 +17,10 @@ from app.modules.users.models import User
 
 router = APIRouter()
 
-@router.post("/jobs/{job_id}/access-tokens", response_model=AccessTokenResponse, status_code=201)
+
+@router.post(
+    "/jobs/{job_id}/access-tokens", response_model=AccessTokenResponse, status_code=201
+)
 async def create_access_token(
     job_id: uuid.UUID,
     data: CreateAccessTokenRequest,
@@ -38,6 +42,7 @@ async def get_access_tokens(
     service = AccessTokenService(db)
     return await service.get_all_access_tokens(job_id, current_user)
 
+
 @router.delete("/jobs/{job_id}/access-tokens/{token_id}", status_code=204)
 async def delete_access_token(
     job_id: uuid.UUID,
@@ -51,7 +56,9 @@ async def delete_access_token(
     return SuccessResponse(message="Access token deleted successfully")
 
 
-@router.patch("/jobs/access-tokens/{token_id}/revoke", response_model=AccessTokenResponse)
+@router.patch(
+    "/jobs/access-tokens/{token_id}/revoke", response_model=AccessTokenResponse
+)
 async def revoke_access_token(
     token_id: uuid.UUID,
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),

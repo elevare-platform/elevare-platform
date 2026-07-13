@@ -1,8 +1,10 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, String, Text
-from sqlalchemy.orm import mapped_column, Mapped
+from sqlalchemy.orm import Mapped, mapped_column
+
 from app.core.database import BaseModel
+
 from .enums import TestimonialStatus
 
 
@@ -15,9 +17,15 @@ class Testimonial(BaseModel):
     testimony: Mapped[str] = mapped_column(Text, nullable=False)
     image: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(
-        Enum(TestimonialStatus, name="testimonialstatus", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            TestimonialStatus,
+            name="testimonialstatus",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=TestimonialStatus.PENDING.value,
         server_default=TestimonialStatus.PENDING.value,
     )
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

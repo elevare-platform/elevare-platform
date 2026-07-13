@@ -17,6 +17,7 @@ class ErrorDetail(BaseModel):
         message: Human-readable explanation of why the field is invalid.
 
     """
+
     field: str
     message: str
 
@@ -31,6 +32,7 @@ class ErrorResponse(BaseModel):
             populated for validation errors.
 
     """
+
     code: str
     status: Literal["error"] = "error"
     message: str
@@ -61,6 +63,7 @@ class SuccessResponse(BaseModel):
         data: Optional field for returning arbitrary response data.
 
     """
+
     status: Literal["success"] = "success"
     message: str
     data: Any | None = None
@@ -84,4 +87,3 @@ class PaginationResponse(BaseModel):
     message: str
     data: list[Any]
     pagination: PaginationMeta
-

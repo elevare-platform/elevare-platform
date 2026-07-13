@@ -4,7 +4,7 @@ import {
   LogOut, Briefcase, ArrowRight, MailCheck,
   Plus, TrendingUp, FileText, CheckCircle,
   Sparkles, Heart, Cpu, LayoutDashboard, Lock,
-  FileSearch
+  FileSearch, Mail
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -78,6 +78,7 @@ function EmployerDashboard({ user }) {
   const tabs = [
     { id: 'overview', label: 'Console Overview', icon: LayoutDashboard },
     { id: 'talent-pipeline', label: 'Talent Pipeline', icon: Sparkles, badge: 'AI' },
+    { id: 'mail-ingestion', label: 'Mail Ingestion', icon: Mail },
     { id: 'saved-candidates', label: 'Saved Candidates', icon: Heart },
     { id: 'ai-recommendations', label: 'AI Recommendations', icon: Cpu, badge: 'AI' },
     { id: 'cv-parser', label: 'CV Parser', icon: FileSearch }
@@ -236,6 +237,23 @@ function EmployerDashboard({ user }) {
               <Link to="/employer/talent-pool">
                 <Button className="flex items-center gap-2 mx-auto">
                   Open Talent Pool <ArrowRight size={15} />
+                </Button>
+              </Link>
+            </div>
+          )}
+
+          {activeTab === 'mail-ingestion' && (
+            <div className="bg-white rounded-xl border border-border p-8 text-center max-w-xl mx-auto space-y-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+                <Mail size={22} />
+              </div>
+              <h2 className="text-xl font-bold text-text">Mail Ingestion</h2>
+              <p className="text-text-muted text-sm leading-relaxed">
+                Connect your recruitment mailbox to automatically import and parse CVs.
+              </p>
+              <Link to="/employer/mail-ingestion">
+                <Button className="flex items-center gap-2 mx-auto">
+                  Manage Mailboxes <ArrowRight size={15} />
                 </Button>
               </Link>
             </div>

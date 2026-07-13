@@ -185,12 +185,32 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
               </div>
             )}
 
-            {/* Description */}
+            {/* Description — structured (new jobs) or legacy fallback */}
             <div>
               <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Description</p>
-              <p className="text-sm text-text leading-relaxed whitespace-pre-line">
-                {job.description}
-              </p>
+              {job.about_the_role ? (
+                <div className="space-y-4">
+                  {[
+                    ['About the Role',          job.about_the_role],
+                    ['Key Responsibilities',    job.key_responsibilities],
+                    ['Requirements',            job.requirements],
+                    ['Preferred Certifications',job.preferred_certifications],
+                    ['Technical Competencies',  job.technical_competencies],
+                    ['What We Offer',           job.what_we_offer],
+                  ].map(([label, content]) =>
+                    content ? (
+                      <div key={label}>
+                        <p className="text-xs font-medium text-text mb-1">{label}</p>
+                        <p className="text-sm text-text-muted leading-relaxed whitespace-pre-line">{content}</p>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-text leading-relaxed whitespace-pre-line">
+                  {job.description ?? '—'}
+                </p>
+              )}
             </div>
 
             {/* Moderation actions */}

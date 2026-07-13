@@ -3,6 +3,7 @@
 Validates PDF and document uploads by checking file size, extension,
 and MIME type (via magic bytes inspection).
 """
+
 import re
 
 import magic
@@ -95,9 +96,12 @@ def validate_document_upload(file: bytes, filename: str) -> None:
     if mime not in ALLOWED_DOCUMENT_MIME_TYPES:
         raise InvalidFileContentException()
 
+
 def sanitize_filename(filename: str) -> str:
     """Sanitize filename to prevent directory traversal and other issues."""
     name, _, ext = filename.rpartition(".")
-    name = re.sub(r"[^\w\-]", "_", name)  # replaces anything not word char or hyphen with _
+    name = re.sub(
+        r"[^\w\-]", "_", name
+    )  # replaces anything not word char or hyphen with _
     name = re.sub(r"_+", "_", name).strip("_")  # collapse multiple underscores
     return f"{name}.{ext.lower()}" if ext else name

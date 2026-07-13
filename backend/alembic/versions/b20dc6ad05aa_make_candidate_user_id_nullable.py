@@ -5,6 +5,7 @@ Revises: 091df3dcdcb3
 Create Date: 2026-06-14 18:12:27.950565
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -12,19 +13,15 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'b20dc6ad05aa'
-down_revision: Union[str, None] = '091df3dcdcb3'
+revision: str = "b20dc6ad05aa"
+down_revision: Union[str, None] = "091df3dcdcb3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        'candidate_profile', 'user_id', nullable=True
-    )
+    op.alter_column("candidate_profile", "user_id", nullable=True)
 
 
 def downgrade() -> None:
-    op.alter_column(
-        'candidate_profile', 'user_id', nullable=False
-    )
+    op.alter_column("candidate_profile", "user_id", nullable=False)

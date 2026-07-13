@@ -31,8 +31,10 @@ from tests.conftest import make_register_data
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
     from app.modules.auth.jwt_handler import create_token_pair
+
     data = make_register_data(role="CANDIDATE")
     payload = {
         "first_name": data.first_name,
@@ -83,6 +85,7 @@ def job_payload(**overrides) -> dict:
 # ===========================================================================
 # Task 2 — Deterministic score computation (no LLM)
 # ===========================================================================
+
 
 class TestDeterministicScore:
 
@@ -198,6 +201,7 @@ class TestDeterministicScore:
 # Task 3 — Hash-based invalidation
 # ===========================================================================
 
+
 class TestScoreHashing:
 
     def test_same_inputs_produce_same_hash(self):
@@ -217,19 +221,28 @@ class TestScoreHashing:
         assert h1 == h2
 
     def test_cv_hash_changes_when_skills_change(self):
-        h1 = hash_cv_scoring_inputs({"skills": ["Python"], "years_experience": 3, "seniority_level": "MID"})
-        h2 = hash_cv_scoring_inputs({"skills": ["Java"], "years_experience": 3, "seniority_level": "MID"})
+        h1 = hash_cv_scoring_inputs(
+            {"skills": ["Python"], "years_experience": 3, "seniority_level": "MID"}
+        )
+        h2 = hash_cv_scoring_inputs(
+            {"skills": ["Java"], "years_experience": 3, "seniority_level": "MID"}
+        )
         assert h1 != h2
 
     def test_cv_hash_stable_with_null_fields(self):
-        h1 = hash_cv_scoring_inputs({"skills": None, "years_experience": None, "seniority_level": None})
-        h2 = hash_cv_scoring_inputs({"skills": None, "years_experience": None, "seniority_level": None})
+        h1 = hash_cv_scoring_inputs(
+            {"skills": None, "years_experience": None, "seniority_level": None}
+        )
+        h2 = hash_cv_scoring_inputs(
+            {"skills": None, "years_experience": None, "seniority_level": None}
+        )
         assert h1 == h2
 
 
 # ===========================================================================
 # Task 7 — Job access token endpoints
 # ===========================================================================
+
 
 class TestJobAccessTokens:
 
@@ -251,6 +264,7 @@ class TestJobAccessTokens:
         # Approve job so it's active
         from app.modules.jobs.enums import ModerationStatus
         from app.modules.jobs.models import Job
+
         job = await db_session.get(Job, job_id)
         job.moderation_status = ModerationStatus.APPROVED.value
         job.status = "ACTIVE"
@@ -363,6 +377,7 @@ class TestJobAccessTokens:
 # Name disclosure consent gate
 # ===========================================================================
 
+
 class TestNameDisclosure:
 
     def test_name_hidden_when_no_cv_sharing_consent(self):
@@ -402,6 +417,7 @@ class TestNameDisclosure:
 # Talent pool
 # ===========================================================================
 
+
 class TestTalentPoolSubmission:
 
     @pytest.mark.asyncio
@@ -412,7 +428,9 @@ class TestTalentPoolSubmission:
         token, user = await register_and_activate(client, db_session, "EMPLOYER")
 
         app_instance = client._transport.app
-        app_instance.dependency_overrides[get_storage_service] = lambda: MockStorageService()
+        app_instance.dependency_overrides[get_storage_service] = (
+            lambda: MockStorageService()
+        )
 
         with patch("app.modules.ai.tasks.run_full_pipeline_task") as mock_task:
             mock_task.delay = MagicMock()
@@ -429,6 +447,7 @@ class TestTalentPoolSubmission:
 
         # Verify the specific profile that was just created
         from uuid import UUID
+
         result = await db_session.execute(
             select(TalentPoolProfiles).where(TalentPoolProfiles.id == UUID(profile_id))
         )
@@ -456,6 +475,7 @@ class TestTalentPoolSubmission:
 # Talent pool promotion
 # ===========================================================================
 
+
 class TestTalentPoolPromotion:
 
     @pytest.mark.asyncio
@@ -468,7 +488,9 @@ class TestTalentPoolPromotion:
         admin_token, admin = await register_and_activate(client, db_session, "ADMIN")
 
         # Create an active user with a known email
-        existing_token, existing_user = await register_and_activate(client, db_session, "CANDIDATE")
+        existing_token, existing_user = await register_and_activate(
+            client, db_session, "CANDIDATE"
+        )
         existing_email = existing_user.email
 
         # Create a parsed submission with that email in parsed_data
@@ -476,7 +498,11 @@ class TestTalentPoolPromotion:
             uploaded_by=admin.id,
             filename="cv.pdf",
             parse_status=CVParsingStatus.COMPLETED.value,
-            parsed_data={"email": existing_email, "skills": ["Python"], "full_name": "Test Candidate"},
+            parsed_data={
+                "email": existing_email,
+                "skills": ["Python"],
+                "full_name": "Test Candidate",
+            },
         )
         db_session.add(submission)
         await db_session.flush()
@@ -516,6 +542,7 @@ class TestTalentPoolPromotion:
 # Deprecated endpoint
 # ===========================================================================
 
+
 class TestDeprecatedEndpoint:
 
     @pytest.mark.asyncio
@@ -534,6 +561,7 @@ class TestDeprecatedEndpoint:
 # ===========================================================================
 # AI score vs match_score distinction
 # ===========================================================================
+
 
 class TestScoreDistinction:
 

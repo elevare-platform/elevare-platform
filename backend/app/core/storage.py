@@ -3,6 +3,7 @@
 Provides StorageService (abstract), R2StorageService (Cloudflare R2 via aioboto3),
 and MockStorageService (in-memory, for tests). Wire via get_storage_service().
 """
+
 from abc import ABC, abstractmethod
 
 import aioboto3
@@ -55,12 +56,14 @@ class R2StorageService(StorageService):
 
     def __init__(self) -> None:
         """Initialise the R2 client, raising RuntimeError if credentials are missing."""
-        if not all([
-            settings.r2_access_key_id,
-            settings.r2_secret_access_key,
-            settings.r2_bucket_name,
-            settings.r2_endpoint_url,
-        ]):
+        if not all(
+            [
+                settings.r2_access_key_id,
+                settings.r2_secret_access_key,
+                settings.r2_bucket_name,
+                settings.r2_endpoint_url,
+            ]
+        ):
             raise RuntimeError(
                 "R2 storage is not configured. "
                 "Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, "

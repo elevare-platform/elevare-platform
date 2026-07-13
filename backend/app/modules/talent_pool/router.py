@@ -1,4 +1,5 @@
 """HTTP endpoints for the talent pool module."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
@@ -48,6 +49,7 @@ def _user_id_key(request: Request) -> str:
     if user:
         return str(user.id)
     from slowapi.util import get_remote_address
+
     return get_remote_address(request)
 
 
@@ -112,7 +114,9 @@ async def list_talent_pool(
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> dict:
     """List talent pool profiles with optional filters."""
-    return await service.list_profiles(status, source, job_id, cursor, limit, current_user)
+    return await service.list_profiles(
+        status, source, job_id, cursor, limit, current_user
+    )
 
 
 @router.get("/{profile_id}", response_model=TalentPoolProfileResponse)
@@ -144,6 +148,7 @@ async def promote_to_candidate(
 ) -> TalentPoolPromoteResponse:
     """Begin promotion — sends invite to candidate. Application created only after confirmation."""
     return await service.promote(profile_id, current_user)
+
 
 @router.post("/score-against-job", status_code=202)
 async def score_against_job(

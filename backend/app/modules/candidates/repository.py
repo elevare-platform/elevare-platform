@@ -35,10 +35,13 @@ REQUIRED_PROFILE_FIELDS = ("bio", "skills", "years_of_experience", "location")
 
 def compute_profile_completion(profile: CandidateProfile) -> bool:
     """Return True if all required profile fields are populated."""
-    return all(
-        getattr(profile, field) not in ("", None, [], {})
-        for field in REQUIRED_PROFILE_FIELDS
-    ) and len(profile.cvs) > 0
+    return (
+        all(
+            getattr(profile, field) not in ("", None, [], {})
+            for field in REQUIRED_PROFILE_FIELDS
+        )
+        and len(profile.cvs) > 0
+    )
 
 
 class CandidateRepository:
@@ -98,7 +101,9 @@ class CandidateRepository:
             .options(
                 selectinload(CandidateProfile.cvs),
                 selectinload(CandidateProfile.documents),
-                selectinload(CandidateProfile.user).selectinload(User.applications).selectinload(Application.job),
+                selectinload(CandidateProfile.user)
+                .selectinload(User.applications)
+                .selectinload(Application.job),
                 selectinload(CandidateProfile.work_experiences),
                 selectinload(CandidateProfile.educations),
                 selectinload(CandidateProfile.certifications),
@@ -107,7 +112,9 @@ class CandidateRepository:
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def update(self, user_id: uuid.UUID, data: UpdateProfileSchema) -> CandidateProfile:
+    async def update(
+        self, user_id: uuid.UUID, data: UpdateProfileSchema
+    ) -> CandidateProfile:
         """Apply a partial update to a candidate profile and recompute completion.
 
         Args:
@@ -137,7 +144,9 @@ class CandidateRepository:
         await self._db.refresh(profile)
         return profile
 
-    async def save_cv(self, profile_id: uuid.UUID, key: str, filename: str, is_default: bool) -> CandidateCvs:
+    async def save_cv(
+        self, profile_id: uuid.UUID, key: str, filename: str, is_default: bool
+    ) -> CandidateCvs:
         """Persist a new CV record and return it.
 
         Args:
@@ -165,7 +174,9 @@ class CandidateRepository:
 
     async def has_any_cv(self, profile_id: uuid.UUID) -> bool:
         """Return True if the candidate has at least one CV on record."""
-        stmt = select(CandidateCvs).where(CandidateCvs.candidate_id == profile_id).limit(1)
+        stmt = (
+            select(CandidateCvs).where(CandidateCvs.candidate_id == profile_id).limit(1)
+        )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none() is not None
 
@@ -200,15 +211,14 @@ class CandidateRepository:
         We clear existing defaults first to avoid a constraint violation.
         """
         from sqlalchemy import update
+
         await self._db.execute(
             update(CandidateCvs)
             .where(CandidateCvs.candidate_id == profile_id)
             .values(is_default=False)
         )
         await self._db.execute(
-            update(CandidateCvs)
-            .where(CandidateCvs.id == cv_id)
-            .values(is_default=True)
+            update(CandidateCvs).where(CandidateCvs.id == cv_id).values(is_default=True)
         )
         await self._db.flush()
 
@@ -256,10 +266,14 @@ class CandidateRepository:
         await self._db.delete(document)
         await self._db.flush()
 
-    async def get_all_documents(self, profile_id: uuid.UUID) -> list[CandidateDocuments]:
+    async def get_all_documents(
+        self, profile_id: uuid.UUID
+    ) -> list[CandidateDocuments]:
         """Return all supporting documents belonging to a candidate profile."""
         result = await self._db.execute(
-            select(CandidateDocuments).where(CandidateDocuments.candidate_id == profile_id)
+            select(CandidateDocuments).where(
+                CandidateDocuments.candidate_id == profile_id
+            )
         )
         return list(result.scalars().all())
 
@@ -355,7 +369,6 @@ class CandidateRepository:
         await self._db.delete(entry)
         await self._db.flush()
 
-
     # -----------------------------------------------
     # Privacy — application check for APPLIED_ONLY
     # -----------------------------------------------
@@ -374,7 +387,9 @@ class CandidateRepository:
         stmt = (
             select(Application.id)
             .join(Job, Job.id == Application.job_id)
-            .join(CandidateProfile, CandidateProfile.user_id == Application.candidate_id)
+            .join(
+                CandidateProfile, CandidateProfile.user_id == Application.candidate_id
+            )
             .where(
                 and_(
                     CandidateProfile.id == candidate_profile_id,
@@ -410,20 +425,24 @@ class CandidateRepository:
 
         cutoff = func.now() - timedelta(hours=self._VIEW_DEDUP_HOURS)
 
-        dupe_stmt = select(ProfileView).where(
-            and_(
-                ProfileView.employer_id == employer_id,
-                ProfileView.candidate_id == candidate_profile_id,
-                ProfileView.job_id == job_id,  # works for both UUID and None
-                ProfileView.viewed_at >= cutoff,
+        dupe_stmt = (
+            select(ProfileView)
+            .where(
+                and_(
+                    ProfileView.employer_id == employer_id,
+                    ProfileView.candidate_id == candidate_profile_id,
+                    ProfileView.job_id == job_id,  # works for both UUID and None
+                    ProfileView.viewed_at >= cutoff,
+                )
             )
-        ).limit(1)
+            .limit(1)
+        )
 
         result = await self._db.execute(dupe_stmt)
         if result.scalar_one_or_none() is not None:
             return None  # already recorded recently, skip
 
-        #TODO: In app notification
+        # TODO: In app notification
         logger.info("Candidate profile viewed")
         profile_viewed = ProfileView(
             candidate_id=candidate_profile_id,

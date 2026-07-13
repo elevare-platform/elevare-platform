@@ -7,6 +7,7 @@ Run with:
     python scripts/dedup_talent_pool.py           # dry run — shows what would be deleted
     python scripts/dedup_talent_pool.py --apply   # actually deletes duplicates
 """
+
 import asyncio
 import sys
 from collections import defaultdict
@@ -51,7 +52,9 @@ async def run(apply: bool) -> None:
         return
 
     total_to_delete = sum(len(v) - 1 for v in duplicates.values())
-    print(f"Found {len(duplicates)} duplicate group(s) — {total_to_delete} profile(s) to remove.\n")
+    print(
+        f"Found {len(duplicates)} duplicate group(s) — {total_to_delete} profile(s) to remove.\n"
+    )
 
     async with Session() as db:
         for (cv_hash, job_id), profiles in duplicates.items():
@@ -69,7 +72,9 @@ async def run(apply: bool) -> None:
             await db.commit()
             print(f"\nDone — deleted {total_to_delete} duplicate profile(s).")
         else:
-            print(f"\nDry run complete. Re-run with --apply to delete {total_to_delete} profile(s).")
+            print(
+                f"\nDry run complete. Re-run with --apply to delete {total_to_delete} profile(s)."
+            )
 
     await engine.dispose()
 
@@ -77,7 +82,9 @@ async def run(apply: bool) -> None:
 if __name__ == "__main__":
     apply = "--apply" in sys.argv
     if apply:
-        confirm = input("This will permanently delete duplicate profiles. Type 'yes' to continue: ")
+        confirm = input(
+            "This will permanently delete duplicate profiles. Type 'yes' to continue: "
+        )
         if confirm.strip().lower() != "yes":
             print("Aborted.")
             sys.exit(0)

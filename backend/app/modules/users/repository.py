@@ -20,16 +20,20 @@ class UserRepository:
 
     async def get_user_by_email(self, email: str) -> User | None:
         """Return a user by email address, or None if not found."""
-        stmt = select(User).where(User.email == email).options(
-            selectinload(User.employer_profile)
+        stmt = (
+            select(User)
+            .where(User.email == email)
+            .options(selectinload(User.employer_profile))
         )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_user_by_id(self, id: UUID) -> User | None:
         """Return a user by UUID, or None if not found."""
-        stmt = select(User).where(User.id == id).options(
-            selectinload(User.employer_profile)
+        stmt = (
+            select(User)
+            .where(User.id == id)
+            .options(selectinload(User.employer_profile))
         )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
@@ -78,6 +82,7 @@ class UserRepository:
             # Auto-enroll self-registered candidates in the talent pipeline
             from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
             from app.modules.talent_pool.models import TalentPoolProfiles
+
             pool_entry = TalentPoolProfiles(
                 candidate_profile_id=candidate_profile.id,
                 added_by=user.id,  # candidate added themselves via registration
@@ -134,5 +139,3 @@ class UserRepository:
         await self._db.flush()
         await self._db.refresh(profile)
         return profile
-
-

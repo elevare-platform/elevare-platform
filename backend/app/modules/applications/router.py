@@ -59,7 +59,9 @@ async def my_applications(
     )
 
 
-@router.patch("/{application_id}/withdraw", status_code=200, response_model=ApplicationResponse)
+@router.patch(
+    "/{application_id}/withdraw", status_code=200, response_model=ApplicationResponse
+)
 async def withdraw_application(
     application_id: uuid.UUID,
     candidate: CandidateProfile = Depends(get_candidate),
@@ -76,7 +78,10 @@ async def withdraw_application(
 async def get_job_applicants(
     job_id: uuid.UUID,
     status: str | None = Query(default=None),
-    sort: str | None = Query(default=None, description="Sort by 'ai_score' (descending) or omit for default (created_at desc)"),
+    sort: str | None = Query(
+        default=None,
+        description="Sort by 'ai_score' (descending) or omit for default (created_at desc)",
+    ),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
@@ -97,7 +102,9 @@ async def get_job_applicants(
     )
 
 
-@router.patch("/{application_id}/status", status_code=200, response_model=ApplicationResponse)
+@router.patch(
+    "/{application_id}/status", status_code=200, response_model=ApplicationResponse
+)
 async def update_application_status(
     application_id: uuid.UUID,
     data: UpdateApplicationStatus,

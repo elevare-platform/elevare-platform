@@ -24,6 +24,7 @@ from tests.conftest import make_register_data
 # Helpers (mirrors pattern from test_applications_router.py)
 # ---------------------------------------------------------------------------
 
+
 def future_deadline(days: int = 7) -> str:
     return (datetime.now(UTC) + timedelta(days=days)).isoformat()
 
@@ -80,7 +81,9 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
     return token_pair["access_token"], user
 
 
-async def create_and_publish_job(client, db_session, employer_token: str, **overrides) -> dict:
+async def create_and_publish_job(
+    client, db_session, employer_token: str, **overrides
+) -> dict:
 
     resp = await client.post(
         "/api/v1/jobs",
@@ -149,6 +152,7 @@ async def complete_candidate_profile(client, db_session, token: str, user_id) ->
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def override_storage():
     app.dependency_overrides[get_storage_service] = lambda: MockStorageService()
@@ -159,6 +163,7 @@ def override_storage():
 # ---------------------------------------------------------------------------
 # Unit tests — KeywordAIService (no DB, no HTTP)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_keyword_service_correct_score_for_known_input():
@@ -209,8 +214,18 @@ async def test_keyword_service_score_capped_at_100():
     service = KeywordAIService()
     # Give many skills that all appear in a short job description
     result = await service.compute_match_score(
-        candidate_skills=["Python", "FastAPI", "PostgreSQL", "Docker", "Redis",
-                          "AWS", "Terraform", "Kubernetes", "SQL", "Linux"],
+        candidate_skills=[
+            "Python",
+            "FastAPI",
+            "PostgreSQL",
+            "Docker",
+            "Redis",
+            "AWS",
+            "Terraform",
+            "Kubernetes",
+            "SQL",
+            "Linux",
+        ],
         job_description="Python FastAPI PostgreSQL Docker Redis AWS Terraform Kubernetes SQL Linux",
         job_title="Senior Engineer",
     )
@@ -233,13 +248,18 @@ async def test_keyword_service_case_insensitive_matching():
 # Integration tests — score stored on application row
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_match_score_field_present_in_application_response(client, db_session):
     """Application response includes match_score field (null initially is acceptable)."""
-    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(
+        client, db_session, "CANDIDATE"
+    )
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    await complete_candidate_profile(
+        client, db_session, candidate_token, candidate_user.id
+    )
     job = await create_and_publish_job(client, db_session, employer_token)
 
     resp = await client.post(
@@ -257,10 +277,14 @@ async def test_match_score_field_present_in_application_response(client, db_sess
 @pytest.mark.asyncio
 async def test_applicant_list_includes_match_score_field(client, db_session):
     """GET /applications/job/{id} includes match_score on each applicant."""
-    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(
+        client, db_session, "CANDIDATE"
+    )
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
-    await complete_candidate_profile(client, db_session, candidate_token, candidate_user.id)
+    await complete_candidate_profile(
+        client, db_session, candidate_token, candidate_user.id
+    )
     job = await create_and_publish_job(client, db_session, employer_token)
 
     await client.post(
@@ -283,10 +307,13 @@ async def test_applicant_list_includes_match_score_field(client, db_session):
 # Integration tests — match endpoint
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_match_endpoint_returns_result_for_employer(client, db_session):
     """POST /ai/match returns a MatchResult for a valid employer request."""
-    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(
+        client, db_session, "CANDIDATE"
+    )
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
     # Update candidate profile with skills
@@ -315,7 +342,9 @@ async def test_match_endpoint_returns_result_for_employer(client, db_session):
 @pytest.mark.asyncio
 async def test_match_endpoint_returns_403_for_candidate(client, db_session):
     """POST /ai/match returns 403 when called by a candidate."""
-    candidate_token, candidate_user = await register_and_activate(client, db_session, "CANDIDATE")
+    candidate_token, candidate_user = await register_and_activate(
+        client, db_session, "CANDIDATE"
+    )
     employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
 
     job = await create_and_publish_job(client, db_session, employer_token)

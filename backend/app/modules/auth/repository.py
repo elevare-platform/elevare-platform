@@ -18,7 +18,9 @@ class AuthRepository:
         """Initialise the repository with an async database session."""
         self._db = db
 
-    async def create_refresh_token(self, user_id: UUID, raw_token: str, expires_at: datetime):
+    async def create_refresh_token(
+        self, user_id: UUID, raw_token: str, expires_at: datetime
+    ):
         """Hash and persist a new refresh token for the given user.
 
         Returns:
@@ -27,11 +29,7 @@ class AuthRepository:
         """
         hashed_token = hash_token(raw_token)
 
-        token = RefreshToken(
-            user_id=user_id,
-            token=hashed_token,
-            expires_at=expires_at
-        )
+        token = RefreshToken(user_id=user_id, token=hashed_token, expires_at=expires_at)
         self._db.add(token)
         await self._db.flush()
         await self._db.refresh(token)
@@ -65,7 +63,9 @@ class AuthRepository:
             return
         raise TokenInvalidException()
 
-    async def create_verification_token(self, user_id: UUID, hashed_token: str, expires_at: datetime):
+    async def create_verification_token(
+        self, user_id: UUID, hashed_token: str, expires_at: datetime
+    ):
         """Invalidate existing unused tokens and create a new email verification token.
 
         Returns:
@@ -75,7 +75,7 @@ class AuthRepository:
         # Invalidate any existing unused tokens for the user
         stmt = select(EmailVerificationToken).where(
             EmailVerificationToken.user_id == user_id,
-            EmailVerificationToken.is_used.is_(False)
+            EmailVerificationToken.is_used.is_(False),
         )
         result = await self._db.execute(stmt)
         existing_tokens = result.scalars().all()
@@ -86,9 +86,7 @@ class AuthRepository:
             await self._db.flush()
 
         email_verification_token = EmailVerificationToken(
-            user_id=user_id,
-            token=hashed_token,
-            expires_at=expires_at
+            user_id=user_id, token=hashed_token, expires_at=expires_at
         )
         self._db.add(email_verification_token)
         await self._db.flush()
@@ -132,7 +130,7 @@ class AuthRepository:
             token=hashed_token,
             role=role,
             expires_at=expires_at,
-            invited_by=admin_id
+            invited_by=admin_id,
         )
         self._db.add(invite)
         await self._db.flush()
@@ -162,4 +160,3 @@ class AuthRepository:
         token.used_at = datetime.now(UTC)
         self._db.add(token)
         await self._db.flush()
-

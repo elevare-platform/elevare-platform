@@ -81,7 +81,9 @@ class CandidateService:
             raise ProfileNotFoundException()
         return ProfileResponse.model_validate(profile)
 
-    async def update_my_profile(self, user_id: uuid.UUID, data: UpdateProfileSchema) -> ProfileResponse:
+    async def update_my_profile(
+        self, user_id: uuid.UUID, data: UpdateProfileSchema
+    ) -> ProfileResponse:
         """Apply a partial update to the authenticated candidate's profile.
 
         Commits the transaction and returns the updated profile.
@@ -92,6 +94,7 @@ class CandidateService:
 
         # Re-generate embedding if profile content changed
         from app.modules.ai.tasks import generate_candidate_embedding_task
+
         generate_candidate_embedding_task.delay(str(profile.id))
 
         return ProfileResponse.model_validate(profile)
@@ -119,16 +122,20 @@ class CandidateService:
                     raise PermissionDeniedException("This profile is private")
 
                 if profile.visibility == VisibilityStatus.APPLIED_ONLY.value:
-                    has_application = await self._repo.candidate_has_applied_to_employer(
-                        candidate_profile_id=profile.id,
-                        employer_id=requesting_user.id,
+                    has_application = (
+                        await self._repo.candidate_has_applied_to_employer(
+                            candidate_profile_id=profile.id,
+                            employer_id=requesting_user.id,
+                        )
                     )
                     if not has_application:
                         raise PermissionDeniedException(
                             "This candidate's profile is only visible to employers they have applied to"
                         )
 
-                await self._repo.create_profile_viewed(requesting_user.id, profile.id, job_id)
+                await self._repo.create_profile_viewed(
+                    requesting_user.id, profile.id, job_id
+                )
                 await self._db.commit()
 
             return ProfileResponse.model_validate(profile)
@@ -146,7 +153,9 @@ class CandidateService:
         profiles = await self._repo.list_all()
         return [ProfileResponse.model_validate(p) for p in profiles]
 
-    async def get_profile_views(self, user_id: uuid.UUID, cursor: str | None = None, limit: int = 20):
+    async def get_profile_views(
+        self, user_id: uuid.UUID, cursor: str | None = None, limit: int = 20
+    ):
         """Return paginated profile view records for the authenticated candidate."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
@@ -155,14 +164,22 @@ class CandidateService:
 
         items = []
         for view in paginated["items"]:
-            employer_profile = getattr(getattr(view, "employer", None), "employer_profile", None)
-            items.append({
-                "id": view.id,
-                "viewed_at": view.viewed_at,
-                "company_name": employer_profile.company_name if employer_profile else None,
-                "company_logo_url": employer_profile.company_logo_url if employer_profile else None,
-                "job_title": None,  # TODO: load job title when job_id is set
-            })
+            employer_profile = getattr(
+                getattr(view, "employer", None), "employer_profile", None
+            )
+            items.append(
+                {
+                    "id": view.id,
+                    "viewed_at": view.viewed_at,
+                    "company_name": (
+                        employer_profile.company_name if employer_profile else None
+                    ),
+                    "company_logo_url": (
+                        employer_profile.company_logo_url if employer_profile else None
+                    ),
+                    "job_title": None,  # TODO: load job title when job_id is set
+                }
+            )
 
         return {"items": items, "next_cursor": paginated.get("next_cursor")}
 
@@ -174,7 +191,9 @@ class CandidateService:
         """Return a CV by its primary key, or None if not found."""
         return self._db.get(CandidateCvs, cv_id)
 
-    async def upload_cv(self, user_id: uuid.UUID, file: bytes, filename: str) -> CandidateCvsResponse:
+    async def upload_cv(
+        self, user_id: uuid.UUID, file: bytes, filename: str
+    ) -> CandidateCvsResponse:
         """Validate, upload, and persist a candidate CV.
 
         The first CV uploaded is automatically set as the default.
@@ -220,7 +239,9 @@ class CandidateService:
             logger.error(f"R2 upload failed for user {user_id}: {e}")
             raise CVErrorException(str(e)) from e
 
-        cv = await self._repo.save_cv(profile.id, uploaded_key, filename, is_default=is_first)
+        cv = await self._repo.save_cv(
+            profile.id, uploaded_key, filename, is_default=is_first
+        )
 
         # Trigger CV parsing pipeline — create a ParsedCVSubmission row for tracking
         try:
@@ -277,6 +298,7 @@ class CandidateService:
                 cv.submission_id = submission.id
 
                 from app.modules.ai.tasks import run_full_pipeline_task
+
                 run_full_pipeline_task.delay(
                     submission_id=str(submission.id),
                     cache_key=cache_key,
@@ -290,6 +312,7 @@ class CandidateService:
         # Recompute profile completion — a CV is required for is_profile_complete=True.
         # Expire the cached profile so the reload picks up the newly inserted CV row.
         from app.modules.candidates.repository import compute_profile_completion
+
         await self._db.refresh(profile, ["cvs"])
         profile.is_profile_complete = compute_profile_completion(profile)
         await self._db.flush()
@@ -317,7 +340,9 @@ class CandidateService:
         if cv is None:
             raise DocumentNotFoundError()
         if cv.candidate_id != profile.id:
-            raise PermissionDeniedException("You do not have permission to delete this CV")
+            raise PermissionDeniedException(
+                "You do not have permission to delete this CV"
+            )
 
         was_default = cv.is_default
         await self._storage.delete_file(cv.key)
@@ -346,7 +371,9 @@ class CandidateService:
         if cv is None:
             raise DocumentNotFoundError()
         if cv.candidate_id != profile.id:
-            raise PermissionDeniedException("You do not have permission to set this CV as default")
+            raise PermissionDeniedException(
+                "You do not have permission to set this CV as default"
+            )
 
         await self._repo.set_default_cv(profile.id, cv_id)
         await self._db.commit()
@@ -369,7 +396,9 @@ class CandidateService:
         if cv is None:
             raise DocumentNotFoundError()
         if cv.candidate_id != profile.id:
-            raise PermissionDeniedException("You do not have permission to access this CV")
+            raise PermissionDeniedException(
+                "You do not have permission to access this CV"
+            )
 
         return await self._storage.generate_presigned_url(cv.key, 60 * 15)
 
@@ -377,7 +406,9 @@ class CandidateService:
     # Documents
     # ------------------------------------------------------------------
 
-    async def upload_document(self, user_id: uuid.UUID, file: bytes, filename: str) -> CandidateDocumentsResponse:
+    async def upload_document(
+        self, user_id: uuid.UUID, file: bytes, filename: str
+    ) -> CandidateDocumentsResponse:
         """Validate, upload, and persist a supporting document.
 
         Args:
@@ -435,13 +466,17 @@ class CandidateService:
         if document is None:
             raise DocumentNotFoundError()
         if document.candidate_id != profile.id:
-            raise PermissionDeniedException("You do not have permission to delete this document")
+            raise PermissionDeniedException(
+                "You do not have permission to delete this document"
+            )
 
         await self._storage.delete_file(document.key)
         await self._repo.delete_document(document)
         await self._db.commit()
 
-    async def get_my_documents(self, user_id: uuid.UUID) -> list[CandidateDocumentsResponse]:
+    async def get_my_documents(
+        self, user_id: uuid.UUID
+    ) -> list[CandidateDocumentsResponse]:
         """Return all supporting documents for the authenticated candidate."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
@@ -449,7 +484,9 @@ class CandidateService:
         docs = await self._repo.get_all_documents(profile.id)
         return [CandidateDocumentsResponse.model_validate(d) for d in docs]
 
-    async def generate_document_url(self, document_id: uuid.UUID, user_id: uuid.UUID) -> str:
+    async def generate_document_url(
+        self, document_id: uuid.UUID, user_id: uuid.UUID
+    ) -> str:
         """Generate a 15-minute presigned URL for a supporting document. Enforces ownership."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
@@ -459,7 +496,9 @@ class CandidateService:
         if document is None:
             raise DocumentNotFoundError()
         if document.candidate_id != profile.id:
-            raise PermissionDeniedException("You do not have permission to access this document")
+            raise PermissionDeniedException(
+                "You do not have permission to access this document"
+            )
 
         return await self._storage.generate_presigned_url(document.key, 60 * 15)
 
@@ -478,7 +517,9 @@ class CandidateService:
         await self._db.commit()
         return WorkExperienceResponse.model_validate(entry)
 
-    async def delete_work_experience(self, entry_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    async def delete_work_experience(
+        self, entry_id: uuid.UUID, user_id: uuid.UUID
+    ) -> None:
         """Delete a work experience entry, enforcing profile ownership."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
@@ -487,7 +528,9 @@ class CandidateService:
         if entry is None:
             raise DocumentNotFoundError()
         if entry.candidate_id != profile.id:
-            raise PermissionDeniedException("You do not have permission to delete this entry")
+            raise PermissionDeniedException(
+                "You do not have permission to delete this entry"
+            )
         await self._repo.delete_work_experience(entry)
         await self._db.commit()
 
@@ -515,7 +558,9 @@ class CandidateService:
         if entry is None:
             raise DocumentNotFoundError()
         if entry.candidate_id != profile.id:
-            raise PermissionDeniedException("You do not have permission to delete this entry")
+            raise PermissionDeniedException(
+                "You do not have permission to delete this entry"
+            )
         await self._repo.delete_education(entry)
         await self._db.commit()
 
@@ -534,7 +579,9 @@ class CandidateService:
         await self._db.commit()
         return CertificationResponse.model_validate(entry)
 
-    async def delete_certification(self, entry_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    async def delete_certification(
+        self, entry_id: uuid.UUID, user_id: uuid.UUID
+    ) -> None:
         """Delete a certification entry, enforcing profile ownership."""
         profile = await self._repo.get_by_user_id(user_id)
         if profile is None:
@@ -543,6 +590,8 @@ class CandidateService:
         if entry is None:
             raise DocumentNotFoundError()
         if entry.candidate_id != profile.id:
-            raise PermissionDeniedException("You do not have permission to delete this entry")
+            raise PermissionDeniedException(
+                "You do not have permission to delete this entry"
+            )
         await self._repo.delete_certification(entry)
         await self._db.commit()

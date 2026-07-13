@@ -188,7 +188,9 @@ async def test_update_job_raises_for_wrong_owner(db_session):
 
     service = JobService(db_session)
     with pytest.raises(PermissionDeniedException):
-        await service.update_job(job.id, JobUpdateRequest(title="Stolen"), current_user=other)
+        await service.update_job(
+            job.id, JobUpdateRequest(title="Stolen"), current_user=other
+        )
 
 
 @pytest.mark.asyncio

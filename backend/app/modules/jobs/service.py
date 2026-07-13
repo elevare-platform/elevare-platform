@@ -45,12 +45,16 @@ class JobService:
         """Create a draft job owned by the authenticated employer."""
         employer = await self._user_repo.get_user_by_id(employer.id)
 
-        if not employer.employer_profile or not employer.employer_profile.is_profile_complete:
+        if (
+            not employer.employer_profile
+            or not employer.employer_profile.is_profile_complete
+        ):
             raise ProfileIncompleteException()
         job = await self._repo.create(data, employer_id=employer.id)
         await self._db.commit()
 
         from app.modules.ai.tasks import generate_job_embedding_task
+
         generate_job_embedding_task.delay(str(job.id))
 
         return JobResponse.from_job(job)
@@ -121,7 +125,16 @@ class JobService:
             job.moderation_status = ModerationStatus.PENDING.value
 
         # Detect whether any scoring-relevant fields are changing
-        scoring_fields = {"description", "required_skills", "seniority_level"}
+        scoring_fields = {
+            "about_the_role",
+            "key_responsibilities",
+            "requirements",
+            "preferred_certifications",
+            "technical_competencies",
+            "what_we_offer",
+            "required_skills",
+            "seniority_level",
+        }
         update_data = data.model_dump(exclude_unset=True)
         scoring_changed = bool(scoring_fields & update_data.keys())
 
@@ -129,9 +142,18 @@ class JobService:
         await self._db.commit()
 
         # Re-generate embedding if embedding-relevant fields changed
-        embedding_fields = {"description", "required_skills"}
+        embedding_fields = {
+            "about_the_role",
+            "key_responsibilities",
+            "requirements",
+            "preferred_certifications",
+            "technical_competencies",
+            "what_we_offer",
+            "required_skills",
+        }
         if bool(embedding_fields & update_data.keys()):
             from app.modules.ai.tasks import generate_job_embedding_task
+
             generate_job_embedding_task.delay(str(job.id))
 
         # Re-fire scoring for all applications on this job if inputs changed

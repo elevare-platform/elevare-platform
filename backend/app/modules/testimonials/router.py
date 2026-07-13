@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
-from app.core.storage import get_storage_service, StorageService
+from app.core.storage import StorageService, get_storage_service
 from app.modules.testimonials.schemas import TestimonialRead, TestimonialResponse
 from app.modules.testimonials.service import TestimonialService
 
@@ -45,7 +45,9 @@ async def create_testimonial(
 
     if image and image.filename:
         if image.content_type not in ALLOWED_IMAGE_TYPES:
-            raise HTTPException(status_code=400, detail="Image must be JPEG, PNG, or WebP.")
+            raise HTTPException(
+                status_code=400, detail="Image must be JPEG, PNG, or WebP."
+            )
         image_bytes = await image.read()
         if len(image_bytes) > MAX_IMAGE_SIZE:
             raise HTTPException(status_code=400, detail="Image must be under 5 MB.")

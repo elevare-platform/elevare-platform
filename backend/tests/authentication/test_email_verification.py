@@ -25,6 +25,7 @@ def mock_response() -> Response:
 def register_payload(**overrides) -> dict:
     """Return a valid registration JSON payload."""
     from tests.conftest import make_register_data
+
     data = make_register_data(**overrides)
     return {
         "first_name": data.first_name,
@@ -109,6 +110,7 @@ async def test_resend_verification_invalidates_old_token(db_session):
     from sqlalchemy import select
 
     from app.modules.auth.security import hash_token as ht
+
     stmt = select(EmailVerificationToken).where(
         EmailVerificationToken.token == ht(first_token)
     )

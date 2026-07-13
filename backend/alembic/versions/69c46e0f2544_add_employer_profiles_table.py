@@ -5,6 +5,7 @@ Revises: 505bbe809ca9
 Create Date: 2026-05-14 02:21:37.953143
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -28,14 +29,34 @@ def upgrade() -> None:
         sa.Column("industry", sa.String(length=100), nullable=True),
         sa.Column("company_size", sa.String(length=20), nullable=True),
         sa.Column("website", sa.String(length=500), nullable=True),
-        sa.Column("is_profile_complete", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column(
+            "is_profile_complete",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_employer_profiles_user_id"), "employer_profiles", ["user_id"], unique=True)
+    op.create_index(
+        op.f("ix_employer_profiles_user_id"),
+        "employer_profiles",
+        ["user_id"],
+        unique=True,
+    )
     # ### end Alembic commands ###
 
 

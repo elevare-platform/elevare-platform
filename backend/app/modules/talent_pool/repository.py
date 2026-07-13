@@ -1,4 +1,5 @@
 """Data-access layer for TalentPoolProfiles."""
+
 from __future__ import annotations
 
 import uuid
@@ -62,7 +63,6 @@ class TalentPoolRepository:
         )
         return result.scalar_one_or_none()
 
-
     async def list(
         self,
         status: str | None = None,
@@ -118,7 +118,9 @@ class TalentPoolRepository:
 
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
-    async def update(self, profile_id: uuid.UUID, data: dict) -> TalentPoolProfiles | None:
+    async def update(
+        self, profile_id: uuid.UUID, data: dict
+    ) -> TalentPoolProfiles | None:
         """Apply a partial update dict to a profile and return it, or None if not found."""
         profile = await self.get_by_id(profile_id)
         if not profile:
@@ -136,6 +138,7 @@ class TalentPoolRepository:
         plus pipeline profiles (no job) that can be scored retroactively.
         """
         from sqlalchemy import or_
+
         stmt = (
             select(TalentPoolProfiles)
             .where(TalentPoolProfiles.parsed_submission_id.is_not(None))

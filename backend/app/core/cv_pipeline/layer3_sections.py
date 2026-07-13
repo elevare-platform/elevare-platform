@@ -4,40 +4,72 @@ Identifies common CV sections (summary, experience, education, skills,
 certifications, projects, references) by matching known header strings.
 Returns a DetectedSections dataclass with each section's text content.
 """
+
 from dataclasses import dataclass
 
 SECTION_HEADERS = {
     "summary": [
-        "summary", "profile", "objective", "about me",
-        "professional summary", "career objective", "personal statement",
+        "summary",
+        "profile",
+        "objective",
+        "about me",
+        "professional summary",
+        "career objective",
+        "personal statement",
         "executive summary",
     ],
     "experience": [
-        "experience", "work experience", "work history", "employment",
-        "employment history", "career history", "professional experience",
-        "work background", "professional background",
+        "experience",
+        "work experience",
+        "work history",
+        "employment",
+        "employment history",
+        "career history",
+        "professional experience",
+        "work background",
+        "professional background",
     ],
     "education": [
-        "education", "academic background", "academic history",
-        "qualifications", "educational background", "training",
+        "education",
+        "academic background",
+        "academic history",
+        "qualifications",
+        "educational background",
+        "training",
         "academic qualifications",
     ],
     "skills": [
-        "skills", "technical skills", "core competencies", "competencies",
-        "key skills", "expertise", "areas of expertise", "proficiencies",
-        "tools", "technologies",
+        "skills",
+        "technical skills",
+        "core competencies",
+        "competencies",
+        "key skills",
+        "expertise",
+        "areas of expertise",
+        "proficiencies",
+        "tools",
+        "technologies",
     ],
     "certifications": [
-        "certifications", "certificates", "professional certifications",
-        "licenses", "accreditations", "professional development",
+        "certifications",
+        "certificates",
+        "professional certifications",
+        "licenses",
+        "accreditations",
+        "professional development",
     ],
     "projects": [
-        "projects", "portfolio", "key projects", "notable projects",
+        "projects",
+        "portfolio",
+        "key projects",
+        "notable projects",
     ],
     "references": [
-        "references", "referees",
+        "references",
+        "referees",
     ],
 }
+
 
 @dataclass
 class DetectedSections:
@@ -50,11 +82,13 @@ class DetectedSections:
     certifications: str | None
     projects: str | None
     references: str | None
-    unclassified: str   # everything not matched to a section
+    unclassified: str  # everything not matched to a section
+
 
 def _normalize_header(line: str) -> str:
     """Normalise a potential section header line for matching."""
     return " ".join(line.strip().lower().rstrip(":").split())
+
 
 def detect_sections(text: str) -> DetectedSections:
     """Parse CV text into labelled sections based on known header strings.

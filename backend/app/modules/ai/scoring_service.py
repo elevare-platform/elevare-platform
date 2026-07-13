@@ -32,16 +32,15 @@ def compute_deterministic_score(
         - Seniority match: 20%
     """
     skills_score = _skills_coverage(candidate_skills, job_required_skills)
-    experience_score = _experience_score(candidate_years_experience, job_min_years_experience, job_max_years_experience)
+    experience_score = _experience_score(
+        candidate_years_experience, job_min_years_experience, job_max_years_experience
+    )
     seniority_score = _seniority_score(candidate_seniority, job_seniority_level)
 
-    composite = (
-        skills_score * 0.5
-        + experience_score * 0.3
-        + seniority_score * 0.2
-    )
+    composite = skills_score * 0.5 + experience_score * 0.3 + seniority_score * 0.2
 
     return max(0, min(100, round(composite)))
+
 
 # ---------------------------------------------------------------------------
 # Component functions
@@ -60,6 +59,7 @@ def _skills_coverage(candidate_skills: list[str], required_skills: list[str]) ->
     matched = sum(1 for s in required_skills if s.lower() in candidate_lower)
 
     return matched / len(required_skills) * 100
+
 
 def _experience_score(
     candidate_years: int | None,
@@ -94,7 +94,10 @@ def _experience_score(
 
     return 20.0
 
-def _seniority_score(candidate_seniority: str | None, job_seniority: str | None) -> float:
+
+def _seniority_score(
+    candidate_seniority: str | None, job_seniority: str | None
+) -> float:
     """
     Score based on seniority level match.
 
@@ -105,7 +108,6 @@ def _seniority_score(candidate_seniority: str | None, job_seniority: str | None)
     """
     if not candidate_seniority or not job_seniority:
         return 50.0  # neutral data when data is missing
-
 
     c = candidate_seniority.upper().strip()
     j = job_seniority.upper().strip()
@@ -122,6 +124,7 @@ def _seniority_score(candidate_seniority: str | None, job_seniority: str | None)
     else:
         return 0.0  # distant (2+ levels)
 
+
 def hash_job_scoring_inputs(
     description: str,
     required_skills: list[str] | None,
@@ -136,9 +139,8 @@ def hash_job_scoring_inputs(
 
     return hashlib.sha256(payload.encode()).hexdigest()
 
-def hash_cv_scoring_inputs(
-    parsed_data: dict
-) -> str:
+
+def hash_cv_scoring_inputs(parsed_data: dict) -> str:
     """SHA-256 of CV fields that affect scoring."""
     payload = (
         f"{sorted(parsed_data.get('skills') or [])}|"
@@ -146,6 +148,7 @@ def hash_cv_scoring_inputs(
         f"{parsed_data.get('seniority_level')}"
     )
     return hashlib.sha256(payload.encode()).hexdigest()
+
 
 def hash_candidate_embedding_source(
     skills: list[str] | None,
@@ -156,11 +159,16 @@ def hash_candidate_embedding_source(
     payload = f"{sorted(skills or [])}|{bio or ''}|{parsed_cv_summary or ''}"
     return hashlib.sha256(payload.encode()).hexdigest()
 
+
 def hash_job_embedding_source(
     description: str | None,
     required_skills: list[str] | None,
 ) -> str:
-    """SHA-256 of job fields that affect the embedding."""
+    """SHA-256 of job fields that affect the embedding.
+
+    ``description`` here is the pre-concatenated full description built from
+    all structured fields via ``build_full_description()``.
+    """
     payload = f"{description or ''}|{sorted(required_skills or [])}"
     return hashlib.sha256(payload.encode()).hexdigest()
 

@@ -30,10 +30,8 @@ class EmployerRepository:
             func.count(Job.id).label("total"),
             func.count(Job.id).filter(Job.status == "ACTIVE").label("active"),
             func.count(Job.id).filter(Job.status == "DRAFT").label("draft"),
-            func.count(Job.id).filter(Job.status == "CLOSED").label("closed")
-        ).where(
-            Job.employer_id == employer_id
-        )
+            func.count(Job.id).filter(Job.status == "CLOSED").label("closed"),
+        ).where(Job.employer_id == employer_id)
 
         result = await self._db.execute(stmt)
 
@@ -53,5 +51,5 @@ class EmployerRepository:
             active_jobs=row["active"],
             draft_jobs=row["draft"],
             closed_jobs=row["closed"],
-            total_applications=0
+            total_applications=0,
         )

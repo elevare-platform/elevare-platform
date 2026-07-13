@@ -4,6 +4,7 @@ Runs text extraction → language detection → section detection →
 deterministic extraction → taxonomy matching → NLP extraction →
 LLM extraction → merge and score, returning a CVExtractionResult.
 """
+
 import logging
 from datetime import UTC, datetime
 
@@ -25,6 +26,7 @@ from app.core.cv_pipeline.models import CVExtractionResult
 from app.modules.ai.service import AIService
 
 logger = logging.getLogger(__name__)
+
 
 def _failed_result(error: str) -> CVExtractionResult:
     """Build a CVExtractionResult representing a failed extraction."""
@@ -54,11 +56,15 @@ def _failed_result(error: str) -> CVExtractionResult:
         extracted_at=datetime.now(UTC),
     )
 
+
 async def run_extraction_pipeline(
     pdf_bytes: bytes,
     nlp,
     ai_service: AIService,
-) -> tuple[CVExtractionResult, tuple[DeterministicExtractionResult, LLMExtractionResult, LanguageDetectionResult]]:
+) -> tuple[
+    CVExtractionResult,
+    tuple[DeterministicExtractionResult, LLMExtractionResult, LanguageDetectionResult],
+]:
     """Run the full 8-layer CV extraction pipeline.
 
     Args:
@@ -75,7 +81,11 @@ async def run_extraction_pipeline(
     text_result = extract_text_from_pdf(pdf_bytes)
     if not text_result.success:
         logger.info("Error extracting texts from pdf")
-        return _failed_result(text_result.error), (DeterministicExtractionResult(None, None, None, None, None, [], {}), LLMExtractionResult(), LanguageDetectionResult("en", 0.0, False, False, True))
+        return _failed_result(text_result.error), (
+            DeterministicExtractionResult(None, None, None, None, None, [], {}),
+            LLMExtractionResult(),
+            LanguageDetectionResult("en", 0.0, False, False, True),
+        )
 
     # Layer 2 - detect language
     lang_result = language_detection(text_result.text)
@@ -104,17 +114,9 @@ async def run_extraction_pipeline(
         "raw_dates": deterministic.raw_dates,
     }
 
-    llm_result = await ai_service.extract_cv_data(
-        sections,
-        already_extracted
-    )
+    llm_result = await ai_service.extract_cv_data(sections, already_extracted)
 
     # Layer 8 - merge and score
     return merge_and_score(
-        deterministic,
-        taxonomy,
-        nlp_result,
-        llm_result,
-        text_result,
-        lang_result
+        deterministic, taxonomy, nlp_result, llm_result, text_result, lang_result
     ), (deterministic, llm_result, lang_result)

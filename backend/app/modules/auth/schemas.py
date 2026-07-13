@@ -80,6 +80,7 @@ def validate_password_strength(v: str) -> str:
 # Request schemas
 # ---------------------------------------------------------------------------
 
+
 class RegisterRequest(BaseModel):
     """Payload for creating a new user account.
 
@@ -92,6 +93,7 @@ class RegisterRequest(BaseModel):
         confirm_password: Must match ``password`` exactly.
 
     """
+
     first_name: str = Field(..., min_length=2, max_length=100)
     last_name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
@@ -116,7 +118,7 @@ class RegisterRequest(BaseModel):
             ValueError: If the role is not in the allowed list.
 
         """
-        allowed_role = [value for value in list(UserRole) if value != 'ADMIN']
+        allowed_role = [value for value in list(UserRole) if value != "ADMIN"]
         if v not in UserRole:
             raise ValueError(f"Invalid role. Must be one of {allowed_role}")
         if v == UserRole.ADMIN:
@@ -140,7 +142,6 @@ class RegisterRequest(BaseModel):
         """
         return validate_phone_digits(v)
 
-
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
@@ -154,7 +155,6 @@ class RegisterRequest(BaseModel):
 
         """
         return validate_password_strength(v)
-
 
     @model_validator(mode="after")
     def password_match(self) -> "RegisterRequest":
@@ -179,6 +179,7 @@ class LoginRequest(BaseModel):
         email: User's email address.
         password: Plain-text password.
     """
+
     email: EmailStr
     password: str = Field(..., min_length=1)
 
@@ -227,6 +228,7 @@ class AcceptInviteRequest(BaseModel):
 # Response schemas
 # ---------------------------------------------------------------------------
 
+
 class TokenResponse(BaseModel):
     """Tokens returned after a successful login or token refresh.
 
@@ -236,6 +238,7 @@ class TokenResponse(BaseModel):
         token_type: Always ``"bearer"`` per the OAuth2 spec.
 
     """
+
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -278,4 +281,3 @@ class MessageResponse(BaseModel):
     """Generic message response for operations that return no data."""
 
     message: str
-

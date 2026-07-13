@@ -49,8 +49,8 @@ class CandidateProfile(BaseModel):
     __table_args__ = (
         Index(
             "ix_candidate_profile_skills_gin",  # Index name
-            "skills",                   # Column name
-            postgresql_using="gin"
+            "skills",  # Column name
+            postgresql_using="gin",
         ),
     )
 
@@ -72,8 +72,12 @@ class CandidateProfile(BaseModel):
     linkedin_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     github_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     portfolio_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    preferred_work_models: Mapped[list[WorkModel] | None] = mapped_column(ARRAY(String), nullable=True)
-    preferred_locations: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    preferred_work_models: Mapped[list[WorkModel] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+    preferred_locations: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
     is_profile_complete: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -100,18 +104,32 @@ class CandidateProfile(BaseModel):
         server_default=sa.false(),
     )
 
-    profile_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    profile_embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(1536), nullable=True
+    )
     embedding_source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    embedding_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    embedding_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     user: Mapped[User] = relationship(back_populates="candidate_profile")
     cvs: Mapped[list[CandidateCvs]] = relationship(back_populates="candidate_profile")
-    documents: Mapped[list[CandidateDocuments]] = relationship(back_populates="candidate_profile")
-    work_experiences: Mapped[list[WorkExperience]] = relationship(back_populates="candidate_profile")
-    educations: Mapped[list[Education]] = relationship(back_populates="candidate_profile")
-    certifications: Mapped[list[Certification]] = relationship(back_populates="candidate_profile")
-    profile_views: Mapped[list[ProfileView]] = relationship(back_populates="candidate_profile")
+    documents: Mapped[list[CandidateDocuments]] = relationship(
+        back_populates="candidate_profile"
+    )
+    work_experiences: Mapped[list[WorkExperience]] = relationship(
+        back_populates="candidate_profile"
+    )
+    educations: Mapped[list[Education]] = relationship(
+        back_populates="candidate_profile"
+    )
+    certifications: Mapped[list[Certification]] = relationship(
+        back_populates="candidate_profile"
+    )
+    profile_views: Mapped[list[ProfileView]] = relationship(
+        back_populates="candidate_profile"
+    )
     talent_pool_profile: Mapped[TalentPoolProfiles | None] = relationship(
         "TalentPoolProfiles",
         back_populates="candidate_profile",
@@ -142,12 +160,8 @@ class CandidateCvs(BaseModel):
         ForeignKey("candidate_profile.id", ondelete="CASCADE"),
         nullable=False,
     )
-    key: Mapped[str] = mapped_column(
-        Text
-    )
-    filename: Mapped[str] = mapped_column(
-        String(255)
-    )
+    key: Mapped[str] = mapped_column(Text)
+    filename: Mapped[str] = mapped_column(String(255))
     is_default: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
@@ -187,19 +201,17 @@ class CandidateDocuments(BaseModel):
         ForeignKey("candidate_profile.id", ondelete="CASCADE"),
         nullable=False,
     )
-    key: Mapped[str] = mapped_column(
-        Text
-    )
-    filename: Mapped[str] = mapped_column(
-        String(255)
-    )
+    key: Mapped[str] = mapped_column(Text)
+    filename: Mapped[str] = mapped_column(String(255))
     document_type: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
     )
 
     # Relationships
-    candidate_profile: Mapped[CandidateProfile] = relationship(back_populates="documents")
+    candidate_profile: Mapped[CandidateProfile] = relationship(
+        back_populates="documents"
+    )
 
 
 class WorkExperience(BaseModel):
@@ -216,7 +228,9 @@ class WorkExperience(BaseModel):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    is_current: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.false())
+    is_current: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa.false()
+    )
 
     # relationships
     candidate_profile: Mapped[CandidateProfile] = relationship(

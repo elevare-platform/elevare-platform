@@ -1,4 +1,5 @@
 """Structured JSON logging configuration for the Elevare platform."""
+
 import logging
 import sys
 

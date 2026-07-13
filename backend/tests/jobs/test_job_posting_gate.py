@@ -53,9 +53,9 @@ async def create_employer_with_profile(db_session, is_complete: bool):
     from app.modules.users.models import User
 
     result = await db_session.execute(
-        select(User).where(User.id == employer.id).options(
-            selectinload(User.employer_profile)
-        )
+        select(User)
+        .where(User.id == employer.id)
+        .options(selectinload(User.employer_profile))
     )
     return result.scalar_one()
 
@@ -63,6 +63,7 @@ async def create_employer_with_profile(db_session, is_complete: bool):
 # ---------------------------------------------------------------------------
 # Service-layer tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_create_job_blocked_for_incomplete_profile(db_session):
@@ -111,6 +112,7 @@ async def test_create_job_blocked_when_no_employer_profile_exists(db_session):
 # ---------------------------------------------------------------------------
 # HTTP integration tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_post_job_returns_403_for_incomplete_profile(client, db_session):

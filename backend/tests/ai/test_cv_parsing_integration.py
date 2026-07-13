@@ -18,7 +18,9 @@ def make_pdf_bytes() -> bytes:
     return b"%PDF-1.4 fake cv content for testing the cv parsing pipeline integration tests"
 
 
-async def get_token(client: AsyncClient, db_session: AsyncSession, role: str = "ADMIN") -> str:
+async def get_token(
+    client: AsyncClient, db_session: AsyncSession, role: str = "ADMIN"
+) -> str:
     from sqlalchemy import select
 
     from app.modules.auth.jwt_handler import create_token_pair
@@ -81,6 +83,7 @@ def mock_redis():
 
 # ── Submit CV ─────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_submit_cv_creates_submission(client, db_session):
     token = await get_token(client, db_session, "ADMIN")
@@ -93,7 +96,9 @@ async def test_submit_cv_creates_submission(client, db_session):
     assert resp.status_code == 201
     sub_id = resp.json()["id"]
 
-    result = await db_session.execute(select(ParsedCVSubmission).where(ParsedCVSubmission.id == sub_id))
+    result = await db_session.execute(
+        select(ParsedCVSubmission).where(ParsedCVSubmission.id == sub_id)
+    )
     submission = result.scalar_one_or_none()
     assert submission is not None
     assert submission.parse_status == CVParsingStatus.PENDING.value
@@ -102,9 +107,11 @@ async def test_submit_cv_creates_submission(client, db_session):
 @pytest.mark.asyncio
 async def test_submit_cv_cache_hit_returns_completed(client, db_session, mock_redis):
     import json
+
     cached_data = {"full_name": "John Doe", "email": "john@example.com", "skills": []}
     # Re-register the override so the client fixture's mock_redis uses our cached response
     from app.core.dependencies import get_redis_client
+
     configured_mock = AsyncMock()
     configured_mock.get = AsyncMock(return_value=json.dumps(cached_data).encode())
     configured_mock.setex = AsyncMock()
@@ -126,7 +133,9 @@ async def test_submit_cv_cache_hit_returns_completed(client, db_session, mock_re
 
 
 @pytest.mark.asyncio
-async def test_submit_cv_cache_miss_fires_background_task(client, db_session, mock_celery_task):
+async def test_submit_cv_cache_miss_fires_background_task(
+    client, db_session, mock_celery_task
+):
     token = await get_token(client, db_session, "ADMIN")
 
     await client.post(
@@ -139,6 +148,7 @@ async def test_submit_cv_cache_miss_fires_background_task(client, db_session, mo
 
 
 # ── Get submission ────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_get_submission_returns_data(client, db_session):
@@ -180,8 +190,11 @@ async def test_employer_cannot_see_other_employer_submission(client, db_session)
 
 # ── No duplicate LLM cost on cache hit ───────────────────────────────────────
 
+
 @pytest.mark.asyncio
-async def test_same_cv_twice_no_second_llm_call(client, db_session, mock_celery_task, mock_redis):
+async def test_same_cv_twice_no_second_llm_call(
+    client, db_session, mock_celery_task, mock_redis
+):
     import json
 
     from app.core.dependencies import get_redis_client

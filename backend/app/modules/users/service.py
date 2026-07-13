@@ -48,8 +48,6 @@ class UserService:
         profile = await self._user_repo.get_employer_profile(user_id)
 
         if profile is None:
-            raise PermissionDeniedException(
-                message="Employer profile not found"
-            )
+            raise PermissionDeniedException(message="Employer profile not found")
 
         return EmployerProfileResponse.model_validate(profile)

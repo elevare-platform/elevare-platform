@@ -1,4 +1,5 @@
 """Celery tasks for the AI module — CV parsing pipeline, scoring, and embeddings."""
+
 import asyncio
 import json
 import logging
@@ -25,12 +26,15 @@ from app.modules.talent_pool.repository import TalentPoolRepository
 
 logger = logging.getLogger(__name__)
 
+
 def _json_serialise(obj):
     """Custom JSON serialiser for types not handled by stdlib json."""
     from datetime import date, datetime
+
     if isinstance(obj, datetime | date):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serialisable")
+
 
 CACHE_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
@@ -71,9 +75,11 @@ async def _run_pipeline_async(
 
     async with SessionLocal() as db:
         from app.core.storage import get_storage_service
+
         repo = CVParsingRepo(db, get_storage_service())
 
         import spacy
+
         nlp = spacy.load("en_core_web_sm")
 
         ai_service = AnthropicCVExtractionService()
@@ -84,16 +90,26 @@ async def _run_pipeline_async(
             # now done here so the HTTP response returns immediately
             from datetime import UTC as _UTC
             from datetime import datetime as _datetime
+
             timestamp = _datetime.now(_UTC).strftime("%Y%m%d%H%M%S")
             submission_obj = await repo.get_by_id(submission_id)
-            r2_key = f"cv-parsing/{submission_obj.uploaded_by}/{timestamp}_{submission_obj.filename}"
+            if not submission_obj:
+                logger.error(
+                    "Pipeline task: submission %s not found — may not be committed yet",
+                    submission_id,
+                )
+                raise ValueError(f"Submission {submission_id} not found in DB")
+            uploader = submission_obj.uploaded_by or "system"
+            r2_key = f"cv-parsing/{uploader}/{timestamp}_{submission_obj.filename}"
             storage = get_storage_service()
             await storage.upload_file(file, r2_key, "application/pdf")
             await repo.update(submission_id, {"r2_key": r2_key})
 
-            await repo.update(submission_id, {"parse_status": CVParsingStatus.PROCESSING.value})
-            cv_result, (deterministic, llm_result, lang_result) = await run_extraction_pipeline(
-                file, nlp, ai_service
+            await repo.update(
+                submission_id, {"parse_status": CVParsingStatus.PROCESSING.value}
+            )
+            cv_result, (deterministic, llm_result, lang_result) = (
+                await run_extraction_pipeline(file, nlp, ai_service)
             )
 
             flag_reasons = []
@@ -104,21 +120,36 @@ async def _run_pipeline_async(
             if cv_result.overall_confidence < 0.6:
                 flag_reasons.append("Low confidence extraction")
 
-            parse_status = CVParsingStatus.FLAGGED.value if flag_reasons else CVParsingStatus.COMPLETED.value
+            parse_status = (
+                CVParsingStatus.FLAGGED.value
+                if flag_reasons
+                else CVParsingStatus.COMPLETED.value
+            )
 
-            parsed_data = json.loads(json.dumps(dataclasses.asdict(cv_result), default=_json_serialise))
-            deterministic_data = json.loads(json.dumps(dataclasses.asdict(deterministic), default=_json_serialise))
-            llm_data = json.loads(json.dumps(dataclasses.asdict(llm_result), default=_json_serialise))
+            parsed_data = json.loads(
+                json.dumps(dataclasses.asdict(cv_result), default=_json_serialise)
+            )
+            deterministic_data = json.loads(
+                json.dumps(dataclasses.asdict(deterministic), default=_json_serialise)
+            )
+            llm_data = json.loads(
+                json.dumps(dataclasses.asdict(llm_result), default=_json_serialise)
+            )
 
-            await repo.update(submission_id, {
-                "parse_status": parse_status,
-                "parsed_data": parsed_data,
-                "deterministic_data": deterministic_data,
-                "llm_data": llm_data,
-                "flag_reasons": flag_reasons or None,
-            })
+            await repo.update(
+                submission_id,
+                {
+                    "parse_status": parse_status,
+                    "parsed_data": parsed_data,
+                    "deterministic_data": deterministic_data,
+                    "llm_data": llm_data,
+                    "flag_reasons": flag_reasons or None,
+                },
+            )
 
-            await redis.setex(cache_key, CACHE_TTL_SECONDS, json.dumps(parsed_data, default=str))
+            await redis.setex(
+                cache_key, CACHE_TTL_SECONDS, json.dumps(parsed_data, default=str)
+            )
 
             if llm_result.field_confidence.get("skills") not in (None, "low"):
                 cost_row = CVParsingCost(
@@ -138,29 +169,45 @@ async def _run_pipeline_async(
                 from sqlalchemy import select as _select
 
                 from app.modules.talent_pool.models import TalentPoolProfiles
+
                 tp_result = await db.execute(
-                    _select(TalentPoolProfiles)
-                    .where(TalentPoolProfiles.parsed_submission_id == submission_id)
+                    _select(TalentPoolProfiles).where(
+                        TalentPoolProfiles.parsed_submission_id == submission_id
+                    )
                 )
                 for tp in list(tp_result.scalars().all()):
                     if tp.sourced_for_job_id:
-                        score_talent_pool_profile_task.delay(str(tp.id), str(tp.sourced_for_job_id))
-                        logger.info("Pipeline complete — queued talent pool scoring for profile %s", tp.id)
+                        score_talent_pool_profile_task.delay(
+                            str(tp.id), str(tp.sourced_for_job_id)
+                        )
+                        logger.info(
+                            "Pipeline complete — queued talent pool scoring for profile %s",
+                            tp.id,
+                        )
                     # Always queue embedding generation regardless of job context
                     from app.modules.ai.tasks import (
                         generate_talent_pool_embedding_task as _gen_tp_emb,
                     )
+
                     _gen_tp_emb.delay(str(tp.id))
             except Exception:
-                logger.warning("Failed to trigger talent pool scoring after pipeline", exc_info=True)
+                logger.warning(
+                    "Failed to trigger talent pool scoring after pipeline",
+                    exc_info=True,
+                )
 
         except Exception as e:
-            logger.error(f"Pipeline task failed for submission {submission_id}", exc_info=True)
+            logger.error(
+                f"Pipeline task failed for submission {submission_id}", exc_info=True
+            )
             try:
-                await repo.update(submission_id, {
-                    "parse_status": CVParsingStatus.FAILED.value,
-                    "error_message": str(e),
-                })
+                await repo.update(
+                    submission_id,
+                    {
+                        "parse_status": CVParsingStatus.FAILED.value,
+                        "error_message": str(e),
+                    },
+                )
                 await db.commit()
             except Exception:
                 pass
@@ -174,6 +221,7 @@ async def _run_pipeline_async(
             except Exception:
                 pass
 
+
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def score_application_task(self, application_id: str) -> None:
     """Compute ai_score, strengths, weaknesses, and fit_summary for an application.
@@ -181,9 +229,8 @@ def score_application_task(self, application_id: str) -> None:
     Exits early (no LLM call, no write) if both content hashes match the stored values.
     Re-fires automatically when job description/skills changes via the job update endpoint.
     """
-    asyncio.run(
-        _score_application_async(application_id)
-    )
+    asyncio.run(_score_application_async(application_id))
+
 
 async def _score_application_async(application_id_str: str) -> None:
 
@@ -237,14 +284,21 @@ async def _score_application_async(application_id_str: str) -> None:
                 return
 
             # --- Hash-based cache check - skip LLM if nothing changed
+            from app.modules.jobs.schemas import build_full_description
+
+            effective_description = build_full_description(
+                about_the_role=job.about_the_role,
+                key_responsibilities=job.key_responsibilities,
+                requirements=job.requirements,
+                preferred_certifications=job.preferred_certifications,
+                technical_competencies=job.technical_competencies,
+                what_we_offer=job.what_we_offer,
+                legacy_description=job.description,
+            )
             job_hash = hash_job_scoring_inputs(
-                job.description or "",
-                job.required_skills or [],
-                job.seniority_level
+                effective_description, job.required_skills or [], job.seniority_level
             )
-            cv_hash = hash_cv_scoring_inputs(
-                submission.parsed_data
-            )
+            cv_hash = hash_cv_scoring_inputs(submission.parsed_data)
 
             # --- Skip LLM if nothing changed
             if (
@@ -265,8 +319,11 @@ async def _score_application_async(application_id_str: str) -> None:
             from sqlalchemy import select as _select
 
             from app.modules.candidates.models import CandidateProfile
+
             candidate_profile_result = await db.execute(
-                _select(CandidateProfile).where(CandidateProfile.user_id == application.candidate_id)
+                _select(CandidateProfile).where(
+                    CandidateProfile.user_id == application.candidate_id
+                )
             )
             candidate_profile = candidate_profile_result.scalar_one_or_none()
 
@@ -276,6 +333,7 @@ async def _score_application_async(application_id_str: str) -> None:
                 and job.job_embedding is not None
             ):
                 from app.modules.ai.service import EmbeddingAIService
+
                 embedding_service = EmbeddingAIService()
                 skills_score = await embedding_service.compute_similarity_score(
                     candidate_profile.profile_embedding,
@@ -286,6 +344,7 @@ async def _score_application_async(application_id_str: str) -> None:
                     _experience_score,
                     _seniority_score,
                 )
+
                 experience_score = _experience_score(
                     parsed.get("years_experience"),
                     job.required_years_experience,
@@ -295,10 +354,21 @@ async def _score_application_async(application_id_str: str) -> None:
                     parsed.get("seniority_level"),
                     job.seniority_level,
                 )
-                det_score = max(0, min(100, round(
-                    skills_score * 0.5 + experience_score * 0.3 + seniority_score * 0.2
-                )))
-                logger.info("score_application: used embedding similarity for application %s", application_id)
+                det_score = max(
+                    0,
+                    min(
+                        100,
+                        round(
+                            skills_score * 0.5
+                            + experience_score * 0.3
+                            + seniority_score * 0.2
+                        ),
+                    ),
+                )
+                logger.info(
+                    "score_application: used embedding similarity for application %s",
+                    application_id,
+                )
             else:
                 det_score = compute_deterministic_score(
                     candidate_skills=parsed.get("skills") or [],
@@ -309,13 +379,18 @@ async def _score_application_async(application_id_str: str) -> None:
                     job_min_years_experience=job.required_years_experience,
                     job_max_years_experience=None,
                 )
-                logger.info("score_application: used keyword fallback for application %s", application_id)
+                logger.info(
+                    "score_application: used keyword fallback for application %s",
+                    application_id,
+                )
 
             # --- LLM Layer ---
             ai_service = AnthropicCVExtractionService()
 
             try:
                 candidate_summary = (
+                    f"Current title: {parsed.get('current_title') or 'Unknown'}\n"
+                    f"Profession/field: {parsed.get('profession') or parsed.get('current_title') or 'Unknown'}\n"
                     f"Skills: {', '.join(parsed.get('skills') or [])}\n"
                     f"Years experience: {parsed.get('years_experience')}\n"
                     f"Seniority: {parsed.get('seniority_level')}\n"
@@ -324,43 +399,53 @@ async def _score_application_async(application_id_str: str) -> None:
 
                 reasoning = await ai_service.generate_fit_reasoning(
                     candidate_summary=candidate_summary,
-                    job_description=job.description or "",
-                    deterministic_score=det_score
+                    job_description=effective_description,
+                    deterministic_score=det_score,
                 )
             finally:
                 # Close before the session/engine tears down so the loop is still alive
                 await ai_service._client.close()
 
-            await app_repo.update(application_id, {
-                "ai_score": det_score,
-                "ai_strengths": reasoning.strengths,
-                "ai_weaknesses": reasoning.weaknesses,
-                "ai_fit_summary": reasoning.fit_summary,
-                "ai_score_job_hash": job_hash,
-                "ai_score_cv_hash": cv_hash,
-                "ai_score_computed_at": datetime.now(UTC),
-            })
+            await app_repo.update(
+                application_id,
+                {
+                    "ai_score": det_score,
+                    "ai_strengths": reasoning.strengths,
+                    "ai_weaknesses": reasoning.weaknesses,
+                    "ai_fit_summary": reasoning.fit_summary,
+                    "ai_score_job_hash": job_hash,
+                    "ai_score_cv_hash": cv_hash,
+                    "ai_score_computed_at": datetime.now(UTC),
+                },
+            )
             await db.commit()
-            logger.info(f"score_application: scored application {application_id} -> {det_score}")
+            logger.info(
+                f"score_application: scored application {application_id} -> {det_score}"
+            )
         except Exception:
-            logger.exception("score_application: failed for application %s", application_id)
+            logger.exception(
+                "score_application: failed for application %s", application_id
+            )
             raise
         finally:
             await engine.dispose()
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def score_talent_pool_profile_task(self, profile_id: str, job_id: str | None = None) -> None:
+def score_talent_pool_profile_task(
+    self, profile_id: str, job_id: str | None = None
+) -> None:
     """Compute ai_score, strengths, weaknesses, and fit_summary for a Talent Pool profile.
 
     job_id is optional — if not provided, falls back to profile.sourced_for_job_id.
     Pass job_id explicitly when scoring retroactively from score_against_job.
     """
-    asyncio.run(
-        _score_talent_pool_profile_async(profile_id, job_id)
-    )
+    asyncio.run(_score_talent_pool_profile_async(profile_id, job_id))
 
-async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str | None = None) -> None:
+
+async def _score_talent_pool_profile_async(
+    profile_id_str: str, job_id_str: str | None = None
+) -> None:
 
     profile_id = uuid.UUID(profile_id_str)
 
@@ -389,33 +474,48 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                 )
                 return
 
-            submission = await ai_repo.get_submission_by_id(talent_pool.parsed_submission_id)
+            submission = await ai_repo.get_submission_by_id(
+                talent_pool.parsed_submission_id
+            )
             if not submission:
-                logger.warning("score_talent_pool_profile: submission not found for profile %s", profile_id)
+                logger.warning(
+                    "score_talent_pool_profile: submission not found for profile %s",
+                    profile_id,
+                )
                 return
 
             if not submission.parsed_data:
                 # Parsing hasn't completed yet — reschedule after a delay
                 # The pipeline task will also trigger scoring once it completes
                 from app.modules.ai.enums import CVParsingStatus
-                if submission.parse_status in (CVParsingStatus.PENDING.value, CVParsingStatus.PROCESSING.value):
+
+                if submission.parse_status in (
+                    CVParsingStatus.PENDING.value,
+                    CVParsingStatus.PROCESSING.value,
+                ):
                     logger.info(
                         "score_talent_pool_profile: parsing still in progress for profile %s, retrying in 30s",
                         profile_id,
                     )
-                    raise Exception(f"Parsing not complete for submission {submission.id} — will retry")
+                    raise Exception(
+                        f"Parsing not complete for submission {submission.id} — will retry"
+                    )
                 else:
                     logger.warning(
                         "score_talent_pool_profile: submission %s has status %s with no parsed_data, skipping",
-                        submission.id, submission.parse_status,
+                        submission.id,
+                        submission.parse_status,
                     )
                     return
 
             # Use explicitly passed job_id first, fall back to profile's sourced_for_job_id
-            effective_job_id = uuid.UUID(job_id_str) if job_id_str else talent_pool.sourced_for_job_id
+            effective_job_id = (
+                uuid.UUID(job_id_str) if job_id_str else talent_pool.sourced_for_job_id
+            )
             if not effective_job_id:
                 logger.info(
-                    "score_talent_pool_profile: No job context for profile %s. Skipping.", profile_id
+                    "score_talent_pool_profile: No job context for profile %s. Skipping.",
+                    profile_id,
                 )
                 return
 
@@ -427,14 +527,21 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                 return
 
             # --- Hash-based cache check - skip LLM if nothing changed
+            from app.modules.jobs.schemas import build_full_description
+
+            effective_description = build_full_description(
+                about_the_role=job.about_the_role,
+                key_responsibilities=job.key_responsibilities,
+                requirements=job.requirements,
+                preferred_certifications=job.preferred_certifications,
+                technical_competencies=job.technical_competencies,
+                what_we_offer=job.what_we_offer,
+                legacy_description=job.description,
+            )
             job_hash = hash_job_scoring_inputs(
-                job.description or "",
-                job.required_skills or [],
-                job.seniority_level
+                effective_description, job.required_skills or [], job.seniority_level
             )
-            cv_hash = hash_cv_scoring_inputs(
-                submission.parsed_data
-            )
+            cv_hash = hash_cv_scoring_inputs(submission.parsed_data)
 
             # --- Skip LLM if nothing changed
             if (
@@ -455,10 +562,13 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
             from sqlalchemy import select as _select
 
             from app.modules.candidates.models import CandidateProfile
+
             candidate_profile = None
             if talent_pool.candidate_profile_id:
                 cp_result = await db.execute(
-                    _select(CandidateProfile).where(CandidateProfile.id == talent_pool.candidate_profile_id)
+                    _select(CandidateProfile).where(
+                        CandidateProfile.id == talent_pool.candidate_profile_id
+                    )
                 )
                 candidate_profile = cp_result.scalar_one_or_none()
 
@@ -469,15 +579,13 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
             if tp_embedding is None and candidate_profile is not None:
                 tp_embedding = candidate_profile.profile_embedding
 
-            if (
-                tp_embedding is not None
-                and job_emb is not None
-            ):
+            if tp_embedding is not None and job_emb is not None:
                 from app.modules.ai.scoring_service import (
                     _experience_score,
                     _seniority_score,
                 )
                 from app.modules.ai.service import EmbeddingAIService
+
                 embedding_service = EmbeddingAIService()
                 skills_score = await embedding_service.compute_similarity_score(
                     tp_embedding,
@@ -492,10 +600,21 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                     parsed.get("seniority_level"),
                     job.seniority_level,
                 )
-                det_score = max(0, min(100, round(
-                    skills_score * 0.5 + experience_score * 0.3 + seniority_score * 0.2
-                )))
-                logger.info("score_talent_pool_profile: used embedding similarity for profile %s", profile_id)
+                det_score = max(
+                    0,
+                    min(
+                        100,
+                        round(
+                            skills_score * 0.5
+                            + experience_score * 0.3
+                            + seniority_score * 0.2
+                        ),
+                    ),
+                )
+                logger.info(
+                    "score_talent_pool_profile: used embedding similarity for profile %s",
+                    profile_id,
+                )
             else:
                 det_score = compute_deterministic_score(
                     candidate_skills=parsed.get("skills") or [],
@@ -506,13 +625,18 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
                     job_min_years_experience=job.required_years_experience,
                     job_max_years_experience=None,
                 )
-                logger.info("score_talent_pool_profile: used keyword fallback for profile %s", profile_id)
+                logger.info(
+                    "score_talent_pool_profile: used keyword fallback for profile %s",
+                    profile_id,
+                )
 
             # --- LLM Layer ---
             ai_service = AnthropicCVExtractionService()
 
             try:
                 candidate_summary = (
+                    f"Current title: {parsed.get('current_title') or 'Unknown'}\n"
+                    f"Profession/field: {parsed.get('profession') or parsed.get('current_title') or 'Unknown'}\n"
                     f"Skills: {', '.join(parsed.get('skills') or [])}\n"
                     f"Years experience: {parsed.get('years_experience')}\n"
                     f"Seniority: {parsed.get('seniority_level')}\n"
@@ -521,30 +645,37 @@ async def _score_talent_pool_profile_async(profile_id_str: str, job_id_str: str 
 
                 reasoning = await ai_service.generate_fit_reasoning(
                     candidate_summary=candidate_summary,
-                    job_description=job.description or "",
-                    deterministic_score=det_score
+                    job_description=effective_description,
+                    deterministic_score=det_score,
                 )
             finally:
                 # Close before the session/engine tears down so the loop is still alive
                 await ai_service._client.close()
 
-            await talent_pool_repo.update(profile_id, {
-                "ai_score": det_score,
-                "ai_strengths": reasoning.strengths,
-                "ai_weaknesses": reasoning.weaknesses,
-                "ai_fit_summary": reasoning.fit_summary,
-                "ai_score_job_hash": job_hash,
-                "ai_score_cv_hash": cv_hash,
-                "ai_score_computed_at": datetime.now(UTC),
-            })
+            await talent_pool_repo.update(
+                profile_id,
+                {
+                    "ai_score": det_score,
+                    "ai_strengths": reasoning.strengths,
+                    "ai_weaknesses": reasoning.weaknesses,
+                    "ai_fit_summary": reasoning.fit_summary,
+                    "ai_score_job_hash": job_hash,
+                    "ai_score_cv_hash": cv_hash,
+                    "ai_score_computed_at": datetime.now(UTC),
+                },
+            )
             await db.commit()
-            logger.info(f"score_talent_pool_profile: scored talent_pool_profile {profile_id} -> {det_score}")
+            logger.info(
+                f"score_talent_pool_profile: scored talent_pool_profile {profile_id} -> {det_score}"
+            )
         except Exception:
-            logger.exception("score_talent_pool_profile: failed for talent_pool_profile %s", profile_id)
+            logger.exception(
+                "score_talent_pool_profile: failed for talent_pool_profile %s",
+                profile_id,
+            )
             raise
         finally:
             await engine.dispose()
-
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
@@ -575,14 +706,18 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
 
             profile = await candidate_repo.get_by_id(profile_id)
             if not profile:
-                logger.warning("generate_candidate_embedding: profile %s not found", profile_id)
+                logger.warning(
+                    "generate_candidate_embedding: profile %s not found", profile_id
+                )
                 return
 
             # Resolve parsed CV summary via the default CV → submission chain
             parsed_cv_summary: str | None = None
             default_cv = next((cv for cv in profile.cvs if cv.is_default), None)
             if default_cv and default_cv.submission_id:
-                submission = await ai_repo.get_submission_by_id(default_cv.submission_id)
+                submission = await ai_repo.get_submission_by_id(
+                    default_cv.submission_id
+                )
                 if submission and submission.parsed_data:
                     parsed_cv_summary = submission.parsed_data.get("summary")
 
@@ -592,8 +727,14 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                 bio=profile.bio,
                 parsed_cv_summary=parsed_cv_summary,
             )
-            if profile.embedding_source_hash == new_hash and profile.profile_embedding is not None:
-                logger.info("generate_candidate_embedding: hash unchanged for profile %s, skipping", profile_id)
+            if (
+                profile.embedding_source_hash == new_hash
+                and profile.profile_embedding is not None
+            ):
+                logger.info(
+                    "generate_candidate_embedding: hash unchanged for profile %s, skipping",
+                    profile_id,
+                )
                 return
 
             # Build embedding text and generate vector
@@ -612,10 +753,42 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
             profile.embedding_generated_at = _datetime.now(_UTC)
             await db.commit()
 
-            logger.info("generate_candidate_embedding: stored embedding for profile %s", profile_id)
+            logger.info(
+                "generate_candidate_embedding: stored embedding for profile %s",
+                profile_id,
+            )
+
+            # Re-queue scoring for all pending applications — keyword fallback may have run first
+            try:
+                from sqlalchemy import select as _select
+
+                from app.modules.applications.models import Application
+
+                apps_result = await db.execute(
+                    _select(Application).where(
+                        Application.candidate_id == profile.user_id
+                    )
+                )
+                for app in apps_result.scalars().all():
+                    from app.modules.ai.tasks import (
+                        score_application_task as _score_app,
+                    )
+
+                    _score_app.delay(str(app.id))
+                logger.info(
+                    "generate_candidate_embedding: re-queued scoring for %d applications",
+                    len(apps_result.all() or []),
+                )
+            except Exception:
+                logger.warning(
+                    "generate_candidate_embedding: failed to re-queue application scoring",
+                    exc_info=True,
+                )
 
         except Exception:
-            logger.exception("generate_candidate_embedding: failed for profile %s", profile_id)
+            logger.exception(
+                "generate_candidate_embedding: failed for profile %s", profile_id
+            )
             raise
         finally:
             await engine.dispose()
@@ -652,17 +825,31 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
                 return
 
             # Hash check — skip if source content hasn't changed
+            from app.modules.jobs.schemas import build_full_description
+
+            effective_description = build_full_description(
+                about_the_role=job.about_the_role,
+                key_responsibilities=job.key_responsibilities,
+                requirements=job.requirements,
+                preferred_certifications=job.preferred_certifications,
+                technical_competencies=job.technical_competencies,
+                what_we_offer=job.what_we_offer,
+                legacy_description=job.description,
+            )
             new_hash = hash_job_embedding_source(
-                description=job.description,
+                description=effective_description,
                 required_skills=job.required_skills,
             )
             if job.embedding_source_hash == new_hash and job.job_embedding is not None:
-                logger.info("generate_job_embedding: hash unchanged for job %s, skipping", job_id)
+                logger.info(
+                    "generate_job_embedding: hash unchanged for job %s, skipping",
+                    job_id,
+                )
                 return
 
             # Build embedding text and generate vector
             embedding_text = (
-                f"Job description: {job.description or ''}\n"
+                f"Job description: {effective_description}\n"
                 f"Required skills: {', '.join(job.required_skills or [])}"
             )
 
@@ -727,7 +914,8 @@ async def _recompute_stale_scores_async() -> None:
                 score_application_task.delay(str(app_id))
 
             logger.info(
-                "recompute_stale_scores: re-queued %d stale application(s)", len(stale_ids)
+                "recompute_stale_scores: re-queued %d stale application(s)",
+                len(stale_ids),
             )
 
         except Exception:
@@ -765,16 +953,26 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
 
             profile = await talent_pool_repo.get_by_id(profile_id)
             if not profile:
-                logger.warning("generate_talent_pool_embedding: profile %s not found", profile_id)
+                logger.warning(
+                    "generate_talent_pool_embedding: profile %s not found", profile_id
+                )
                 return
 
             if not profile.parsed_submission_id:
-                logger.info("generate_talent_pool_embedding: no submission for profile %s, skipping", profile_id)
+                logger.info(
+                    "generate_talent_pool_embedding: no submission for profile %s, skipping",
+                    profile_id,
+                )
                 return
 
-            submission = await ai_repo.get_submission_by_id(profile.parsed_submission_id)
+            submission = await ai_repo.get_submission_by_id(
+                profile.parsed_submission_id
+            )
             if not submission or not submission.parsed_data:
-                logger.info("generate_talent_pool_embedding: no parsed data for profile %s, skipping", profile_id)
+                logger.info(
+                    "generate_talent_pool_embedding: no parsed data for profile %s, skipping",
+                    profile_id,
+                )
                 return
 
             parsed = submission.parsed_data
@@ -782,14 +980,17 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
             summary = parsed.get("summary") or ""
 
             new_hash = hash_talent_pool_embedding_source(skills=skills, summary=summary)
-            if profile.embedding_source_hash == new_hash and profile.profile_embedding is not None:
-                logger.info("generate_talent_pool_embedding: hash unchanged for profile %s, skipping", profile_id)
+            if (
+                profile.embedding_source_hash == new_hash
+                and profile.profile_embedding is not None
+            ):
+                logger.info(
+                    "generate_talent_pool_embedding: hash unchanged for profile %s, skipping",
+                    profile_id,
+                )
                 return
 
-            embedding_text = (
-                f"Skills: {', '.join(skills)}\n"
-                f"Summary: {summary}"
-            )
+            embedding_text = f"Skills: {', '.join(skills)}\n" f"Summary: {summary}"
 
             ai_service = EmbeddingAIService()
             embedding = await ai_service.generate_embedding(embedding_text)
@@ -799,17 +1000,36 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
             profile.embedding_generated_at = _datetime.now(_UTC)
             await db.commit()
 
-            logger.info("generate_talent_pool_embedding: stored embedding for profile %s", profile_id)
+            logger.info(
+                "generate_talent_pool_embedding: stored embedding for profile %s",
+                profile_id,
+            )
+
+            # Re-queue scoring now that embedding exists — keyword fallback may have run first
+            if profile.sourced_for_job_id:
+                from app.modules.ai.tasks import (
+                    score_talent_pool_profile_task as _score_tp,
+                )
+
+                _score_tp.delay(str(profile_id), str(profile.sourced_for_job_id))
+                logger.info(
+                    "generate_talent_pool_embedding: re-queued scoring for profile %s",
+                    profile_id,
+                )
 
         except Exception:
-            logger.exception("generate_talent_pool_embedding: failed for profile %s", profile_id)
+            logger.exception(
+                "generate_talent_pool_embedding: failed for profile %s", profile_id
+            )
             raise
         finally:
             await engine.dispose()
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def upload_cv_to_r2_task(self, submission_id: str, uploaded_by_id: str, filename: str, file: bytes) -> None:
+def upload_cv_to_r2_task(
+    self, submission_id: str, uploaded_by_id: str, filename: str, file: bytes
+) -> None:
     """Upload a CV file to R2 and set the r2_key on the submission row.
 
     Used for cache-hit submissions where parsing is skipped but the file
@@ -845,10 +1065,16 @@ async def _upload_cv_to_r2_async(
             await repo.update(uuid.UUID(submission_id_str), {"r2_key": r2_key})
             await db.commit()
 
-            logger.info("upload_cv_to_r2: stored %s for submission %s", r2_key, submission_id_str)
+            logger.info(
+                "upload_cv_to_r2: stored %s for submission %s",
+                r2_key,
+                submission_id_str,
+            )
 
         except Exception:
-            logger.exception("upload_cv_to_r2: failed for submission %s", submission_id_str)
+            logger.exception(
+                "upload_cv_to_r2: failed for submission %s", submission_id_str
+            )
             raise
         finally:
             await engine.dispose()

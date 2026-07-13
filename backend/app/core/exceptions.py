@@ -37,6 +37,7 @@ class PlatformError(Exception):
 # Authentication  (HTTP 401 / 403)
 # ---------------------------------------------------------------------------
 
+
 class InvalidCredentialsException(PlatformError):
     """Raised when email/password credentials do not match any account."""
 
@@ -247,11 +248,10 @@ class CVErrorException(PlatformError):
         super().__init__(message, code, status_code, details)
 
 
-
-
 # ---------------------------------------------------------------------------
 # Authorization  (HTTP 403)
 # ---------------------------------------------------------------------------
+
 
 class PermissionDeniedException(PlatformError):
     """Raised when an authenticated user lacks the required role or ownership."""
@@ -284,6 +284,7 @@ class ProfileIncompleteException(PermissionDeniedException):
 # ---------------------------------------------------------------------------
 # Not Found  (HTTP 404)
 # ---------------------------------------------------------------------------
+
 
 class NotFoundException(PlatformError):
     """Raised when a requested resource does not exist."""
@@ -401,6 +402,7 @@ class TokenNotFoundError(NotFoundException):
 # Validation  (HTTP 422)
 # ---------------------------------------------------------------------------
 
+
 class ValidationException(PlatformError):
     """Raised for business-rule validation failures (e.g. invalid state transitions)."""
 
@@ -413,6 +415,7 @@ class ValidationException(PlatformError):
     ) -> None:
         """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
+
 
 # ---------------------------------------------------------------------------
 # Job Exceptions
@@ -444,6 +447,7 @@ class AlreadyApplied(PlatformError):
         """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
 
+
 # --- Application Status Errors
 class ApplicationWithdrawalError(PlatformError):
     """Raised when a candidate attempts an invalid application withdrawal."""
@@ -457,6 +461,7 @@ class ApplicationWithdrawalError(PlatformError):
     ) -> None:
         """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
+
 
 class InvalidStatus(PlatformError):
     """Raised when an invalid application status transition is attempted."""
@@ -498,4 +503,3 @@ class CannotModifyAdminException(PlatformError):
     ) -> None:
         """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
-

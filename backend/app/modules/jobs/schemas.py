@@ -9,8 +9,51 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.modules.jobs.enums import ContractType, SeniorityLevel, WorkLocation, WorkModel
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def build_full_description(
+    about_the_role: str | None,
+    key_responsibilities: str | None,
+    requirements: str | None,
+    preferred_certifications: str | None,
+    technical_competencies: str | None,
+    what_we_offer: str | None,
+    legacy_description: str | None = None,
+) -> str:
+    """Concatenate structured job fields into a single description string.
+
+    Used by AI modules that expect a plain ``job_description`` text.
+    Falls back to the legacy ``description`` field for old jobs that predate
+    the structured fields. Nullable sections are omitted when empty.
+    """
+    # Old job — no structured fields populated
+    if not any(
+        [about_the_role, key_responsibilities, requirements, technical_competencies]
+    ):
+        return legacy_description or ""
+
+    parts: list[str] = []
+    if about_the_role:
+        parts.append(f"About the Role:\n{about_the_role}")
+    if key_responsibilities:
+        parts.append(f"Key Responsibilities:\n{key_responsibilities}")
+    if requirements:
+        parts.append(f"Requirements:\n{requirements}")
+    if preferred_certifications:
+        parts.append(f"Preferred Certifications:\n{preferred_certifications}")
+    if technical_competencies:
+        parts.append(f"Technical Competencies:\n{technical_competencies}")
+    if what_we_offer:
+        parts.append(f"What We Offer:\n{what_we_offer}")
+    return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Request schemas
 # ---------------------------------------------------------------------------
+
 
 class JobCreateRequest(BaseModel):
     """Payload for creating a new job listing.
@@ -18,8 +61,15 @@ class JobCreateRequest(BaseModel):
     employer_id and status are set by the service layer — not accepted from
     the client.
     """
+
     title: str = Field(..., min_length=3, max_length=150)
-    description: str = Field(..., min_length=10)
+    # Structured description fields
+    about_the_role: str = Field(..., min_length=10)
+    key_responsibilities: str = Field(..., min_length=10)
+    requirements: str = Field(..., min_length=10)
+    preferred_certifications: str | None = None
+    technical_competencies: str = Field(..., min_length=10)
+    what_we_offer: str | None = None
     location: str = Field(..., max_length=255)
     contract_type: ContractType
     work_model: WorkModel | None = None
@@ -47,8 +97,15 @@ class JobUpdateRequest(BaseModel):
     An employer only needs to send the fields they want to change.
     Fields not included in the request are left unchanged.
     """
+
     title: str | None = Field(default=None, min_length=3, max_length=150)
-    description: str | None = Field(default=None, min_length=10)
+    # Structured description fields — all optional for partial updates
+    about_the_role: str | None = Field(default=None, min_length=10)
+    key_responsibilities: str | None = Field(default=None, min_length=10)
+    requirements: str | None = Field(default=None, min_length=10)
+    preferred_certifications: str | None = None
+    technical_competencies: str | None = Field(default=None, min_length=10)
+    what_we_offer: str | None = None
     location: str | None = Field(default=None, max_length=255)
     contract_type: ContractType | None = None
     work_model: WorkModel | None = None
@@ -60,7 +117,6 @@ class JobUpdateRequest(BaseModel):
     seniority_level: SeniorityLevel | None = None
     openings_count: int | None = Field(default=None, ge=1, le=999)
     required_years_experience: int | None = Field(default=None, ge=0, le=50)
-
 
     @model_validator(mode="after")
     def validate_salary_range(self) -> "JobUpdateRequest":
@@ -75,12 +131,16 @@ class JobUpdateRequest(BaseModel):
 # Query parameter schemas
 # ---------------------------------------------------------------------------
 
+
 class JobFilterParams(BaseModel):
     """Query parameters for the public job listing endpoint."""
+
     contract_type: ContractType | None = None
     work_model: WorkModel | None = None
     location: str | None = Field(default=None, max_length=255)
-    q: str | None = Field(default=None, max_length=255)  # full-text search on title + description
+    q: str | None = Field(
+        default=None, max_length=255
+    )  # full-text search on title + description
     cursor: str | None = None
     limit: int = Field(default=20, ge=1, le=100)
     work_location: WorkLocation | None = None
@@ -93,11 +153,21 @@ class JobFilterParams(BaseModel):
 # Response schemas
 # ---------------------------------------------------------------------------
 
+
 class JobResponse(BaseModel):
     """Full job object returned by the API."""
+
     id: UUID
     title: str
-    description: str
+    # Legacy field — present on old jobs, null on new structured jobs
+    description: str | None = None
+    # Structured description fields (new jobs)
+    about_the_role: str | None = None
+    key_responsibilities: str | None = None
+    requirements: str | None = None
+    preferred_certifications: str | None = None
+    technical_competencies: str | None = None
+    what_we_offer: str | None = None
     location: str
     contract_type: str
     work_model: str | None
@@ -140,6 +210,12 @@ class JobResponse(BaseModel):
             id=job.id,
             title=job.title,
             description=job.description,
+            about_the_role=job.about_the_role,
+            key_responsibilities=job.key_responsibilities,
+            requirements=job.requirements,
+            preferred_certifications=job.preferred_certifications,
+            technical_competencies=job.technical_competencies,
+            what_we_offer=job.what_we_offer,
             location=job.location,
             contract_type=job.contract_type,
             work_model=job.work_model,
@@ -172,6 +248,7 @@ class JobResponse(BaseModel):
 
 class JobListResponse(BaseModel):
     """Paginated list of jobs with cursor for next page."""
+
     items: list[JobResponse]
     next_cursor: str | None
     count: int
