@@ -68,7 +68,7 @@ class JobCreateRequest(BaseModel):
     key_responsibilities: str = Field(..., min_length=10)
     requirements: str = Field(..., min_length=10)
     preferred_certifications: str | None = None
-    technical_competencies: str = Field(..., min_length=10)
+    technical_competencies: str | None = None
     what_we_offer: str | None = None
     location: str = Field(..., max_length=255)
     contract_type: ContractType
