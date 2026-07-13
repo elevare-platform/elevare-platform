@@ -149,7 +149,6 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
           colour
         )}
       >
-        <span className="text-[10px] font-bold uppercase tracking-wide opacity-60">AI</span>
         {hasScore ? score : 'N/A'}
       </button>
 
