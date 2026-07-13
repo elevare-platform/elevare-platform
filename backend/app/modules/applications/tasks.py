@@ -51,14 +51,14 @@ def send_status_update(self, candidate_email, job_title, new_status):
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def send_employer_notification(self, employer_email, job_title, candidate_name):
+def send_employer_notification(self, employer_email, job_title, candidate_name, job_id):
     """Send a new-application notification email to the employer."""
     import asyncio
 
     async def _send():
         service = get_email_service()
         await service.send_employer_notification(
-            employer_email, job_title, candidate_name
+            employer_email, job_title, candidate_name, job_id
         )
 
     try:
