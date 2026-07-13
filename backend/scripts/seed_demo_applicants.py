@@ -50,166 +50,171 @@ from app.modules.users.models import User
 
 PERSONAS = [
     {
-        "first_name": "Adaeze",
-        "last_name": "Okonkwo",
-        "email": "adaeze.okonkwo@demo-elevare.com",
+        "first_name": "Chidinma",
+        "last_name": "Okafor",
+        "email": "chidinma.okafor@demo-elevare.com",
         "phone": "+2348101110001",
         "location": "Lagos, Nigeria",
-        "years_exp": 7,
-        "skills": ["Talent Acquisition", "Stakeholder Management", "HRIS",
-                   "Performance Management", "Labour Law"],
-        "bio": "Senior HR professional with 7 years driving end-to-end recruitment and workforce strategy at scale.",
+        "years_exp": 3,
+        "skills": ["Customer Service", "Complaint Resolution", "Communication",
+                   "Shift Work", "POS Operations"],
+        "bio": "Friendly and customer-focused service representative with 3 years of experience in retail and hospitality environments across Lagos.",
         "status": ApplicationStatus.SHORTLISTED.value,
-        "ai_score": 91,
+        "ai_score": 94,
         "fit_summary": (
-            "Adaeze brings a strong alignment with this role, demonstrating deep experience in talent "
-            "acquisition and HR operations within high-growth environments. Her skills coverage and "
-            "seniority level are an excellent match for the requirements outlined."
+            "Chidinma is an excellent match for this Customer Service Representative role, bringing "
+            "directly relevant experience in customer-facing environments with strong communication "
+            "skills and proven ability to work shift-based schedules in Lagos."
         ),
         "strengths": [
-            "7 years of hands-on talent acquisition experience directly aligned with the role's core requirement.",
-            "Proficient in HRIS platforms and performance management cycles, matching listed technical competencies.",
-            "Proven stakeholder management skills relevant to cross-functional HR advisory responsibilities.",
-            "Strong working knowledge of Nigerian Labour Law, critical for compliance-driven HR environments.",
+            "3 years of hands-on customer service experience in fast-paced retail and hospitality settings.",
+            "Demonstrated ability to handle customer complaints and escalate issues appropriately.",
+            "Experienced with shift-based work schedules including early morning and late evening rotations.",
+            "Strong interpersonal and communication skills aligned with the role's core requirements.",
+            "Based in Lagos and available to work at the required location without relocation.",
         ],
         "weaknesses": [
-            "No explicit mention of international recruitment exposure which may limit scope on global mandates.",
-            "Leadership of large HR teams not evidenced — could be a gap for senior people management expectations.",
+            "No mention of experience with formal order processing systems which may require brief onboarding.",
+            "SSCE qualification meets minimum threshold but further education could strengthen long-term growth.",
         ],
     },
     {
-        "first_name": "Fatima",
-        "last_name": "Aliyu",
-        "email": "fatima.aliyu@demo-elevare.com",
-        "phone": "+2348101110003",
+        "first_name": "Amaka",
+        "last_name": "Eze",
+        "email": "amaka.eze@demo-elevare.com",
+        "phone": "+2348101110002",
         "location": "Lagos, Nigeria",
-        "years_exp": 9,
-        "skills": ["HR Strategy", "Organisational Development", "Change Management",
-                   "Executive Search", "People Analytics"],
-        "bio": "Strategic HR leader with 9 years shaping organisational culture and leading executive search across West Africa.",
+        "years_exp": 2,
+        "skills": ["Customer Relations", "Reception", "Communication",
+                   "Complaint Handling", "Team Collaboration"],
+        "bio": "Polite and well-presented customer relations professional with 2 years of front-desk and reception experience in a hospitality firm.",
         "status": ApplicationStatus.SHORTLISTED.value,
         "ai_score": 88,
         "fit_summary": (
-            "Fatima is a high-calibre candidate with strong strategic HR credentials and notable executive "
-            "search experience. Her people analytics capability and organisational development background "
-            "make her a compelling fit for a consultancy-oriented HR role."
+            "Amaka presents a strong profile for this role with relevant customer-facing experience "
+            "and the interpersonal qualities required. Her hospitality background maps well to the "
+            "customer service expectations outlined in the job description."
         ),
         "strengths": [
-            "9 years of progressive HR leadership with a strong focus on organisational development and strategy.",
-            "Executive search experience is directly relevant to the talent acquisition mandate.",
-            "People analytics proficiency supports data-driven workforce planning requirements.",
-            "Change management expertise adds value for clients undergoing workforce transformation.",
+            "2 years of front-desk and customer relations experience in a service-oriented environment.",
+            "Described as polite, well-groomed, and professional — directly matching the role's personal requirements.",
+            "Proven complaint handling and team collaboration skills align with key responsibilities.",
+            "Resident in Lagos and comfortable with the shift schedule.",
         ],
         "weaknesses": [
-            "Profile is weighted toward strategy — operational HR execution depth may need verification.",
-            "West Africa regional focus may limit applicability for clients with broader international mandates.",
+            "Slightly below the preferred experience level — additional on-the-job training may be needed initially.",
+            "No specific mention of order processing or product knowledge which will need to be built on the job.",
         ],
     },
     {
-        "first_name": "Emeka",
-        "last_name": "Nwosu",
-        "email": "emeka.nwosu@demo-elevare.com",
-        "phone": "+2348101110002",
-        "location": "Abuja, Nigeria",
-        "years_exp": 5,
-        "skills": ["Recruitment", "Employee Relations", "Compensation & Benefits",
-                   "Onboarding", "MS Excel"],
-        "bio": "HR generalist with 5 years of experience in recruitment and employee relations in financial services.",
+        "first_name": "Blessing",
+        "last_name": "Adeyemi",
+        "email": "blessing.adeyemi@demo-elevare.com",
+        "phone": "+2348101110003",
+        "location": "Lagos, Nigeria",
+        "years_exp": 1,
+        "skills": ["Communication", "Customer Handling", "Cashiering",
+                   "Teamwork", "Shift Flexibility"],
+        "bio": "Energetic and motivated customer service associate with 1 year of experience in a busy supermarket chain in Lagos.",
         "status": ApplicationStatus.REVIEWING.value,
-        "ai_score": 78,
+        "ai_score": 76,
         "fit_summary": (
-            "Emeka presents a solid mid-level HR profile with well-rounded generalist experience. "
-            "His background in compensation and employee relations is relevant, though seniority gaps "
-            "may require closer evaluation against the role's leadership expectations."
+            "Blessing shows genuine potential for this role with relevant entry-level customer service "
+            "experience and a demonstrated ability to work in fast-paced environments. Her shift "
+            "flexibility and Lagos location are positives, though experience depth is limited."
         ),
         "strengths": [
-            "Solid 5-year recruitment track record with financial sector exposure.",
-            "Experience in compensation & benefits design aligns with workforce strategy responsibilities.",
-            "Strong onboarding programme delivery skills, relevant to talent integration requirements.",
+            "Hands-on customer handling and cashiering experience in a high-volume retail environment.",
+            "Comfortable with shift-based schedules and working under pressure.",
+            "Friendly and communicative — personal attributes match the role's requirements.",
+            "Lagos-based with no accommodation or logistics barriers.",
         ],
         "weaknesses": [
-            "Mid-level seniority may fall short if the role demands independent strategic decision-making.",
-            "Limited evidence of managing external recruitment vendors or executive search processes.",
+            "Only 1 year of experience — will benefit from closer supervision in the early stages.",
+            "Limited exposure to formal complaint resolution processes or customer escalation procedures.",
+        ],
+    },
+    {
+        "first_name": "Oluwakemi",
+        "last_name": "Fashola",
+        "email": "oluwakemi.fashola@demo-elevare.com",
+        "phone": "+2348101110004",
+        "location": "Lagos, Nigeria",
+        "years_exp": 4,
+        "skills": ["Customer Service", "Sales Support", "Inquiry Management",
+                   "Record Keeping", "Microsoft Office"],
+        "bio": "Experienced customer service and sales support officer with 4 years working in telecoms and FMCG distribution in Lagos.",
+        "status": ApplicationStatus.REVIEWING.value,
+        "ai_score": 82,
+        "fit_summary": (
+            "Oluwakemi brings above-average experience for this role with a solid customer service "
+            "track record across multiple industries. Her inquiry management and record-keeping "
+            "skills are directly applicable, making her a reliable candidate for the position."
+        ),
+        "strengths": [
+            "4 years of customer service experience across telecoms and FMCG sectors shows adaptability.",
+            "Inquiry management and record-keeping skills directly match the role's key responsibilities.",
+            "Comfortable handling both product questions and complaint escalation processes.",
+            "Strong organisational skills and familiarity with basic office tools.",
+        ],
+        "weaknesses": [
+            "Telecoms background may require a short adjustment period to align with this specific service environment.",
+            "No explicit mention of shift work experience — willingness to work rotational hours should be confirmed.",
         ],
     },
     {
         "first_name": "Ngozi",
-        "last_name": "Okafor",
-        "email": "ngozi.okafor@demo-elevare.com",
+        "last_name": "Nwachukwu",
+        "email": "ngozi.nwachukwu@demo-elevare.com",
         "phone": "+2348101110005",
-        "location": "Lagos, Nigeria",
-        "years_exp": 6,
-        "skills": ["Learning & Development", "Training Needs Analysis",
-                   "Facilitation", "Succession Planning", "LMS Administration"],
-        "bio": "L&D specialist with 6 years designing corporate training programmes across FMCG and fintech.",
-        "status": ApplicationStatus.REVIEWING.value,
-        "ai_score": 61,
-        "fit_summary": (
-            "Ngozi has a solid L&D background with notable facilitation and programme design experience. "
-            "However, her profile skews toward training and development rather than the core recruitment "
-            "and HR generalist competencies central to this role."
-        ),
-        "strengths": [
-            "Strong L&D and succession planning skills add value in a workforce solutions context.",
-            "Cross-industry experience in FMCG and fintech demonstrates adaptability.",
-            "LMS administration experience is relevant if the role involves workforce development tools.",
-        ],
-        "weaknesses": [
-            "Core recruitment and talent acquisition skills are not prominently featured.",
-            "Role may require broader HR generalist experience beyond the L&D specialisation.",
-            "Limited evidence of direct employer advisory or HR consulting work.",
-        ],
-    },
-    {
-        "first_name": "Chukwuemeka",
-        "last_name": "Eze",
-        "email": "chukwuemeka.eze@demo-elevare.com",
-        "phone": "+2348101110004",
-        "location": "Port Harcourt, Nigeria",
-        "years_exp": 3,
-        "skills": ["CV Screening", "Interview Scheduling", "Job Posting", "ATS Management"],
-        "bio": "Junior recruiter with 3 years of experience in high-volume screening and ATS management.",
+        "location": "Ogun State, Nigeria",
+        "years_exp": 0,
+        "skills": ["Communication", "Customer Interaction", "Teamwork", "Punctuality"],
+        "bio": "Recent SSCE graduate with no formal work experience but completed a 3-month customer service volunteer placement at a community health centre.",
         "status": ApplicationStatus.SUBMITTED.value,
-        "ai_score": 54,
+        "ai_score": 52,
         "fit_summary": (
-            "Chukwuemeka has relevant foundational recruiting skills but the experience and seniority "
-            "fall below the expectations of this role. He may be a stronger fit for a junior or "
-            "coordinator position rather than a mid-to-senior HR mandate."
+            "Ngozi meets the minimum qualification requirement and shows willingness to work in a "
+            "customer-facing role. However, her lack of formal work experience and location outside "
+            "Lagos are factors that require consideration against more experienced applicants."
         ),
         "strengths": [
-            "Practical ATS management and high-volume screening skills are operationally useful.",
-            "Hands-on experience with job posting and candidate coordination demonstrates process familiarity.",
+            "Meets minimum SSCE qualification as specified in the job requirements.",
+            "Volunteer customer interaction experience demonstrates initiative and willingness to learn.",
+            "Good communication skills noted during volunteer placement.",
         ],
         "weaknesses": [
-            "3 years of experience is below the preferred threshold for this role's seniority expectations.",
-            "Skills profile is operational/administrative rather than strategic or advisory.",
-            "No evidence of independent stakeholder management or client-facing HR consultancy.",
+            "No formal paid work experience — will require significant onboarding and close supervision.",
+            "Currently based in Ogun State — accommodation provision helps but commute logistics need confirmation.",
+            "No demonstrated experience with shift-based work schedules.",
         ],
     },
     {
-        "first_name": "Tunde",
-        "last_name": "Bakare",
-        "email": "tunde.bakare@demo-elevare.com",
+        "first_name": "Hauwa",
+        "last_name": "Musa",
+        "email": "hauwa.musa@demo-elevare.com",
         "phone": "+2348101110006",
-        "location": "Ibadan, Nigeria",
-        "years_exp": 2,
-        "skills": ["Administrative Support", "Data Entry", "Microsoft Word", "Filing"],
-        "bio": "Recent graduate with 2 years of administrative support experience in a government agency.",
+        "location": "Abuja, Nigeria",
+        "years_exp": 5,
+        "skills": ["Office Administration", "Data Entry", "Filing",
+                   "Microsoft Excel", "Report Writing"],
+        "bio": "Administrative officer with 5 years of back-office support experience in a federal government ministry in Abuja.",
         "status": ApplicationStatus.SUBMITTED.value,
-        "ai_score": 28,
+        "ai_score": 31,
         "fit_summary": (
-            "Tunde's profile does not align with the requirements of this HR role. "
-            "The skills and experience presented are primarily administrative and entry-level, "
-            "with no evidence of HR, recruitment, or people management competencies."
+            "Hauwa's profile is primarily administrative and back-office focused, which does not "
+            "align well with the customer-facing, shift-based nature of this role. Her experience "
+            "in Abuja and lack of direct customer service exposure are notable gaps."
         ),
         "strengths": [
-            "Administrative organisation skills may provide a basic foundation for supporting HR operations.",
+            "5 years of work experience demonstrates reliability and professional maturity.",
+            "Microsoft Office and data entry skills may support administrative aspects of the role.",
         ],
         "weaknesses": [
-            "No HR, recruitment, or people management experience relevant to this role.",
-            "2 years of entry-level administrative work falls significantly below role requirements.",
-            "Technical HR skills (HRIS, talent acquisition, compensation) are absent from the profile.",
-            "Entry-level seniority is misaligned with the mid-to-senior expectations of this position.",
+            "No direct customer service or customer-facing experience in her work history.",
+            "Back-office government role is a poor match for a fast-paced retail shift environment.",
+            "Based in Abuja — relocation to Lagos for a ₦60,000/month role may not be practical.",
+            "No evidence of ability to work rotational shifts or in a physically active service environment.",
         ],
     },
 ]
