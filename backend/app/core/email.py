@@ -34,7 +34,7 @@ class EmailService(ABC):
 
     @abstractmethod
     async def send_employer_notification(
-        self, employer_email: str, job_title: str, candidate_name: str
+        self, employer_email: str, job_title: str, candidate_name: str, job_id: str
     ) -> None:
         """Notify employer that a new application has been received."""
         ...
@@ -354,9 +354,10 @@ class ResendEmailService(EmailService):
         )
 
     async def send_employer_notification(
-        self, employer_email: str, job_title: str, candidate_name: str
+        self, employer_email: str, job_title: str, candidate_name: str, job_id: str
     ) -> None:
         """Notify an employer by email that a new application has been received."""
+        review_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New Application Received</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A new candidate has applied to your job posting.</p>
@@ -369,7 +370,7 @@ class ResendEmailService(EmailService):
 
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Review their profile, resume, and AI match score on your Elevare employer dashboard.</p>
 
-        {_render_button("Review Application", f"{settings.app_url}/employer/applications")}
+        {_render_button("Review Application", review_url)}
         """
 
         html_body = _render_email_layout(
@@ -589,14 +590,15 @@ class StubEmailService(EmailService):
         )
 
     async def send_employer_notification(
-        self, employer_email: str, job_title: str, candidate_name: str
+        self, employer_email: str, job_title: str, candidate_name: str, job_id: str
     ) -> None:
         """Log a stub employer new-application notification email."""
         logger.info(
-            "STUB EMAIL SENT to %s: New application for %s by %s",
+            "STUB EMAIL SENT to %s: New application for %s by %s (job_id=%s)",
             employer_email,
             job_title,
             candidate_name,
+            job_id,
         )
 
     async def send_verification_email(

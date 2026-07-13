@@ -150,6 +150,7 @@ class ApplicationService:
             job.employer.email,
             job.title,
             f"{candidate.user.first_name} {candidate.user.last_name}",
+            str(job.id),
         )
         # Queue AI score computation — fires after response is returned.
         # Score starts as null; updated on the application row once computed.
