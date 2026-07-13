@@ -31,6 +31,7 @@ def mock_response() -> Response:
 def accept_payload(**overrides) -> dict:
     """Valid accept-invite request body."""
     from uuid import uuid4
+
     defaults = {
         "first_name": "Tunde",
         "last_name": "Bakare",
@@ -70,6 +71,7 @@ async def get_admin_token(client, db_session) -> str:
     await db_session.flush()
 
     from app.modules.auth.jwt_handler import create_token_pair
+
     token_pair = create_token_pair(user.id, "ADMIN")
     return token_pair["access_token"]
 
@@ -77,6 +79,7 @@ async def get_admin_token(client, db_session) -> str:
 # ---------------------------------------------------------------------------
 # Admin creates invite
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_admin_create_invite_returns_token(client, db_session):
@@ -155,6 +158,7 @@ async def test_admin_invite_duplicate_email_returns_409(client, db_session):
     # Only fails if a user with that email already exists.
     # Let's test with an email that already has a registered user.
     from tests.conftest import make_register_data
+
     data = make_register_data()
     reg_payload = {
         "first_name": data.first_name,
@@ -179,6 +183,7 @@ async def test_admin_invite_duplicate_email_returns_409(client, db_session):
 # ---------------------------------------------------------------------------
 # Accept invite — valid token
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_accept_invite_valid_token_returns_auth_response(client, db_session):
@@ -246,6 +251,7 @@ async def test_accept_invite_account_is_active_and_verified(client, db_session):
 # Accept invite — error cases
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_accept_invite_unknown_token_returns_401(client):
     """POST /auth/invite/accept with unknown token returns 401 TOKEN_INVALID."""
@@ -284,6 +290,7 @@ async def test_accept_invite_expired_token_returns_400(db_session):
     from uuid import uuid4 as u4
 
     from app.modules.auth.schemas import AcceptInviteRequest
+
     data = AcceptInviteRequest(
         first_name="Test",
         last_name="User",
@@ -331,6 +338,7 @@ async def test_accept_invite_already_used_token_returns_400(client, db_session):
 # ---------------------------------------------------------------------------
 # Resend invite
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_resend_invite_returns_new_token(client, db_session):
@@ -389,8 +397,11 @@ async def test_resend_invite_old_token_no_longer_valid(client, db_session):
 # Invite acceptance collision — email already registered
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_accept_invite_collision_with_existing_user_returns_409(client, db_session):
+async def test_accept_invite_collision_with_existing_user_returns_409(
+    client, db_session
+):
     """POST /auth/invite/accept returns 409 if the invited email already has an account.
 
     Scenario: admin invites email X, then someone registers with email X before

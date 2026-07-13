@@ -1,4 +1,5 @@
 """Business logic for the talent pool — CV submission, listing, promotion, and scoring."""
+
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -41,14 +42,19 @@ class TalentPoolService:
         self._user_repo = UserRepository(db)
         self._auth_service = AuthService(db)
 
-    async def _enrich(self, profile, response: TalentPoolProfileResponse) -> TalentPoolProfileResponse:
+    async def _enrich(
+        self, profile, response: TalentPoolProfileResponse
+    ) -> TalentPoolProfileResponse:
         """Populate candidate_name, email, and current_title from parsed CV data."""
         if profile.parsed_submission_id:
-            submission = await self._ai_repo.get_submission_by_id(profile.parsed_submission_id)
+            submission = await self._ai_repo.get_submission_by_id(
+                profile.parsed_submission_id
+            )
             if submission and submission.parsed_data:
                 data = submission.parsed_data
                 full_name = data.get("full_name") or (
-                    f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or None
+                    f"{data.get('first_name', '')} {data.get('last_name', '')}".strip()
+                    or None
                 )
                 response.candidate_name = full_name
                 response.candidate_email = data.get("email")
@@ -64,26 +70,28 @@ class TalentPoolService:
     ):
         """Submit a single CV into the talent pool and queue parsing/scoring."""
         submission = await self._cv_service.submit_cv_for_parsing(
-            uploaded_by=current_user,
-            file=file,
-            filename=filename
+            uploaded_by=current_user, file=file, filename=filename
         )
 
         # Deduplication — same CV content already exists against this job
-        existing = await self._repo.get_by_cv_hash(submission.cv_text_hash, data.sourced_for_job_id)
+        existing = await self._repo.get_by_cv_hash(
+            submission.cv_text_hash, data.sourced_for_job_id
+        )
         if existing:
             response = TalentPoolProfileResponse.model_validate(existing)
             return await self._enrich(existing, response)
 
         # Create talent pool profile
-        profile = await self._repo.create({
-            "parsed_submission_id": submission.id,
-            "source": data.source,
-            "source_note": data.source_note,
-            "sourced_for_job_id": data.sourced_for_job_id,
-            "added_by": current_user.id,
-            "status": TalentPoolStatus.NEW.value,
-        })
+        profile = await self._repo.create(
+            {
+                "parsed_submission_id": submission.id,
+                "source": data.source,
+                "source_note": data.source_note,
+                "sourced_for_job_id": data.sourced_for_job_id,
+                "added_by": current_user.id,
+                "status": TalentPoolStatus.NEW.value,
+            }
+        )
 
         if data.sourced_for_job_id:
             score_talent_pool_profile_task.delay(str(profile.id))
@@ -108,26 +116,46 @@ class TalentPoolService:
                     filename=filename,
                 )
                 # Deduplication — skip if same CV content+job already exists
-                existing = await self._repo.get_by_cv_hash(submission.cv_text_hash, data.sourced_for_job_id)
+                existing = await self._repo.get_by_cv_hash(
+                    submission.cv_text_hash, data.sourced_for_job_id
+                )
                 if existing:
-                    results.append({"filename": filename, "status": "duplicate", "profile_id": str(existing.id), "submission_id": str(submission.id)})
+                    results.append(
+                        {
+                            "filename": filename,
+                            "status": "duplicate",
+                            "profile_id": str(existing.id),
+                            "submission_id": str(submission.id),
+                        }
+                    )
                     continue
 
-                profile = await self._repo.create({
-                    "parsed_submission_id": submission.id,
-                    "source": data.source,
-                    "source_note": data.source_note,
-                    "sourced_for_job_id": data.sourced_for_job_id,
-                    "added_by": current_user.id,
-                    "status": TalentPoolStatus.NEW.value,
-                })
+                profile = await self._repo.create(
+                    {
+                        "parsed_submission_id": submission.id,
+                        "source": data.source,
+                        "source_note": data.source_note,
+                        "sourced_for_job_id": data.sourced_for_job_id,
+                        "added_by": current_user.id,
+                        "status": TalentPoolStatus.NEW.value,
+                    }
+                )
                 if data.sourced_for_job_id:
                     score_talent_pool_profile_task.delay(str(profile.id))
                 await self._db.commit()
-                results.append({"filename": filename, "status": "queued", "profile_id": str(profile.id), "submission_id": str(submission.id)})
+                results.append(
+                    {
+                        "filename": filename,
+                        "status": "queued",
+                        "profile_id": str(profile.id),
+                        "submission_id": str(submission.id),
+                    }
+                )
             except Exception as e:
                 logger.error("Batch submit failed for %s: %s", filename, e)
-                results.append({"filename": filename, "status": "failed", "error": str(e)})
+                results.append(
+                    {"filename": filename, "status": "failed", "error": str(e)}
+                )
         return results
 
     async def list_profiles(
@@ -187,16 +215,26 @@ class TalentPoolService:
             raise SubmissionNotFound()
 
         # Send email notification when shortlisted, if email is available
-        if data.status == TalentPoolStatus.SHORTLISTED.value and profile.parsed_submission_id:
+        if (
+            data.status == TalentPoolStatus.SHORTLISTED.value
+            and profile.parsed_submission_id
+        ):
             try:
-                submission = await self._ai_repo.get_submission_by_id(profile.parsed_submission_id)
-                candidate_email = (submission.parsed_data or {}).get("email") if submission else None
+                submission = await self._ai_repo.get_submission_by_id(
+                    profile.parsed_submission_id
+                )
+                candidate_email = (
+                    (submission.parsed_data or {}).get("email") if submission else None
+                )
                 if candidate_email:
                     from app.core.config import settings
                     from app.core.email import get_email_service
+
                     email_service = get_email_service()
                     if settings.email_stub_mode:
-                        logger.info("Talent pool shortlist notification → %s", candidate_email)
+                        logger.info(
+                            "Talent pool shortlist notification → %s", candidate_email
+                        )
                     else:
                         await email_service.send_status_update(
                             candidate_email=candidate_email,
@@ -204,7 +242,9 @@ class TalentPoolService:
                             new_status="shortlisted",
                         )
             except Exception:
-                logger.warning("Failed to send shortlist notification for profile %s", profile_id)
+                logger.warning(
+                    "Failed to send shortlist notification for profile %s", profile_id
+                )
 
         await self._db.commit()
         return TalentPoolProfileResponse.model_validate(profile)
@@ -225,13 +265,17 @@ class TalentPoolService:
             raise SubmissionNotFound()
 
         # Load Parsed data to get email
-        submission = await self._ai_repo.get_submission_by_id(profile.parsed_submission_id)
+        submission = await self._ai_repo.get_submission_by_id(
+            profile.parsed_submission_id
+        )
         if not submission or not submission.parsed_data:
             raise ValidationException("Parsed data not available.")
 
         email = (submission.parsed_data or {}).get("email")
         if not email:
-            raise ValidationException("Parsed CV has no email address — cannot send invite")
+            raise ValidationException(
+                "Parsed CV has no email address — cannot send invite"
+            )
 
         existing_user = await self._user_repo.get_user_by_email(email)
         if existing_user and existing_user.account_status == AccountStatus.ACTIVE.value:
@@ -250,10 +294,13 @@ class TalentPoolService:
 
         logger.info("Talent pool promote invite sent to %s", email)
 
-        await self._repo.update(profile_id, {
-            "status": TalentPoolStatus.PROMOTED_PENDING.value,
-            "last_invite_sent_at": datetime.now(UTC),
-        })
+        await self._repo.update(
+            profile_id,
+            {
+                "status": TalentPoolStatus.PROMOTED_PENDING.value,
+                "last_invite_sent_at": datetime.now(UTC),
+            },
+        )
         await self._db.commit()
 
         return TalentPoolPromoteResponse(
@@ -287,4 +334,3 @@ class TalentPoolService:
             queued += 1
 
         return {"queued": queued, "job_id": str(job_id)}
-

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Briefcase, Plus, TrendingUp, FileText, CheckCircle, XCircle, FileSearch } from 'lucide-react'
+import { Briefcase, Plus, TrendingUp, FileText, CheckCircle, XCircle, FileSearch, Mail } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
@@ -269,6 +269,18 @@ export default function EmployerDashboardPage() {
               <div>
                 <p className="font-semibold text-text text-sm">Talent Pool</p>
                 <p className="text-text-muted text-xs mt-0.5">Browse and rank sourced candidates</p>
+              </div>
+            </Link>
+            <Link
+              to="/employer/mail-ingestion"
+              className="rounded-xl border border-border bg-white p-5 hover:border-brand-blue/40 hover:shadow-sm transition-all group flex items-center gap-4"
+            >
+              <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+                <Mail size={18} className="text-red-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-text text-sm">Mail Ingestion</p>
+                <p className="text-text-muted text-xs mt-0.5">Import CVs from Gmail automatically</p>
               </div>
             </Link>
           </div>

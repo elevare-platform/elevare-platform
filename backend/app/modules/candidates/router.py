@@ -40,6 +40,7 @@ def get_service(
 # Candidate — own profile
 # ------------------------------------------------------------------
 
+
 @router.get("/me", response_model=ProfileResponse, status_code=200)
 async def get_my_profile(
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -62,6 +63,7 @@ async def update_my_profile(
 # ------------------------------------------------------------------
 # Candidate — CVs
 # ------------------------------------------------------------------
+
 
 @router.post("/me/cv", response_model=CandidateCvsResponse, status_code=201)
 async def upload_cv(
@@ -120,7 +122,10 @@ async def delete_cv(
 # Candidate — documents
 # ------------------------------------------------------------------
 
-@router.post("/me/documents", response_model=CandidateDocumentsResponse, status_code=201)
+
+@router.post(
+    "/me/documents", response_model=CandidateDocumentsResponse, status_code=201
+)
 async def upload_document(
     file: UploadFile = File(...),
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -131,7 +136,9 @@ async def upload_document(
     return await service.upload_document(current_user.id, contents, file.filename)
 
 
-@router.get("/me/documents", response_model=list[CandidateDocumentsResponse], status_code=200)
+@router.get(
+    "/me/documents", response_model=list[CandidateDocumentsResponse], status_code=200
+)
 async def get_my_documents(
     current_user: User = Depends(require_role("CANDIDATE")),
     service: CandidateService = Depends(get_service),
@@ -140,7 +147,9 @@ async def get_my_documents(
     return await service.get_my_documents(current_user.id)
 
 
-@router.get("/me/documents/{document_id}/url", response_model=SuccessResponse, status_code=200)
+@router.get(
+    "/me/documents/{document_id}/url", response_model=SuccessResponse, status_code=200
+)
 async def get_document_url(
     document_id: uuid.UUID,
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -151,7 +160,9 @@ async def get_document_url(
     return SuccessResponse(message="Document URL generated", data={"url": url})
 
 
-@router.delete("/me/documents/{document_id}", response_model=SuccessResponse, status_code=200)
+@router.delete(
+    "/me/documents/{document_id}", response_model=SuccessResponse, status_code=200
+)
 async def delete_document(
     document_id: uuid.UUID,
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -166,7 +177,10 @@ async def delete_document(
 # Candidate — work experience
 # ------------------------------------------------------------------
 
-@router.post("/me/work-experience", response_model=WorkExperienceResponse, status_code=201)
+
+@router.post(
+    "/me/work-experience", response_model=WorkExperienceResponse, status_code=201
+)
 async def add_work_experience(
     data: WorkExperienceCreateSchema,
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -176,7 +190,9 @@ async def add_work_experience(
     return await service.add_work_experience(current_user.id, data)
 
 
-@router.delete("/me/work-experience/{entry_id}", response_model=SuccessResponse, status_code=200)
+@router.delete(
+    "/me/work-experience/{entry_id}", response_model=SuccessResponse, status_code=200
+)
 async def delete_work_experience(
     entry_id: uuid.UUID,
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -191,6 +207,7 @@ async def delete_work_experience(
 # Candidate — education
 # ------------------------------------------------------------------
 
+
 @router.post("/me/education", response_model=EducationResponse, status_code=201)
 async def add_education(
     data: EducationCreateSchema,
@@ -201,7 +218,9 @@ async def add_education(
     return await service.add_education(current_user.id, data)
 
 
-@router.delete("/me/education/{entry_id}", response_model=SuccessResponse, status_code=200)
+@router.delete(
+    "/me/education/{entry_id}", response_model=SuccessResponse, status_code=200
+)
 async def delete_education(
     entry_id: uuid.UUID,
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -216,7 +235,10 @@ async def delete_education(
 # Candidate — certifications
 # ------------------------------------------------------------------
 
-@router.post("/me/certifications", response_model=CertificationResponse, status_code=201)
+
+@router.post(
+    "/me/certifications", response_model=CertificationResponse, status_code=201
+)
 async def add_certification(
     data: CertificationCreateSchema,
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -226,7 +248,9 @@ async def add_certification(
     return await service.add_certification(current_user.id, data)
 
 
-@router.delete("/me/certifications/{entry_id}", response_model=SuccessResponse, status_code=200)
+@router.delete(
+    "/me/certifications/{entry_id}", response_model=SuccessResponse, status_code=200
+)
 async def delete_certification(
     entry_id: uuid.UUID,
     current_user: User = Depends(require_role("CANDIDATE")),
@@ -236,9 +260,11 @@ async def delete_certification(
     await service.delete_certification(entry_id, current_user.id)
     return SuccessResponse(message="Certification deleted")
 
+
 # ------------------------------------------------------------------
 # Candidate — profile views (must be before /{candidate_profile_id})
 # ------------------------------------------------------------------
+
 
 @router.get("/me/profile-views", status_code=200)
 async def profile_view_history(
@@ -255,6 +281,7 @@ async def profile_view_history(
 # Employer / Admin — view candidate profiles
 # ------------------------------------------------------------------
 
+
 @router.get("/{candidate_profile_id}", response_model=ProfileResponse, status_code=200)
 async def get_candidate_profile(
     candidate_profile_id: uuid.UUID,
@@ -266,7 +293,11 @@ async def get_candidate_profile(
     return await service.get_profile_by_id(candidate_profile_id, current_user, job_id)
 
 
-@router.get("/{candidate_profile_id}/cv/{cv_id}/url", response_model=SuccessResponse, status_code=200)
+@router.get(
+    "/{candidate_profile_id}/cv/{cv_id}/url",
+    response_model=SuccessResponse,
+    status_code=200,
+)
 async def get_candidate_cv_url(
     candidate_profile_id: uuid.UUID,
     cv_id: uuid.UUID,
@@ -279,6 +310,7 @@ async def get_candidate_cv_url(
     cv = await service._repo.get_cv(cv_id)
     if cv is None or cv.candidate_id != profile.id:
         from app.core.exceptions import DocumentNotFoundError
+
         raise DocumentNotFoundError()
     url = await service._storage.generate_presigned_url(cv.key, 60 * 15)
     return SuccessResponse(message="CV URL generated", data={"url": url})
@@ -287,6 +319,7 @@ async def get_candidate_cv_url(
 # ------------------------------------------------------------------
 # Employer / Admin — view candidate profiles
 # ------------------------------------------------------------------
+
 
 @router.get("", response_model=list[ProfileResponse], status_code=200)
 async def list_all_candidates(

@@ -19,6 +19,7 @@ from tests.conftest import make_register_data
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def make_pdf_bytes() -> bytes:
     """Minimal valid PDF magic bytes — passes magic bytes check."""
     return b"%PDF-1.4 fake pdf content for testing purposes"
@@ -46,7 +47,9 @@ async def register_candidate(client: AsyncClient) -> tuple[str, str]:
     return resp.json()["access_token"], data.email
 
 
-async def get_active_token(client: AsyncClient, db_session: AsyncSession, role: str = "CANDIDATE") -> str:
+async def get_active_token(
+    client: AsyncClient, db_session: AsyncSession, role: str = "CANDIDATE"
+) -> str:
     """Register a user, activate them, return a token."""
     from app.modules.auth.jwt_handler import create_token_pair
 
@@ -77,6 +80,7 @@ async def get_active_token(client: AsyncClient, db_session: AsyncSession, role: 
 # Fixture: override storage with MockStorageService for all tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def override_storage():
     """Force MockStorageService for every test — no real R2 calls."""
@@ -90,14 +94,13 @@ def override_storage():
 # Task 1 — Registration creates skeleton CandidateProfile
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_registration_creates_candidate_profile(client, db_session):
     """Registering as CANDIDATE atomically creates a CandidateProfile row."""
     _, email = await register_candidate(client)
 
-    result = await db_session.execute(
-        select(User).where(User.email == email)
-    )
+    result = await db_session.execute(select(User).where(User.email == email))
     user = result.scalar_one()
 
     profile_result = await db_session.execute(
@@ -113,6 +116,7 @@ async def test_registration_creates_candidate_profile(client, db_session):
 # ---------------------------------------------------------------------------
 # Profile update & completeness
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_profile_update_sets_fields(client, db_session):
@@ -194,6 +198,7 @@ async def test_profile_update_is_partial(client, db_session):
 # ---------------------------------------------------------------------------
 # CV upload
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_cv_upload_succeeds(client, db_session):
@@ -279,6 +284,7 @@ async def test_cv_upload_rejects_oversized_file(client, db_session):
 # CV default & delete
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_set_cv_default(client, db_session):
     """PUT /candidates/me/cv/{id}/default sets the chosen CV as default."""
@@ -346,6 +352,7 @@ async def test_delete_default_cv_promotes_next(client, db_session):
 # Document upload & delete
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_document_upload_succeeds(client, db_session):
     """POST /candidates/me/documents stores document and returns response."""
@@ -388,6 +395,7 @@ async def test_document_delete_removes_from_db(client, db_session):
 # ---------------------------------------------------------------------------
 # Access control
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_employer_cannot_access_own_profile_endpoint(client, db_session):

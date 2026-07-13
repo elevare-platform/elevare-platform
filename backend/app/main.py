@@ -8,8 +8,8 @@ shutdown (engine disposal).
 import logging
 from contextlib import asynccontextmanager
 
-import sentry_sdk
 import redis.asyncio as aioredis
+import sentry_sdk
 import spacy
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -50,15 +50,15 @@ from app.modules.auth.router import router as auth_router
 from app.modules.candidates.router import router as candidates_router
 from app.modules.contact.router import router as contact_router
 from app.modules.employer.router import router as employer_router
+from app.modules.ingestion.router import router as ingestion_router
 from app.modules.jobs.access_token_router import router as access_token_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.sitemaps.router import router as sitemap_router
 from app.modules.talent_pool.router import router as talent_pool_router
 from app.modules.testimonials.router import router as testimonials_router
-from app.modules.testimonials.router import router as testimonials_router
-
 
 logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -160,6 +160,7 @@ async def health_check():
         "environment": settings.environment,
     }
 
+
 # ---- Routers ----
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(cv_parsing_router, prefix="/api/v1/cv-parsing", tags=["cv-parsing"])
@@ -172,7 +173,13 @@ app.include_router(candidates_router, prefix="/api/v1/candidates", tags=["candid
 app.include_router(app_router, prefix="/api/v1/applications", tags=["applications"])
 app.include_router(contact_router, prefix="/api/v1/contact", tags=["contact"])
 app.include_router(sitemap_router, prefix="", tags=["Sitemap"])
-app.include_router(talent_pool_router, prefix="/api/v1/talent-pool", tags=["talent-pool"])
-app.include_router(testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"])
-app.include_router(testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"])
-
+app.include_router(
+    talent_pool_router, prefix="/api/v1/talent-pool", tags=["talent-pool"]
+)
+app.include_router(ingestion_router, prefix="/api/v1/ingestion", tags=["ingestion"])
+app.include_router(
+    testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"]
+)
+app.include_router(
+    testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"]
+)

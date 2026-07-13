@@ -13,6 +13,7 @@ import bcrypt
 
 _ROUNDS = 12
 
+
 def hash_password(plain: str) -> str:
     """Return a bcrypt hash of the given plain-text password.
 
@@ -24,6 +25,7 @@ def hash_password(plain: str) -> str:
 
     """
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=_ROUNDS)).decode()
+
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify that the plain-text password matches the hash.
@@ -38,6 +40,7 @@ def verify_password(plain: str, hashed: str) -> bool:
     """
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
+
 def generate_token() -> str:
     """Generate a secure random token.
 
@@ -46,6 +49,7 @@ def generate_token() -> str:
 
     """
     return secrets.token_urlsafe(32)
+
 
 def hash_token(raw_token: str) -> str:
     """Return a SHA-256 hex digest of the raw token for safe DB storage."""

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         RefreshToken,
     )
     from app.modules.candidates.models import CandidateProfile, ProfileView
+    from app.modules.ingestion.models import MailIntegration
     from app.modules.jobs.models import Job, JobAccessTokens
     from app.modules.talent_pool.models import TalentPoolProfiles
 
@@ -33,41 +34,26 @@ class User(BaseModel):
 
     __tablename__ = "users"
 
-    first_name: Mapped[str] = mapped_column(
-        String(30),
-        nullable=False
-    )
-    last_name: Mapped[str] = mapped_column(
-        String(30),
-        nullable=False
-    )
+    first_name: Mapped[str] = mapped_column(String(30), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(30), nullable=False)
     email: Mapped[str] = mapped_column(
-        String(255),
-        unique=True,
-        nullable=False,
-        index=True
+        String(255), unique=True, nullable=False, index=True
     )
     phone_number: Mapped[str] = mapped_column(
-        String(15),
-        unique=True,
-        nullable=True,
-        index=True
+        String(15), unique=True, nullable=True, index=True
     )
-    password_hash: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False
-    )
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     account_status: Mapped[AccountStatus] = mapped_column(
         String(20),
         nullable=False,
         default=AccountStatus.PENDING_VERIFICATION.value,
-        server_default=AccountStatus.PENDING_VERIFICATION.value
+        server_default=AccountStatus.PENDING_VERIFICATION.value,
     )
     role: Mapped[UserRole] = mapped_column(
         String(20),
         nullable=False,
         default=UserRole.CANDIDATE.value,
-        server_default=UserRole.CANDIDATE.value
+        server_default=UserRole.CANDIDATE.value,
     )
     email_verified: Mapped[bool] = mapped_column(
         Boolean,
@@ -76,20 +62,15 @@ class User(BaseModel):
         server_default=sa.false(),
     )
     email_verified_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
+        DateTime(timezone=True), nullable=True
     )
     last_login_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
+        DateTime(timezone=True), nullable=True
     )
-
 
     # Relationships
     profile: Mapped[UserProfile] = relationship(
-        "UserProfile",
-        back_populates="user",
-        uselist=False
+        "UserProfile", back_populates="user", uselist=False
     )
     employer_profile: Mapped[EmployerProfile] = relationship(
         "EmployerProfile",
@@ -105,12 +86,10 @@ class User(BaseModel):
         back_populates="employer",
     )
     email_verification_tokens: Mapped[list[EmailVerificationToken]] = relationship(
-        "EmailVerificationToken",
-        back_populates="user"
+        "EmailVerificationToken", back_populates="user"
     )
     invite_tokens: Mapped[list[InviteToken]] = relationship(
-        "InviteToken",
-        back_populates="inviter"
+        "InviteToken", back_populates="inviter"
     )
     candidate_profile: Mapped[CandidateProfile] = relationship(
         "CandidateProfile",
@@ -133,12 +112,10 @@ class User(BaseModel):
         foreign_keys="ProfileView.employer_id",
     )
     audit_logs: Mapped[list[AuditLog]] = relationship(
-        "AuditLog",
-        back_populates="admin"
+        "AuditLog", back_populates="admin"
     )
     cv_uploader: Mapped[list[ParsedCVSubmission]] = relationship(
-        "ParsedCVSubmission",
-        back_populates="uploader"
+        "ParsedCVSubmission", back_populates="uploader"
     )
     job_access_tokens_created_by: Mapped[list[JobAccessTokens]] = relationship(
         "JobAccessTokens",
@@ -155,9 +132,10 @@ class User(BaseModel):
         back_populates="added_by_user",
         foreign_keys="TalentPoolProfiles.added_by",
     )
-
-
-
+    mail_integrations: Mapped[list[MailIntegration]] = relationship(
+        "MailIntegration",
+        back_populates="user",
+    )
 
 
 class UserProfile(BaseModel):
@@ -170,7 +148,7 @@ class UserProfile(BaseModel):
         ForeignKey("users.id", ondelete="CASCADE"),
         unique=True,
         nullable=False,
-        index=True
+        index=True,
     )
     avatar_url: Mapped[str] = mapped_column(
         String(255),
@@ -180,10 +158,7 @@ class UserProfile(BaseModel):
     state: Mapped[str] = mapped_column(String(255), nullable=True)
 
     # relationships
-    user: Mapped[User] = relationship(
-        "User",
-        back_populates="profile"
-    )
+    user: Mapped[User] = relationship("User", back_populates="profile")
 
 
 class EmployerProfile(BaseModel):
@@ -204,10 +179,7 @@ class EmployerProfile(BaseModel):
         index=True,
     )
     company_name: Mapped[str] = mapped_column(String(255), nullable=True)
-    company_description: Mapped[str] = mapped_column(
-        Text,
-        nullable=True
-    )
+    company_description: Mapped[str] = mapped_column(Text, nullable=True)
     company_logo_url: Mapped[str] = mapped_column(String(500), nullable=True)
     industry: Mapped[str] = mapped_column(String(100), nullable=True)
     company_size: Mapped[str] = mapped_column(String(20), nullable=True)
@@ -224,4 +196,3 @@ class EmployerProfile(BaseModel):
         "User",
         back_populates="employer_profile",
     )
-

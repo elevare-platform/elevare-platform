@@ -41,6 +41,7 @@ class ContactService:
         )
 
         from .tasks import send_contact_notification_task
+
         send_contact_notification_task.delay(
             recipient=recipient,
             name=payload.name,

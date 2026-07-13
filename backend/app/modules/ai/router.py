@@ -6,6 +6,7 @@ from app.modules.ai.schema import MatchRequest, MatchResult
 from app.modules.ai.service import get_ai_service
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.jobs.repository import JobRepository
+from app.modules.jobs.schemas import build_full_description
 from app.modules.users.models import User
 
 router = APIRouter()
@@ -26,7 +27,6 @@ async def ai_match(
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
-
     job = await JobRepository(db).get_by_id(data.job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -34,7 +34,15 @@ async def ai_match(
     ai_service = get_ai_service()
     return await ai_service.compute_match_score(
         candidate.skills or [],
-        job.description or "",
+        build_full_description(
+            about_the_role=job.about_the_role,
+            key_responsibilities=job.key_responsibilities,
+            requirements=job.requirements,
+            preferred_certifications=job.preferred_certifications,
+            technical_competencies=job.technical_competencies,
+            what_we_offer=job.what_we_offer,
+            legacy_description=job.description,
+        ),
         job.title or "",
         job.required_skills or [],
     )

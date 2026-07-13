@@ -35,6 +35,7 @@ class TestimonialRead(BaseModel):
 
 class TestimonialAdminRead(BaseModel):
     """Full representation for admin — includes status and reviewed_at."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID

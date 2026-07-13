@@ -5,6 +5,7 @@ Revises: 7cf768a25778
 Create Date: 2026-05-13 14:31:24.392874
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -32,12 +33,24 @@ def upgrade() -> None:
         sa.Column("contract_type", sa.String(length=20), nullable=False),
         sa.Column("location", sa.String(length=255), nullable=False),
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["employer_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_job_status_created_at", "jobs", ["status", "created_at"], unique=False)
+    op.create_index(
+        "ix_job_status_created_at", "jobs", ["status", "created_at"], unique=False
+    )
     op.create_index("ix_jobs_employer_id", "jobs", ["employer_id"], unique=False)
     op.create_index("ix_jobs_location", "jobs", ["location"], unique=False)
     op.create_index("ix_jobs_work_model", "jobs", ["work_model"], unique=False)

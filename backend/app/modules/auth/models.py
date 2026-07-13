@@ -61,14 +61,11 @@ class EmailVerificationToken(BaseModel):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    is_used: Mapped[bool] = mapped_column(
-        default=False, server_default=sa.false()
-    )
+    is_used: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
 
     # Relationship
     user: Mapped[User] = relationship(
-        "User",
-        back_populates="email_verification_tokens"
+        "User", back_populates="email_verification_tokens"
     )
 
 
@@ -86,22 +83,14 @@ class InviteToken(BaseModel):
         nullable=False,
     )
     token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    role: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False
-    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
 
-    is_used: Mapped[bool] = mapped_column(
-        default=False, server_default=sa.false()
-    )
+    is_used: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
 
-    used_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
+    used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     invited_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -111,8 +100,5 @@ class InviteToken(BaseModel):
 
     # Relationship — points to the admin who sent the invite, not the invitee
     inviter: Mapped[User] = relationship(
-        "User",
-        back_populates="invite_tokens",
-        foreign_keys=[invited_by]
+        "User", back_populates="invite_tokens", foreign_keys=[invited_by]
     )
-

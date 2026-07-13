@@ -6,9 +6,11 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def register_payload(**overrides) -> dict:
     """Return a valid registration JSON payload."""
     from tests.conftest import make_register_data
+
     data = make_register_data(**overrides)
     return {
         "first_name": data.first_name,
@@ -37,10 +39,13 @@ async def register_and_get_tokens(client, **overrides) -> tuple[str, str, dict]:
         assert verify.status_code == 200
 
     # Log in to get a fresh token with ACTIVE status embedded
-    login = await client.post("/api/v1/auth/login", json={
-        "email": payload["email"],
-        "password": payload["password"],
-    })
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": payload["email"],
+            "password": payload["password"],
+        },
+    )
     assert login.status_code == 200
     access_token = login.json()["access_token"]
     refresh_token = login.cookies.get("refresh_token")
@@ -50,6 +55,7 @@ async def register_and_get_tokens(client, **overrides) -> tuple[str, str, dict]:
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_register_success(client):
@@ -95,6 +101,7 @@ async def test_register_missing_field_returns_422(client):
 # Login
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_login_success(client):
     """POST /login with valid credentials returns 200 with access token and sets cookie."""
@@ -104,12 +111,17 @@ async def test_login_success(client):
     # Verify email first so login works cleanly
     verification_token = reg.json().get("verification_token")
     if verification_token:
-        await client.post("/api/v1/auth/verify-email", params={"token": verification_token})
+        await client.post(
+            "/api/v1/auth/verify-email", params={"token": verification_token}
+        )
 
-    response = await client.post("/api/v1/auth/login", json={
-        "email": payload["email"],
-        "password": payload["password"],
-    })
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": payload["email"],
+            "password": payload["password"],
+        },
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -124,10 +136,13 @@ async def test_login_wrong_password_returns_401(client):
     payload = register_payload()
     await client.post("/api/v1/auth/register", json=payload)
 
-    response = await client.post("/api/v1/auth/login", json={
-        "email": payload["email"],
-        "password": "WrongPass99#",
-    })
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": payload["email"],
+            "password": "WrongPass99#",
+        },
+    )
 
     assert response.status_code == 401
     assert response.json()["code"] == "INVALID_CREDENTIALS"
@@ -136,10 +151,13 @@ async def test_login_wrong_password_returns_401(client):
 @pytest.mark.asyncio
 async def test_login_unknown_email_returns_401(client):
     """POST /login with unknown email returns 401."""
-    response = await client.post("/api/v1/auth/login", json={
-        "email": "nobody@example.com",
-        "password": "Password123#",
-    })
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "nobody@example.com",
+            "password": "Password123#",
+        },
+    )
 
     assert response.status_code == 401
 
@@ -147,6 +165,7 @@ async def test_login_unknown_email_returns_401(client):
 # ---------------------------------------------------------------------------
 # Protected route — /me
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_me_with_valid_token(client):
@@ -182,7 +201,9 @@ async def test_get_me_with_wrong_role_returns_403(client, db_session):
     reg = await client.post("/api/v1/auth/register", json=payload)
     assert reg.status_code == 201
 
-    result = await db_session.execute(select(User).where(User.email == payload["email"]))
+    result = await db_session.execute(
+        select(User).where(User.email == payload["email"])
+    )
     user = result.scalar_one()
     user.account_status = "ACTIVE"
     await db_session.flush()
@@ -201,6 +222,7 @@ async def test_get_me_with_wrong_role_returns_403(client, db_session):
 # ---------------------------------------------------------------------------
 # Token refresh
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_refresh_returns_new_access_token(client):
@@ -229,6 +251,7 @@ async def test_refresh_without_cookie_returns_401(client):
 # Logout
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_logout_revokes_refresh_token(client):
     """POST /logout revokes the token — subsequent refresh returns 401."""
@@ -252,6 +275,7 @@ async def test_logout_revokes_refresh_token(client):
 # ---------------------------------------------------------------------------
 # Email verification flow
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_register_sets_pending_verification(client):

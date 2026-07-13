@@ -12,16 +12,21 @@ from app.modules.ai.service import MockAIService
 
 def make_sections(**kwargs) -> DetectedSections:
     defaults = {
-        "summary": None, "experience": "Worked at Google as Software Engineer 2020-2023.",
+        "summary": None,
+        "experience": "Worked at Google as Software Engineer 2020-2023.",
         "education": "BSc Computer Science, Lagos 2018.",
-        "skills": None, "certifications": None, "projects": None,
-        "references": None, "unclassified": "John Doe\njohn@email.com",
+        "skills": None,
+        "certifications": None,
+        "projects": None,
+        "references": None,
+        "unclassified": "John Doe\njohn@email.com",
     }
     defaults.update(kwargs)
     return DetectedSections(**defaults)
 
 
 # ── MockAIService returns valid schema ────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_mock_service_returns_valid_schema():
@@ -49,6 +54,7 @@ async def test_mock_service_returns_empty_result():
 
 # ── AnthropicCVExtractionService — malformed JSON handling ───────────────────
 
+
 @pytest.mark.asyncio
 async def test_malformed_json_returns_null_result():
     from app.modules.ai.service import AnthropicCVExtractionService
@@ -74,24 +80,26 @@ async def test_valid_json_response_parsed_correctly():
 
     service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
 
-    valid_response = json.dumps({
-        "skills": ["Python", "FastAPI"],
-        "years_experience": 5,
-        "current_title": "Software Engineer",
-        "seniority_level": "senior",
-        "summary": "Experienced backend engineer.",
-        "work_history": [],
-        "education": [],
-        "field_confidence": {
-            "skills": "high",
-            "years_experience": "medium",
-            "current_title": "high",
-            "seniority_level": "medium",
-            "summary": "medium",
-            "work_history": "low",
-            "education": "low",
-        },
-    })
+    valid_response = json.dumps(
+        {
+            "skills": ["Python", "FastAPI"],
+            "years_experience": 5,
+            "current_title": "Software Engineer",
+            "seniority_level": "senior",
+            "summary": "Experienced backend engineer.",
+            "work_history": [],
+            "education": [],
+            "field_confidence": {
+                "skills": "high",
+                "years_experience": "medium",
+                "current_title": "high",
+                "seniority_level": "medium",
+                "summary": "medium",
+                "work_history": "low",
+                "education": "low",
+            },
+        }
+    )
 
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text=valid_response)]

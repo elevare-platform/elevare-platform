@@ -8,9 +8,14 @@ from app.core.cv_pipeline.layer6_nlp import extract_nlp
 
 def make_sections(**kwargs) -> DetectedSections:
     defaults = {
-        "summary": None, "experience": None, "education": None,
-        "skills": None, "certifications": None, "projects": None,
-        "references": None, "unclassified": "",
+        "summary": None,
+        "experience": None,
+        "education": None,
+        "skills": None,
+        "certifications": None,
+        "projects": None,
+        "references": None,
+        "unclassified": "",
     }
     defaults.update(kwargs)
     return DetectedSections(**defaults)

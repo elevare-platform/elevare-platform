@@ -95,6 +95,26 @@ class Settings(BaseSettings):
     # Sentry
     sentry_dsn: str | None = None
 
+    # Gmail OAuth — required for Phase 16A ingestion
+    gmail_client_id: str | None = None
+    gmail_client_secret: str | None = None
+    gmail_redirect_uri: str = "http://localhost:8000/api/v1/ingestion/callback/gmail"
+
+    # Zoho Mail OAuth — required for Phase 16B ingestion
+    # accounts_url varies by region:
+    #   Global: https://accounts.zoho.com
+    #   EU:     https://accounts.zoho.eu
+    #   India:  https://accounts.zoho.in
+    #   AU:     https://accounts.zoho.com.au
+    zoho_client_id: str | None = None
+    zoho_client_secret: str | None = None
+    zoho_redirect_uri: str = "http://localhost:8000/api/v1/ingestion/callback/zoho"
+    zoho_accounts_url: str = "https://accounts.zoho.com"
+
+    # Fernet key for encrypting OAuth tokens at rest
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    fernet_key: str | None = None
+
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
         """Refuse to start in production with insecure default values."""
@@ -103,10 +123,16 @@ class Settings(BaseSettings):
 
         errors = []
 
-        if self.secret_key.lower() in _INSECURE_SECRET_KEY_VALUES or len(self.secret_key) < 32:
+        if (
+            self.secret_key.lower() in _INSECURE_SECRET_KEY_VALUES
+            or len(self.secret_key) < 32
+        ):
             errors.append("SECRET_KEY is insecure or too short (min 32 chars)")
 
-        if self.hmac_secret in _INSECURE_SECRET_KEY_VALUES or len(self.hmac_secret) < 16:
+        if (
+            self.hmac_secret in _INSECURE_SECRET_KEY_VALUES
+            or len(self.hmac_secret) < 16
+        ):
             errors.append("HMAC_SECRET is insecure or too short (min 16 chars)")
 
         if not self.cookie_secure:
@@ -119,11 +145,14 @@ class Settings(BaseSettings):
             errors.append("EMAIL_STUB_MODE must be false in production")
 
         if any("localhost" in origin for origin in self.cors_origins):
-            errors.append("CORS_ORIGINS contains localhost — remove before production deploy")
+            errors.append(
+                "CORS_ORIGINS contains localhost — remove before production deploy"
+            )
 
         if errors:
             raise ValueError(
-                "Production security checks failed:\n" + "\n".join(f"  - {e}" for e in errors)
+                "Production security checks failed:\n"
+                + "\n".join(f"  - {e}" for e in errors)
             )
 
         return self

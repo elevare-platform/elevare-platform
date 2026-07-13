@@ -82,7 +82,10 @@ class AdminService:
             action="UPDATE_USER_STATUS",
             target_type="user",
             target_id=user_id,
-            log_metadata={"before": {"account_status": before}, "after": {"account_status": new_status}},
+            log_metadata={
+                "before": {"account_status": before},
+                "after": {"account_status": new_status},
+            },
         )
         await self._db.commit()
         return AdminUserResponse.model_validate(user)
@@ -107,7 +110,10 @@ class AdminService:
                 action="BULK_UPDATE_USER_STATUS",
                 target_type="user",
                 target_id=user_id,
-                log_metadata={"before": {"account_status": before}, "after": {"account_status": action}},
+                log_metadata={
+                    "before": {"account_status": before},
+                    "after": {"account_status": action},
+                },
             )
             updated += 1
         await self._db.commit()
@@ -128,7 +134,9 @@ class AdminService:
         """Return a paginated list of jobs with optional status/moderation/search filters."""
         from app.modules.jobs.schemas import JobResponse
 
-        result = await self._repo.list_jobs(status, moderation_status, search, cursor, limit)
+        result = await self._repo.list_jobs(
+            status, moderation_status, search, cursor, limit
+        )
         result["items"] = [JobResponse.from_job(job) for job in result["items"]]
         return result
 
@@ -136,9 +144,13 @@ class AdminService:
         self, admin_id: UUID, job_id: UUID, action: str, reason: str | None = None
     ) -> object:
         """Approve, reject, or close a job, write an audit log entry, and notify the employer."""
-        logger.info(f"\n\n\n\n\n========================Action: {action}=========================\n\n\n\n\n\n")
+        logger.info(
+            f"\n\n\n\n\n========================Action: {action}=========================\n\n\n\n\n\n"
+        )
         action = action.upper()
-        logger.info(f"\n\n\n\n\n========================Action: {action}=========================\n\n\n\n\n\n")
+        logger.info(
+            f"\n\n\n\n\n========================Action: {action}=========================\n\n\n\n\n\n"
+        )
         if action not in _VALID_MODERATION_ACTIONS and action != "close":
             raise ValidationException(message=f"Invalid moderation action: {action}")
 
@@ -169,12 +181,16 @@ class AdminService:
             target_id=job_id,
             log_metadata={
                 "before": before,
-                "after": {"moderation_status": job.moderation_status, "status": job.status},
+                "after": {
+                    "moderation_status": job.moderation_status,
+                    "status": job.status,
+                },
             },
         )
         await self._db.commit()
 
         from app.modules.jobs.schemas import JobResponse
+
         return JobResponse.from_job(job)
 
     async def bulk_update_job_status(
@@ -197,7 +213,10 @@ class AdminService:
                 action="BULK_UPDATE_JOB_STATUS",
                 target_type="job",
                 target_id=job_id,
-                log_metadata={"before": {"status": before}, "after": {"status": action}},
+                log_metadata={
+                    "before": {"status": before},
+                    "after": {"status": action},
+                },
             )
             updated += 1
         await self._db.commit()
@@ -217,7 +236,9 @@ class AdminService:
         from app.modules.admin.schemas import AdminApplicationResponse
 
         result = await self._repo.list_applications(status, cursor, limit)
-        result["items"] = [AdminApplicationResponse.from_application(a) for a in result["items"]]
+        result["items"] = [
+            AdminApplicationResponse.from_application(a) for a in result["items"]
+        ]
         return result
 
     # -----------------------------------------------------------------------

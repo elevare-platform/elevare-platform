@@ -1,4 +1,5 @@
 """HTTP endpoints for CV parsing — submit, list, download, and cost tracking."""
+
 import uuid
 
 import redis.asyncio as aioredis
@@ -15,6 +16,7 @@ from app.modules.users.models import User
 
 router = APIRouter()
 
+
 async def get_cv_parsing_service(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -29,6 +31,7 @@ async def get_cv_parsing_service(
         ai_service=AnthropicCVExtractionService(),
         nlp=getattr(request.app.state, "nlp", None),
     )
+
 
 @router.post("/submit", status_code=201)
 async def submit_cv(
@@ -92,6 +95,7 @@ async def submit_pdf_batch(
     """Upload up to 20 CVs for parsing in a single request."""
     if len(files) > 20:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="Maximum 20 files per batch")
 
     results = []
@@ -114,6 +118,7 @@ async def download_cv(
     """Generate a 15-minute presigned download URL for a parsed CV."""
     return await service.generate_cv_url(id, current_user)
 
+
 @router.post("/submissions/{id}/create-candidate", status_code=410)
 async def create_candidate_from_submission(id: uuid.UUID):
     """Deprecated — removed in Phase 11.5.
@@ -122,8 +127,8 @@ async def create_candidate_from_submission(id: uuid.UUID):
     Use POST /talent-pool/submit instead.
     """
     from fastapi import HTTPException
+
     raise HTTPException(
         status_code=410,
         detail="This endpoint has been removed. Use POST /api/v1/talent-pool/submit instead.",
     )
-

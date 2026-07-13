@@ -37,7 +37,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._debug = debug
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         """Add security headers to every response."""
         response = await call_next(request)
 
@@ -68,7 +70,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Log every inbound request and its completed response with a request ID."""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         """Log request start, call the next handler, then log completion or failure."""
         # Skip logging for CORS preflight requests
         if request.method == "OPTIONS":
@@ -81,7 +85,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             request_id,
             request.method,
             request.url.path,
-            request.client.host if request.client else "unknown"
+            request.client.host if request.client else "unknown",
         )
 
         start_time = time.time()
@@ -94,7 +98,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "Request failed | request_id=%s duration_ms=%.2f",
                 request_id,
                 process_time,
-                exc_info=True
+                exc_info=True,
             )
 
             return JSONResponse(
@@ -105,7 +109,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "message": "An unexpected error occurred",
                     "details": [],
                 },
-                headers={"X-Request-ID": request_id}
+                headers={"X-Request-ID": request_id},
             )
 
         response.headers["X-Request-ID"] = request_id
@@ -119,4 +123,3 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         )
 
         return response
-

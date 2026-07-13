@@ -5,11 +5,12 @@ Revises: a4c69fa994f8
 Create Date: 2026-05-10 04:48:08.760009
 
 """
+
 from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.
-revision: str = '7cf768a25778'
-down_revision: str | None = 'a4c69fa994f8'
+revision: str = "7cf768a25778"
+down_revision: str | None = "a4c69fa994f8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

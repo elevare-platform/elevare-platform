@@ -1,4 +1,5 @@
 """AI service module — AIService interface and concrete implementations."""
+
 import json
 import logging
 import re
@@ -17,10 +18,37 @@ from .schema import FitReasoningResult, MatchResult
 logger = logging.getLogger(__name__)
 
 _STOP_WORDS = {
-    "the", "and", "or", "for", "to", "a", "in", "of", "with", "is", "are",
-    "we", "you", "will", "experience", "required", "must", "have", "able",
-    "good", "strong", "excellent", "knowledge", "understanding", "work",
-    "working", "team", "role", "position", "candidate", "looking",
+    "the",
+    "and",
+    "or",
+    "for",
+    "to",
+    "a",
+    "in",
+    "of",
+    "with",
+    "is",
+    "are",
+    "we",
+    "you",
+    "will",
+    "experience",
+    "required",
+    "must",
+    "have",
+    "able",
+    "good",
+    "strong",
+    "excellent",
+    "knowledge",
+    "understanding",
+    "work",
+    "working",
+    "team",
+    "role",
+    "position",
+    "candidate",
+    "looking",
 }
 
 
@@ -115,6 +143,7 @@ class KeywordAIService(AIService):
     ) -> "LLMExtractionResult":
         """Return an empty extraction result (keyword service does not parse CVs)."""
         from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
+
         return LLMExtractionResult()
 
     async def generate_fit_reasoning(
@@ -199,12 +228,13 @@ class AnthropicCVExtractionService(AIService):
     def __init__(self) -> None:
         """Initialise the Anthropic async client using the configured API key."""
         import anthropic
-        self._client = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key
-        )
+
+        self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     # Stub for the existing method - this class only handles CV extraction
-    async def compute_match_score(self, candidate_skills, job_description, job_title, required_skills=None):
+    async def compute_match_score(
+        self, candidate_skills, job_description, job_title, required_skills=None
+    ):
         """Delegate match scoring to KeywordAIService (this class handles CV extraction only)."""
         return await KeywordAIService().compute_match_score(
             candidate_skills,
@@ -237,10 +267,12 @@ class AnthropicCVExtractionService(AIService):
                 model=settings.anthropic_model,
                 max_tokens=2048,
                 system=CV_EXTRACTION_SYSTEM_PROMPT,
-                messages=[{
-                    "role": "user",
-                    "content": user_prompt,
-                }]
+                messages=[
+                    {
+                        "role": "user",
+                        "content": user_prompt,
+                    }
+                ],
             )
 
             raw = response.content[0].text
@@ -296,9 +328,7 @@ class AnthropicCVExtractionService(AIService):
 
         # Try 1: Look for JSON in code fences
         dict_match = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```",
-            cleaned_response,
-            re.DOTALL
+            r"```(?:json)?\s*(\{.*?\})\s*```", cleaned_response, re.DOTALL
         )
 
         if dict_match:
@@ -355,9 +385,7 @@ class AnthropicCVExtractionService(AIService):
         from app.modules.ai.schema import FitReasoningResult
 
         user_prompt = build_fit_reasoning_prompt(
-            candidate_summary,
-            job_description,
-            deterministic_score
+            candidate_summary, job_description, deterministic_score
         )
 
         raw = ""
@@ -367,12 +395,7 @@ class AnthropicCVExtractionService(AIService):
                 model=settings.anthropic_model,
                 max_tokens=1024,
                 system=FIT_REASONING_SYSTEM_PROMPT,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ]
+                messages=[{"role": "user", "content": user_prompt}],
             )
 
             raw = response.content[0].text
@@ -381,15 +404,11 @@ class AnthropicCVExtractionService(AIService):
             return FitReasoningResult(
                 strengths=data.get("strengths", []),
                 weaknesses=data.get("weaknesses", []),
-                fit_summary=data.get("fit_summary", "")
+                fit_summary=data.get("fit_summary", ""),
             )
         except (KeyError, TypeError, Exception) as e:
             logger.error(
-                "LLM Fit Reasoning failed",
-                extra={
-                    "error": str(e),
-                    "raw": raw[:500]
-                }
+                "LLM Fit Reasoning failed", extra={"error": str(e), "raw": raw[:500]}
             )
             return FitReasoningResult()
 
@@ -411,9 +430,7 @@ class EmbeddingAIService(AIService):
 
     def __init__(self) -> None:
         """Initialise the OpenAI async client using the configured API key."""
-        self._client = AsyncOpenAI(
-            api_key=settings.openai_api_key
-        )
+        self._client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     async def generate_embedding(self, text: str) -> list[float]:
         """Call OpenAI text-embedding-3-small and return the 1536-dim vector."""
@@ -424,9 +441,7 @@ class EmbeddingAIService(AIService):
         return response.data[0].embedding
 
     async def compute_similarity_score(
-        self,
-        candidate_embedding: list[float],
-        job_embedding: list[float]
+        self, candidate_embedding: list[float], job_embedding: list[float]
     ) -> int:
         """Cosine similarity scaled to 0-100."""
         a = np.array(candidate_embedding)
@@ -435,7 +450,9 @@ class EmbeddingAIService(AIService):
         similarity = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
         return max(0, min(100, round((similarity + 1) / 2 * 100)))
 
-    async def compute_match_score(self, candidate_skills, job_description, job_title, required_skills=None):
+    async def compute_match_score(
+        self, candidate_skills, job_description, job_title, required_skills=None
+    ):
         """Delegate to KeywordAIService for keyword-based match scoring."""
         return await KeywordAIService().compute_match_score(
             candidate_skills, job_description, job_title, required_skills
@@ -445,7 +462,9 @@ class EmbeddingAIService(AIService):
         """Not implemented — EmbeddingAIService does not extract CV data."""
         raise NotImplementedError("EmbeddingAIService does not extract CV data.")
 
-    async def generate_fit_reasoning(self, candidate_summary, job_description, deterministic_score):
+    async def generate_fit_reasoning(
+        self, candidate_summary, job_description, deterministic_score
+    ):
         """Not implemented — EmbeddingAIService does not generate fit reasoning."""
         raise NotImplementedError("EmbeddingAIService does not generate fit reasoning.")
 
@@ -457,4 +476,3 @@ def get_ai_service() -> AIService:
 
 # Alias used in Phase 12 tests — MockAIService already implements the full interface
 MockEmbeddingAIService = MockAIService
-

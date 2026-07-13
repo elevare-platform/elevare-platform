@@ -6,6 +6,7 @@ from app.modules.jobs.enums import JobStatus, ModerationStatus
 
 # ─── Contact endpoint ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_contact_valid_submission_returns_200(client, db_session):
     """Valid contact submission is stored in DB and returns 200."""
@@ -27,7 +28,9 @@ async def test_contact_valid_submission_returns_200(client, db_session):
     assert "thank you" in response.json()["message"].lower()
 
     result = await db_session.execute(
-        select(ContactSubmission).where(ContactSubmission.email == "test_valid_unique_abc123@example.com")
+        select(ContactSubmission).where(
+            ContactSubmission.email == "test_valid_unique_abc123@example.com"
+        )
     )
     submission = result.scalar_one_or_none()
     assert submission is not None
@@ -120,6 +123,7 @@ async def test_contact_employer_inquiry_routes_correctly(client, db_session):
 
 # ─── Sitemap endpoint ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_sitemap_returns_valid_xml(client):
     """GET /sitemap.xml returns 200 with application/xml content type."""
@@ -150,6 +154,7 @@ async def test_sitemap_includes_active_approved_jobs(client, db_session):
 
     # Clear sitemap cache so the test job is included
     from app.core.dependencies import get_redis_client
+
     async for redis in get_redis_client():
         await redis.delete("sitemap:xml")
 
@@ -185,6 +190,7 @@ async def test_sitemap_excludes_draft_and_pending_jobs(client, db_session):
 
 
 # ─── Robots.txt endpoint ──────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_robots_txt_returns_correct_disallow_rules(client):

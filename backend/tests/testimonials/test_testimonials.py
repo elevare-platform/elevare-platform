@@ -14,8 +14,8 @@ from app.modules.testimonials.enums import TestimonialStatus
 from app.modules.testimonials.models import Testimonial
 from tests.conftest import make_admin, make_user
 
-
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+
 
 async def _submit(client, **overrides):
     """POST a testimonial via multipart form data."""
@@ -27,7 +27,9 @@ async def _submit(client, **overrides):
     return await client.post("/api/v1/testimonials", data=defaults)
 
 
-async def _seed_testimonial(db_session, status=TestimonialStatus.PENDING, **overrides) -> Testimonial:
+async def _seed_testimonial(
+    db_session, status=TestimonialStatus.PENDING, **overrides
+) -> Testimonial:
     """Insert a testimonial directly into the DB."""
     defaults = {
         "full_name": "Seed User",
@@ -48,10 +50,12 @@ async def _admin_token(client, db_session) -> str:
     await db_session.flush()
 
     from app.modules.auth.jwt_handler import create_token_pair
+
     return create_token_pair(str(admin.id), admin.role)["access_token"]
 
 
 # ─── Public submission ────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_submit_testimonial_returns_201(client, db_session):
@@ -65,7 +69,11 @@ async def test_submit_testimonial_returns_201(client, db_session):
 @pytest.mark.asyncio
 async def test_submit_testimonial_persisted_as_pending(client, db_session):
     """Submitted testimonial is saved to the DB with status=pending."""
-    await _submit(client, full_name="Persisted User", testimony="Great experience with Elevare platform.")
+    await _submit(
+        client,
+        full_name="Persisted User",
+        testimony="Great experience with Elevare platform.",
+    )
 
     result = await db_session.execute(
         select(Testimonial).where(Testimonial.full_name == "Persisted User")
@@ -128,6 +136,7 @@ async def test_submit_testimonial_empty_full_name_returns_422(client):
 async def test_submit_testimonial_invalid_image_type_returns_400(client):
     """Uploading a non-image file returns 400."""
     import io
+
     response = await client.post(
         "/api/v1/testimonials",
         data={"full_name": "Jane", "testimony": "Good service overall."},
@@ -140,6 +149,7 @@ async def test_submit_testimonial_invalid_image_type_returns_400(client):
 async def test_submit_testimonial_oversized_image_returns_400(client):
     """Uploading an image over 5 MB returns 400."""
     import io
+
     big = io.BytesIO(b"x" * (5 * 1024 * 1024 + 1))
     response = await client.post(
         "/api/v1/testimonials",
@@ -151,12 +161,19 @@ async def test_submit_testimonial_oversized_image_returns_400(client):
 
 # ─── Public listing ───────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_testimonials_returns_only_approved(client, db_session):
     """GET /testimonials returns only approved testimonials."""
-    await _seed_testimonial(db_session, status=TestimonialStatus.APPROVED, full_name="Approved One")
-    await _seed_testimonial(db_session, status=TestimonialStatus.PENDING, full_name="Pending One")
-    await _seed_testimonial(db_session, status=TestimonialStatus.REJECTED, full_name="Rejected One")
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.APPROVED, full_name="Approved One"
+    )
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.PENDING, full_name="Pending One"
+    )
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.REJECTED, full_name="Rejected One"
+    )
 
     response = await client.get("/api/v1/testimonials")
 
@@ -168,7 +185,9 @@ async def test_get_testimonials_returns_only_approved(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_get_testimonials_returns_empty_list_when_none_approved(client, db_session):
+async def test_get_testimonials_returns_empty_list_when_none_approved(
+    client, db_session
+):
     """GET /testimonials returns [] when no testimonials are approved."""
     await _seed_testimonial(db_session, status=TestimonialStatus.PENDING)
 
@@ -195,6 +214,7 @@ async def test_get_testimonials_does_not_expose_status_field(client, db_session)
 
 # ─── Admin listing ────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_admin_list_requires_auth(client):
     """GET /admin/testimonials without a token returns 401."""
@@ -205,9 +225,15 @@ async def test_admin_list_requires_auth(client):
 @pytest.mark.asyncio
 async def test_admin_list_returns_all_statuses(client, db_session):
     """Admin list returns testimonials of all statuses by default."""
-    await _seed_testimonial(db_session, status=TestimonialStatus.APPROVED, full_name="Admin Approved")
-    await _seed_testimonial(db_session, status=TestimonialStatus.PENDING, full_name="Admin Pending")
-    await _seed_testimonial(db_session, status=TestimonialStatus.REJECTED, full_name="Admin Rejected")
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.APPROVED, full_name="Admin Approved"
+    )
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.PENDING, full_name="Admin Pending"
+    )
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.REJECTED, full_name="Admin Rejected"
+    )
 
     token = await _admin_token(client, db_session)
     response = await client.get(
@@ -225,8 +251,12 @@ async def test_admin_list_returns_all_statuses(client, db_session):
 @pytest.mark.asyncio
 async def test_admin_list_filter_by_pending(client, db_session):
     """Admin list filtered by status=pending returns only pending testimonials."""
-    await _seed_testimonial(db_session, status=TestimonialStatus.PENDING, full_name="Filter Pending")
-    await _seed_testimonial(db_session, status=TestimonialStatus.APPROVED, full_name="Filter Approved")
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.PENDING, full_name="Filter Pending"
+    )
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.APPROVED, full_name="Filter Approved"
+    )
 
     token = await _admin_token(client, db_session)
     response = await client.get(
@@ -242,7 +272,9 @@ async def test_admin_list_filter_by_pending(client, db_session):
 @pytest.mark.asyncio
 async def test_admin_list_includes_status_and_reviewed_at(client, db_session):
     """Admin response schema includes status and reviewed_at fields."""
-    await _seed_testimonial(db_session, status=TestimonialStatus.PENDING, full_name="Schema Check")
+    await _seed_testimonial(
+        db_session, status=TestimonialStatus.PENDING, full_name="Schema Check"
+    )
 
     token = await _admin_token(client, db_session)
     response = await client.get(
@@ -258,6 +290,7 @@ async def test_admin_list_includes_status_and_reviewed_at(client, db_session):
 
 
 # ─── Admin moderation ─────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_moderate_testimonial_approve(client, db_session):
@@ -345,6 +378,7 @@ async def test_moderate_testimonial_non_admin_returns_403(client, db_session):
     await db_session.flush()
 
     from app.modules.auth.jwt_handler import create_token_pair
+
     token = create_token_pair(str(candidate.id), candidate.role)["access_token"]
 
     response = await client.patch(

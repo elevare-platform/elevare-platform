@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 #           REQUEST SCHEMAS
 # ------------------------------------------
 
+
 class UpdateProfileSchema(BaseModel):
     """Partial-update payload for a candidate's own profile.
 
@@ -30,6 +31,8 @@ class UpdateProfileSchema(BaseModel):
     preferred_work_models: list[str] | None = None
     open_to_relocation: bool = False
     visibility: str | None = None  # PUBLIC | APPLIED_ONLY | PRIVATE
+
+
 class WorkExperienceCreateSchema(BaseModel):
     """Payload for adding a work experience entry to a candidate's profile."""
 
@@ -65,6 +68,7 @@ class CertificationCreateSchema(BaseModel):
 # ------------------------------------------
 #           RESPONSE SCHEMAS
 # ------------------------------------------
+
 
 class CandidateCvsResponse(BaseModel):
     """Response schema for a candidate CV record."""
@@ -178,7 +182,7 @@ class ProfileResponse(BaseModel):
     preferred_locations: list[str] | None = None
     preferred_work_models: list[str] | None = None
     open_to_relocation: bool = False
-    visibility: str = 'APPLIED_ONLY'
+    visibility: str = "APPLIED_ONLY"
     is_profile_complete: bool = False
     cvs: list[CandidateCvsResponse] = []
     documents: list[CandidateDocumentsResponse] = []
@@ -191,7 +195,7 @@ class ProfileResponse(BaseModel):
         """Validate and build the response, enriching name fields from the user relation."""
         instance = super().model_validate(obj, **kwargs)
         # Populate name fields from the user relationship when available
-        if hasattr(obj, 'user') and obj.user is not None:
-            instance.first_name = getattr(obj.user, 'first_name', None)
-            instance.last_name = getattr(obj.user, 'last_name', None)
+        if hasattr(obj, "user") and obj.user is not None:
+            instance.first_name = getattr(obj.user, "first_name", None)
+            instance.last_name = getattr(obj.user, "last_name", None)
         return instance

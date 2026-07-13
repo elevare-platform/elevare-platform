@@ -9,7 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.dependencies import get_db, require_role
 from app.core.schemas import SuccessResponse
+from app.core.storage import StorageService, get_storage_service
 from app.modules.auth.service import AuthService
+from app.modules.testimonials.enums import TestimonialStatus
+from app.modules.testimonials.schemas import (
+    TestimonialAdminRead,
+    TestimonialModerationRequest,
+)
+from app.modules.testimonials.service import TestimonialService
 from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import User
 
@@ -21,10 +28,6 @@ from .schemas import (
     UserStatusUpdateRequest,
 )
 from .service import AdminService
-from app.modules.testimonials.enums import TestimonialStatus
-from app.modules.testimonials.schemas import TestimonialAdminRead, TestimonialModerationRequest
-from app.modules.testimonials.service import TestimonialService
-from app.core.storage import get_storage_service, StorageService
 
 router = APIRouter()
 
@@ -32,6 +35,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Invites (existing endpoints)
 # ---------------------------------------------------------------------------
+
 
 @router.post("/employers/invite", status_code=200)
 async def create_invite(
@@ -64,6 +68,7 @@ async def resend_invite(
 # ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
+
 
 @router.get("/users", status_code=200)
 async def list_users(
@@ -132,6 +137,7 @@ async def bulk_update_users(
 # Jobs
 # ---------------------------------------------------------------------------
 
+
 @router.get("/jobs", status_code=200)
 async def list_jobs(
     status: str | None = Query(default=None),
@@ -163,10 +169,7 @@ async def moderate_job(
     """Approve, reject, or close a job listing."""
     service = AdminService(db)
     return await service.moderate_job(
-        admin_id=admin_user.id,
-        job_id=job_id,
-        action=data.action,
-        reason=data.reason
+        admin_id=admin_user.id, job_id=job_id, action=data.action, reason=data.reason
     )
 
 
@@ -189,6 +192,7 @@ async def bulk_update_jobs(
 # Applications
 # ---------------------------------------------------------------------------
 
+
 @router.get("/applications", status_code=200)
 async def list_applications(
     status: str | None = Query(default=None),
@@ -210,6 +214,7 @@ async def list_applications(
 # Stats
 # ---------------------------------------------------------------------------
 
+
 @router.get("/stats", status_code=200)
 async def get_stats(
     db: AsyncSession = Depends(get_db),
@@ -223,6 +228,7 @@ async def get_stats(
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
+
 
 @router.get("/export/applications", status_code=200)
 async def export_applications(
@@ -242,6 +248,7 @@ async def export_applications(
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
+
 
 @router.get("/settings", status_code=200)
 async def get_settings(
@@ -284,6 +291,7 @@ async def toggle_ai_score_visibility(
 # Audit Log
 # ---------------------------------------------------------------------------
 
+
 @router.get("/audit-log", status_code=200)
 async def list_audit_log(
     cursor: str | None = Query(default=None),
@@ -299,6 +307,7 @@ async def list_audit_log(
 # ---------------------------------------------------------------------------
 # Testimonials
 # ---------------------------------------------------------------------------
+
 
 def get_testimonial_service(
     db: AsyncSession = Depends(get_db),
@@ -317,7 +326,11 @@ async def admin_list_testimonials(
     return await service.admin_list_testimonials(status)
 
 
-@router.patch("/testimonials/{testimonial_id}", response_model=TestimonialAdminRead, status_code=200)
+@router.patch(
+    "/testimonials/{testimonial_id}",
+    response_model=TestimonialAdminRead,
+    status_code=200,
+)
 async def moderate_testimonial(
     testimonial_id: UUID = Path(...),
     data: TestimonialModerationRequest = ...,

@@ -1,4 +1,5 @@
 """Enumerations for job application status."""
+
 from enum import Enum
 
 

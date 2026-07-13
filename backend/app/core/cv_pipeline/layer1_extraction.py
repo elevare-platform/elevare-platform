@@ -4,6 +4,7 @@ Tries pdfplumber first, falls back to PyMuPDF, then Tesseract OCR for
 scanned documents. Returns a TextExtractionResult with metadata about
 the extraction method used and whether OCR was required.
 """
+
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -39,6 +40,7 @@ def _extract_with_pdfplumber(pdf_bytes: bytes) -> tuple[str, int]:
 
         return "\n\n".join(text_parts), page_count
 
+
 def _extract_with_pymupdf(pdf_bytes: bytes) -> tuple[str, int]:
     """Extract text from PDF using PyMuPDF. Returns (text, page_count)."""
     text_parts = []
@@ -53,6 +55,7 @@ def _extract_with_pymupdf(pdf_bytes: bytes) -> tuple[str, int]:
 
     return "\n\n".join(text_parts), page_count
 
+
 def _extract_with_ocr(pdf_bytes: bytes) -> tuple[str, int]:
     """Extract text from a scanned PDF using Tesseract OCR. Returns (text, page_count)."""
     images = convert_from_bytes(pdf_bytes)
@@ -62,11 +65,10 @@ def _extract_with_ocr(pdf_bytes: bytes) -> tuple[str, int]:
     for index, image in enumerate(images, start=1):
         page_text = pytesseract.image_to_string(image)
 
-        text_parts.append(
-            f"\n\n----- PAGE {index} -----\n\n{page_text}"
-        )
+        text_parts.append(f"\n\n----- PAGE {index} -----\n\n{page_text}")
 
     return "".join(text_parts), len(images)
+
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> TextExtractionResult:
     """Extract text from a PDF, trying pdfplumber → PyMuPDF → OCR in order.
@@ -87,7 +89,7 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> TextExtractionResult:
                 is_scanned=False,
                 ocr_used=False,
                 method_used="pdfplumber",
-                error=None
+                error=None,
             )
     except Exception:
         page_count = 0
@@ -131,8 +133,5 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> TextExtractionResult:
         is_scanned=True,
         ocr_used=True,
         method_used="tesseract",
-        error=(
-            "Unable to extract text — document may be image-only "
-            "or corrupted"
-        ),
+        error=("Unable to extract text — document may be image-only " "or corrupted"),
     )

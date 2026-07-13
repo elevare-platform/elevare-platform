@@ -41,6 +41,7 @@ const EmployerCVParserPage = lazy(() => import('@/pages/employer/EmployerCVParse
 const TalentPoolPage = lazy(() => import('@/pages/employer/TalentPoolPage'))
 const SharedApplicantsPage = lazy(() => import('@/pages/SharedApplicantsPage'))
 
+const MailIngestionPage = lazy(() => import('@/pages/employer/MailIngestionPage'))
 const AdminInvitePage = lazy(() => import('@/pages/admin/AdminInvitePage'))
 const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboardPage'))
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'))
@@ -124,6 +125,7 @@ function AppRoutes() {
           <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
           <Route path="/employer/cv-parser" element={<EmployerCVParserPage />} />
           <Route path="/employer/talent-pool" element={<TalentPoolPage />} />
+          <Route path="/employer/mail-ingestion" element={<MailIngestionPage />} />
         </Route>
 
         {/* Admin-only routes */}

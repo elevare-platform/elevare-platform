@@ -29,8 +29,7 @@ class ApplicationRepository:
             .selectinload(Job.employer)
             .selectinload(User.employer_profile),
             # candidate (User) → candidate_profile (location, experience)
-            selectinload(Application.candidate)
-            .selectinload(User.candidate_profile),
+            selectinload(Application.candidate).selectinload(User.candidate_profile),
         ]
 
     async def get_by_id(self, application_id: uuid.UUID) -> Application | None:
@@ -148,8 +147,9 @@ class ApplicationRepository:
                 selectinload(Application.job)
                 .selectinload(Job.employer)
                 .selectinload(User.employer_profile),
-                selectinload(Application.candidate)
-                .selectinload(User.candidate_profile),
+                selectinload(Application.candidate).selectinload(
+                    User.candidate_profile
+                ),
             )
             .order_by(order_by)
         )

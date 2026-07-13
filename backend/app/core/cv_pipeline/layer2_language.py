@@ -4,6 +4,7 @@ Detects the primary language of extracted CV text using langdetect.
 Returns a LanguageDetectionResult indicating whether the document is
 in English and whether it should proceed through the full pipeline.
 """
+
 from dataclasses import dataclass
 
 from langdetect import detect_langs
@@ -32,6 +33,7 @@ def _detect_language_with_langdetect(text: str) -> list[tuple[str, float]]:
 
     return lang_list
 
+
 def language_detection(text: str) -> LanguageDetectionResult:
     """Detect the primary language of the given text.
 
@@ -50,15 +52,12 @@ def language_detection(text: str) -> LanguageDetectionResult:
         )
 
     language, confidence = language_list[0]
-    is_english = (
-        language == "en"
-        and confidence > 0.8
-    )
+    is_english = language == "en" and confidence > 0.8
 
     return LanguageDetectionResult(
         language=language,
         confidence=confidence,
         is_english=is_english,
         should_proceed_fully=is_english,
-        flag_for_review=(not is_english or confidence < 0.6)
+        flag_for_review=(not is_english or confidence < 0.6),
     )

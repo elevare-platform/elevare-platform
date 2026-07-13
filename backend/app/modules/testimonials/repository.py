@@ -27,7 +27,9 @@ class TestimonialRepository:
         )
         return list(result.scalars().all())
 
-    async def get_all_by_status(self, status: TestimonialStatus | None) -> list[Testimonial]:
+    async def get_all_by_status(
+        self, status: TestimonialStatus | None
+    ) -> list[Testimonial]:
         stmt = select(Testimonial).order_by(Testimonial.created_at.desc())
         if status:
             stmt = stmt.where(Testimonial.status == status)

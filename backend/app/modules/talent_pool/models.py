@@ -42,7 +42,9 @@ class TalentPoolProfiles(BaseModel):
         unique=True,
     )
     source: Mapped[str] = mapped_column(
-        String(20),  # stored as plain string — enum used only for Python-side validation
+        String(
+            20
+        ),  # stored as plain string — enum used only for Python-side validation
         nullable=False,
         index=True,
         default=SourceType.OTHER.value,
@@ -63,7 +65,9 @@ class TalentPoolProfiles(BaseModel):
         nullable=False,
     )
     status: Mapped[str] = mapped_column(
-        String(20),  # stored as plain string — enum used only for Python-side validation
+        String(
+            20
+        ),  # stored as plain string — enum used only for Python-side validation
         nullable=False,
         index=True,
         default=TalentPoolStatus.NEW.value,
@@ -86,15 +90,11 @@ class TalentPoolProfiles(BaseModel):
         nullable=True,
     )
 
-
     ai_score: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
     )
-    ai_strengths: Mapped[dict | None] = mapped_column(
-        JSONB,
-        nullable=True
-    )
+    ai_strengths: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_weaknesses: Mapped[dict | None] = mapped_column(
         JSONB,
         nullable=True,
@@ -117,10 +117,13 @@ class TalentPoolProfiles(BaseModel):
     )
 
     # Embedding columns — generated from parsed CV data
-    profile_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    profile_embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(1536), nullable=True
+    )
     embedding_source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    embedding_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
+    embedding_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     parsed_submission: Mapped[ParsedCVSubmission | None] = relationship(

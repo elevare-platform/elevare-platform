@@ -25,12 +25,14 @@ if settings.sentry_dsn:
         traces_sample_rate=0.2,
     )
 
+
 def _redis_url_with_ssl(url: str) -> str:
     """Append ssl_cert_reqs=CERT_NONE for rediss:// URLs (required by Celery)."""
     if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
         separator = "&" if "?" in url else "?"
         return f"{url}{separator}ssl_cert_reqs=CERT_NONE"
     return url
+
 
 _broker_url = _redis_url_with_ssl(settings.redis_url)
 _backend_url = _redis_url_with_ssl(settings.redis_url)
@@ -40,9 +42,10 @@ celery = Celery(
     broker=_broker_url,
     backend=_backend_url,
     include=[
-        "core.tasks",          # health check task
-        "app.modules.ai.tasks", # CV parsing pipeline
+        "core.tasks",  # health check task
+        "app.modules.ai.tasks",  # CV parsing pipeline
         "app.modules.applications.tasks",
+        "app.modules.ingestion.tasks",  # candidate ingestion
     ],
 )
 
@@ -60,7 +63,7 @@ celery.conf.update(
     # Task execution
     task_always_eager=False,  # Always run tasks in the worker, never inline
     task_track_started=True,
-    task_time_limit=300,       # Hard kill after 5 minutes
+    task_time_limit=300,  # Hard kill after 5 minutes
     task_soft_time_limit=240,  # Warn after 4 minutes
     # Worker
     worker_prefetch_multiplier=1,
@@ -70,7 +73,12 @@ celery.conf.update(
         "recompute-stale-scores-nightly": {
             "task": "app.modules.ai.tasks.recompute_stale_scores_task",
             "schedule": 60 * 60 * 24,  # every 24 hours
-            "options": {"expires": 60 * 60},  # discard if not picked up within 1 hour
+            "options": {"expires": 60 * 60},
+        },
+        "sync-all-mailboxes": {
+            "task": "app.modules.ingestion.tasks.sync_all_mailboxes_task",
+            "schedule": 60 * 15,  # every 15 minutes
+            "options": {"expires": 60 * 14},  # discard if not picked up before next run
         },
     },
 )

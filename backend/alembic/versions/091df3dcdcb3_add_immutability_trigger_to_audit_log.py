@@ -9,20 +9,22 @@ admin_audit_log table. The trigger fires even for superusers executing
 raw SQL — it can only be bypassed by dropping the trigger itself, which
 is itself an auditable DDL event.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '091df3dcdcb3'
-down_revision: Union[str, None] = '5b1ee5fdfe81'
+revision: str = "091df3dcdcb3"
+down_revision: Union[str, None] = "5b1ee5fdfe81"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     # Create the trigger function
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION enforce_audit_log_immutability()
         RETURNS trigger AS $$
         BEGIN
@@ -31,14 +33,17 @@ def upgrade() -> None:
             RETURN NULL;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """
+    )
 
     # Attach it as a BEFORE trigger for both DELETE and UPDATE
-    op.execute("""
+    op.execute(
+        """
         CREATE TRIGGER trg_audit_log_immutable
         BEFORE DELETE OR UPDATE ON admin_audit_log
         FOR EACH ROW EXECUTE FUNCTION enforce_audit_log_immutability();
-    """)
+    """
+    )
 
 
 def downgrade() -> None:

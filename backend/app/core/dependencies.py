@@ -44,6 +44,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         except Exception:
             raise
 
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -80,6 +81,7 @@ async def get_current_user(
 
     return user
 
+
 async def get_current_user_any_status(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -105,6 +107,7 @@ async def get_current_user_any_status(
 
     return user
 
+
 def require_role(*roles: str):
     """Dependency factory that restricts access to users with specific roles.
 
@@ -127,6 +130,7 @@ def require_role(*roles: str):
         in the allowed set, or raises ``PermissionDeniedException`` otherwise.
 
     """
+
     async def _check_role(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in roles:
             raise PermissionDeniedException()
@@ -134,18 +138,19 @@ def require_role(*roles: str):
 
     return _check_role
 
+
 async def get_candidate(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_any_status),
 ) -> CandidateProfile | None:
     """Return the CandidateProfile for the current user, or None if not found."""
     result = await db.execute(
-        select(CandidateProfile)
-        .where(CandidateProfile.user_id == current_user.id)
+        select(CandidateProfile).where(CandidateProfile.user_id == current_user.id)
     )
     candidate = result.scalar_one_or_none()
 
     return candidate
+
 
 async def get_redis_client() -> AsyncGenerator[aioredis.Redis, None]:
     """Yield a Redis client and ensure it is closed after the request."""
@@ -154,5 +159,3 @@ async def get_redis_client() -> AsyncGenerator[aioredis.Redis, None]:
         yield redis
     finally:
         await redis.aclose()
-
-

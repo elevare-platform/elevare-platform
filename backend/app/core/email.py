@@ -6,6 +6,7 @@ Provides an abstract EmailService interface with two implementations:
 
 Wire into FastAPI via get_email_service() dependency.
 """
+
 import logging
 from abc import ABC, abstractmethod
 
@@ -47,7 +48,11 @@ class EmailService(ABC):
 
     @abstractmethod
     async def send_job_moderation_status(
-        self, employer_email: str, job_data: dict, action: str, reason: str | None = None
+        self,
+        employer_email: str,
+        job_data: dict,
+        action: str,
+        reason: str | None = None,
     ) -> None:
         """Send Job's moderation status to respective employers."""
         ...
@@ -74,8 +79,9 @@ def _render_email_layout(
 ) -> str:
     """Wraps email content in a premium, modern, responsive layout."""
     from datetime import datetime
+
     current_year = datetime.now().year
-    
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -206,7 +212,7 @@ def _render_button(text: str, link: str, is_primary: bool = True) -> str:
         bg_color = "#FFFFFF"
         border_color = "#E2E8F0"
         text_color = "#1A4D8F"
-        
+
     return f"""
     <table cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
       <tr>
@@ -221,17 +227,19 @@ def _render_button(text: str, link: str, is_primary: bool = True) -> str:
 def _render_badge(status: str) -> str:
     """Helper to render a styled badge for application status."""
     status_lower = status.lower()
-    
+
     palettes = {
-        "reviewing":   ("#EFF6FF", "#1D4ED8", "#DBEAFE"),
+        "reviewing": ("#EFF6FF", "#1D4ED8", "#DBEAFE"),
         "shortlisted": ("#ECFDF5", "#047857", "#D1FAE5"),
-        "hired":       ("#F0FDF4", "#15803D", "#DCFCE7"),
-        "rejected":    ("#FEF2F2", "#B91C1C", "#FEE2E2"),
-        "withdrawn":   ("#F8FAFC", "#475569", "#E2E8F0"),
+        "hired": ("#F0FDF4", "#15803D", "#DCFCE7"),
+        "rejected": ("#FEF2F2", "#B91C1C", "#FEE2E2"),
+        "withdrawn": ("#F8FAFC", "#475569", "#E2E8F0"),
     }
-    
-    bg_color, text_color, border_color = palettes.get(status_lower, ("#F8FAFC", "#475569", "#E2E8F0"))
-    
+
+    bg_color, text_color, border_color = palettes.get(
+        status_lower, ("#F8FAFC", "#475569", "#E2E8F0")
+    )
+
     return f"""<span style="display: inline-block; background-color: {bg_color}; color: {text_color}; border: 1px solid {border_color}; padding: 4px 12px; border-radius: 9999px; font-size: 13px; font-weight: 600; text-transform: capitalize; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; vertical-align: middle;">{status}</span>"""
 
 
@@ -241,6 +249,7 @@ class ResendEmailService(EmailService):
     def __init__(self) -> None:
         """Initialise the service and configure the Resend SDK with the API key."""
         import resend as resend_sdk
+
         resend_sdk.api_key = settings.resend_api_key
         self._resend = resend_sdk
 
@@ -285,14 +294,14 @@ class ResendEmailService(EmailService):
 
         {_render_button("View My Applications", f"{settings.app_url}/candidate/applications")}
         """
-        
+
         html_body = _render_email_layout(
             title=f"Application Received: {job_title}",
             preheader=f"Your application for {job_title} at {company_name} has been successfully submitted.",
             body_content_html=body_content_html,
             footer_note="You received this email because you applied for a job on Elevare.",
         )
-        
+
         await self._send_html(
             subject=f"Application Received: {job_title}",
             recipients=[candidate_email],
@@ -304,7 +313,7 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Send a status update email to the candidate when their application status changes."""
         badge_html = _render_badge(new_status)
-        
+
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Application Status Update</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your job application has been updated with a new status.</p>
@@ -330,14 +339,14 @@ class ResendEmailService(EmailService):
 
         {_render_button("View My Applications", f"{settings.app_url}/candidate/applications")}
         """
-        
+
         html_body = _render_email_layout(
             title=f"Application Update: {job_title}",
             preheader=f"Your application status for {job_title} is now {new_status.capitalize()}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you have an active application on Elevare.",
         )
-        
+
         await self._send_html(
             subject=f"Application Update: {job_title}",
             recipients=[candidate_email],
@@ -362,14 +371,14 @@ class ResendEmailService(EmailService):
 
         {_render_button("Review Application", f"{settings.app_url}/employer/applications")}
         """
-        
+
         html_body = _render_email_layout(
             title=f"New Application: {job_title}",
             preheader=f"New application received from {candidate_name} for your job {job_title}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you have an active job posting on Elevare.",
         )
-        
+
         await self._send_html(
             subject=f"New Application: {job_title}",
             recipients=[employer_email],
@@ -380,11 +389,14 @@ class ResendEmailService(EmailService):
         self, email: str, verification_token: str, next_url: str | None = None
     ) -> None:
         """Send an email address verification link to the newly registered user."""
-        verification_link = f"{settings.app_url}/verify-email?token={verification_token}"
+        verification_link = (
+            f"{settings.app_url}/verify-email?token={verification_token}"
+        )
         if next_url:
             from urllib.parse import quote
+
             verification_link += f"&next={quote(next_url, safe='')}"
-            
+
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Verify Your Email Address</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Welcome to Elevare! Click the button below to verify your email address and activate your account. This link will expire in 24 hours.</p>
@@ -402,14 +414,14 @@ class ResendEmailService(EmailService):
           </tr>
         </table>
         """
-        
+
         html_body = _render_email_layout(
             title="Verify Your Email Address",
             preheader="Verify your email address to activate your Elevare account.",
             body_content_html=body_content_html,
             footer_note="If you didn't create an account, you can safely ignore this email.",
         )
-        
+
         await self._send_html(
             subject="Verify Your Email Address — Elevare",
             recipients=[email],
@@ -426,14 +438,22 @@ class ResendEmailService(EmailService):
         inquiry_type: str,
     ) -> None:
         """Send a new contact form submission notification to the Elevare team."""
-        label = "Employer Inquiry" if inquiry_type == "employer_inquiry" else "General Contact"
-        company_row = f"""
+        label = (
+            "Employer Inquiry"
+            if inquiry_type == "employer_inquiry"
+            else "General Contact"
+        )
+        company_row = (
+            f"""
         <tr>
           <td style="padding: 10px 0; border-bottom: 1px solid #F1F5F9; font-weight: 600; color: #475569; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Company</td>
           <td style="padding: 10px 0; border-bottom: 1px solid #F1F5F9; color: #0F172A; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">{company}</td>
         </tr>
-        """ if company else ""
-        
+        """
+            if company
+            else ""
+        )
+
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New Contact Submission</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A new inquiry has been submitted via the Elevare website.</p>
@@ -461,14 +481,14 @@ class ResendEmailService(EmailService):
           <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #0F172A; white-space: pre-wrap;">{message}</p>
         </div>
         """
-        
+
         html_body = _render_email_layout(
             title=f"New contact form submission — {name}",
             preheader=f"New {label} inquiry from {name}.",
             body_content_html=body_content_html,
             footer_note="Elevare Team Internal Notification.",
         )
-        
+
         await self._send_html(
             subject=f"[Elevare] New {label} from {name}",
             recipients=[recipient],
@@ -476,16 +496,20 @@ class ResendEmailService(EmailService):
         )
 
     async def send_job_moderation_status(
-        self, employer_email: str, job_data: dict, action: str, reason: str | None = None
+        self,
+        employer_email: str,
+        job_data: dict,
+        action: str,
+        reason: str | None = None,
     ) -> None:
         """Notify employer of job approval or rejection, with a publish link on approval."""
-        job_id = job_data['id']
-        job_title = job_data['title']
+        job_id = job_data["id"]
+        job_title = job_data["title"]
 
         if action == "APPROVED":
             subject = f"Your job listing has been approved — {job_title}"
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
-            
+
             body_content_html = f"""
             <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Job Listing Approved</h2>
             
@@ -500,14 +524,18 @@ class ResendEmailService(EmailService):
         else:
             subject = f"Your job listing requires changes — {job_title}"
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
-            
-            reason_block = f"""
+
+            reason_block = (
+                f"""
             <div style="background-color: #ffffff; border: 1px solid #FCD34D; border-radius: 8px; padding: 16px; margin-top: 16px;">
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #78350F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Moderator Feedback</div>
               <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F; font-style: italic;">"{reason}"</p>
             </div>
-            """ if reason else ""
-            
+            """
+                if reason
+                else ""
+            )
+
             body_content_html = f"""
             <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Job Listing Requires Changes</h2>
             
@@ -529,8 +557,10 @@ class ResendEmailService(EmailService):
             body_content_html=body_content_html,
             footer_note="You received this email because you have an active job posting on Elevare.",
         )
-        
-        await self._send_html(subject=subject, recipients=[employer_email], html_body=html_body)
+
+        await self._send_html(
+            subject=subject, recipients=[employer_email], html_body=html_body
+        )
 
 
 class StubEmailService(EmailService):
@@ -574,6 +604,7 @@ class StubEmailService(EmailService):
     ) -> None:
         """Log a stub email verification email with a full clickable link."""
         from urllib.parse import quote
+
         link = f"{settings.app_url}/verify-email?token={verification_token}"
         if next_url:
             link += f"&next={quote(next_url, safe='')}"
@@ -584,25 +615,29 @@ class StubEmailService(EmailService):
         )
 
     async def send_job_moderation_status(
-      self, employer_email: str, job_data: dict, action: str, reason: str | None = None
+        self,
+        employer_email: str,
+        job_data: dict,
+        action: str,
+        reason: str | None = None,
     ) -> None:
-      """Log stub job moderation status with the correct action link."""
-      job_id = job_data['id']
-      if action == "APPROVED":
-          cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
-          label = "Publish link"
-      else:
-          cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
-          label = "Edit link"
-      logger.info(
-        "STUB JOB MODERATION to %s: Job '%s' action=%s reason=%s\n%s: %s",
-        employer_email,
-        job_data['title'],
-        action,
-        reason,
-        label,
-        cta_url,
-      )
+        """Log stub job moderation status with the correct action link."""
+        job_id = job_data["id"]
+        if action == "APPROVED":
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
+            label = "Publish link"
+        else:
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
+            label = "Edit link"
+        logger.info(
+            "STUB JOB MODERATION to %s: Job '%s' action=%s reason=%s\n%s: %s",
+            employer_email,
+            job_data["title"],
+            action,
+            reason,
+            label,
+            cta_url,
+        )
 
     async def send_contact_notification(
         self,

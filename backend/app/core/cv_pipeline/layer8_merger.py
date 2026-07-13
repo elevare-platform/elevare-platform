@@ -4,6 +4,7 @@ Combines results from layers 1–7 into a single CVExtractionResult,
 deduplicates skills, validates fields, and computes an overall confidence
 score.
 """
+
 import re
 from datetime import UTC, datetime
 
@@ -29,14 +30,10 @@ CONFIDENCE_WEIGHTS = {
     "current_title": 0.10,
 }
 
+
 def _compute_overall_confidence(field_confidence: dict[str, str]) -> float:
     """Compute a weighted overall confidence score from per-field confidence values."""
-    score_map = {
-        "high": 1.0,
-        "medium": 0.6,
-        "low": 0.2,
-        "not_found": 0.0
-    }
+    score_map = {"high": 1.0, "medium": 0.6, "low": 0.2, "not_found": 0.0}
     total = 0.0
 
     for field, weight in CONFIDENCE_WEIGHTS.items():
@@ -45,20 +42,17 @@ def _compute_overall_confidence(field_confidence: dict[str, str]) -> float:
 
     return round(total, 2)
 
-def _deduplicate_skills(taxonomy_skills: list[str], llm_skills: list[str]) -> tuple[list[str], list[str]]:
-    """Return (taxonomy_skills, llm_only_skills) where llm_only excludes duplicates."""
-    normalised_taxonomy = {
-        s.lower().strip()
-        for s in taxonomy_skills
-    }
 
-    llm_only = [
-        s
-        for s in llm_skills
-        if s.lower().strip() not in normalised_taxonomy
-    ]
+def _deduplicate_skills(
+    taxonomy_skills: list[str], llm_skills: list[str]
+) -> tuple[list[str], list[str]]:
+    """Return (taxonomy_skills, llm_only_skills) where llm_only excludes duplicates."""
+    normalised_taxonomy = {s.lower().strip() for s in taxonomy_skills}
+
+    llm_only = [s for s in llm_skills if s.lower().strip() not in normalised_taxonomy]
 
     return taxonomy_skills, llm_only
+
 
 def _validate_fields(
     email: str | None,
@@ -84,7 +78,11 @@ def _validate_fields(
 
     # Validate years_experience — must be 0-60
     if years_experience is not None:
-        if not isinstance(years_experience, int) or years_experience < 0 or years_experience > 60:
+        if (
+            not isinstance(years_experience, int)
+            or years_experience < 0
+            or years_experience > 60
+        ):
             years_experience = None
 
     # Clean skills — remove items > 50 chars, then deduplicate case-insensitively
@@ -99,6 +97,7 @@ def _validate_fields(
     skills = deduped
 
     return email, phone, years_experience, skills, confidence
+
 
 def merge_and_score(
     deterministic: DeterministicExtractionResult,
@@ -122,7 +121,9 @@ def merge_and_score(
     }
 
     # Deduplicate skills
-    taxonomy_skills, llm_only_skills = _deduplicate_skills(taxonomy.matched_skills, llm_result.skills)
+    taxonomy_skills, llm_only_skills = _deduplicate_skills(
+        taxonomy.matched_skills, llm_result.skills
+    )
 
     # Combined skills list
     all_skills = taxonomy_skills + llm_only_skills
@@ -201,16 +202,9 @@ def merge_and_score(
             "layer5",
             "layer6",
             "layer7",
-            "layer8"
+            "layer8",
         ],
         is_scanned=text_result.is_scanned,
         ocr_used=text_result.ocr_used,
-        extracted_at=datetime.now(UTC)
+        extracted_at=datetime.now(UTC),
     )
-
-
-
-
-
-
-

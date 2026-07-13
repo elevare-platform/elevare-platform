@@ -1,4 +1,5 @@
 """Data-access layer for JobAccessTokens."""
+
 import uuid
 from datetime import UTC, datetime
 
@@ -60,8 +61,7 @@ class AccessTokenRepository:
     async def get_valid_by_token(self, token: str) -> JobAccessTokens | None:
         """Return an active, non-expired token by its string value, or None."""
         result = await self._db.execute(
-            select(JobAccessTokens)
-            .where(
+            select(JobAccessTokens).where(
                 JobAccessTokens.token == token,
                 JobAccessTokens.is_active.is_(True),
                 JobAccessTokens.expires_at > datetime.now(UTC),

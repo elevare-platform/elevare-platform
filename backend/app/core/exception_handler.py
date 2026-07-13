@@ -21,6 +21,7 @@ from app.core.schemas import ErrorDetail, ErrorResponse
 
 logger = logging.getLogger(__name__)
 
+
 async def handle_platform_exception(
     request: Request,
     exc: PlatformError,
@@ -46,10 +47,8 @@ async def handle_platform_exception(
         details=exc.details,
     )
 
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=content.model_dump()
-    )
+    return JSONResponse(status_code=exc.status_code, content=content.model_dump())
+
 
 async def handle_pydantic_validation_error(
     request: Request,
@@ -72,15 +71,8 @@ async def handle_pydantic_validation_error(
     error_details = []
 
     for error in exc.errors():
-        field = " -> ".join(
-            str(item) for item in error["loc"][1:]
-        ) or "body"
-        error_details.append(
-            ErrorDetail(
-                field=field,
-                message=error["msg"]
-            )
-        )
+        field = " -> ".join(str(item) for item in error["loc"][1:]) or "body"
+        error_details.append(ErrorDetail(field=field, message=error["msg"]))
 
     content = ErrorResponse(
         code="VALIDATION_ERROR",
@@ -93,6 +85,7 @@ async def handle_pydantic_validation_error(
         status_code=422,
         content=content.model_dump(),
     )
+
 
 async def handle_http_exception(
     request: Request,
@@ -131,6 +124,7 @@ async def handle_http_exception(
         content=content.model_dump(),
     )
 
+
 async def handle_generic_exception(
     request: Request,
     exc: Exception,
@@ -160,4 +154,3 @@ async def handle_generic_exception(
         status_code=500,
         content=content.model_dump(),
     )
-

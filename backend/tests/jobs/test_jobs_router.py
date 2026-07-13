@@ -1,6 +1,5 @@
 """Integration tests for job endpoints — full HTTP stack."""
 
-
 import pytest
 
 from app.modules.jobs.enums import ContractType, JobStatus, WorkModel
@@ -8,6 +7,7 @@ from app.modules.jobs.enums import ContractType, JobStatus, WorkModel
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def job_payload(**overrides) -> dict:
     """Return a valid job creation JSON payload with sensible defaults."""
@@ -28,6 +28,7 @@ def job_payload(**overrides) -> dict:
 async def register_employer(client) -> tuple[str, dict]:
     """Register an employer and return (access_token, payload)."""
     from tests.conftest import make_register_data
+
     data = make_register_data()
     payload = {
         "first_name": data.first_name,
@@ -100,6 +101,7 @@ async def register_and_promote(client, db_session, role: str) -> str:
 # Public listing
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_list_jobs_returns_active_only(client, db_session):
     """GET /jobs returns only ACTIVE jobs."""
@@ -132,8 +134,12 @@ async def test_list_jobs_filter_by_contract_type(client, db_session):
     db_session.add(employer)
     await db_session.flush()
 
-    ft = make_job(employer.id, contract_type=ContractType.FULL_TIME.value, title="Full Time Job")
-    pt = make_job(employer.id, contract_type=ContractType.PART_TIME.value, title="Part Time Job")
+    ft = make_job(
+        employer.id, contract_type=ContractType.FULL_TIME.value, title="Full Time Job"
+    )
+    pt = make_job(
+        employer.id, contract_type=ContractType.PART_TIME.value, title="Part Time Job"
+    )
     db_session.add_all([ft, pt])
     await db_session.flush()
 
@@ -166,6 +172,7 @@ async def test_get_single_job(client, db_session):
 async def test_get_nonexistent_job_returns_404(client):
     """GET /jobs/{id} with unknown ID returns 404."""
     from uuid import uuid4
+
     response = await client.get(f"/api/v1/jobs/{uuid4()}")
     assert response.status_code == 404
 
@@ -173,6 +180,7 @@ async def test_get_nonexistent_job_returns_404(client):
 # ---------------------------------------------------------------------------
 # Cursor pagination
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 @pytest.mark.asyncio
@@ -196,6 +204,7 @@ async def test_cursor_pagination_no_overlap(client, db_session):
 
     # Get a token for this employer
     from app.modules.auth.jwt_handler import create_token_pair
+
     token_pair = create_token_pair(employer.id, employer.role)
     token = token_pair["access_token"]
 
@@ -231,6 +240,7 @@ async def test_cursor_pagination_no_overlap(client, db_session):
 # Create job
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_create_job_as_employer(client, db_session):
     """POST /jobs as employer creates a draft job."""
@@ -261,6 +271,7 @@ async def test_create_job_as_candidate_returns_403(client, db_session):
 # ---------------------------------------------------------------------------
 # Update job
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_update_own_job(client, db_session):
@@ -308,6 +319,7 @@ async def test_update_other_employers_job_returns_403(client, db_session):
 # Status transitions
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_publish_job(client, db_session):
     """POST /jobs/{id}/publish transitions DRAFT → ACTIVE."""
@@ -327,6 +339,7 @@ async def test_publish_job(client, db_session):
 
     # Approve the job (simulating admin moderation) so publish is allowed
     from sqlalchemy import select
+
     result = await db_session.execute(select(Job).where(Job.id == UUID(job_id)))
     job = result.scalar_one()
     job.moderation_status = "APPROVED"
@@ -382,16 +395,23 @@ async def test_invalid_transition_returns_422(client, db_session):
 # Employer's own jobs
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_list_mine_returns_only_own_jobs(client, db_session):
     """GET /jobs/mine returns only the authenticated employer's jobs."""
     token1 = await register_and_promote(client, db_session, "EMPLOYER")
     token2 = await register_and_promote(client, db_session, "EMPLOYER")
 
-    await client.post("/api/v1/jobs", json=job_payload(title="Employer 1 Job"),
-                      headers={"Authorization": f"Bearer {token1}"})
-    await client.post("/api/v1/jobs", json=job_payload(title="Employer 2 Job"),
-                      headers={"Authorization": f"Bearer {token2}"})
+    await client.post(
+        "/api/v1/jobs",
+        json=job_payload(title="Employer 1 Job"),
+        headers={"Authorization": f"Bearer {token1}"},
+    )
+    await client.post(
+        "/api/v1/jobs",
+        json=job_payload(title="Employer 2 Job"),
+        headers={"Authorization": f"Bearer {token2}"},
+    )
 
     response = await client.get(
         "/api/v1/jobs/mine",
@@ -406,6 +426,7 @@ async def test_list_mine_returns_only_own_jobs(client, db_session):
 # ---------------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_admin_list_returns_all_jobs(client, db_session):

@@ -1,4 +1,5 @@
 """Pydantic schemas for the talent pool module."""
+
 import uuid
 from datetime import datetime
 
@@ -7,9 +8,8 @@ from pydantic import BaseModel, ConfigDict
 
 class TalentPoolSubmitRequest(BaseModel):
     """Request body for submitting an application to the talent pool."""
-    model_config = ConfigDict(
-        from_attributes=True
-    )
+
+    model_config = ConfigDict(from_attributes=True)
 
     sourced_for_job_id: uuid.UUID | None = None
     source: str = "email"  # email, referral, linkedin, other
@@ -58,4 +58,3 @@ class TalentPoolPromoteResponse(BaseModel):
     message: str
     status: str  # "invite_sent" or "conflict"
     conflict_email: str | None = None  # populated when an active user already exists
-

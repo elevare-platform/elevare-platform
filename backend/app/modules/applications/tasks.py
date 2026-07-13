@@ -20,12 +20,16 @@ def send_application_confirmation(self, candidate_email, job_title, company_name
 
     async def _send():
         service = get_email_service()
-        await service.send_application_confirmation(candidate_email, job_title, company_name)
+        await service.send_application_confirmation(
+            candidate_email, job_title, company_name
+        )
 
     try:
         asyncio.run(_send())
     except Exception as exc:
-        logger.error(f"Failed to send application confirmation to {candidate_email}: {exc}")
+        logger.error(
+            f"Failed to send application confirmation to {candidate_email}: {exc}"
+        )
         raise self.retry(exc=exc) from exc
 
 
@@ -53,7 +57,9 @@ def send_employer_notification(self, employer_email, job_title, candidate_name):
 
     async def _send():
         service = get_email_service()
-        await service.send_employer_notification(employer_email, job_title, candidate_name)
+        await service.send_employer_notification(
+            employer_email, job_title, candidate_name
+        )
 
     try:
         asyncio.run(_send())
@@ -64,7 +70,9 @@ def send_employer_notification(self, employer_email, job_title, candidate_name):
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def send_verification_email(self, token: str, email: str, next_url: str | None = None) -> None:
+def send_verification_email(
+    self, token: str, email: str, next_url: str | None = None
+) -> None:
     """Send account verification email with retry logic."""
     import asyncio
 
@@ -103,7 +111,11 @@ def send_job_moderation_email(
 
     try:
         asyncio.run(_send())
-        logger.info("Job moderation email sent to %s (action=%s)", employer_email, action)
+        logger.info(
+            "Job moderation email sent to %s (action=%s)", employer_email, action
+        )
     except Exception as exc:
-        logger.error("Failed to send job moderation email to %s: %s", employer_email, exc)
+        logger.error(
+            "Failed to send job moderation email to %s: %s", employer_email, exc
+        )
         raise self.retry(exc=exc) from exc

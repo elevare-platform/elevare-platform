@@ -28,7 +28,7 @@ async def test_create_refresh_token(db_session):
 
     assert record.id is not None
     assert record.user_id == user.id
-    assert record.token == hash_token(raw_token)   # hash stored, not plaintext
+    assert record.token == hash_token(raw_token)  # hash stored, not plaintext
     assert record.token != raw_token
     assert record.is_revoked is False
     assert record.used_at is None

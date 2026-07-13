@@ -37,6 +37,7 @@ def deadline(days: int) -> date:
     """Return today's date offset by the given number of days."""
     return date.today() + timedelta(days=days)
 
+
 # ---------------------------------------------------------------------------
 # Seed data
 # ---------------------------------------------------------------------------
@@ -254,7 +255,6 @@ JOBS = [
         "openings_count": 1,
         "application_deadline": deadline(30),
     },
-
     # ── FinTech Solutions Ltd ─────────────────────────────────────────────────
     {
         "title": "Backend Engineer (Node.js)",
@@ -658,7 +658,9 @@ async def seed() -> None:
             session.add(job)
 
         await session.commit()
-        print(f"Seeded {len(JOBS)} jobs and {len(EMPLOYER_PROFILES)} employer profiles across {len(EMPLOYERS)} employers.")
+        print(
+            f"Seeded {len(JOBS)} jobs and {len(EMPLOYER_PROFILES)} employer profiles across {len(EMPLOYERS)} employers."
+        )
 
 
 if __name__ == "__main__":

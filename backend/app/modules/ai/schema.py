@@ -45,7 +45,9 @@ class SubmissionResponse(BaseModel):
         """Build a SubmissionResponse from an ORM ParsedCVSubmission instance."""
         return cls(
             id=submission.id,
-            uploaded_by_email=submission.uploader.email if submission.uploader else None,
+            uploaded_by_email=(
+                submission.uploader.email if submission.uploader else None
+            ),
             filename=submission.filename,
             parse_status=submission.parse_status,
             parsed_data=submission.parsed_data,
@@ -63,4 +65,3 @@ class FitReasoningResult:
     strengths: list[str] = field(default_factory=list)
     weaknesses: list[str] = field(default_factory=list)
     fit_summary: str = ""
-

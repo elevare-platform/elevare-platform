@@ -29,8 +29,22 @@ from app.modules.applications.schema import (
 )
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.jobs.repository import JobRepository
+from app.modules.jobs.schemas import build_full_description
 from app.modules.users.enums import UserRole
 from app.modules.users.repository import UserRepository
+
+
+def _job_description(job) -> str:
+    """Return the effective job description — structured fields for new jobs, legacy for old."""
+    return build_full_description(
+        about_the_role=job.about_the_role,
+        key_responsibilities=job.key_responsibilities,
+        requirements=job.requirements,
+        preferred_certifications=job.preferred_certifications,
+        technical_competencies=job.technical_competencies,
+        what_we_offer=job.what_we_offer,
+        legacy_description=job.description,
+    )
 
 
 class ApplicationService:
@@ -78,6 +92,7 @@ class ApplicationService:
 
         if not job:
             from app.core.exceptions import JobNotFoundError
+
             raise JobNotFoundError()
 
         if not candidate:
@@ -124,7 +139,11 @@ class ApplicationService:
             email_service.send_application_confirmation,
             candidate.user.email,
             job.title,
-            job.employer.employer_profile.company_name if job.employer and job.employer.employer_profile else "",
+            (
+                job.employer.employer_profile.company_name
+                if job.employer and job.employer.employer_profile
+                else ""
+            ),
         )
         background_tasks.add_task(
             email_service.send_employer_notification,
@@ -138,7 +157,7 @@ class ApplicationService:
             ApplicationService._compute_match_score,
             application.id,
             candidate.skills or [],
-            job.description or "",
+            _job_description(job),
             job.title or "",
             job.required_skills or [],
             get_ai_service(),
@@ -179,10 +198,10 @@ class ApplicationService:
                 await db.commit()
             except Exception:
                 import logging
+
                 logging.getLogger(__name__).exception(
                     "Failed to compute match score for application %s", application_id
                 )
-
 
     async def withdraw_application(
         self, application_id: uuid.UUID, candidate_id: uuid.UUID
@@ -196,7 +215,10 @@ class ApplicationService:
         if application.candidate_id != candidate_id:
             raise PermissionDeniedException()
 
-        withdrawable = {ApplicationStatus.SUBMITTED.value, ApplicationStatus.REVIEWING.value}
+        withdrawable = {
+            ApplicationStatus.SUBMITTED.value,
+            ApplicationStatus.REVIEWING.value,
+        }
         if application.status not in withdrawable:
             raise ApplicationWithdrawalError()
 
@@ -221,7 +243,9 @@ class ApplicationService:
         items = []
         for application in paginated["items"]:
             cv_url = await self._resolve_cv_url(application.cv_id)
-            items.append(ApplicationResponse.from_application(application, cv_url=cv_url))
+            items.append(
+                ApplicationResponse.from_application(application, cv_url=cv_url)
+            )
         return ApplicationList(
             items=items,
             next_cursor=paginated["next_cursor"],
@@ -246,6 +270,7 @@ class ApplicationService:
         job = await self._job_repo.get_by_id(job_id)
         if not job:
             from app.core.exceptions import JobNotFoundError
+
             raise JobNotFoundError()
 
         # Ownership check — skipped for admins
@@ -261,7 +286,9 @@ class ApplicationService:
         items = []
         for application in paginated["items"]:
             cv_url = await self._resolve_cv_url(application.cv_id)
-            items.append(ApplicationResponse.from_application(application, cv_url=cv_url))
+            items.append(
+                ApplicationResponse.from_application(application, cv_url=cv_url)
+            )
 
         return ApplicationList(
             items=items,
@@ -327,5 +354,6 @@ class ApplicationService:
         if cv is None:
             return None
         from app.core.storage import get_storage_service
+
         storage = get_storage_service()
         return await storage.generate_presigned_url(cv.key, expires_seconds=900)

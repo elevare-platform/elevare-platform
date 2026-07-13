@@ -53,6 +53,7 @@ class BulkJobActionRequest(BaseModel):
 # Admin response schemas — safe serialization (no Vector/embedding fields)
 # ---------------------------------------------------------------------------
 
+
 class AdminEmployerProfileResponse(BaseModel):
     """Employer profile fields for admin user detail responses."""
 
@@ -127,6 +128,10 @@ class AdminApplicationResponse(BaseModel):
             status_updated_at=app.status_updated_at,
             created_at=app.created_at,
             job_title=job.title if job else None,
-            candidate_name=f"{candidate.first_name} {candidate.last_name}".strip() if candidate else None,
+            candidate_name=(
+                f"{candidate.first_name} {candidate.last_name}".strip()
+                if candidate
+                else None
+            ),
             candidate_email=candidate.email if candidate else None,
         )

@@ -25,6 +25,7 @@ from app.modules.candidates.models import (
     WorkExperience,
 )
 from app.modules.contact.models import ContactSubmission
+from app.modules.ingestion.models import IngestionImportRun, MailIntegration
 from app.modules.jobs.models import Job, JobAccessTokens
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.testimonials.models import Testimonial
@@ -52,4 +53,6 @@ __all__ = [
     "ParsedCVSubmission",
     "CVParsingCost",
     "Testimonial",
+    "MailIntegration",
+    "IngestionImportRun",
 ]

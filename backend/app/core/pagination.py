@@ -79,7 +79,8 @@ async def paginate_cursor(
             tuple_(
                 query.froms[0].c.created_at,
                 query.froms[0].c.id,
-            ) < tuple_(created_at, last_id)
+            )
+            < tuple_(created_at, last_id)
         )
 
     # Fetch one extra item to detect whether a next page exists

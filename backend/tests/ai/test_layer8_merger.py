@@ -1,6 +1,5 @@
 """Unit tests for Layer 8: Normalisation, merging, and confidence scoring."""
 
-
 from app.core.cv_pipeline.layer1_extraction import TextExtractionResult
 from app.core.cv_pipeline.layer2_language import LanguageDetectionResult
 from app.core.cv_pipeline.layer4_deterministic import DeterministicExtractionResult
@@ -17,6 +16,7 @@ from app.core.cv_pipeline.layer8_merger import (
 
 # ── Confidence scoring ────────────────────────────────────────────────────────
 
+
 def test_all_high_confidence_gives_max_score():
     field_conf = {f: "high" for f in CONFIDENCE_WEIGHTS}
     score = _compute_overall_confidence(field_conf)
@@ -31,19 +31,20 @@ def test_all_not_found_gives_zero():
 
 def test_mixed_confidence_computed_correctly():
     field_conf = {
-        "email": "high",       # 0.15
-        "phone": "high",       # 0.10
-        "full_name": "high",   # 0.15
-        "skills": "high",      # 0.20
+        "email": "high",  # 0.15
+        "phone": "high",  # 0.10
+        "full_name": "high",  # 0.15
+        "skills": "high",  # 0.20
         "work_history": "not_found",  # 0.0
-        "education": "not_found",     # 0.0
-        "current_title": "not_found", # 0.0
+        "education": "not_found",  # 0.0
+        "current_title": "not_found",  # 0.0
     }
     score = _compute_overall_confidence(field_conf)
     assert score == round(0.15 + 0.10 + 0.15 + 0.20, 2)
 
 
 # ── Skill deduplication ───────────────────────────────────────────────────────
+
 
 def test_deduplicate_removes_llm_skills_in_taxonomy():
     taxonomy = ["python", "fastapi", "docker"]
@@ -68,6 +69,7 @@ def test_deduplicate_case_insensitive():
 
 
 # ── Field validation ─────────────────────────────────────────────────────────
+
 
 def test_invalid_email_nulled_and_confidence_downgraded():
     email, _, _, _, conf = _validate_fields(
@@ -94,7 +96,8 @@ def test_valid_email_kept():
 
 def test_years_experience_outside_range_nulled():
     _, _, years, _, _ = _validate_fields(
-        email=None, phone=None,
+        email=None,
+        phone=None,
         years_experience=100,
         skills=[],
         field_confidence={},
@@ -104,7 +107,8 @@ def test_years_experience_outside_range_nulled():
 
 def test_years_experience_valid_kept():
     _, _, years, _, _ = _validate_fields(
-        email=None, phone=None,
+        email=None,
+        phone=None,
         years_experience=5,
         skills=[],
         field_confidence={},
@@ -115,7 +119,9 @@ def test_years_experience_valid_kept():
 def test_skills_over_50_chars_removed():
     long_skill = "A" * 51
     _, _, _, skills, _ = _validate_fields(
-        email=None, phone=None, years_experience=None,
+        email=None,
+        phone=None,
+        years_experience=None,
         skills=["python", long_skill, "react"],
         field_confidence={},
     )
@@ -125,7 +131,9 @@ def test_skills_over_50_chars_removed():
 
 def test_duplicate_skills_removed_case_insensitively():
     _, _, _, skills, _ = _validate_fields(
-        email=None, phone=None, years_experience=None,
+        email=None,
+        phone=None,
+        years_experience=None,
         skills=["python", "Python", "PYTHON", "react"],
         field_confidence={},
     )
@@ -134,23 +142,36 @@ def test_duplicate_skills_removed_case_insensitively():
 
 # ── Layer 4 wins over Layer 7 for email ──────────────────────────────────────
 
+
 def make_merge_inputs(email="john@example.com", phone="+2348012345678"):
     deterministic = DeterministicExtractionResult(
-        email=email, phone=phone,
-        linkedin_url=None, github_url=None, website_url=None,
-        raw_dates=[], field_confidence={"email": "high", "phone": "high"},
+        email=email,
+        phone=phone,
+        linkedin_url=None,
+        github_url=None,
+        website_url=None,
+        raw_dates=[],
+        field_confidence={"email": "high", "phone": "high"},
     )
     taxonomy = TaxonomyMatchResult(
         matched_skills=["python", "fastapi"],
         matched_degrees=["bsc"],
         nigerian_certifications=[],
-        field_confidence={"skills": "high", "degrees": "high", "nigerian_certifications": "not_found"},
+        field_confidence={
+            "skills": "high",
+            "degrees": "high",
+            "nigerian_certifications": "not_found",
+        },
     )
     nlp_result = NLPExtractionResult(
         full_name="John Doe",
         organisations=["Google"],
         job_titles=["Software Engineer"],
-        field_confidence={"full_name": "high", "organisations": "medium", "job_titles": "medium"},
+        field_confidence={
+            "full_name": "high",
+            "organisations": "medium",
+            "job_titles": "medium",
+        },
     )
     llm_result = LLMExtractionResult(
         skills=["negotiation"],
@@ -161,18 +182,30 @@ def make_merge_inputs(email="john@example.com", phone="+2348012345678"):
         work_history=[],
         education=[],
         field_confidence={
-            "skills": "medium", "years_experience": "medium",
-            "current_title": "high", "seniority_level": "medium",
-            "summary": "medium", "work_history": "low", "education": "low",
+            "skills": "medium",
+            "years_experience": "medium",
+            "current_title": "high",
+            "seniority_level": "medium",
+            "summary": "medium",
+            "work_history": "low",
+            "education": "low",
         },
     )
     text_result = TextExtractionResult(
-        success=True, text="cv text", page_count=2,
-        is_scanned=False, ocr_used=False, method_used="pdfplumber", error=None,
+        success=True,
+        text="cv text",
+        page_count=2,
+        is_scanned=False,
+        ocr_used=False,
+        method_used="pdfplumber",
+        error=None,
     )
     lang_result = LanguageDetectionResult(
-        language="en", confidence=0.95,
-        is_english=True, should_proceed_fully=True, flag_for_review=False,
+        language="en",
+        confidence=0.95,
+        is_english=True,
+        should_proceed_fully=True,
+        flag_for_review=False,
     )
     return deterministic, taxonomy, nlp_result, llm_result, text_result, lang_result
 
@@ -193,8 +226,11 @@ def test_skills_deduplicated_in_final_result():
 def test_non_english_confidence_capped():
     args = list(make_merge_inputs())
     args[5] = LanguageDetectionResult(
-        language="fr", confidence=0.9,
-        is_english=False, should_proceed_fully=False, flag_for_review=True,
+        language="fr",
+        confidence=0.9,
+        is_english=False,
+        should_proceed_fully=False,
+        flag_for_review=True,
     )
     result = merge_and_score(*args)
     assert result.overall_confidence <= 0.5

@@ -1,4 +1,5 @@
 """Pydantic schemas for job access tokens and public applicant views."""
+
 import uuid
 from datetime import datetime
 
@@ -29,6 +30,7 @@ class CreateAccessTokenRequest(BaseModel):
 
 class PublicApplicantsItem(BaseModel):
     """Single candidate entry on a public shared view - no auth, name conditional."""
+
     initials: str
     full_name: str | None = None
     ai_score: int | None = None
@@ -37,6 +39,8 @@ class PublicApplicantsItem(BaseModel):
     ai_weaknesses: list[str] | None = None
     cv_snippet: str | None = None
     source: str = "applicant"  # "applicant" (registered) | "external" (uploaded CV)
+
+
 class PublicApplicantsResponse(BaseModel):
     """Response for a public shared applicant view."""
 

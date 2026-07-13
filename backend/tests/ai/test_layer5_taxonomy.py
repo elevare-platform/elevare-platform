@@ -1,15 +1,19 @@
 """Unit tests for Layer 5: Taxonomy matching."""
 
-
 from app.core.cv_pipeline.layer3_sections import DetectedSections
 from app.core.cv_pipeline.layer5_taxonomy import match_taxonomy
 
 
 def make_sections(**kwargs) -> DetectedSections:
     defaults = {
-        "summary": None, "experience": None, "education": None,
-        "skills": None, "certifications": None, "projects": None,
-        "references": None, "unclassified": "",
+        "summary": None,
+        "experience": None,
+        "education": None,
+        "skills": None,
+        "certifications": None,
+        "projects": None,
+        "references": None,
+        "unclassified": "",
     }
     defaults.update(kwargs)
     return DetectedSections(**defaults)
@@ -47,9 +51,7 @@ def test_word_boundary_enforced():
 
 
 def test_degree_matched_in_education():
-    sections = make_sections(
-        education="BSc Computer Science, University of Lagos 2019"
-    )
+    sections = make_sections(education="BSc Computer Science, University of Lagos 2019")
     result = match_taxonomy(sections)
     assert "bsc" in result.matched_degrees
 

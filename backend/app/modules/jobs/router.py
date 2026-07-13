@@ -23,6 +23,7 @@ router = APIRouter()
 # Public endpoints
 # ---------------------------------------------------------------------------
 
+
 @router.get("", response_model=JobListResponse, status_code=200)
 async def list_jobs(
     filters: JobFilterParams = Depends(),
@@ -69,6 +70,7 @@ async def get_job(
 # ---------------------------------------------------------------------------
 # Employer endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post("", response_model=JobResponse, status_code=201)
 async def create_job(
@@ -159,9 +161,17 @@ async def upload_cvs_for_job(
                 file=file_bytes,
                 filename=upload.filename,
             )
-            results.append({"filename": upload.filename, "submission_id": str(submission.id), "status": "queued"})
+            results.append(
+                {
+                    "filename": upload.filename,
+                    "submission_id": str(submission.id),
+                    "status": "queued",
+                }
+            )
         except Exception as e:
-            results.append({"filename": upload.filename, "status": "failed", "error": str(e)})
+            results.append(
+                {"filename": upload.filename, "status": "failed", "error": str(e)}
+            )
 
     return {"uploaded": len(results), "results": results}
 
@@ -169,6 +179,7 @@ async def upload_cvs_for_job(
 # ---------------------------------------------------------------------------
 # Admin endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("/admin/jobs", response_model=JobListResponse, status_code=200)
 async def admin_list_jobs(
@@ -179,4 +190,3 @@ async def admin_list_jobs(
 ) -> JobListResponse:
     """Return all jobs regardless of status. Admin only."""
     return await JobService(db).admin_list_jobs(cursor=cursor, limit=limit)
-

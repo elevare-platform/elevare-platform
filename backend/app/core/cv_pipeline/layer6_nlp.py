@@ -3,6 +3,7 @@
 Extracts full names, organisations, and job titles from CV text using
 spaCy's named entity recognition and a custom Matcher for job titles.
 """
+
 from dataclasses import dataclass
 
 from spacy.matcher import Matcher
@@ -11,9 +12,21 @@ from app.core.cv_pipeline.layer3_sections import DetectedSections
 
 TITLE_PATTERNS = [
     [
-        {"LOWER": {"IN": ["senior", "junior", "lead", "head", "chief", "principal", "staff"]}},
+        {
+            "LOWER": {
+                "IN": [
+                    "senior",
+                    "junior",
+                    "lead",
+                    "head",
+                    "chief",
+                    "principal",
+                    "staff",
+                ]
+            }
+        },
         {"POS": "NOUN", "OP": "?"},
-        {"POS": "NOUN"}
+        {"POS": "NOUN"},
     ],
     [
         {"LOWER": {"IN": ["software", "data", "product", "project", "finance", "hr"]}},
@@ -31,6 +44,7 @@ class NLPExtractionResult:
     job_titles: list[str]
     field_confidence: dict[str, str]
 
+
 def _extract_name(text: str, nlp) -> tuple[str | None, str]:
     """Extract the candidate's full name from the first 20 lines of the CV."""
     lines = text.splitlines()
@@ -42,12 +56,15 @@ def _extract_name(text: str, nlp) -> tuple[str | None, str]:
         if ent.label_ == "PERSON":
             # Figure out which line the name appeared on
             char_position = ent.start_char
-            line_number = first_20[:char_position].count("\n")  # Counts how many new line the name appear before the point where it is found
+            line_number = first_20[:char_position].count(
+                "\n"
+            )  # Counts how many new line the name appear before the point where it is found
 
             confidence = "high" if line_number < 5 else "medium"
             return ent.text, confidence
 
     return None, "not_found"
+
 
 def _extract_organisations(experience_text: str, nlp) -> list[str]:
     """Extract organisation names from the experience section using NER."""
@@ -56,10 +73,7 @@ def _extract_organisations(experience_text: str, nlp) -> list[str]:
 
     doc = nlp(experience_text)
 
-    return list({
-        ent.text for ent in doc.ents
-        if ent.label_ == "ORG"
-    })
+    return list({ent.text for ent in doc.ents if ent.label_ == "ORG"})
 
 
 def _extract_job_titles(experience_text: str, nlp) -> list[str]:
@@ -73,10 +87,7 @@ def _extract_job_titles(experience_text: str, nlp) -> list[str]:
     doc = nlp(experience_text)
     matches = matcher(doc)
 
-    titles = list({
-        doc[start:end].text
-        for _, start, end in matches
-    })
+    titles = list({doc[start:end].text for _, start, end in matches})
 
     return titles
 

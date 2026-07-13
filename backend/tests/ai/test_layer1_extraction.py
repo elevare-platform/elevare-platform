@@ -15,6 +15,7 @@ def make_long_text() -> str:
 
 # ── pdfplumber path ───────────────────────────────────────────────────────────
 
+
 @patch("app.core.cv_pipeline.layer1_extraction.pdfplumber")
 def test_pdfplumber_success(mock_pdfplumber):
     mock_page = MagicMock()
@@ -60,7 +61,9 @@ def test_pymupdf_fallback_when_pdfplumber_short(mock_fitz, mock_pdfplumber):
 @patch("app.core.cv_pipeline.layer1_extraction.fitz")
 @patch("app.core.cv_pipeline.layer1_extraction.convert_from_bytes")
 @patch("app.core.cv_pipeline.layer1_extraction.pytesseract")
-def test_ocr_fallback_for_scanned_pdf(mock_tesseract, mock_convert, mock_fitz, mock_pdfplumber):
+def test_ocr_fallback_for_scanned_pdf(
+    mock_tesseract, mock_convert, mock_fitz, mock_pdfplumber
+):
     # Both text extractors return short text
     mock_page = MagicMock()
     mock_page.extract_text.return_value = "x"
@@ -91,7 +94,9 @@ def test_ocr_fallback_for_scanned_pdf(mock_tesseract, mock_convert, mock_fitz, m
 @patch("app.core.cv_pipeline.layer1_extraction.fitz")
 @patch("app.core.cv_pipeline.layer1_extraction.convert_from_bytes")
 @patch("app.core.cv_pipeline.layer1_extraction.pytesseract")
-def test_corrupted_pdf_returns_failure(mock_tesseract, mock_convert, mock_fitz, mock_pdfplumber):
+def test_corrupted_pdf_returns_failure(
+    mock_tesseract, mock_convert, mock_fitz, mock_pdfplumber
+):
     mock_page = MagicMock()
     mock_page.extract_text.return_value = ""
     mock_pdf = MagicMock()

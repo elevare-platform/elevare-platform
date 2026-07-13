@@ -3,6 +3,7 @@
 Defines the structured output expected from the LLM extraction step
 (Claude). The actual API call is made in the AI service layer.
 """
+
 from dataclasses import dataclass, field
 
 
@@ -17,12 +18,14 @@ class LLMExtractionResult:
     summary: str | None = None
     work_history: list[dict] = field(default_factory=list)
     education: list[dict] = field(default_factory=list)
-    field_confidence: dict[str, str] = field(default_factory=lambda: {
-        "skills": "low",
-        "years_experience": "low",
-        "current_title": "low",
-        "seniority_level": "low",
-        "summary": "low",
-        "work_history": "low",
-        "education": "low",
-    })
+    field_confidence: dict[str, str] = field(
+        default_factory=lambda: {
+            "skills": "low",
+            "years_experience": "low",
+            "current_title": "low",
+            "seniority_level": "low",
+            "summary": "low",
+            "work_history": "low",
+            "education": "low",
+        }
+    )

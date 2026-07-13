@@ -29,6 +29,7 @@ from tests.conftest import make_register_data
 # Helpers (reuse pattern from test_phase_11_5)
 # ---------------------------------------------------------------------------
 
+
 async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
     from app.modules.auth.jwt_handler import create_token_pair
     from app.modules.users.models import EmployerProfile, User
@@ -68,6 +69,7 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
 # Task 1 — pgvector extension confirmed enabled
 # ===========================================================================
 
+
 class TestPgvectorExtension:
 
     @pytest.mark.asyncio
@@ -85,51 +87,71 @@ class TestPgvectorExtension:
 # Task 2 — Vector columns present with correct dimension
 # ===========================================================================
 
+
 class TestVectorColumns:
 
     @pytest.mark.asyncio
     async def test_candidate_profile_has_embedding_columns(self, db_session):
         result = await db_session.execute(
-            text("""
+            text(
+                """
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = 'candidate_profile'
                 AND column_name IN ('profile_embedding', 'embedding_source_hash', 'embedding_generated_at')
-            """)
+            """
+            )
         )
         cols = {row[0] for row in result.fetchall()}
-        assert cols == {"profile_embedding", "embedding_source_hash", "embedding_generated_at"}
+        assert cols == {
+            "profile_embedding",
+            "embedding_source_hash",
+            "embedding_generated_at",
+        }
 
     @pytest.mark.asyncio
     async def test_jobs_has_embedding_columns(self, db_session):
         result = await db_session.execute(
-            text("""
+            text(
+                """
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = 'jobs'
                 AND column_name IN ('job_embedding', 'embedding_source_hash', 'embedding_generated_at')
-            """)
+            """
+            )
         )
         cols = {row[0] for row in result.fetchall()}
-        assert cols == {"job_embedding", "embedding_source_hash", "embedding_generated_at"}
+        assert cols == {
+            "job_embedding",
+            "embedding_source_hash",
+            "embedding_generated_at",
+        }
 
     @pytest.mark.asyncio
     async def test_talent_pool_has_embedding_columns(self, db_session):
         result = await db_session.execute(
-            text("""
+            text(
+                """
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = 'talent_pool_profiles'
                 AND column_name IN ('profile_embedding', 'embedding_source_hash', 'embedding_generated_at')
-            """)
+            """
+            )
         )
         cols = {row[0] for row in result.fetchall()}
-        assert cols == {"profile_embedding", "embedding_source_hash", "embedding_generated_at"}
+        assert cols == {
+            "profile_embedding",
+            "embedding_source_hash",
+            "embedding_generated_at",
+        }
 
 
 # ===========================================================================
 # Task 3 — MockEmbeddingAIService — no real API calls
 # ===========================================================================
+
 
 class TestMockEmbeddingAIService:
 
@@ -165,6 +187,7 @@ class TestMockEmbeddingAIService:
 # ===========================================================================
 # Task 4 — Cosine similarity between known vectors
 # ===========================================================================
+
 
 class TestCosineSimilarity:
 
@@ -229,11 +252,16 @@ class TestCosineSimilarity:
 # Task 5 — Embedding hash functions
 # ===========================================================================
 
+
 class TestEmbeddingHashFunctions:
 
     def test_candidate_hash_same_inputs(self):
-        h1 = hash_candidate_embedding_source(["Python", "SQL"], "Bio text", "Summary text")
-        h2 = hash_candidate_embedding_source(["Python", "SQL"], "Bio text", "Summary text")
+        h1 = hash_candidate_embedding_source(
+            ["Python", "SQL"], "Bio text", "Summary text"
+        )
+        h2 = hash_candidate_embedding_source(
+            ["Python", "SQL"], "Bio text", "Summary text"
+        )
         assert h1 == h2
 
     def test_candidate_hash_skill_order_normalised(self):
@@ -285,6 +313,7 @@ class TestEmbeddingHashFunctions:
 # ===========================================================================
 # Task 6 — Hash unchanged → no regeneration (unit tests, no task machinery)
 # ===========================================================================
+
 
 class TestEmbeddingHashInvalidation:
 
@@ -349,6 +378,7 @@ class TestEmbeddingHashInvalidation:
 # Task 7 — Fallback to keyword scoring when embedding missing
 # ===========================================================================
 
+
 class TestEmbeddingFallback:
 
     @pytest.mark.asyncio
@@ -402,6 +432,7 @@ class TestEmbeddingFallback:
 # Task 8 — Nightly recompute job scopes correctly
 # ===========================================================================
 
+
 class TestNightlyRecompute:
 
     @pytest.mark.asyncio
@@ -415,20 +446,26 @@ class TestNightlyRecompute:
 
         # Create employer
         employer = User(
-            first_name="Emp", last_name="User",
+            first_name="Emp",
+            last_name="User",
             email=f"emp_{uuid4().hex[:6]}@test.com",
             phone_number=f"080{uuid4().int % 10**8:08d}",
-            password_hash="x", role="EMPLOYER", account_status="ACTIVE",
+            password_hash="x",
+            role="EMPLOYER",
+            account_status="ACTIVE",
         )
         db_session.add(employer)
         await db_session.flush()
 
         # Create candidate with updated_at in the future (simulating recent profile update)
         candidate = User(
-            first_name="Cand", last_name="User",
+            first_name="Cand",
+            last_name="User",
             email=f"cand_{uuid4().hex[:6]}@test.com",
             phone_number=f"081{uuid4().int % 10**8:08d}",
-            password_hash="x", role="CANDIDATE", account_status="ACTIVE",
+            password_hash="x",
+            role="CANDIDATE",
+            account_status="ACTIVE",
         )
         db_session.add(candidate)
         await db_session.flush()
@@ -476,9 +513,12 @@ class TestNightlyRecompute:
 
         # Query that the nightly job would use
         from sqlalchemy import and_
+
         result = await db_session.execute(
             select(Application.id)
-            .join(CandidateProfile, CandidateProfile.user_id == Application.candidate_id)
+            .join(
+                CandidateProfile, CandidateProfile.user_id == Application.candidate_id
+            )
             .where(
                 and_(
                     Application.ai_score.is_not(None),
@@ -500,10 +540,13 @@ class TestNightlyRecompute:
         now = datetime.now(UTC)
 
         candidate = User(
-            first_name="Fresh", last_name="Cand",
+            first_name="Fresh",
+            last_name="Cand",
             email=f"fresh_{uuid4().hex[:6]}@test.com",
             phone_number=f"082{uuid4().int % 10**8:08d}",
-            password_hash="x", role="CANDIDATE", account_status="ACTIVE",
+            password_hash="x",
+            role="CANDIDATE",
+            account_status="ACTIVE",
         )
         db_session.add(candidate)
         await db_session.flush()
@@ -512,10 +555,13 @@ class TestNightlyRecompute:
         from app.modules.jobs.models import Job
 
         employer = User(
-            first_name="E2", last_name="User",
+            first_name="E2",
+            last_name="User",
             email=f"e2_{uuid4().hex[:6]}@test.com",
             phone_number=f"083{uuid4().int % 10**8:08d}",
-            password_hash="x", role="EMPLOYER", account_status="ACTIVE",
+            password_hash="x",
+            role="EMPLOYER",
+            account_status="ACTIVE",
         )
         db_session.add(employer)
         await db_session.flush()
@@ -547,15 +593,19 @@ class TestNightlyRecompute:
             job_id=job.id,
             status="SUBMITTED",
             ai_score=80,
-            ai_score_computed_at=now - timedelta(hours=1),  # scored AFTER profile update
+            ai_score_computed_at=now
+            - timedelta(hours=1),  # scored AFTER profile update
         )
         db_session.add(application)
         await db_session.flush()
 
         from sqlalchemy import and_
+
         result = await db_session.execute(
             select(Application.id)
-            .join(CandidateProfile, CandidateProfile.user_id == Application.candidate_id)
+            .join(
+                CandidateProfile, CandidateProfile.user_id == Application.candidate_id
+            )
             .where(
                 and_(
                     Application.ai_score.is_not(None),
@@ -575,10 +625,13 @@ class TestNightlyRecompute:
         from app.modules.users.models import User
 
         candidate = User(
-            first_name="Unscored", last_name="Cand",
+            first_name="Unscored",
+            last_name="Cand",
             email=f"unscored_{uuid4().hex[:6]}@test.com",
             phone_number=f"084{uuid4().int % 10**8:08d}",
-            password_hash="x", role="CANDIDATE", account_status="ACTIVE",
+            password_hash="x",
+            role="CANDIDATE",
+            account_status="ACTIVE",
         )
         db_session.add(candidate)
         await db_session.flush()
@@ -591,10 +644,13 @@ class TestNightlyRecompute:
         from app.modules.jobs.models import Job
 
         employer = User(
-            first_name="E3", last_name="User",
+            first_name="E3",
+            last_name="User",
             email=f"e3_{uuid4().hex[:6]}@test.com",
             phone_number=f"085{uuid4().int % 10**8:08d}",
-            password_hash="x", role="EMPLOYER", account_status="ACTIVE",
+            password_hash="x",
+            role="EMPLOYER",
+            account_status="ACTIVE",
         )
         db_session.add(employer)
         await db_session.flush()
@@ -615,16 +671,19 @@ class TestNightlyRecompute:
             candidate_id=candidate.id,
             job_id=job.id,
             status="SUBMITTED",
-            ai_score=None,          # never scored
+            ai_score=None,  # never scored
             ai_score_computed_at=None,
         )
         db_session.add(application)
         await db_session.flush()
 
         from sqlalchemy import and_
+
         result = await db_session.execute(
             select(Application.id)
-            .join(CandidateProfile, CandidateProfile.user_id == Application.candidate_id)
+            .join(
+                CandidateProfile, CandidateProfile.user_id == Application.candidate_id
+            )
             .where(
                 and_(
                     Application.ai_score.is_not(None),

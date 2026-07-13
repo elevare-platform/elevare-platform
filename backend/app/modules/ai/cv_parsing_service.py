@@ -1,4 +1,5 @@
 """Service layer for CV parsing — submission, retrieval, and candidate creation."""
+
 import hashlib
 import hmac
 import json
@@ -104,7 +105,10 @@ class CVParsingService:
             # No existing r2_key — queue a background upload so the file is downloadable
             if not r2_key:
                 from app.modules.ai.tasks import upload_cv_to_r2_task
-                upload_cv_to_r2_task.delay(str(submission.id), str(uploaded_by.id), filename, file)
+
+                upload_cv_to_r2_task.delay(
+                    str(submission.id), str(uploaded_by.id), filename, file
+                )
 
             return submission
 
@@ -175,19 +179,26 @@ class CVParsingService:
             "total_llm_calls": row.total_calls or 0,
         }
 
-    async def generate_cv_url(self, submission_id: uuid.UUID, requesting_user: User) -> str:
+    async def generate_cv_url(
+        self, submission_id: uuid.UUID, requesting_user: User
+    ) -> str:
         """Generate a 15-minute presigned URL for a parsed CV, enforcing ownership."""
         submission = await self._repo.get_by_id(submission_id)
 
         if not submission:
             from app.core.exceptions import SubmissionNotFound
+
             raise SubmissionNotFound()
 
-        if submission.uploaded_by != requesting_user.id and requesting_user.role != UserRole.ADMIN.value:
+        if (
+            submission.uploaded_by != requesting_user.id
+            and requesting_user.role != UserRole.ADMIN.value
+        ):
             raise PermissionDeniedException()
 
         if not submission.r2_key:
             from fastapi import HTTPException
+
             raise HTTPException(
                 status_code=425,
                 detail="CV file is still being processed. Please try again in a few seconds.",
@@ -220,17 +231,25 @@ class CVParsingService:
 
         # If user exists, check for existing profile — never create a duplicate
         if existing_user:
-            existing_profile = await self._candidate_repo.get_by_user_id(existing_user.id)
+            existing_profile = await self._candidate_repo.get_by_user_id(
+                existing_user.id
+            )
             if existing_profile:
                 # Non-destructive merge — only fill fields that are currently empty
                 updated = False
                 if not existing_profile.skills and parsed_data.get("skills"):
                     existing_profile.skills = parsed_data["skills"]
                     updated = True
-                if not existing_profile.years_of_experience and parsed_data.get("years_experience"):
-                    existing_profile.years_of_experience = parsed_data["years_experience"]
+                if not existing_profile.years_of_experience and parsed_data.get(
+                    "years_experience"
+                ):
+                    existing_profile.years_of_experience = parsed_data[
+                        "years_experience"
+                    ]
                     updated = True
-                if not existing_profile.linkedin_url and parsed_data.get("linkedin_url"):
+                if not existing_profile.linkedin_url and parsed_data.get(
+                    "linkedin_url"
+                ):
                     existing_profile.linkedin_url = parsed_data["linkedin_url"]
                     updated = True
 

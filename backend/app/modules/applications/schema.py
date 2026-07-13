@@ -28,7 +28,9 @@ class ApplicationResponse(BaseModel):
     candidate_name: str | None = None
     candidate_location: str | None = None
     years_of_experience: int | None = None
-    candidate_profile_id: uuid.UUID | None = None  # profile PK for employer profile view
+    candidate_profile_id: uuid.UUID | None = (
+        None  # profile PK for employer profile view
+    )
     # AI match score — null until background task computes it
     match_score: int | None = None
     score_computed_at: datetime | None = None
@@ -51,10 +53,14 @@ class ApplicationResponse(BaseModel):
         passed in here — schemas are synchronous and cannot do async work.
         """
         employer = getattr(application.job, "employer", None)
-        employer_profile = getattr(employer, "employer_profile", None) if employer else None
+        employer_profile = (
+            getattr(employer, "employer_profile", None) if employer else None
+        )
 
         candidate = getattr(application, "candidate", None)
-        candidate_profile = getattr(candidate, "candidate_profile", None) if candidate else None
+        candidate_profile = (
+            getattr(candidate, "candidate_profile", None) if candidate else None
+        )
 
         candidate_name = None
         if candidate:
@@ -71,12 +77,18 @@ class ApplicationResponse(BaseModel):
             job_title=application.job.title if application.job else None,
             job_status=application.job.status if application.job else None,
             company_name=employer_profile.company_name if employer_profile else None,
-            company_logo=employer_profile.company_logo_url if employer_profile else None,
+            company_logo=(
+                employer_profile.company_logo_url if employer_profile else None
+            ),
             company_industry=employer_profile.industry if employer_profile else None,
             cv_url=cv_url,
             candidate_name=candidate_name,
-            candidate_location=candidate_profile.location if candidate_profile else None,
-            years_of_experience=candidate_profile.years_of_experience if candidate_profile else None,
+            candidate_location=(
+                candidate_profile.location if candidate_profile else None
+            ),
+            years_of_experience=(
+                candidate_profile.years_of_experience if candidate_profile else None
+            ),
             candidate_profile_id=candidate_profile.id if candidate_profile else None,
             match_score=application.match_score,
             score_computed_at=application.score_computed_at,
@@ -101,7 +113,9 @@ class ApplicationFilters(BaseModel):
     """Query filters for listing applications."""
 
     status: ApplicationStatus | None = None
-    sort: str | None = None  # "ai_score" → descending by ai_score; default is created_at desc
+    sort: str | None = (
+        None  # "ai_score" → descending by ai_score; default is created_at desc
+    )
 
 
 class ApplicationCreateRequest(BaseModel):

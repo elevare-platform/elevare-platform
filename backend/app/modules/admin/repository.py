@@ -50,7 +50,11 @@ class AdminRepository:
         if search:
             term = f"%{search}%"
             stmt = stmt.where(
-                or_(User.email.ilike(term), User.first_name.ilike(term), User.last_name.ilike(term))
+                or_(
+                    User.email.ilike(term),
+                    User.first_name.ilike(term),
+                    User.last_name.ilike(term),
+                )
             )
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
@@ -95,9 +99,7 @@ class AdminRepository:
             stmt = stmt.where(Job.moderation_status == moderation_status)
         if search:
             term = f"%{search}%"
-            stmt = stmt.where(
-                or_(Job.title.ilike(term), Job.location.ilike(term))
-            )
+            stmt = stmt.where(or_(Job.title.ilike(term), Job.location.ilike(term)))
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
     async def get_job_by_id(self, job_id: UUID) -> Job | None:
@@ -148,7 +150,9 @@ class AdminRepository:
         """Fetch all applications with employer profile data for CSV export."""
         stmt = select(Application).options(
             selectinload(Application.candidate),
-            selectinload(Application.job).selectinload(Job.employer).selectinload(User.employer_profile),
+            selectinload(Application.job)
+            .selectinload(Job.employer)
+            .selectinload(User.employer_profile),
         )
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
@@ -165,13 +169,19 @@ class AdminRepository:
         user_stats = await self._db.execute(
             select(
                 func.count().label("total"),
-                func.count().filter(User.role == UserRole.CANDIDATE.value).label("candidates"),
-                func.count().filter(User.role == UserRole.EMPLOYER.value).label("employers"),
+                func.count()
+                .filter(User.role == UserRole.CANDIDATE.value)
+                .label("candidates"),
+                func.count()
+                .filter(User.role == UserRole.EMPLOYER.value)
+                .label("employers"),
                 func.count().filter(User.role == UserRole.ADMIN.value).label("admins"),
-                func.count().filter(
-                    User.account_status == AccountStatus.PENDING_VERIFICATION.value
-                ).label("pending_verification"),
-                func.count().filter(User.created_at >= thirty_days_ago).label("new_last_30_days"),
+                func.count()
+                .filter(User.account_status == AccountStatus.PENDING_VERIFICATION.value)
+                .label("pending_verification"),
+                func.count()
+                .filter(User.created_at >= thirty_days_ago)
+                .label("new_last_30_days"),
             ).select_from(User)
         )
         users = user_stats.mappings().one()
@@ -180,40 +190,47 @@ class AdminRepository:
         job_stats = await self._db.execute(
             select(
                 func.count().label("total"),
-                func.count().filter(Job.status == JobStatus.ACTIVE.value).label("active"),
+                func.count()
+                .filter(Job.status == JobStatus.ACTIVE.value)
+                .label("active"),
                 func.count().filter(Job.status == JobStatus.DRAFT.value).label("draft"),
-                func.count().filter(Job.status == JobStatus.CLOSED.value).label("closed"),
-                func.count().filter(
-                    Job.moderation_status == ModerationStatus.PENDING.value
-                ).label("pending_moderation"),
-                func.count().filter(Job.created_at >= thirty_days_ago).label("new_last_30_days"),
+                func.count()
+                .filter(Job.status == JobStatus.CLOSED.value)
+                .label("closed"),
+                func.count()
+                .filter(Job.moderation_status == ModerationStatus.PENDING.value)
+                .label("pending_moderation"),
+                func.count()
+                .filter(Job.created_at >= thirty_days_ago)
+                .label("new_last_30_days"),
             ).select_from(Job)
         )
         jobs = job_stats.mappings().one()
 
         # Applications — single query with FILTER
         from app.modules.applications.enums import ApplicationStatus
+
         app_stats = await self._db.execute(
             select(
                 func.count().label("total"),
-                func.count().filter(
-                    Application.status == ApplicationStatus.SUBMITTED.value
-                ).label("submitted"),
-                func.count().filter(
-                    Application.status == ApplicationStatus.REVIEWING.value
-                ).label("reviewing"),
-                func.count().filter(
-                    Application.status == ApplicationStatus.SHORTLISTED.value
-                ).label("shortlisted"),
-                func.count().filter(
-                    Application.status == ApplicationStatus.HIRED.value
-                ).label("hired"),
-                func.count().filter(
-                    Application.status == ApplicationStatus.REJECTED.value
-                ).label("rejected"),
-                func.count().filter(
-                    Application.created_at >= thirty_days_ago
-                ).label("new_last_30_days"),
+                func.count()
+                .filter(Application.status == ApplicationStatus.SUBMITTED.value)
+                .label("submitted"),
+                func.count()
+                .filter(Application.status == ApplicationStatus.REVIEWING.value)
+                .label("reviewing"),
+                func.count()
+                .filter(Application.status == ApplicationStatus.SHORTLISTED.value)
+                .label("shortlisted"),
+                func.count()
+                .filter(Application.status == ApplicationStatus.HIRED.value)
+                .label("hired"),
+                func.count()
+                .filter(Application.status == ApplicationStatus.REJECTED.value)
+                .label("rejected"),
+                func.count()
+                .filter(Application.created_at >= thirty_days_ago)
+                .label("new_last_30_days"),
             ).select_from(Application)
         )
         applications = app_stats.mappings().one()
@@ -271,22 +288,36 @@ class AdminRepository:
         """Build a CSV string from a list of Application ORM objects."""
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow([
-            "application_id", "candidate_name", "candidate_email",
-            "job_title", "company_name", "status", "applied_date", "status_updated_date",
-        ])
+        writer.writerow(
+            [
+                "application_id",
+                "candidate_name",
+                "candidate_email",
+                "job_title",
+                "company_name",
+                "status",
+                "applied_date",
+                "status_updated_date",
+            ]
+        )
         for app in applications:
             company = ""
             if app.job and app.job.employer and app.job.employer.employer_profile:
                 company = app.job.employer.employer_profile.company_name or ""
-            writer.writerow([
-                str(app.id),
-                f"{app.candidate.first_name} {app.candidate.last_name}" if app.candidate else "",
-                app.candidate.email if app.candidate else "",
-                app.job.title if app.job else "",
-                company,
-                app.status,
-                app.created_at.isoformat() if app.created_at else "",
-                app.status_updated_at.isoformat() if app.status_updated_at else "",
-            ])
+            writer.writerow(
+                [
+                    str(app.id),
+                    (
+                        f"{app.candidate.first_name} {app.candidate.last_name}"
+                        if app.candidate
+                        else ""
+                    ),
+                    app.candidate.email if app.candidate else "",
+                    app.job.title if app.job else "",
+                    company,
+                    app.status,
+                    app.created_at.isoformat() if app.created_at else "",
+                    app.status_updated_at.isoformat() if app.status_updated_at else "",
+                ]
+            )
         return output.getvalue()

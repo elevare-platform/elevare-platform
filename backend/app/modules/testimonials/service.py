@@ -56,6 +56,7 @@ def _to_admin_read(t: Testimonial) -> TestimonialAdminRead:
         created_at=t.created_at,
     )
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,9 +83,13 @@ class TestimonialService:
             timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
             image_key = f"testimonials/{timestamp}_{uuid.uuid4().hex[:8]}.{ext}"
             try:
-                await self._storage.upload_file(image_bytes, image_key, image_content_type)
+                await self._storage.upload_file(
+                    image_bytes, image_key, image_content_type
+                )
             except Exception:
-                logger.exception("R2 upload failed for testimonial image key=%s", image_key)
+                logger.exception(
+                    "R2 upload failed for testimonial image key=%s", image_key
+                )
                 image_key = None  # don't block submission if upload fails
 
         data = TestimonialCreate(

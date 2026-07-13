@@ -19,10 +19,7 @@ from app.modules.jobs.models import Job
 from app.modules.users.enums import UserRole
 from app.modules.users.models import User
 
-test_engine = create_async_engine(
-    settings.database_url,
-    poolclass=NullPool
-)
+test_engine = create_async_engine(settings.database_url, poolclass=NullPool)
 
 
 def make_user(**overrides) -> User:
@@ -37,9 +34,8 @@ def make_user(**overrides) -> User:
     }
 
     data.update(overrides)
-    return User(
-        **data
-    )
+    return User(**data)
+
 
 def make_register_data(**overrides) -> RegisterRequest:
     """Build a RegisterRequest with unique email/phone and sensible defaults."""
@@ -87,6 +83,7 @@ def make_job(employer_id, **overrides) -> Job:
     defaults.update(overrides)
     return Job(**defaults)
 
+
 @pytest_asyncio.fixture
 async def db_session():
     """Provide a DB session that rolls back after each test."""
@@ -95,6 +92,7 @@ async def db_session():
         async with AsyncSession(bind=connection, expire_on_commit=False) as session:
             yield session
         await connection.rollback()
+
 
 @pytest_asyncio.fixture
 async def client(db_session):

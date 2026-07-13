@@ -12,7 +12,7 @@ from app.core.config import settings
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,  # logs SQL in debug mode only
-    pool_pre_ping=True,   # drops stale connections before use
+    pool_pre_ping=True,  # drops stale connections before use
     pool_size=10,
     max_overflow=20,
 )
@@ -55,13 +55,11 @@ class BaseModel(Base):
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
-        onupdate=func.now()
+        onupdate=func.now(),
     )
