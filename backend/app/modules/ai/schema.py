@@ -62,6 +62,7 @@ class SubmissionResponse(BaseModel):
 class FitReasoningResult:
     """Structured output from the LLM fit-reasoning step."""
 
+    score: int = 0
     strengths: list[str] = field(default_factory=list)
     weaknesses: list[str] = field(default_factory=list)
     fit_summary: str = ""
