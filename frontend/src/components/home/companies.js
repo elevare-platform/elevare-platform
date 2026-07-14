@@ -23,5 +23,5 @@ export const COMPANIES = [
   { name: 'DataDash', logo: 'https://www.datadash.com.ng/assets/images/f50a32d5a8_19.png' },
   { name: 'FCMB', logo: 'https://www.fcmb.com/assets/images/logo.png' },
   { name: 'Miramore Consulting Ltd', logo: 'https://media.licdn.com/dms/image/v2/D4D0BAQGjkM8rz-fbtg/img-crop_100/img-crop_100/0/1728773710191?e=2147483647&v=beta&t=a05MuaGGNdNg7EBnVM2YUKVezvWmCnyafbkCpzABRWs' },
-  { name: 'Starium Detergents', logo: null },
+  { name: 'Starium Detergents FZE', logo: null },
 ]

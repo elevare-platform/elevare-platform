@@ -339,3 +339,106 @@ async def moderate_testimonial(
 ) -> TestimonialAdminRead:
     """Approve, reject, or reset a testimonial back to pending."""
     return await service.moderate_testimonial(testimonial_id, data)
+
+
+@router.post("/maintenance/reindex-ai", status_code=200)
+async def reindex_ai(
+    admin_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """One-off maintenance endpoint — resets all AI hashes and re-queues:
+
+    1. Embedding regeneration for all candidate profiles, talent pool profiles,
+       and active jobs (new work-history-based embeddings).
+    2. Score recomputation for all applications and talent pool profiles
+       (new LLM-first scoring against structured job fields).
+
+    Safe to call multiple times — idempotent. Celery tasks skip work when
+    content hasn't changed, but since hashes are cleared here they will always
+    run at least once.
+    """
+    from sqlalchemy import update
+
+    from app.modules.applications.models import Application
+    from app.modules.candidates.models import CandidateProfile
+    from app.modules.jobs.models import Job
+    from app.modules.jobs.enums import JobStatus
+    from app.modules.talent_pool.models import TalentPoolProfiles
+    from app.modules.ai.tasks import (
+        generate_candidate_embedding_task,
+        generate_job_embedding_task,
+        generate_talent_pool_embedding_task,
+        score_application_task,
+        score_talent_pool_profile_task,
+    )
+    from sqlalchemy import select
+
+    # ── 1. Clear embedding hashes ──────────────────────────────────────────
+    await db.execute(
+        update(CandidateProfile).values(embedding_source_hash=None)
+    )
+    await db.execute(
+        update(TalentPoolProfiles).values(embedding_source_hash=None)
+    )
+    await db.execute(
+        update(Job)
+        .where(Job.status == JobStatus.ACTIVE.value)
+        .values(embedding_source_hash=None)
+    )
+
+    # ── 2. Clear scoring hashes ────────────────────────────────────────────
+    await db.execute(
+        update(Application).values(
+            ai_score_job_hash=None,
+            ai_score_cv_hash=None,
+        )
+    )
+    await db.execute(
+        update(TalentPoolProfiles).values(
+            ai_score_job_hash=None,
+            ai_score_cv_hash=None,
+        )
+    )
+
+    await db.commit()
+
+    # ── 3. Fetch IDs and queue Celery tasks ────────────────────────────────
+    candidate_ids = (await db.execute(select(CandidateProfile.id))).scalars().all()
+    tp_ids = (await db.execute(select(TalentPoolProfiles.id))).scalars().all()
+    job_ids = (
+        await db.execute(
+            select(Job.id).where(Job.status == JobStatus.ACTIVE.value)
+        )
+    ).scalars().all()
+    application_ids = (await db.execute(select(Application.id))).scalars().all()
+    tp_with_job = (
+        await db.execute(
+            select(TalentPoolProfiles.id, TalentPoolProfiles.sourced_for_job_id).where(
+                TalentPoolProfiles.sourced_for_job_id.is_not(None)
+            )
+        )
+    ).all()
+
+    for cid in candidate_ids:
+        generate_candidate_embedding_task.delay(str(cid))
+
+    for tid in tp_ids:
+        generate_talent_pool_embedding_task.delay(str(tid))
+
+    for jid in job_ids:
+        generate_job_embedding_task.delay(str(jid))
+
+    for aid in application_ids:
+        score_application_task.delay(str(aid))
+
+    for tp_id, job_id in tp_with_job:
+        score_talent_pool_profile_task.delay(str(tp_id), str(job_id))
+
+    return {
+        "status": "queued",
+        "candidates": len(candidate_ids),
+        "talent_pool_profiles": len(tp_ids),
+        "active_jobs": len(job_ids),
+        "applications": len(application_ids),
+        "talent_pool_scored": len(tp_with_job),
+    }

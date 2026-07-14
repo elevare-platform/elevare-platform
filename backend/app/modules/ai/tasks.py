@@ -14,7 +14,6 @@ from app.core.config import settings
 from app.modules.ai.enums import CVParsingStatus
 from app.modules.ai.repository import AIRepository
 from app.modules.ai.scoring_service import (
-    compute_deterministic_score,
     hash_cv_scoring_inputs,
     hash_job_scoring_inputs,
 )
@@ -311,96 +310,41 @@ async def _score_application_async(application_id_str: str) -> None:
                 )
                 return
 
-            # --- Deterministic score — use embedding similarity when both vectors exist,
-            # fall back to keyword-based scoring when either embedding is missing.
-            parsed = submission.parsed_data
-
-            # Load candidate profile to check for stored embedding
-            from sqlalchemy import select as _select
-
-            from app.modules.candidates.models import CandidateProfile
-
-            candidate_profile_result = await db.execute(
-                _select(CandidateProfile).where(
-                    CandidateProfile.user_id == application.candidate_id
-                )
-            )
-            candidate_profile = candidate_profile_result.scalar_one_or_none()
-
-            if (
-                candidate_profile is not None
-                and candidate_profile.profile_embedding is not None
-                and job.job_embedding is not None
-            ):
-                from app.modules.ai.service import EmbeddingAIService
-
-                embedding_service = EmbeddingAIService()
-                skills_score = await embedding_service.compute_similarity_score(
-                    candidate_profile.profile_embedding,
-                    job.job_embedding,
-                )
-                # Blend: 50% embedding similarity + 30% experience + 20% seniority
-                from app.modules.ai.scoring_service import (
-                    _experience_score,
-                    _seniority_score,
-                )
-
-                experience_score = _experience_score(
-                    parsed.get("years_experience"),
-                    job.required_years_experience,
-                    None,
-                )
-                seniority_score = _seniority_score(
-                    parsed.get("seniority_level"),
-                    job.seniority_level,
-                )
-                det_score = max(
-                    0,
-                    min(
-                        100,
-                        round(
-                            skills_score * 0.5
-                            + experience_score * 0.3
-                            + seniority_score * 0.2
-                        ),
-                    ),
-                )
-                logger.info(
-                    "score_application: used embedding similarity for application %s",
-                    application_id,
-                )
-            else:
-                det_score = compute_deterministic_score(
-                    candidate_skills=parsed.get("skills") or [],
-                    candidate_years_experience=parsed.get("years_experience"),
-                    candidate_seniority=parsed.get("seniority_level"),
-                    job_required_skills=job.required_skills or [],
-                    job_seniority_level=job.seniority_level,
-                    job_min_years_experience=job.required_years_experience,
-                    job_max_years_experience=None,
-                )
-                logger.info(
-                    "score_application: used keyword fallback for application %s",
-                    application_id,
-                )
-
             # --- LLM Layer ---
+            parsed = submission.parsed_data
             ai_service = AnthropicCVExtractionService()
 
             try:
-                candidate_summary = (
+                # Build rich candidate context from work history
+                work_history_lines = []
+                for role in parsed.get("work_history") or []:
+                    t = role.get("title") or ""
+                    c = role.get("company") or ""
+                    d = role.get("description") or ""
+                    if t or d:
+                        work_history_lines.append(f"- {t}{' at ' + c if c else ''}: {d}".strip())
+                work_history_text = "\n".join(work_history_lines) or "Not provided"
+
+                candidate_context = (
                     f"Current title: {parsed.get('current_title') or 'Unknown'}\n"
-                    f"Profession/field: {parsed.get('profession') or parsed.get('current_title') or 'Unknown'}\n"
+                    f"Profession: {parsed.get('profession') or 'Unknown'}\n"
+                    f"Years experience: {parsed.get('years_experience') or 'Unknown'}\n"
+                    f"Work history:\n{work_history_text}\n"
                     f"Skills: {', '.join(parsed.get('skills') or [])}\n"
-                    f"Years experience: {parsed.get('years_experience')}\n"
-                    f"Seniority: {parsed.get('seniority_level')}\n"
                     f"Summary: {parsed.get('summary') or ''}"
                 )
 
+                job_context = (
+                    f"About the role: {job.about_the_role or job.description or ''}\n"
+                    f"Key responsibilities: {job.key_responsibilities or ''}\n"
+                    f"Requirements: {job.requirements or ''}\n"
+                    f"Technical competencies: {job.technical_competencies or ''}\n"
+                    f"Preferred certifications: {job.preferred_certifications or ''}"
+                )
+
                 reasoning = await ai_service.generate_fit_reasoning(
-                    candidate_summary=candidate_summary,
-                    job_description=effective_description,
-                    deterministic_score=det_score,
+                    candidate_context=candidate_context,
+                    job_context=job_context,
                 )
             finally:
                 # Close before the session/engine tears down so the loop is still alive
@@ -409,7 +353,7 @@ async def _score_application_async(application_id_str: str) -> None:
             await app_repo.update(
                 application_id,
                 {
-                    "ai_score": det_score,
+                    "ai_score": reasoning.score,
                     "ai_strengths": reasoning.strengths,
                     "ai_weaknesses": reasoning.weaknesses,
                     "ai_fit_summary": reasoning.fit_summary,
@@ -420,7 +364,7 @@ async def _score_application_async(application_id_str: str) -> None:
             )
             await db.commit()
             logger.info(
-                f"score_application: scored application {application_id} -> {det_score}"
+                f"score_application: scored application {application_id} -> {reasoning.score}"
             )
         except Exception:
             logger.exception(
@@ -554,99 +498,41 @@ async def _score_talent_pool_profile_async(
                 )
                 return
 
-            # --- Deterministic score — use embedding similarity when both vectors exist,
-            # fall back to keyword-based scoring when either embedding is missing.
-            parsed = submission.parsed_data
-
-            # Load candidate profile embedding if linked
-            from sqlalchemy import select as _select
-
-            from app.modules.candidates.models import CandidateProfile
-
-            candidate_profile = None
-            if talent_pool.candidate_profile_id:
-                cp_result = await db.execute(
-                    _select(CandidateProfile).where(
-                        CandidateProfile.id == talent_pool.candidate_profile_id
-                    )
-                )
-                candidate_profile = cp_result.scalar_one_or_none()
-
-            # Use talent pool profile's own embedding first, fall back to linked candidate profile
-            tp_embedding = talent_pool.profile_embedding
-            job_emb = job.job_embedding
-
-            if tp_embedding is None and candidate_profile is not None:
-                tp_embedding = candidate_profile.profile_embedding
-
-            if tp_embedding is not None and job_emb is not None:
-                from app.modules.ai.scoring_service import (
-                    _experience_score,
-                    _seniority_score,
-                )
-                from app.modules.ai.service import EmbeddingAIService
-
-                embedding_service = EmbeddingAIService()
-                skills_score = await embedding_service.compute_similarity_score(
-                    tp_embedding,
-                    job_emb,
-                )
-                experience_score = _experience_score(
-                    parsed.get("years_experience"),
-                    job.required_years_experience,
-                    None,
-                )
-                seniority_score = _seniority_score(
-                    parsed.get("seniority_level"),
-                    job.seniority_level,
-                )
-                det_score = max(
-                    0,
-                    min(
-                        100,
-                        round(
-                            skills_score * 0.5
-                            + experience_score * 0.3
-                            + seniority_score * 0.2
-                        ),
-                    ),
-                )
-                logger.info(
-                    "score_talent_pool_profile: used embedding similarity for profile %s",
-                    profile_id,
-                )
-            else:
-                det_score = compute_deterministic_score(
-                    candidate_skills=parsed.get("skills") or [],
-                    candidate_years_experience=parsed.get("years_experience"),
-                    candidate_seniority=parsed.get("seniority_level"),
-                    job_required_skills=job.required_skills or [],
-                    job_seniority_level=job.seniority_level,
-                    job_min_years_experience=job.required_years_experience,
-                    job_max_years_experience=None,
-                )
-                logger.info(
-                    "score_talent_pool_profile: used keyword fallback for profile %s",
-                    profile_id,
-                )
-
             # --- LLM Layer ---
+            parsed = submission.parsed_data
             ai_service = AnthropicCVExtractionService()
 
             try:
-                candidate_summary = (
+                # Build rich candidate context from work history
+                tp_work_history_lines = []
+                for role in parsed.get("work_history") or []:
+                    t = role.get("title") or ""
+                    c = role.get("company") or ""
+                    d = role.get("description") or ""
+                    if t or d:
+                        tp_work_history_lines.append(f"- {t}{' at ' + c if c else ''}: {d}".strip())
+                tp_work_history_text = "\n".join(tp_work_history_lines) or "Not provided"
+
+                candidate_context = (
                     f"Current title: {parsed.get('current_title') or 'Unknown'}\n"
-                    f"Profession/field: {parsed.get('profession') or parsed.get('current_title') or 'Unknown'}\n"
+                    f"Profession: {parsed.get('profession') or 'Unknown'}\n"
+                    f"Years experience: {parsed.get('years_experience') or 'Unknown'}\n"
+                    f"Work history:\n{tp_work_history_text}\n"
                     f"Skills: {', '.join(parsed.get('skills') or [])}\n"
-                    f"Years experience: {parsed.get('years_experience')}\n"
-                    f"Seniority: {parsed.get('seniority_level')}\n"
                     f"Summary: {parsed.get('summary') or ''}"
                 )
 
+                job_context = (
+                    f"About the role: {job.about_the_role or job.description or ''}\n"
+                    f"Key responsibilities: {job.key_responsibilities or ''}\n"
+                    f"Requirements: {job.requirements or ''}\n"
+                    f"Technical competencies: {job.technical_competencies or ''}\n"
+                    f"Preferred certifications: {job.preferred_certifications or ''}"
+                )
+
                 reasoning = await ai_service.generate_fit_reasoning(
-                    candidate_summary=candidate_summary,
-                    job_description=effective_description,
-                    deterministic_score=det_score,
+                    candidate_context=candidate_context,
+                    job_context=job_context,
                 )
             finally:
                 # Close before the session/engine tears down so the loop is still alive
@@ -655,7 +541,7 @@ async def _score_talent_pool_profile_async(
             await talent_pool_repo.update(
                 profile_id,
                 {
-                    "ai_score": det_score,
+                    "ai_score": reasoning.score,
                     "ai_strengths": reasoning.strengths,
                     "ai_weaknesses": reasoning.weaknesses,
                     "ai_fit_summary": reasoning.fit_summary,
@@ -666,7 +552,7 @@ async def _score_talent_pool_profile_async(
             )
             await db.commit()
             logger.info(
-                f"score_talent_pool_profile: scored talent_pool_profile {profile_id} -> {det_score}"
+                f"score_talent_pool_profile: scored talent_pool_profile {profile_id} -> {reasoning.score}"
             )
         except Exception:
             logger.exception(
@@ -711,22 +597,42 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                 )
                 return
 
-            # Resolve parsed CV summary via the default CV → submission chain
             parsed_cv_summary: str | None = None
+            parsed_current_title: str | None = None
+            parsed_profession: str | None = None
+            work_history_parts: list[str] = []
+
+
+            # Resolve parsed CV summary via the default CV → submission chain
             default_cv = next((cv for cv in profile.cvs if cv.is_default), None)
             if default_cv and default_cv.submission_id:
                 submission = await ai_repo.get_submission_by_id(
                     default_cv.submission_id
                 )
                 if submission and submission.parsed_data:
-                    parsed_cv_summary = submission.parsed_data.get("summary")
+                    pd = submission.parsed_data
+                    parsed_cv_summary = pd.get("summary")
+                    parsed_current_title = pd.get("current_title")
+                    parsed_profession = pd.get("profession")
+
+                    for role in pd.get("work_history") or []:
+                        title = role.get("title") or ""
+                        description = role.get("description") or ""
+
+                        if description and title:
+                            work_history_parts.append(f"{title}: {description}".strip(": "))
+                            
+
+            work_history_text = "\n".join(work_history_parts)
 
             # Hash check — skip if source content hasn't changed
             new_hash = hash_candidate_embedding_source(
-                skills=profile.skills,
-                bio=profile.bio,
+                current_title=parsed_current_title,
+                profession=parsed_profession,
+                work_history_text=work_history_text,
                 parsed_cv_summary=parsed_cv_summary,
             )
+
             if (
                 profile.embedding_source_hash == new_hash
                 and profile.profile_embedding is not None
@@ -737,12 +643,14 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                 )
                 return
 
-            # Build embedding text and generate vector
+
+            # Build embedding text - work history and role identity are primary signals
             embedding_text = (
-                f"Skills: {', '.join(profile.skills or [])}\n"
-                f"Bio: {profile.bio or ''}\n"
+                f"Current title: {parsed_current_title or ''}\n"
+                f"Profession: {parsed_profession or ''}\n"
+                f"Work history:\n{work_history_text}\n"
                 f"Summary: {parsed_cv_summary or ''}"
-            )
+            ).strip()
 
             ai_service = EmbeddingAIService()
             embedding = await ai_service.generate_embedding(embedding_text)
@@ -848,10 +756,7 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
                 return
 
             # Build embedding text and generate vector
-            embedding_text = (
-                f"Job description: {effective_description}\n"
-                f"Required skills: {', '.join(job.required_skills or [])}"
-            )
+            embedding_text = f"Job description: {effective_description}"
 
             ai_service = EmbeddingAIService()
             embedding = await ai_service.generate_embedding(embedding_text)
@@ -976,10 +881,27 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
                 return
 
             parsed = submission.parsed_data
-            skills = parsed.get("skills") or []
             summary = parsed.get("summary") or ""
+            current_title = parsed.get("current_title") or ""
+            profession = parsed.get("profession") or ""
+            tp_work_history_parts: list[str] = []
 
-            new_hash = hash_talent_pool_embedding_source(skills=skills, summary=summary)
+            for role in parsed.get("work_history") or []:
+                title = role.get("title") or ""
+                description = role.get("description") or ""
+                if title or description:
+                    tp_work_history_parts.append(f"{title}: {description}".strip(": "))
+
+            tp_work_history_text = "\n".join(tp_work_history_parts)
+
+            new_hash = hash_talent_pool_embedding_source(
+                current_title=current_title,
+                profession=profession,
+                work_history_text=tp_work_history_text,
+                summary=summary,
+            )
+
+
             if (
                 profile.embedding_source_hash == new_hash
                 and profile.profile_embedding is not None
@@ -990,7 +912,12 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
                 )
                 return
 
-            embedding_text = f"Skills: {', '.join(skills)}\n" f"Summary: {summary}"
+            embedding_text = (
+                f"Current title: {current_title}\n"
+                f"Profession: {profession}\n"
+                f"Work history:\n{tp_work_history_text}\n"
+                f"Summary: {summary}"
+            )
 
             ai_service = EmbeddingAIService()
             embedding = await ai_service.generate_embedding(embedding_text)
