@@ -11,6 +11,8 @@ from app.modules.applications.schema import (
     ApplicationFilters,
     ApplicationList,
     ApplicationResponse,
+    CandidateApplicationList,
+    CandidateApplicationResponse,
     HasAppliedBatchRequest,
     UpdateApplicationStatus,
 )
@@ -21,7 +23,7 @@ from app.modules.users.models import User
 router = APIRouter()
 
 
-@router.post("", status_code=201, response_model=ApplicationResponse)
+@router.post("", status_code=201, response_model=CandidateApplicationResponse)
 async def apply_for_job(
     data: ApplicationCreateRequest,
     background_tasks: BackgroundTasks,
@@ -40,7 +42,7 @@ async def apply_for_job(
     )
 
 
-@router.get("/me", status_code=200, response_model=ApplicationList)
+@router.get("/me", status_code=200, response_model=CandidateApplicationList)
 async def my_applications(
     # Filters and pagination come as query params, not a request body
     status: str | None = Query(default=None),
@@ -60,7 +62,7 @@ async def my_applications(
 
 
 @router.patch(
-    "/{application_id}/withdraw", status_code=200, response_model=ApplicationResponse
+    "/{application_id}/withdraw", status_code=200, response_model=CandidateApplicationResponse
 )
 async def withdraw_application(
     application_id: uuid.UUID,

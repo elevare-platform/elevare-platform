@@ -53,6 +53,13 @@ For summary:
 - Maximum 3 sentences.
 - Must be supported by the CV.
 
+For profession:
+- Return the broad occupational field (e.g. "Healthcare", "Finance", "Software Engineering", "Legal", "Marketing", "Engineering", "Education", "Hospitality").
+- One or two words maximum.
+- Must be inferred from job titles and work history, not from a self-description.
+- Return null if unclear.
+
+
 For seniority_level, only return one of: junior, mid, senior, lead, executive.
 Otherwise return null.
 
@@ -81,6 +88,7 @@ CV_EXTRACTION_SCHEMA = {
     "skills": [],
     "years_experience": None,
     "current_title": None,
+    "profession": None,
     "seniority_level": None,
     "summary": None,
     "work_history": [
@@ -107,6 +115,7 @@ CV_EXTRACTION_SCHEMA = {
         "skills": "low",
         "years_experience": "low",
         "current_title": "low",
+        "profession": "low",
         "seniority_level": "low",
         "summary": "low",
         "work_history": "low",

@@ -14,6 +14,7 @@ class LLMExtractionResult:
     skills: list[str] = field(default_factory=list)
     years_experience: int | None = None
     current_title: str | None = None
+    profession: str | None = None
     seniority_level: str | None = None
     summary: str | None = None
     work_history: list[dict] = field(default_factory=list)
@@ -23,6 +24,7 @@ class LLMExtractionResult:
             "skills": "low",
             "years_experience": "low",
             "current_title": "low",
+            "profession": "low",
             "seniority_level": "low",
             "summary": "low",
             "work_history": "low",

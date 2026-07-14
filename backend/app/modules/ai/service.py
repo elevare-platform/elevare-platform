@@ -84,11 +84,10 @@ class AIService(ABC):
     @abstractmethod
     async def generate_fit_reasoning(
         self,
-        candidate_summary: str,
-        job_description: str,
-        deterministic_score: int,
+        candidate_context: str,
+        job_context: str,
     ) -> "FitReasoningResult":
-        """Generate qualitative fit reasoning for a candidate-job pair."""
+        """Generate fit score and qualitative reasoning for a candidate-job pair."""
         ...
 
     @abstractmethod
@@ -148,13 +147,12 @@ class KeywordAIService(AIService):
 
     async def generate_fit_reasoning(
         self,
-        candidate_summary: str,
-        job_description: str,
-        deterministic_score: int,
+        candidate_context: str,
+        job_context: str,
     ) -> "FitReasoningResult":
         """Delegate fit reasoning to MockAIService."""
         return await MockAIService().generate_fit_reasoning(
-            candidate_summary, job_description, deterministic_score
+            candidate_context, job_context
         )
 
     async def generate_embedding(self, text: str) -> list[float]:
@@ -198,12 +196,12 @@ class MockAIService(AIService):
 
     async def generate_fit_reasoning(
         self,
-        candidate_summary: str,
-        job_description: str,
-        deterministic_score: int,
+        candidate_context: str,
+        job_context: str,
     ) -> "FitReasoningResult":
         """Return a canned fit reasoning result for test purposes."""
         return FitReasoningResult(
+            score=55,
             strengths=["Strong technical background", "Relevant experience"],
             weaknesses=["Limited leadership exposure"],
             fit_summary="Candidate shows solid alignment with core requirements. Minor gaps in seniority expectations.",
@@ -282,6 +280,7 @@ class AnthropicCVExtractionService(AIService):
                 skills=data.get("skills", []),
                 years_experience=data.get("years_experience"),
                 current_title=data.get("current_title"),
+                profession=data.get("profession"),
                 seniority_level=data.get("seniority_level"),
                 summary=data.get("summary"),
                 work_history=data.get("work_history", []),
@@ -373,11 +372,10 @@ class AnthropicCVExtractionService(AIService):
 
     async def generate_fit_reasoning(
         self,
-        candidate_summary: str,
-        job_description: str,
-        deterministic_score: int,
+        candidate_context: str,
+        job_context: str,
     ) -> "FitReasoningResult":
-        """Generate a qualitative fit summary and strengths/weaknesses via Claude."""
+        """Generate fit score, strengths/weaknesses and summary via Claude."""
         from app.modules.ai.prompts.fit_reasoning import (
             FIT_REASONING_SYSTEM_PROMPT,
             build_fit_reasoning_prompt,
@@ -385,7 +383,8 @@ class AnthropicCVExtractionService(AIService):
         from app.modules.ai.schema import FitReasoningResult
 
         user_prompt = build_fit_reasoning_prompt(
-            candidate_summary, job_description, deterministic_score
+            candidate_context=candidate_context,
+            job_context=job_context,
         )
 
         raw = ""
@@ -402,6 +401,7 @@ class AnthropicCVExtractionService(AIService):
             data = self._parse_response(raw)
 
             return FitReasoningResult(
+                score=max(0, min(100, int(data.get("score", 0)))),
                 strengths=data.get("strengths", []),
                 weaknesses=data.get("weaknesses", []),
                 fit_summary=data.get("fit_summary", ""),
@@ -410,7 +410,7 @@ class AnthropicCVExtractionService(AIService):
             logger.error(
                 "LLM Fit Reasoning failed", extra={"error": str(e), "raw": raw[:500]}
             )
-            return FitReasoningResult()
+            return FitReasoningResult(score=0)
 
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate a 1536-dim embedding vector for the given text."""
@@ -463,8 +463,8 @@ class EmbeddingAIService(AIService):
         raise NotImplementedError("EmbeddingAIService does not extract CV data.")
 
     async def generate_fit_reasoning(
-        self, candidate_summary, job_description, deterministic_score
-    ):
+        self, candidate_context: str, job_context: str
+    ) -> "FitReasoningResult":
         """Not implemented — EmbeddingAIService does not generate fit reasoning."""
         raise NotImplementedError("EmbeddingAIService does not generate fit reasoning.")
 

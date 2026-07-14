@@ -100,10 +100,35 @@ class ApplicationResponse(BaseModel):
         )
 
 
+class CandidateApplicationResponse(ApplicationResponse):
+    """Candidate-facing view of an application — AI scoring fields are excluded.
+
+    Inherits all fields from ApplicationResponse but overrides the AI fields
+    so they are never serialised in candidate-facing responses.
+    """
+
+    ai_score: None = Field(default=None, exclude=True)
+    ai_fit_summary: None = Field(default=None, exclude=True)
+    ai_strengths: None = Field(default=None, exclude=True)
+    ai_weaknesses: None = Field(default=None, exclude=True)
+    ai_score_computed_at: None = Field(default=None, exclude=True)
+    match_score: None = Field(default=None, exclude=True)
+    score_computed_at: None = Field(default=None, exclude=True)
+
+
 class ApplicationList(BaseModel):
     """Paginated list of applications with cursor for next page."""
 
     items: list[ApplicationResponse]
+    next_cursor: str | None
+    count: int
+    total: int = 0
+
+
+class CandidateApplicationList(BaseModel):
+    """Candidate-facing paginated list — AI score fields excluded from items."""
+
+    items: list[CandidateApplicationResponse]
     next_cursor: str | None
     count: int
     total: int = 0

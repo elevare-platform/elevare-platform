@@ -132,31 +132,46 @@ def hash_job_scoring_inputs(
 ) -> str:
     """SHA-256 of the job fields that affect scoring.
 
-    Pass raw field values, not the ORM object, so this stays testable
-    without a database session.
+    Includes the full structured description. seniority_level kept for
+    backward compatibility with existing cached hashes but no longer
+    the primary scoring driver.
     """
     payload = f"{description}|{sorted(required_skills or [])}|{seniority_level or ''}"
-
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def hash_cv_scoring_inputs(parsed_data: dict) -> str:
-    """SHA-256 of CV fields that affect scoring."""
+    """SHA-256 of CV fields that affect scoring.
+
+    Now includes work_history since the LLM scores primarily on that.
+    """
+    work_history = parsed_data.get("work_history") or []
+    # Stable serialisation — sort by title+company to avoid ordering noise
+    wh_str = "|".join(
+        f"{r.get('title', '')}:{r.get('company', '')}:{r.get('description', '')}"
+        for r in sorted(work_history, key=lambda r: r.get("title") or "")
+    )
     payload = (
-        f"{sorted(parsed_data.get('skills') or [])}|"
-        f"{parsed_data.get('years_experience')}|"
-        f"{parsed_data.get('seniority_level')}"
+        f"{parsed_data.get('current_title') or ''}|"
+        f"{parsed_data.get('profession') or ''}|"
+        f"{wh_str}|"
+        f"{parsed_data.get('years_experience')}"
     )
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def hash_candidate_embedding_source(
-    skills: list[str] | None,
-    bio: str | None,
+    current_title: str | None,
+    profession: str | None,
+    work_history_text: str,
     parsed_cv_summary: str | None,
 ) -> str:
-    """SHA-256 of candidate fields that affect the embedding."""
-    payload = f"{sorted(skills or [])}|{bio or ''}|{parsed_cv_summary or ''}"
+    """SHA-256 of candidate fields that affect the embedding.
+
+    Based on work history, role identity and summary - skills and bio
+    are no longer part of the embedding source.
+    """
+    payload = f"{current_title or ''}|{profession or ''}|{work_history_text}|{parsed_cv_summary or ''}"
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -174,9 +189,11 @@ def hash_job_embedding_source(
 
 
 def hash_talent_pool_embedding_source(
-    skills: list[str] | None,
+    current_title: str | None,
+    profession: str | None,
+    work_history_text: str,
     summary: str | None,
 ) -> str:
     """SHA-256 of talent pool profile fields that affect the embedding."""
-    payload = f"{sorted(skills or [])}|{summary or ''}"
+    payload = f"{current_title or ''}|{profession or ''}|{work_history_text}|{summary or ''}"
     return hashlib.sha256(payload.encode()).hexdigest()
