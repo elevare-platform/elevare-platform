@@ -164,14 +164,14 @@ class AdminService:
             job = await self._repo.set_job_status(job, "CLOSED")
         else:
             job = await self._repo.set_job_moderation_status(job, action)
-            # from app.modules.applications.tasks import send_job_moderation_email
-            # send_job_moderation_email.delay(
-            #     job.employer.email,
-            #     str(job.id),
-            #     job.title,
-            #     action,
-            #     reason,
-            # )
+            from app.modules.applications.tasks import send_job_moderation_email
+            send_job_moderation_email.delay(
+                job.employer.email,
+                str(job.id),
+                job.title,
+                action,
+                reason,
+            )
 
         await self._repo.write_audit_log(
             admin_id=admin_id,

@@ -4,13 +4,15 @@ import {
   User, ArrowLeft, ChevronDown, X, MapPin, Briefcase, FileText,
   Star, GraduationCap, Award, Globe, ExternalLink,
   DollarSign, Clock, Share2, Link as LinkIcon, Copy, Check as CheckIcon,
-  Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3,
+  Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3, Sparkles,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { useTalentMatches } from '@/hooks/useTalentMatches'
+import TalentMatchCard from '@/components/employer/TalentMatchCard'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -994,6 +996,78 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh }) {
   )
 }
 
+// ─── AI Talent Matches Tab ────────────────────────────────────────────────────
+
+function AiMatchesSkeletonCard() {
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5 animate-pulse space-y-4">
+      <div className="flex items-start gap-4">
+        <div className="w-11 h-11 rounded-full bg-gray-200 flex-shrink-0" />
+        <div className="flex-1 space-y-2">
+          <div className="h-4 bg-gray-200 rounded w-2/3" />
+          <div className="h-3 bg-gray-200 rounded w-1/2" />
+        </div>
+        <div className="w-14 h-14 rounded-full bg-gray-200 flex-shrink-0" />
+      </div>
+      <div className="flex gap-1.5">
+        <div className="h-5 w-14 bg-gray-200 rounded-full" />
+        <div className="h-5 w-16 bg-gray-200 rounded-full" />
+        <div className="h-5 w-12 bg-gray-200 rounded-full" />
+      </div>
+    </div>
+  )
+}
+
+function AiMatchesTab({ matches, loading, error, notReady, onRefresh }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-text-muted flex items-center gap-1.5">
+          <Sparkles size={14} className="text-brand-blue" />
+          Talent pool candidates ranked by AI similarity to this job.
+        </p>
+        <button type="button" onClick={onRefresh} className="text-xs text-brand-blue hover:underline">
+          Refresh
+        </button>
+      </div>
+
+      {notReady && (
+        <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+          <Sparkles size={28} className="mx-auto text-text-muted mb-3" />
+          <p className="font-medium text-text text-sm mb-1">Matches are being generated</p>
+          <p className="text-xs text-text-muted">Check back shortly.</p>
+        </div>
+      )}
+
+      {!notReady && error && (
+        <p className="text-sm text-red-600" role="alert">{error}</p>
+      )}
+
+      {!notReady && loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <AiMatchesSkeletonCard key={i} />)}
+        </div>
+      )}
+
+      {!notReady && !loading && !error && matches.length === 0 && (
+        <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+          <Users size={28} className="mx-auto text-text-muted mb-3" />
+          <p className="font-medium text-text text-sm mb-1">No matches found</p>
+          <p className="text-xs text-text-muted">
+            No consenting talent pool profiles are similar enough to this job yet.
+          </p>
+        </div>
+      )}
+
+      {!notReady && !loading && matches.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {matches.map((m) => <TalentMatchCard key={m.profile_id} match={m} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── ApplicantsPage ───────────────────────────────────────────────────────────
 
 export default function ApplicantsPage() {
@@ -1010,10 +1084,19 @@ export default function ApplicantsPage() {
   const [hasMore, setHasMore] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   // Pipeline tab — talent pool profiles sourced for this job
-  const [mainTab, setMainTab] = useState('applicants') // 'applicants' | 'pipeline'
+  const [mainTab, setMainTab] = useState('applicants') // 'applicants' | 'pipeline' | 'ai-matches'
   const [pipeline, setPipeline] = useState([])
   const [pipelineLoading, setPipelineLoading] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState(null) // for detail panel
+
+  // AI Talent Matches tab
+  const {
+    matches: aiMatches,
+    loading: aiMatchesLoading,
+    error: aiMatchesError,
+    notReady: aiMatchesNotReady,
+    fetchTalentMatches,
+  } = useTalentMatches(jobId)
 
   const showToast = useCallback((msg) => {
     setToast(msg)
@@ -1071,6 +1154,12 @@ export default function ApplicantsPage() {
       .finally(() => setPipelineLoading(false))
   }, [mainTab, jobId])
 
+  // Load AI talent matches when that tab is activated
+  useEffect(() => {
+    if (mainTab !== 'ai-matches') return
+    fetchTalentMatches()
+  }, [mainTab, fetchTalentMatches])
+
   const sortedApplicants = [...applicants].sort((a, b) => {
     if (sortBy === 'match_score') {
       return (b.match_score ?? -1) - (a.match_score ?? -1)
@@ -1108,6 +1197,7 @@ export default function ApplicantsPage() {
             {[
               { key: 'applicants', label: 'Applicants' },
               { key: 'pipeline', label: 'Talent Pipeline' },
+              { key: 'ai-matches', label: 'AI Talent Matches' },
             ].map(({ key, label }) => (
               <button key={key} onClick={() => setMainTab(key)}
                 className={cn(
@@ -1135,6 +1225,14 @@ export default function ApplicantsPage() {
                   .catch(() => {})
                   .finally(() => setPipelineLoading(false))
               }}
+            />
+          ) : mainTab === 'ai-matches' ? (
+            <AiMatchesTab
+              matches={aiMatches}
+              loading={aiMatchesLoading}
+              error={aiMatchesError}
+              notReady={aiMatchesNotReady}
+              onRefresh={() => fetchTalentMatches()}
             />
           ) : (
           <>

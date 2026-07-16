@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db, require_role
@@ -14,6 +14,7 @@ from app.modules.jobs.schemas import (
     JobUpdateRequest,
 )
 from app.modules.jobs.service import JobService
+from app.modules.talent_pool.schema import TalentMatchListResponse
 from app.modules.users.models import User
 
 router = APIRouter()
@@ -174,6 +175,39 @@ async def upload_cvs_for_job(
             )
 
     return {"uploaded": len(results), "results": results}
+
+@router.get("/{job_id}/talent-matches", response_model=TalentMatchListResponse, status_code=200)
+async def get_talent_matches(
+    job_id: UUID,
+    limit: int = Query(default=20, ge=3, le=50),
+    current_user: User = Depends(require_role("EMPLOYER")),
+    db: AsyncSession = Depends(get_db),
+) -> TalentMatchListResponse:
+    """Return AI-matched talent pool profiles for a job. Employer only.
+    """
+    from app.modules.talent_pool.service import TalentPoolService
+    from app.modules.talent_pool.schema import TalentMatchListResponse
+    from app.modules.ai.cv_parsing_service import CVParsingService
+    from app.core.storage import get_storage_service
+    import redis.asyncio as aioredis
+    from app.core.config import settings
+    from app.modules.ai.service import get_ai_service
+
+    redis = aioredis.from_url(settings.redis_url)
+
+    cv_service = CVParsingService(
+        db=db,
+        storage=get_storage_service(),
+        redis=redis,
+        ai_service=get_ai_service(),
+        nlp=None,
+    )
+
+    return await TalentPoolService(db, cv_service).get_job_matches(
+        job_id=job_id,
+        limit=limit,
+        employer_id=current_user.id,
+    )
 
 
 # ---------------------------------------------------------------------------

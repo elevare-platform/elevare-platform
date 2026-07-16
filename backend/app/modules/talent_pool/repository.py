@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import paginate_cursor
@@ -152,3 +153,57 @@ class TalentPoolRepository:
         )
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
+    
+    async def find_matches_for_job(
+        self,
+        job_embedding: list[float],
+        exclude_user_ids: list[uuid.UUID],
+        limit: int = 20,
+    ) -> list[tuple[TalentPoolProfiles, float]]:
+        """Return talent pool profiles ranked by embedding similarity to a job.
+
+        Covers both sourced profiles (no candidate_profile_id) and self-registered
+        candidates. cv_sharing_consent is only checked for self-registered candidates.
+        Profiles whose linked candidate user has already applied are excluded.
+        """
+        from sqlalchemy.orm import selectinload
+
+        from app.modules.candidates.models import CandidateProfile
+
+        await self._db.execute(text("SET ivfflat.probes = 10"))
+
+        distance = TalentPoolProfiles.profile_embedding.cosine_distance(job_embedding)
+        stmt = (
+            select(TalentPoolProfiles, distance.label("distance"))
+            .outerjoin(
+                CandidateProfile,
+                TalentPoolProfiles.candidate_profile_id == CandidateProfile.id,
+            )
+            .where(TalentPoolProfiles.profile_embedding.is_not(None))
+            # For self-registered candidates, require consent.
+            # Sourced profiles (candidate_profile_id IS NULL) pass through unconditionally.
+            .where(
+                sa.or_(
+                    TalentPoolProfiles.candidate_profile_id.is_(None),
+                    CandidateProfile.cv_sharing_consent.is_(True),
+                )
+            )
+            .options(
+                selectinload(TalentPoolProfiles.parsed_submission),
+                selectinload(TalentPoolProfiles.candidate_profile),
+            )
+        )
+
+        if exclude_user_ids:
+            stmt = stmt.where(
+                sa.or_(
+                    CandidateProfile.user_id.is_(None),
+                    CandidateProfile.user_id.not_in(exclude_user_ids),
+                )
+            )
+
+        stmt = stmt.order_by(distance.asc()).limit(limit)
+
+        result = await self._db.execute(stmt)
+        return [(row[0], row[1]) for row in result.all()]
+

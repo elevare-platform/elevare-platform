@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.modules.talent_pool.models import TalentPoolProfiles
+
 
 class TalentPoolSubmitRequest(BaseModel):
     """Request body for submitting an application to the talent pool."""
@@ -58,3 +60,48 @@ class TalentPoolPromoteResponse(BaseModel):
     message: str
     status: str  # "invite_sent" or "conflict"
     conflict_email: str | None = None  # populated when an active user already exists
+
+
+class TalentMatchResponse(BaseModel):
+    """Single AI-matched talent pool profile returned to the employer."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    profile_id: uuid.UUID
+    similarity_score: int
+    candidate_name: str | None = None
+    current_title: str | None = None
+    profession: str | None = None
+    years_of_experience: int | None = None
+    location: str | None = None
+    top_skills: list[str] = []
+
+    @classmethod
+    def from_match(
+        cls,
+        profile: "TalentPoolProfiles",
+        distance: float,
+        candidate_name: str | None = None,
+        current_title: str | None = None,
+        profession: str | None = None,
+        years_of_experience: int | None = None,
+        location: str | None = None,
+        top_skills: list[str] | None = None,
+    ) -> "TalentMatchResponse":
+        """Build from a repository result with pre-resolved fields."""
+        return cls(
+            profile_id=profile.id,
+            similarity_score=max(0, min(100, round((1 - distance) * 100))),
+            candidate_name=candidate_name,
+            current_title=current_title,
+            profession=profession,
+            years_of_experience=years_of_experience,
+            location=location,
+            top_skills=top_skills or [],
+        )
+
+
+class TalentMatchListResponse(BaseModel):
+    items: list[TalentMatchResponse]
+    count: int
+    job_id: uuid.UUID

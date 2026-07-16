@@ -1,5 +1,8 @@
 """Business logic for the talent pool — CV submission, listing, promotion, and scoring."""
 
+from app.core.exceptions import PermissionDeniedException
+from app.modules.talent_pool.models import TalentPoolProfiles
+from app.modules.jobs.repository import JobRepository
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -22,6 +25,7 @@ from app.modules.talent_pool.schema import (
     TalentPoolPromoteResponse,
     TalentPoolStatusUpdateRequest,
     TalentPoolSubmitRequest,
+    TalentMatchListResponse
 )
 from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import User
@@ -334,3 +338,88 @@ class TalentPoolService:
             queued += 1
 
         return {"queued": queued, "job_id": str(job_id)}
+    
+    async def get_job_matches(
+        self,
+        job_id: uuid.UUID,
+        employer_id: uuid.UUID,
+        limit: int = 20,
+    ) -> "TalentMatchListResponse":
+        """Return AI-matched talent pool profiles for a job, ranked by embedding similarity."""
+        from app.modules.applications.repository import ApplicationRepository
+        from app.modules.talent_pool.schema import TalentMatchListResponse, TalentMatchResponse
+
+        job_repo = JobRepository(self._db)
+        application_repo = ApplicationRepository(self._db)
+
+        job = await job_repo.get_by_id(job_id)
+        if not job:
+            raise JobNotFoundError()
+
+        if job.employer_id != employer_id:
+            raise PermissionDeniedException()
+
+        if job.job_embedding is None:
+            raise ValidationException("Job embedding not yet generated — check back shortly.")
+
+        user_ids = await application_repo.get_user_ids_for_job(job_id)
+
+        matches = await self._repo.find_matches_for_job(
+            job_embedding=job.job_embedding,
+            exclude_user_ids=user_ids,
+            limit=limit,
+        )
+
+        items: list[TalentMatchResponse] = []
+        for profile, distance in matches:
+            parsed_current_title: str | None = None
+            parsed_profession: str | None = None
+            parsed_name: str | None = None
+            parsed_skills: list[str] = []
+            parsed_location: str | None = None
+            parsed_years: int | None = None
+
+            # Source data from parsed submission (works for both sourced and registered profiles)
+            submission = profile.parsed_submission
+            if submission and submission.parsed_data:
+                pd = submission.parsed_data
+                parsed_current_title = pd.get("current_title")
+                parsed_profession = pd.get("profession")
+                parsed_name = pd.get("full_name") or (
+                    f"{pd.get('first_name', '')} {pd.get('last_name', '')}".strip() or None
+                )
+                parsed_skills = pd.get("skills") or []
+                parsed_years = pd.get("years_experience")
+
+            # For self-registered candidates, prefer structured profile data
+            candidate_profile = profile.candidate_profile
+            if candidate_profile:
+                parsed_location = candidate_profile.location
+                parsed_years = candidate_profile.years_of_experience or parsed_years
+                parsed_skills = candidate_profile.skills or parsed_skills
+                # Respect visibility — mask name if private
+                if candidate_profile.user and candidate_profile.visibility != "PRIVATE":
+                    u = candidate_profile.user
+                    parsed_name = f"{u.first_name} {u.last_name}".strip()
+                else:
+                    parsed_name = None
+
+            items.append(
+                TalentMatchResponse.from_match(
+                    profile=profile,
+                    distance=distance,
+                    candidate_name=parsed_name,
+                    current_title=parsed_current_title,
+                    profession=parsed_profession,
+                    years_of_experience=parsed_years,
+                    location=parsed_location,
+                    top_skills=parsed_skills[:5],
+                )
+            )
+
+        return TalentMatchListResponse(
+            items=items,
+            count=len(items),
+            job_id=job_id,
+        )
+        
