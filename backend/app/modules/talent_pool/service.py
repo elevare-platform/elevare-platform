@@ -1,8 +1,5 @@
 """Business logic for the talent pool — CV submission, listing, promotion, and scoring."""
 
-from app.core.exceptions import PermissionDeniedException
-from app.modules.talent_pool.models import TalentPoolProfiles
-from app.modules.jobs.repository import JobRepository
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -11,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     JobNotFoundError,
+    PermissionDeniedException,
     SubmissionNotFound,
     ValidationException,
 )
@@ -18,20 +16,96 @@ from app.modules.ai.cv_parsing_service import CVParsingService
 from app.modules.ai.repository import AIRepository
 from app.modules.ai.tasks import score_talent_pool_profile_task
 from app.modules.auth.service import AuthService
+from app.modules.candidates.enums import VisibilityStatus
+from app.modules.jobs.repository import JobRepository
 from app.modules.talent_pool.enums import TalentPoolStatus
+from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.talent_pool.repository import TalentPoolRepository
 from app.modules.talent_pool.schema import (
+    TalentMatchListResponse,
     TalentPoolProfileResponse,
     TalentPoolPromoteResponse,
     TalentPoolStatusUpdateRequest,
     TalentPoolSubmitRequest,
-    TalentMatchListResponse
 )
 from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import User
 from app.modules.users.repository import UserRepository
 
 logger = logging.getLogger(__name__)
+
+
+async def resolve_match_display_fields(
+    db: AsyncSession,
+    profile: TalentPoolProfiles,
+    employer_id: uuid.UUID,
+    override_mask: bool = False,
+) -> dict:
+    """Resolve display fields for a talent pool profile, respecting candidate visibility.
+
+    Works for both self-registered candidates (prefers CandidateProfile data)
+    and sourced-only CVs (falls back to parsed_submission data).
+
+    ``override_mask=True`` reveals the name regardless of visibility — used
+    once the candidate has ACCEPTED an introduction request from this
+    employer, which is itself a candidate-granted exception to their
+    visibility setting.
+    """
+    from app.modules.candidates.repository import CandidateRepository
+
+    parsed_current_title: str | None = None
+    parsed_profession: str | None = None
+    parsed_name: str | None = None
+    parsed_skills: list[str] = []
+    parsed_location: str | None = None
+    parsed_years: int | None = None
+
+    # Source data from parsed submission (works for both sourced and registered profiles)
+    submission = profile.parsed_submission
+    if submission and submission.parsed_data:
+        pd = submission.parsed_data
+        parsed_current_title = pd.get("current_title")
+        parsed_profession = pd.get("profession")
+        parsed_name = pd.get("full_name") or (
+            f"{pd.get('first_name', '')} {pd.get('last_name', '')}".strip() or None
+        )
+        parsed_skills = pd.get("skills") or []
+        parsed_years = pd.get("years_experience")
+
+    # For self-registered candidates, prefer structured profile data
+    candidate_profile = profile.candidate_profile
+    if candidate_profile:
+        parsed_location = candidate_profile.location
+        parsed_years = candidate_profile.years_of_experience or parsed_years
+        parsed_skills = candidate_profile.skills or parsed_skills
+        if candidate_profile.user:
+            u = candidate_profile.user
+            visibility = candidate_profile.visibility
+            if override_mask:
+                parsed_name = f"{u.first_name} {u.last_name}".strip()
+            elif visibility == VisibilityStatus.PRIVATE.value:
+                parsed_name = None
+            elif visibility == VisibilityStatus.APPLIED_ONLY.value:
+                candidate_repo = CandidateRepository(db)
+                has_applied = await candidate_repo.candidate_has_applied_to_employer(
+                    candidate_profile_id=candidate_profile.id,
+                    employer_id=employer_id,
+                )
+                parsed_name = (
+                    f"{u.first_name} {u.last_name}".strip() if has_applied else None
+                )
+            else:
+                # PUBLIC — always show
+                parsed_name = f"{u.first_name} {u.last_name}".strip()
+
+    return {
+        "name": parsed_name,
+        "current_title": parsed_current_title,
+        "profession": parsed_profession,
+        "skills": parsed_skills[:5],
+        "location": parsed_location,
+        "years_of_experience": parsed_years,
+    }
 
 
 class TalentPoolService:
@@ -195,7 +269,8 @@ class TalentPoolService:
         profile = await self._repo.get_by_id(id)
         if not profile:
             raise SubmissionNotFound()
-        return TalentPoolProfileResponse.model_validate(profile)
+        response = TalentPoolProfileResponse.model_validate(profile)
+        return await self._enrich(profile, response)
 
     async def update_status(
         self,
@@ -219,17 +294,37 @@ class TalentPoolService:
             raise SubmissionNotFound()
 
         # Send email notification when shortlisted, if email is available
-        if (
-            data.status == TalentPoolStatus.SHORTLISTED.value
-            and profile.parsed_submission_id
-        ):
+        if data.status == TalentPoolStatus.SHORTLISTED.value:
             try:
-                submission = await self._ai_repo.get_submission_by_id(
-                    profile.parsed_submission_id
-                )
-                candidate_email = (
-                    (submission.parsed_data or {}).get("email") if submission else None
-                )
+                candidate_email: str | None = None
+
+                # Try parsed submission first (sourced CVs and registered candidates who uploaded)
+                if profile.parsed_submission_id:
+                    submission = await self._ai_repo.get_submission_by_id(
+                        profile.parsed_submission_id
+                    )
+                    candidate_email = (
+                        (submission.parsed_data or {}).get("email")
+                        if submission
+                        else None
+                    )
+
+                # Fallback — self-registered candidate with no parsed submission
+                if not candidate_email and profile.candidate_profile_id:
+                    from sqlalchemy import select
+
+                    from app.modules.candidates.models import CandidateProfile
+                    from app.modules.users.models import User as UserModel
+
+                    result = await self._db.execute(
+                        select(UserModel.email)
+                        .join(
+                            CandidateProfile, CandidateProfile.user_id == UserModel.id
+                        )
+                        .where(CandidateProfile.id == profile.candidate_profile_id)
+                    )
+                    candidate_email = result.scalar_one_or_none()
+
                 if candidate_email:
                     from app.core.config import settings
                     from app.core.email import get_email_service
@@ -242,7 +337,7 @@ class TalentPoolService:
                     else:
                         await email_service.send_status_update(
                             candidate_email=candidate_email,
-                            job_title="a role",  # no job context here — generic message
+                            job_title="a role",
                             new_status="shortlisted",
                         )
             except Exception:
@@ -338,7 +433,7 @@ class TalentPoolService:
             queued += 1
 
         return {"queued": queued, "job_id": str(job_id)}
-    
+
     async def get_job_matches(
         self,
         job_id: uuid.UUID,
@@ -347,7 +442,10 @@ class TalentPoolService:
     ) -> "TalentMatchListResponse":
         """Return AI-matched talent pool profiles for a job, ranked by embedding similarity."""
         from app.modules.applications.repository import ApplicationRepository
-        from app.modules.talent_pool.schema import TalentMatchListResponse, TalentMatchResponse
+        from app.modules.talent_pool.schema import (
+            TalentMatchListResponse,
+            TalentMatchResponse,
+        )
 
         job_repo = JobRepository(self._db)
         application_repo = ApplicationRepository(self._db)
@@ -360,7 +458,9 @@ class TalentPoolService:
             raise PermissionDeniedException()
 
         if job.job_embedding is None:
-            raise ValidationException("Job embedding not yet generated — check back shortly.")
+            raise ValidationException(
+                "Job embedding not yet generated — check back shortly."
+            )
 
         user_ids = await application_repo.get_user_ids_for_job(job_id)
 
@@ -372,48 +472,17 @@ class TalentPoolService:
 
         items: list[TalentMatchResponse] = []
         for profile, distance in matches:
-            parsed_current_title: str | None = None
-            parsed_profession: str | None = None
-            parsed_name: str | None = None
-            parsed_skills: list[str] = []
-            parsed_location: str | None = None
-            parsed_years: int | None = None
-
-            # Source data from parsed submission (works for both sourced and registered profiles)
-            submission = profile.parsed_submission
-            if submission and submission.parsed_data:
-                pd = submission.parsed_data
-                parsed_current_title = pd.get("current_title")
-                parsed_profession = pd.get("profession")
-                parsed_name = pd.get("full_name") or (
-                    f"{pd.get('first_name', '')} {pd.get('last_name', '')}".strip() or None
-                )
-                parsed_skills = pd.get("skills") or []
-                parsed_years = pd.get("years_experience")
-
-            # For self-registered candidates, prefer structured profile data
-            candidate_profile = profile.candidate_profile
-            if candidate_profile:
-                parsed_location = candidate_profile.location
-                parsed_years = candidate_profile.years_of_experience or parsed_years
-                parsed_skills = candidate_profile.skills or parsed_skills
-                # Respect visibility — mask name if private
-                if candidate_profile.user and candidate_profile.visibility != "PRIVATE":
-                    u = candidate_profile.user
-                    parsed_name = f"{u.first_name} {u.last_name}".strip()
-                else:
-                    parsed_name = None
-
+            fields = await resolve_match_display_fields(self._db, profile, employer_id)
             items.append(
                 TalentMatchResponse.from_match(
                     profile=profile,
                     distance=distance,
-                    candidate_name=parsed_name,
-                    current_title=parsed_current_title,
-                    profession=parsed_profession,
-                    years_of_experience=parsed_years,
-                    location=parsed_location,
-                    top_skills=parsed_skills[:5],
+                    candidate_name=fields["name"],
+                    current_title=fields["current_title"],
+                    profession=fields["profession"],
+                    years_of_experience=fields["years_of_experience"],
+                    location=fields["location"],
+                    top_skills=fields["skills"],
                 )
             )
 
@@ -422,4 +491,3 @@ class TalentPoolService:
             count=len(items),
             job_id=job_id,
         )
-        

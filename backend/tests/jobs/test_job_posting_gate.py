@@ -19,7 +19,9 @@ def make_create_request(**overrides) -> JobCreateRequest:
     """Build a JobCreateRequest with sensible defaults."""
     defaults = {
         "title": "Senior Engineer",
-        "description": "Build great things.",
+        "about_the_role": "Build great things at scale.",
+        "key_responsibilities": "Design, build and maintain backend services.",
+        "requirements": "Strong Python skills and experience with FastAPI.",
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME,
         "work_model": WorkModel.HYBRID,
@@ -156,7 +158,9 @@ async def test_post_job_returns_403_for_incomplete_profile(client, db_session):
         "/api/v1/jobs",
         json={
             "title": "Engineer",
-            "description": "Build things.",
+            "about_the_role": "Build things at scale.",
+            "key_responsibilities": "Design and build services.",
+            "requirements": "Python and FastAPI experience.",
             "location": "Lagos",
             "contract_type": ContractType.FULL_TIME.value,
             "work_model": WorkModel.HYBRID.value,
@@ -213,7 +217,9 @@ async def test_post_job_succeeds_for_complete_profile(client, db_session):
         "/api/v1/jobs",
         json={
             "title": "Engineer",
-            "description": "Build things.",
+            "about_the_role": "Build things at scale.",
+            "key_responsibilities": "Design and build services.",
+            "requirements": "Python and FastAPI experience.",
             "location": "Lagos",
             "contract_type": ContractType.FULL_TIME.value,
             "work_model": WorkModel.HYBRID.value,

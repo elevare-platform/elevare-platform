@@ -41,6 +41,7 @@ jobs:
           script: |
             cd /home/deploy/elevare
             git pull
+            sudo chown -R deploy:deploy /home/deploy/.docker
             docker compose -f docker-compose.prod.yml up -d --build
             docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
             sleep 5

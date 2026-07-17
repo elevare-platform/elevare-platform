@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select, text
 import sqlalchemy as sa
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import paginate_cursor
@@ -61,6 +61,20 @@ class TalentPoolRepository:
         """Fetch a talent pool profile by its primary key, or None if not found."""
         result = await self._db.execute(
             select(TalentPoolProfiles).where(TalentPoolProfiles.id == profile_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_id_joined_with_parsed_data(
+        self,
+        profile_id: uuid.UUID,
+    ) -> TalentPoolProfiles | None:
+        """Fetch a talent pool profile joined with its parsed submission by primary key."""
+        from sqlalchemy.orm import selectinload
+
+        result = await self._db.execute(
+            select(TalentPoolProfiles)
+            .where(TalentPoolProfiles.id == profile_id)
+            .options(selectinload(TalentPoolProfiles.parsed_submission))
         )
         return result.scalar_one_or_none()
 
@@ -153,7 +167,7 @@ class TalentPoolRepository:
         )
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
-    
+
     async def find_matches_for_job(
         self,
         job_embedding: list[float],
@@ -206,4 +220,3 @@ class TalentPoolRepository:
 
         result = await self._db.execute(stmt)
         return [(row[0], row[1]) for row in result.all()]
-

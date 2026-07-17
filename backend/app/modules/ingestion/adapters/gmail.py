@@ -7,7 +7,6 @@ naturally into the existing async/await codebase.
 from __future__ import annotations
 
 import base64
-import email as email_lib
 import logging
 import re
 from datetime import UTC, datetime
@@ -166,6 +165,9 @@ class GmailAdapter(MailAdapter):
 
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self._token}"}
+
+    def set_access_token(self, access_token: str) -> None:
+        self._token = access_token
 
     async def list_messages(
         self,

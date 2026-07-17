@@ -9,12 +9,11 @@ from __future__ import annotations
 
 import base64
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 
-from app.modules.ingestion.adapters.base import MailAttachment, MailMessage
 from app.modules.ingestion.adapters.gmail import (
     GmailAdapter,
     _decode_body,

@@ -322,7 +322,9 @@ async def _score_application_async(application_id_str: str) -> None:
                     c = role.get("company") or ""
                     d = role.get("description") or ""
                     if t or d:
-                        work_history_lines.append(f"- {t}{' at ' + c if c else ''}: {d}".strip())
+                        work_history_lines.append(
+                            f"- {t}{' at ' + c if c else ''}: {d}".strip()
+                        )
                 work_history_text = "\n".join(work_history_lines) or "Not provided"
 
                 candidate_context = (
@@ -510,8 +512,12 @@ async def _score_talent_pool_profile_async(
                     c = role.get("company") or ""
                     d = role.get("description") or ""
                     if t or d:
-                        tp_work_history_lines.append(f"- {t}{' at ' + c if c else ''}: {d}".strip())
-                tp_work_history_text = "\n".join(tp_work_history_lines) or "Not provided"
+                        tp_work_history_lines.append(
+                            f"- {t}{' at ' + c if c else ''}: {d}".strip()
+                        )
+                tp_work_history_text = (
+                    "\n".join(tp_work_history_lines) or "Not provided"
+                )
 
                 candidate_context = (
                     f"Current title: {parsed.get('current_title') or 'Unknown'}\n"
@@ -602,7 +608,6 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
             parsed_profession: str | None = None
             work_history_parts: list[str] = []
 
-
             # Resolve parsed CV summary via the default CV → submission chain
             default_cv = next((cv for cv in profile.cvs if cv.is_default), None)
             if default_cv and default_cv.submission_id:
@@ -620,8 +625,9 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                         description = role.get("description") or ""
 
                         if description and title:
-                            work_history_parts.append(f"{title}: {description}".strip(": "))
-                            
+                            work_history_parts.append(
+                                f"{title}: {description}".strip(": ")
+                            )
 
             work_history_text = "\n".join(work_history_parts)
 
@@ -642,7 +648,6 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                     profile_id,
                 )
                 return
-
 
             # Build embedding text - work history and role identity are primary signals
             embedding_text = (
@@ -900,7 +905,6 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
                 work_history_text=tp_work_history_text,
                 summary=summary,
             )
-
 
             if (
                 profile.embedding_source_hash == new_hash

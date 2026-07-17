@@ -49,8 +49,11 @@ from app.modules.applications.router import router as app_router
 from app.modules.auth.router import router as auth_router
 from app.modules.candidates.router import router as candidates_router
 from app.modules.contact.router import router as contact_router
+from app.modules.credits.router import router as credits_router
 from app.modules.employer.router import router as employer_router
 from app.modules.ingestion.router import router as ingestion_router
+from app.modules.introductions.router import mine_router as intro_mine_router
+from app.modules.introductions.router import public_router as intro_public_router
 from app.modules.jobs.access_token_router import router as access_token_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.sitemaps.router import router as sitemap_router
@@ -180,6 +183,8 @@ app.include_router(ingestion_router, prefix="/api/v1/ingestion", tags=["ingestio
 app.include_router(
     testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"]
 )
+app.include_router(credits_router, prefix="/api/v1/credits", tags=["credits"])
+app.include_router(intro_public_router, prefix="/api/v1/public", tags=["introductions"])
 app.include_router(
-    testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"]
+    intro_mine_router, prefix="/api/v1/introductions", tags=["introductions"]
 )

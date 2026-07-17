@@ -39,7 +39,9 @@ const OnboardingPage = lazy(() => import('@/pages/employer/OnboardingPage'))
 const ApplicantsPage = lazy(() => import('@/pages/employer/ApplicantsPage'))
 const EmployerCVParserPage = lazy(() => import('@/pages/employer/EmployerCVParserPage'))
 const TalentPoolPage = lazy(() => import('@/pages/employer/TalentPoolPage'))
+const IntroductionsPage = lazy(() => import('@/pages/employer/IntroductionsPage'))
 const SharedApplicantsPage = lazy(() => import('@/pages/SharedApplicantsPage'))
+const IntroductionResponsePage = lazy(() => import('@/pages/IntroductionResponsePage'))
 
 const MailIngestionPage = lazy(() => import('@/pages/employer/MailIngestionPage'))
 const AdminInvitePage = lazy(() => import('@/pages/admin/AdminInvitePage'))
@@ -110,6 +112,7 @@ function AppRoutes() {
         <Route path="/jobs" element={<JobBoardPage />} />
         <Route path="/jobs/:id" element={<JobDetailPage />} />
         <Route path="/shared/jobs/:token" element={<SharedApplicantsPage />} />
+        <Route path="/introduction-response" element={<IntroductionResponsePage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
@@ -125,6 +128,7 @@ function AppRoutes() {
           <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
           <Route path="/employer/cv-parser" element={<EmployerCVParserPage />} />
           <Route path="/employer/talent-pool" element={<TalentPoolPage />} />
+          <Route path="/employer/introductions" element={<IntroductionsPage />} />
           <Route path="/employer/mail-ingestion" element={<MailIngestionPage />} />
         </Route>
 

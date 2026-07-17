@@ -32,7 +32,9 @@ def future_deadline(days: int = 7) -> str:
 def job_payload(**overrides) -> dict:
     defaults = {
         "title": "Python Backend Engineer",
-        "description": "We need a Python developer with FastAPI and PostgreSQL experience. Docker knowledge required.",
+        "about_the_role": "We need a Python developer with FastAPI and PostgreSQL experience. Docker knowledge required.",
+        "key_responsibilities": "Design, build and maintain scalable backend services.",
+        "requirements": "Strong Python skills, FastAPI, PostgreSQL, and Docker experience.",
         "location": "Lagos, Nigeria",
         "contract_type": "FULL_TIME",
         "work_model": "HYBRID",
@@ -251,7 +253,7 @@ async def test_keyword_service_case_insensitive_matching():
 
 @pytest.mark.asyncio
 async def test_match_score_field_present_in_application_response(client, db_session):
-    """Application response includes match_score field (null initially is acceptable)."""
+    """Employer applicant list exposes match_score; candidate apply response does not."""
     candidate_token, candidate_user = await register_and_activate(
         client, db_session, "CANDIDATE"
     )
@@ -262,16 +264,24 @@ async def test_match_score_field_present_in_application_response(client, db_sess
     )
     job = await create_and_publish_job(client, db_session, employer_token)
 
-    resp = await client.post(
+    apply_resp = await client.post(
         "/api/v1/applications",
         json={"job_id": job["id"]},
         headers={"Authorization": f"Bearer {candidate_token}"},
     )
-    assert resp.status_code == 201, resp.text
-    body = resp.json()
-    # Field must exist in response — value may be null while background task runs
-    assert "match_score" in body
-    assert "score_computed_at" in body
+    assert apply_resp.status_code == 201, apply_resp.text
+    # Candidate-facing response intentionally excludes AI score fields
+    assert "match_score" not in apply_resp.json()
+
+    # Employer applicant list must expose match_score (null until background task runs)
+    resp = await client.get(
+        f"/api/v1/applications/job/{job['id']}",
+        headers={"Authorization": f"Bearer {employer_token}"},
+    )
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert "match_score" in item
+    assert "score_computed_at" in item
 
 
 @pytest.mark.asyncio

@@ -62,6 +62,13 @@ export function useAdmin() {
   const moderateTestimonial = (id, status) =>
     request(() => api.patch(`/api/v1/admin/testimonials/${id}`, { status }).then((r) => r.data))
 
+  // Credits
+  const grantEmployerCredits = (employerId, amount, reason) =>
+    request(() =>
+      api.patch(`/api/v1/admin/employers/${employerId}/credits`, { amount, reason })
+        .then((r) => r.data)
+    )
+
   return {
     loading,
     error,
@@ -77,5 +84,6 @@ export function useAdmin() {
     getCvUrl,
     listTestimonials,
     moderateTestimonial,
+    grantEmployerCredits,
   }
 }

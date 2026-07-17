@@ -165,6 +165,7 @@ class AdminService:
         else:
             job = await self._repo.set_job_moderation_status(job, action)
             from app.modules.applications.tasks import send_job_moderation_email
+
             send_job_moderation_email.delay(
                 job.employer.email,
                 str(job.id),
@@ -257,6 +258,39 @@ class AdminService:
         """Fetch all applications and build a CSV string for download."""
         applications = await self._repo.get_all_applications_for_export()
         return self._repo.build_applications_csv(applications)
+
+    # -----------------------------------------------------------------------
+    # Credits
+    # -----------------------------------------------------------------------
+
+    async def grant_employer_credits(
+        self,
+        admin_id: UUID,
+        employer_id: UUID,
+        amount: int,
+        reason: str | None = None,
+    ) -> dict:
+        """Grant credits to an employer, write an audit log entry, and commit."""
+        from app.modules.credits.service import CreditsService
+
+        credits_service = CreditsService(self._db)
+        new_balance = await credits_service.grant(
+            employer_id=employer_id,
+            amount=amount,
+        )
+        await self._repo.write_audit_log(
+            admin_id=admin_id,
+            action="GRANT_CREDITS",
+            target_type="employer",
+            target_id=employer_id,
+            log_metadata={
+                "amount": amount,
+                "reason": reason,
+                "new_balance": new_balance,
+            },
+        )
+        await self._db.commit()
+        return {"employer_id": str(employer_id), "balance": new_balance}
 
     # -----------------------------------------------------------------------
     # Audit log

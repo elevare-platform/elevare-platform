@@ -75,6 +75,7 @@ class TalentMatchResponse(BaseModel):
     years_of_experience: int | None = None
     location: str | None = None
     top_skills: list[str] = []
+    candidate_profile_id: uuid.UUID | None = None  # None for sourced-only CVs
 
     @classmethod
     def from_match(
@@ -98,6 +99,7 @@ class TalentMatchResponse(BaseModel):
             years_of_experience=years_of_experience,
             location=location,
             top_skills=top_skills or [],
+            candidate_profile_id=profile.candidate_profile_id,
         )
 
 

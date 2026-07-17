@@ -135,3 +135,10 @@ class AdminApplicationResponse(BaseModel):
             ),
             candidate_email=candidate.email if candidate else None,
         )
+
+
+class CreditGrantRequest(BaseModel):
+    """Payload for granting credits to an employer."""
+
+    amount: int = Field(..., gt=0)
+    reason: str | None = Field(None, max_length=200)
