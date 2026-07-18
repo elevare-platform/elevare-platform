@@ -8,6 +8,7 @@ class SourceType(str, Enum):
 
     EMAIL = "email"
     GMAIL_IMPORT = "gmail_import"
+    ZOHO_IMPORT = "zoho_import"
     REFERRAL = "referral"
     LINKEDIN = "linkedin"
     OTHER = "other"

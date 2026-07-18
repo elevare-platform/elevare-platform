@@ -48,6 +48,24 @@ function RunStatusBadge({ status }) {
   )
 }
 
+function progressPercent(run) {
+  if (!run) return 0
+  if (run.status === 'COMPLETED') return 100
+  if (!run.total_emails_found) return 0
+  return Math.round(((run.emails_processed + run.emails_skipped) / run.total_emails_found) * 100)
+}
+
+function relativeTime(isoString) {
+  if (!isoString) return ''
+  const diffMs = Date.now() - new Date(isoString).getTime()
+  const mins = Math.round(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
 // ─── ImportRunCard ────────────────────────────────────────────────────────────
 
 function ImportRunCard({ integrationId, initialRunId, onComplete }) {
@@ -78,8 +96,7 @@ function ImportRunCard({ integrationId, initialRunId, onComplete }) {
   if (!run) return null
 
   const isRunning = ['PENDING', 'RUNNING'].includes(run.status)
-  const progressPercent = run.status === 'COMPLETED' ? 100 :
-    run.total_emails_found > 0 ? Math.round(((run.emails_processed + run.emails_skipped) / run.total_emails_found) * 100) : 0
+  const pct = progressPercent(run)
 
   return (
     <div className="rounded-lg border border-border bg-white p-4 space-y-4">
@@ -123,12 +140,12 @@ function ImportRunCard({ integrationId, initialRunId, onComplete }) {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-[10px] font-semibold text-text-muted uppercase">
             <span>Progress</span>
-            <span>{progressPercent}%</span>
+            <span>{pct}%</span>
           </div>
           <div className="w-full h-1.5 rounded-full bg-surface-muted overflow-hidden relative">
             <div
               className={cn('absolute inset-y-0 left-0 bg-brand-blue transition-all duration-500')}
-              style={{ width: `${progressPercent}%` }}
+              style={{ width: `${pct}%` }}
             />
           </div>
         </div>
@@ -139,13 +156,23 @@ function ImportRunCard({ integrationId, initialRunId, onComplete }) {
 
 // ─── TriggerImportModal (Drawer) ──────────────────────────────────────────────
 
-function TriggerImportModal({ open, onClose, integration, jobs, onViewTalentPool }) {
+function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onViewTalentPool, onRunFinished }) {
   const [jobId, setJobId] = useState('')
   const [queryFilter, setQueryFilter] = useState('has:attachment')
   const [submitting, setSubmitting] = useState(false)
   const [runId, setRunId] = useState(null)
   const [completed, setCompleted] = useState(false)
   const { show } = useToast()
+
+  // Reopening on an integration with an active run (e.g. after navigating
+  // away and back) should show live progress immediately, not the "start
+  // a new import" form — the backend would reject a second run anyway.
+  useEffect(() => {
+    if (!open) return
+    if (initialRun && ['RUNNING', 'PENDING'].includes(initialRun.status)) {
+      setRunId(initialRun.id)
+    }
+  }, [open, initialRun])
 
   const reset = () => {
     setJobId('')
@@ -192,6 +219,23 @@ function TriggerImportModal({ open, onClose, integration, jobs, onViewTalentPool
         </div>
 
         <div className="flex-1 px-6 py-6 space-y-6">
+          {!runId && initialRun && (
+            <div className="rounded-lg border border-border bg-surface-muted p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Last import</span>
+                <RunStatusBadge status={initialRun.status} />
+              </div>
+              <p className="text-xs text-text-muted">
+                {initialRun.total_emails_found} found · {initialRun.emails_processed} processed ·{' '}
+                {initialRun.emails_deduplicated} duplicate · {initialRun.emails_skipped} skipped
+                {initialRun.completed_at && <> · {relativeTime(initialRun.completed_at)}</>}
+              </p>
+              {initialRun.error_message && (
+                <p className="text-xs text-red-600">{initialRun.error_message}</p>
+              )}
+            </div>
+          )}
+
           {!runId && (
             <>
               <div>
@@ -214,14 +258,21 @@ function TriggerImportModal({ open, onClose, integration, jobs, onViewTalentPool
               </div>
 
               <div>
-                <label className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2 block">Gmail search query</label>
+                <label className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2 block">
+                  Search query
+                </label>
                 <input
                   value={queryFilter}
                   onChange={e => setQueryFilter(e.target.value)}
                   placeholder="has:attachment"
                   className="w-full text-sm rounded-lg border border-border px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-blue"
                 />
-                <p className="text-xs text-text-muted mt-1.5">Leave blank to import all emails with attachments</p>
+                <p className="text-xs text-text-muted mt-1.5">
+                  {integration?.provider === 'ZOHO'
+                    ? 'Zoho Mail search syntax — e.g. has:attachment, after:2024-01-01, subject:CV'
+                    : 'Gmail search syntax — e.g. has:attachment, after:2024/01/01, subject:CV'}
+                  {' '}Leave blank to import all emails with attachments.
+                </p>
               </div>
             </>
           )}
@@ -234,7 +285,7 @@ function TriggerImportModal({ open, onClose, integration, jobs, onViewTalentPool
               <ImportRunCard
                 integrationId={integration?.id}
                 initialRunId={runId}
-                onComplete={() => setCompleted(true)}
+                onComplete={() => { setCompleted(true); onRunFinished?.() }}
               />
 
               {/* CTA shown once import reaches COMPLETED */}
@@ -308,9 +359,11 @@ function DisconnectModal({ integration, onClose, onDisconnected }) {
 
         {/* Copy */}
         <div className="text-center space-y-1">
-          <h3 className="font-semibold text-text text-base">Disconnect Gmail?</h3>
+          <h3 className="font-semibold text-text text-base">
+            Disconnect {integration.provider === 'ZOHO' ? 'Zoho Mail' : 'Gmail'}?
+          </h3>
           <p className="text-sm text-text-muted">
-            <span className="font-medium text-text">{integration.email_address}</span> will be disconnected.
+            <span className="font-medium text-text">{(integration.email_address || '').split('|')[0]}</span> will be disconnected.
             Existing imported CVs stay in your Talent Pool.
           </p>
         </div>
@@ -340,6 +393,10 @@ function DisconnectModal({ integration, onClose, onDisconnected }) {
 // ─── IntegrationCard ──────────────────────────────────────────────────────────
 
 function IntegrationCard({ integration, onImportClick, onDisconnectClick }) {
+  const run = integration.latest_run
+  const runActive = run && ['RUNNING', 'PENDING'].includes(run.status)
+  const pct = runActive ? progressPercent(run) : 0
+
   return (
     <div className="rounded-xl border border-border bg-white p-5 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between">
@@ -371,6 +428,30 @@ function IntegrationCard({ integration, onImportClick, onDisconnectClick }) {
         </span>
       </div>
 
+      {/* Persisted import progress/summary — survives navigating away and back,
+          so the user doesn't have to keep a tab open to see it. */}
+      {runActive ? (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-blue-700 flex items-center gap-1">
+              <RefreshCw size={11} className="animate-spin" /> Import running
+            </span>
+            <span className="text-blue-600">{run.emails_processed}/{run.total_emails_found}</span>
+          </div>
+          <div className="w-full h-1 rounded-full bg-blue-100 overflow-hidden">
+            <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      ) : run && (
+        <div className="text-xs text-text-muted flex items-center justify-between px-3 py-1.5">
+          <span className="flex items-center gap-1.5">
+            <RunStatusBadge status={run.status} />
+            {run.emails_processed} processed
+          </span>
+          {run.completed_at && <span>{relativeTime(run.completed_at)}</span>}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mt-auto pt-1">
         <Button
           onClick={() => onImportClick(integration)}
@@ -378,7 +459,9 @@ function IntegrationCard({ integration, onImportClick, onDisconnectClick }) {
           className="flex-1"
           disabled={integration.status !== 'CONNECTED'}
         >
-          <Upload size={14} className="mr-1.5" /> Import CVs
+          {runActive
+            ? <><RefreshCw size={14} className="mr-1.5 animate-spin" /> View Progress</>
+            : <><Upload size={14} className="mr-1.5" /> Import CVs</>}
         </Button>
         <Button
           onClick={() => onDisconnectClick(integration)}
@@ -580,8 +663,12 @@ export default function MailIngestionPage() {
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setSelectedIntegration(null) }}
         integration={selectedIntegration}
+        initialRun={selectedIntegration?.latest_run}
         jobs={jobs}
-        onViewTalentPool={() => navigate('/employer/talent-pool?source=gmail_import')}
+        onRunFinished={loadIntegrations}
+        onViewTalentPool={() => navigate(
+          `/employer/talent-pool?source=${selectedIntegration?.provider === 'ZOHO' ? 'zoho_import' : 'gmail_import'}`
+        )}
       />
 
       {disconnectTarget && (

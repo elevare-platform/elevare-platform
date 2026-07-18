@@ -11,9 +11,9 @@ import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Union
 
 from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -315,21 +315,23 @@ class IngestionService:
     # Adapter factory — routes by provider
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _token_needs_refresh(integration: MailIntegration) -> bool:
+        now = datetime.now(UTC)
+        return (
+            integration.token_expires_at is None
+            or integration.token_expires_at <= now + timedelta(minutes=5)
+        )
+
     async def get_valid_adapter(
         self, integration: MailIntegration
-    ) -> Union[GmailAdapter, ZohoAdapter]:
+    ) -> GmailAdapter | ZohoAdapter:
         """Return the correct adapter with a fresh access token.
 
         Checks token expiry and refreshes silently if needed.
         Routes to GmailAdapter or ZohoAdapter based on integration.provider.
         """
-        now = datetime.now(UTC)
-        needs_refresh = (
-            integration.token_expires_at is None
-            or integration.token_expires_at <= now + timedelta(minutes=5)
-        )
-
-        if needs_refresh:
+        if self._token_needs_refresh(integration):
             if not integration.encrypted_refresh_token:
                 raise ValueError(
                     f"Integration {integration.id} has no refresh token — user must reconnect"
@@ -393,6 +395,33 @@ class IngestionService:
         await self._db.commit()
         return new_access
 
+    async def ensure_fresh_token(
+        self,
+        integration_id: uuid.UUID,
+        adapter: GmailAdapter | ZohoAdapter,
+    ) -> None:
+        """Refresh the integration's token and swap it into `adapter` in place,
+        if it's at or near expiry.
+
+        Historical imports can run for up to two hours (see the Celery task's
+        time_limit) while Gmail/Zoho access tokens typically last about an
+        hour. Call this once per page of a long-running import loop, and
+        again reactively on an actual 401, so a run doesn't spend the rest
+        of its two hours failing every request after the token lapses.
+        Mutating the existing adapter (rather than building a new one via
+        get_valid_adapter) preserves adapter-local state such as
+        ZohoAdapter's resolved inbox folder id.
+        """
+        integration = await self._repo.get_integration_by_id(integration_id)
+        if not integration or not self._token_needs_refresh(integration):
+            return
+        if not integration.encrypted_refresh_token:
+            raise ValueError(
+                f"Integration {integration.id} has no refresh token — user must reconnect"
+            )
+        new_access_token = await self._refresh_token(integration)
+        adapter.set_access_token(new_access_token)
+
     # ------------------------------------------------------------------ #
     # Import
     # ------------------------------------------------------------------ #
@@ -433,7 +462,17 @@ class IngestionService:
                 status_code=400,
             )
 
-        # Block double-trigger — only one active run per integration
+        # Block double-trigger — only one active run per integration.
+        # pg_advisory_xact_lock serialises concurrent callers on the same
+        # integration for the rest of this transaction (auto-released on
+        # commit/rollback below) — without it, two near-simultaneous
+        # requests could both pass the "latest run" check before either
+        # had created its row, and both create a RUNNING import.
+        await self._db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"ingestion_import:{integration_id}"},
+        )
+
         latest = await self._repo.get_latest_run_for_integration(integration_id)
         if latest and latest.status in (
             ImportStatus.RUNNING.value,
@@ -477,7 +516,16 @@ class IngestionService:
         self,
         user_id: uuid.UUID,
     ) -> list[MailIntegration]:
-        return await self._repo.list_integrations_for_user(user_id)
+        """List integrations, each annotated with its most recent import
+        run (as a plain attribute, not a persisted relationship) so the
+        frontend can show live/last-known progress on page load."""
+        integrations = await self._repo.list_integrations_for_user(user_id)
+        latest_runs = await self._repo.get_latest_runs_for_integrations(
+            [i.id for i in integrations]
+        )
+        for integration in integrations:
+            integration.latest_run = latest_runs.get(integration.id)
+        return integrations
 
     async def get_import_run_status(
         self,

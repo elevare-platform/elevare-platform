@@ -1,19 +1,20 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Briefcase, Plus, TrendingUp, FileText, CheckCircle, XCircle, FileSearch, Mail } from 'lucide-react'
+import { Briefcase, Plus, TrendingUp, FileText, CheckCircle, XCircle, FileSearch, Mail, Send } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { useJobs } from '@/hooks/useJobs'
+import { useIntroductions } from '@/hooks/useIntroductions'
 import { JobCard } from '@/components/jobs/JobCard'
 import api from '@/lib/api'
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
-function StatCard({ icon: Icon, label, value, colour, loading }) {
-  return (
-    <div className="bg-white rounded-xl border border-border p-5 flex items-center gap-4">
+function StatCard({ icon: Icon, label, value, colour, loading, to, badge }) {
+  const content = (
+    <div className={`bg-white rounded-xl border border-border p-5 flex items-center gap-4 ${to ? 'hover:border-brand-blue/40 hover:shadow-sm transition-all' : ''}`}>
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colour}`}>
         <Icon size={18} className="text-white" />
       </div>
@@ -23,10 +24,14 @@ function StatCard({ icon: Icon, label, value, colour, loading }) {
         ) : (
           <p className="text-2xl font-bold text-text">{value ?? 0}</p>
         )}
-        <p className="text-xs text-text-muted">{label}</p>
+        <p className="text-xs text-text-muted flex items-center gap-1.5">
+          {label}
+          {!loading && badge}
+        </p>
       </div>
     </div>
   )
+  return to ? <Link to={to}>{content}</Link> : content
 }
 
 // ─── Skeleton job row ─────────────────────────────────────────────────────────
@@ -69,6 +74,9 @@ export default function EmployerDashboardPage() {
     endpoint: '/api/v1/jobs/mine',
     limit: 5,
   })
+
+  const { introductions, loading: introductionsLoading } = useIntroductions()
+  const pendingIntroductions = introductions.filter((i) => i.status === 'PENDING').length
 
   // Fetch employer stats
   useEffect(() => {
@@ -129,7 +137,7 @@ export default function EmployerDashboardPage() {
           )}
 
           {/* Stats cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             <StatCard
               icon={Briefcase}
               label="Total jobs"
@@ -157,6 +165,19 @@ export default function EmployerDashboardPage() {
               value={stats?.total_applications}
               colour="bg-purple-500"
               loading={statsLoading}
+            />
+            <StatCard
+              icon={Send}
+              label="Introductions"
+              value={introductions.length}
+              colour="bg-amber-500"
+              loading={introductionsLoading}
+              to="/employer/introductions"
+              badge={pendingIntroductions > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                  {pendingIntroductions} pending
+                </span>
+              )}
             />
           </div>
 

@@ -118,20 +118,45 @@ class CandidateService:
                 raise ProfileNotFoundException()
 
             if requesting_user.role == UserRole.EMPLOYER.value:
-                if profile.visibility == VisibilityStatus.PRIVATE.value:
-                    raise PermissionDeniedException("This profile is private")
+                # An accepted introduction grants access regardless of visibility setting
+                from sqlalchemy import select
 
-                if profile.visibility == VisibilityStatus.APPLIED_ONLY.value:
-                    has_application = (
-                        await self._repo.candidate_has_applied_to_employer(
-                            candidate_profile_id=profile.id,
-                            employer_id=requesting_user.id,
-                        )
+                from app.modules.introductions.enums import IntroductionStatus
+                from app.modules.introductions.models import IntroductionRequest
+                from app.modules.talent_pool.models import TalentPoolProfiles
+
+                accepted_stmt = (
+                    select(IntroductionRequest.id)
+                    .join(
+                        TalentPoolProfiles,
+                        TalentPoolProfiles.id
+                        == IntroductionRequest.talent_pool_profile_id,
                     )
-                    if not has_application:
-                        raise PermissionDeniedException(
-                            "This candidate's profile is only visible to employers they have applied to"
+                    .where(
+                        IntroductionRequest.employer_id == requesting_user.id,
+                        TalentPoolProfiles.candidate_profile_id == profile_id,
+                        IntroductionRequest.status == IntroductionStatus.ACCEPTED.value,
+                    )
+                    .limit(1)
+                )
+                accepted = await self._db.execute(accepted_stmt)
+                has_accepted_intro = accepted.scalar_one_or_none() is not None
+
+                if not has_accepted_intro:
+                    if profile.visibility == VisibilityStatus.PRIVATE.value:
+                        raise PermissionDeniedException("This profile is private")
+
+                    if profile.visibility == VisibilityStatus.APPLIED_ONLY.value:
+                        has_application = (
+                            await self._repo.candidate_has_applied_to_employer(
+                                candidate_profile_id=profile.id,
+                                employer_id=requesting_user.id,
+                            )
                         )
+                        if not has_application:
+                            raise PermissionDeniedException(
+                                "This candidate's profile is only visible to employers they have applied to"
+                            )
 
                 await self._repo.create_profile_viewed(
                     requesting_user.id, profile.id, job_id

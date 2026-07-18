@@ -31,10 +31,9 @@ from pathlib import Path
 # Make app importable when running the script directly
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import app.core.model_registry  # noqa: F401 — registers all ORM mappers
-
 from sqlalchemy import delete, select
 
+import app.core.model_registry  # noqa: F401 — registers all ORM mappers
 from app.core.database import AsyncSessionLocal
 from app.modules.applications.enums import ApplicationStatus
 from app.modules.applications.models import Application
@@ -56,8 +55,13 @@ PERSONAS = [
         "phone": "+2348101110001",
         "location": "Lagos, Nigeria",
         "years_exp": 3,
-        "skills": ["Customer Service", "Complaint Resolution", "Communication",
-                   "Shift Work", "POS Operations"],
+        "skills": [
+            "Customer Service",
+            "Complaint Resolution",
+            "Communication",
+            "Shift Work",
+            "POS Operations",
+        ],
         "bio": "Friendly and customer-focused service representative with 3 years of experience in retail and hospitality environments across Lagos.",
         "status": ApplicationStatus.SHORTLISTED.value,
         "ai_score": 94,
@@ -85,8 +89,13 @@ PERSONAS = [
         "phone": "+2348101110002",
         "location": "Lagos, Nigeria",
         "years_exp": 2,
-        "skills": ["Customer Relations", "Reception", "Communication",
-                   "Complaint Handling", "Team Collaboration"],
+        "skills": [
+            "Customer Relations",
+            "Reception",
+            "Communication",
+            "Complaint Handling",
+            "Team Collaboration",
+        ],
         "bio": "Polite and well-presented customer relations professional with 2 years of front-desk and reception experience in a hospitality firm.",
         "status": ApplicationStatus.SHORTLISTED.value,
         "ai_score": 88,
@@ -113,8 +122,13 @@ PERSONAS = [
         "phone": "+2348101110003",
         "location": "Lagos, Nigeria",
         "years_exp": 1,
-        "skills": ["Communication", "Customer Handling", "Cashiering",
-                   "Teamwork", "Shift Flexibility"],
+        "skills": [
+            "Communication",
+            "Customer Handling",
+            "Cashiering",
+            "Teamwork",
+            "Shift Flexibility",
+        ],
         "bio": "Energetic and motivated customer service associate with 1 year of experience in a busy supermarket chain in Lagos.",
         "status": ApplicationStatus.REVIEWING.value,
         "ai_score": 76,
@@ -141,8 +155,13 @@ PERSONAS = [
         "phone": "+2348101110004",
         "location": "Lagos, Nigeria",
         "years_exp": 4,
-        "skills": ["Customer Service", "Sales Support", "Inquiry Management",
-                   "Record Keeping", "Microsoft Office"],
+        "skills": [
+            "Customer Service",
+            "Sales Support",
+            "Inquiry Management",
+            "Record Keeping",
+            "Microsoft Office",
+        ],
         "bio": "Experienced customer service and sales support officer with 4 years working in telecoms and FMCG distribution in Lagos.",
         "status": ApplicationStatus.REVIEWING.value,
         "ai_score": 82,
@@ -196,8 +215,13 @@ PERSONAS = [
         "phone": "+2348101110006",
         "location": "Abuja, Nigeria",
         "years_exp": 5,
-        "skills": ["Office Administration", "Data Entry", "Filing",
-                   "Microsoft Excel", "Report Writing"],
+        "skills": [
+            "Office Administration",
+            "Data Entry",
+            "Filing",
+            "Microsoft Excel",
+            "Report Writing",
+        ],
         "bio": "Administrative officer with 5 years of back-office support experience in a federal government ministry in Abuja.",
         "status": ApplicationStatus.SUBMITTED.value,
         "ai_score": 31,
@@ -225,6 +249,7 @@ DEMO_EMAILS = {p["email"] for p in PERSONAS}
 # ---------------------------------------------------------------------------
 # Core seed logic
 # ---------------------------------------------------------------------------
+
 
 async def seed(job_id: uuid.UUID, dry_run: bool = False, reset: bool = False) -> None:
     async with AsyncSessionLocal() as db:
@@ -257,7 +282,9 @@ async def seed(job_id: uuid.UUID, dry_run: bool = False, reset: bool = False) ->
                 )
                 count = deleted.rowcount
                 await db.commit()
-                print(f"Reset: removed {count} existing demo application(s) for this job.\n")
+                print(
+                    f"Reset: removed {count} existing demo application(s) for this job.\n"
+                )
 
         created = 0
         skipped = 0
@@ -271,7 +298,9 @@ async def seed(job_id: uuid.UUID, dry_run: bool = False, reset: bool = False) ->
 
             if user is None:
                 if dry_run:
-                    print(f"  [DRY RUN] Would create user: {persona['first_name']} {persona['last_name']} <{persona['email']}>")
+                    print(
+                        f"  [DRY RUN] Would create user: {persona['first_name']} {persona['last_name']} <{persona['email']}>"
+                    )
                 else:
                     user = User(
                         id=uuid.uuid4(),
@@ -298,12 +327,18 @@ async def seed(job_id: uuid.UUID, dry_run: bool = False, reset: bool = False) ->
                     )
                     db.add(profile)
                     await db.flush()
-                    print(f"  Created user: {persona['first_name']} {persona['last_name']} <{persona['email']}>")
+                    print(
+                        f"  Created user: {persona['first_name']} {persona['last_name']} <{persona['email']}>"
+                    )
             else:
-                print(f"  Existing user: {persona['first_name']} {persona['last_name']} <{persona['email']}>")
+                print(
+                    f"  Existing user: {persona['first_name']} {persona['last_name']} <{persona['email']}>"
+                )
 
             if dry_run:
-                print(f"  [DRY RUN] Would create application — AI score: {persona['ai_score']}, status: {persona['status']}")
+                print(
+                    f"  [DRY RUN] Would create application — AI score: {persona['ai_score']}, status: {persona['status']}"
+                )
                 created += 1
                 continue
 
@@ -315,7 +350,9 @@ async def seed(job_id: uuid.UUID, dry_run: bool = False, reset: bool = False) ->
                 )
             )
             if existing.scalar_one_or_none():
-                print(f"  Skipped (already applied): {persona['first_name']} {persona['last_name']}")
+                print(
+                    f"  Skipped (already applied): {persona['first_name']} {persona['last_name']}"
+                )
                 skipped += 1
                 continue
 
@@ -336,19 +373,24 @@ async def seed(job_id: uuid.UUID, dry_run: bool = False, reset: bool = False) ->
                 ai_score_cv_hash="demo",
             )
             db.add(app)
-            print(f"  Created application — {persona['first_name']} {persona['last_name']}: score={persona['ai_score']}, status={persona['status']}")
+            print(
+                f"  Created application — {persona['first_name']} {persona['last_name']}: score={persona['ai_score']}, status={persona['status']}"
+            )
             created += 1
 
         if not dry_run:
             await db.commit()
 
-        print(f"\n{'DRY RUN ' if dry_run else ''}Done — {created} created, {skipped} skipped.")
+        print(
+            f"\n{'DRY RUN ' if dry_run else ''}Done — {created} created, {skipped} skipped."
+        )
         print(f"View applicants at: /employer/jobs/{job_id}/applicants\n")
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main():
     parser = argparse.ArgumentParser(

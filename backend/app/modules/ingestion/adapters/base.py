@@ -73,3 +73,14 @@ class MailAdapter(ABC):
         Called once after a successful historical import to seed the
         continuous sync cursor.
         """
+
+    @abstractmethod
+    def set_access_token(self, access_token: str) -> None:
+        """Swap in a freshly refreshed access token, in place.
+
+        Historical imports can run for up to two hours while OAuth access
+        tokens typically last about one — callers refresh mid-run by
+        mutating the existing adapter rather than constructing a new one,
+        so provider-side caches (e.g. ZohoAdapter's resolved inbox folder
+        id) survive the refresh.
+        """

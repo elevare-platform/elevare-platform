@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import UUID, DateTime, ForeignKey, Index, Integer, String, Text
@@ -82,13 +82,13 @@ class MailIntegration(BaseModel):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship(
+    user: Mapped[User] = relationship(
         "User",
         back_populates="mail_integrations",
         lazy="selectin",
     )
 
-    import_runs: Mapped[List["IngestionImportRun"]] = relationship(
+    import_runs: Mapped[list[IngestionImportRun]] = relationship(
         "IngestionImportRun",
         back_populates="integration",
         order_by="IngestionImportRun.created_at.desc()",

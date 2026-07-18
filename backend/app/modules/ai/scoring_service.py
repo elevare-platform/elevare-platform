@@ -195,5 +195,7 @@ def hash_talent_pool_embedding_source(
     summary: str | None,
 ) -> str:
     """SHA-256 of talent pool profile fields that affect the embedding."""
-    payload = f"{current_title or ''}|{profession or ''}|{work_history_text}|{summary or ''}"
+    payload = (
+        f"{current_title or ''}|{profession or ''}|{work_history_text}|{summary or ''}"
+    )
     return hashlib.sha256(payload.encode()).hexdigest()

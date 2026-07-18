@@ -24,7 +24,9 @@ if TYPE_CHECKING:
         RefreshToken,
     )
     from app.modules.candidates.models import CandidateProfile, ProfileView
+    from app.modules.credits.models import CreditTransaction, EmployerCredits
     from app.modules.ingestion.models import MailIntegration
+    from app.modules.introductions.models import IntroductionRequest
     from app.modules.jobs.models import Job, JobAccessTokens
     from app.modules.talent_pool.models import TalentPoolProfiles
 
@@ -135,6 +137,19 @@ class User(BaseModel):
     mail_integrations: Mapped[list[MailIntegration]] = relationship(
         "MailIntegration",
         back_populates="user",
+    )
+    introduction_requests: Mapped[list[IntroductionRequest]] = relationship(
+        "IntroductionRequest",
+        back_populates="employer",
+    )
+    credit_transactions: Mapped[list[CreditTransaction]] = relationship(
+        "CreditTransaction",
+        back_populates="employer",
+    )
+    employer_credits: Mapped[EmployerCredits | None] = relationship(
+        "EmployerCredits",
+        back_populates="employer",
+        uselist=False,
     )
 
 

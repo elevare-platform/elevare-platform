@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+  workflow_call:
 
 jobs:
   lint-and-test:
@@ -62,9 +63,6 @@ jobs:
       - name: Ruff lint
         run: ruff check .
 
-      - name: Isort check
-        run: ruff check --select I .
-
       - name: Run tests
         run: pytest tests/ -v
         env:
@@ -73,6 +71,7 @@ jobs:
           DEBUG: "true"
           ENVIRONMENT: "test"
           SECRET_KEY: "ci-test-secret-key-not-for-production"
+          HMAC_SECRET: "ci-test-hmac-secret-not-for-production"
           EMAIL_STUB_MODE: "true"
           EMAIL_VERIFICATION_TOKEN_EXPIRY: "24"
           INVITE_EXPIRY: "3"

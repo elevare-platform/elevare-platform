@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from app.modules.ingestion.adapters.base import MailAttachment, MailMessage
 from app.modules.ingestion.adapters.zoho import (
     ZohoAdapter,
     _extract_email_address,
@@ -139,14 +138,85 @@ async def test_list_messages_empty():
     assert next_token is None
 
 
+@pytest.mark.asyncio
+async def test_list_messages_with_query_uses_search_endpoint():
+    """A non-empty query (e.g. the "has:attachment" default from
+    IngestionService) must hit Zoho's Search Emails endpoint with
+    searchKey set, so filtering happens server-side instead of paging
+    through the whole mailbox client-side."""
+    adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
+    mock_json = {"data": [{"messageId": "zm1", "folderId": "f1", "hasAttachment": "1"}]}
+
+    captured = {}
+
+    async def mock_get(url, params=None, **kwargs):
+        captured["url"] = str(url)
+        captured["params"] = params
+        return _make_mock_response(mock_json)
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
+        ids, _ = await adapter.list_messages(query="has:attachment", max_results=500)
+
+    assert "messages/search" in captured["url"]
+    assert captured["params"]["searchKey"] == "has:attachment"
+    assert ids == ["f1|zm1"]
+
+
+@pytest.mark.asyncio
+async def test_list_messages_without_query_uses_view_endpoint():
+    """No query (e.g. get_current_history_id's raw listing) keeps using
+    the plain List Emails endpoint — unchanged legacy behaviour."""
+    adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
+
+    captured = {}
+
+    async def mock_get(url, params=None, **kwargs):
+        captured["url"] = str(url)
+        return _make_mock_response({"data": []})
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
+        await adapter.list_messages()
+
+    assert "messages/search" not in captured["url"]
+    assert "messages/view" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_folder_lookup_attempted_only_once_per_adapter():
+    """A failing (or successful) Inbox folder lookup must not be retried
+    on every page — that turns one bad/slow call into one per page across
+    a whole historical import."""
+    adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
+
+    folder_calls = 0
+
+    async def mock_get(url, **kwargs):
+        nonlocal folder_calls
+        if str(url).endswith("/folders"):
+            folder_calls += 1
+            raise httpx.HTTPError("no folder scope")
+        return _make_mock_response({"data": []})
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
+        await adapter.list_messages(query="has:attachment")
+        await adapter.list_messages(query="has:attachment", page_token="200")
+        await adapter.list_messages(query="has:attachment", page_token="400")
+
+    assert folder_calls == 1
+
+
 # ─── ZohoAdapter.get_message ──────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_get_message_no_attachment():
-    """get_message uses correct folder-based URL and returns MailMessage."""
+    """get_message reads metadata from /details — NOT /content, which per
+    Zoho's real API only ever returns {messageId, content} and none of the
+    fields this adapter needs (subject/fromAddress/receivedTime/summary/
+    hasAttachment). Hitting /content there was the actual production bug:
+    every message silently looked attachment-less."""
     adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
-    mock_json = {
+    details_json = {
         "data": {
             "messageId": "zm99",
             "subject": "Hello there",
@@ -154,7 +224,6 @@ async def test_get_message_no_attachment():
             "receivedTime": "1720000000000",
             "summary": "Just a plain email",
             "hasAttachment": "0",
-            "attachments": [],
         }
     }
 
@@ -162,7 +231,7 @@ async def test_get_message_no_attachment():
 
     async def mock_get(url, **kwargs):
         captured_url.append(str(url))
-        return _make_mock_response(mock_json)
+        return _make_mock_response(details_json)
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
         message = await adapter.get_message("f42|zm99")
@@ -172,17 +241,20 @@ async def test_get_message_no_attachment():
     assert message.sender_email == "sender@zoho.com"
     assert message.received_at == datetime.fromtimestamp(1720000000, tz=UTC)
     assert message.attachments == []
-    # Verify the correct URL was used
-    assert "folders/f42/messages/zm99/content" in captured_url[0]
+    # Verify the correct URL was used — /details, not /content
+    assert "folders/f42/messages/zm99/details" in captured_url[0]
+    # hasAttachment == "0" — must not even call /attachmentinfo
+    assert not any("attachmentinfo" in u for u in captured_url)
 
 
 @pytest.mark.asyncio
 async def test_get_message_with_attachment():
-    """Message with attachment triggers a download using folder-based URL."""
+    """hasAttachment=1 triggers /attachmentinfo (the real attachment list,
+    separate from /details) followed by the actual binary download."""
     adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
     pdf_bytes = b"%PDF-1.4 zoho test"
 
-    message_json = {
+    details_json = {
         "data": {
             "messageId": "zm_att",
             "subject": "CV Application",
@@ -190,14 +262,17 @@ async def test_get_message_with_attachment():
             "receivedTime": "1720000000000",
             "summary": "My CV is attached",
             "hasAttachment": "1",
+        }
+    }
+    attachment_info_json = {
+        "data": {
             "attachments": [
                 {
                     "attachmentId": "att_zoho_1",
                     "attachmentName": "CV_Zoho.pdf",
-                    "attachmentType": "application/pdf",
                     "attachmentSize": str(len(pdf_bytes)),
                 }
-            ],
+            ]
         }
     }
 
@@ -206,16 +281,18 @@ async def test_get_message_with_attachment():
     async def mock_get(url, **kwargs):
         nonlocal call_count
         call_count += 1
-        if "attachments" in str(url):
+        if "attachmentinfo" in str(url):
+            return _make_mock_response(attachment_info_json)
+        if "attachments/" in str(url):
             return httpx.Response(
                 200, content=pdf_bytes, request=httpx.Request("GET", url)
             )
-        return _make_mock_response(message_json)
+        return _make_mock_response(details_json)
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
         message = await adapter.get_message("f42|zm_att")
 
-    assert call_count == 2
+    assert call_count == 3  # details, attachmentinfo, attachment download
     assert len(message.attachments) == 1
     assert message.attachments[0].filename == "CV_Zoho.pdf"
     assert message.attachments[0].data == pdf_bytes
@@ -226,7 +303,7 @@ async def test_get_message_attachment_download_failure_skipped():
     """A failed attachment download is logged and skipped — message still returned."""
     adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
 
-    message_json = {
+    details_json = {
         "data": {
             "messageId": "zm_fail",
             "subject": "CV",
@@ -234,26 +311,60 @@ async def test_get_message_attachment_download_failure_skipped():
             "receivedTime": "1720000000000",
             "summary": "",
             "hasAttachment": "1",
+        }
+    }
+    attachment_info_json = {
+        "data": {
             "attachments": [
                 {
                     "attachmentId": "att_bad",
                     "attachmentName": "cv.pdf",
-                    "attachmentType": "application/pdf",
                     "attachmentSize": "1000",
                 }
-            ],
+            ]
         }
     }
 
     async def mock_get(url, **kwargs):
-        if "attachments" in str(url):
+        if "attachmentinfo" in str(url):
+            return _make_mock_response(attachment_info_json)
+        if "attachments/" in str(url):
             raise httpx.HTTPError("connection error")
-        return _make_mock_response(message_json)
+        return _make_mock_response(details_json)
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
         message = await adapter.get_message("f42|zm_fail")
 
     assert message.message_id == "f42|zm_fail"
+    assert message.attachments == []
+
+
+@pytest.mark.asyncio
+async def test_get_message_attachment_info_failure_yields_no_attachments():
+    """If /attachmentinfo itself fails (network error, etc.), the message
+    is still returned — just with no attachments — rather than failing
+    the whole message fetch."""
+    adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
+
+    details_json = {
+        "data": {
+            "messageId": "zm_info_fail",
+            "subject": "CV",
+            "fromAddress": "a@b.com",
+            "receivedTime": "1720000000000",
+            "summary": "",
+            "hasAttachment": "1",
+        }
+    }
+
+    async def mock_get(url, **kwargs):
+        if "attachmentinfo" in str(url):
+            raise httpx.HTTPError("connection error")
+        return _make_mock_response(details_json)
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
+        message = await adapter.get_message("f42|zm_info_fail")
+
     assert message.attachments == []
 
 
@@ -292,6 +403,66 @@ async def test_get_history_since_returns_new_ids_and_advances_cursor():
     assert ids == ["f1|new_1", "f1|new_2"]
     # Cursor advances to the most recent message's receivedTime
     assert new_cursor == newer_ms
+
+
+@pytest.mark.asyncio
+async def test_get_history_since_uses_search_endpoint():
+    """get_history_since must use the Search Emails endpoint — the plain
+    List Emails endpoint (/messages/view) doesn't support any timestamp
+    filter, so using it made every 15-minute sync re-scan the same top
+    ~200 messages instead of only genuinely new ones."""
+    adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
+    captured = {}
+
+    async def mock_get(url, params=None, **kwargs):
+        captured["url"] = str(url)
+        captured["params"] = params
+        return _make_mock_response({"data": []})
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
+        await adapter.get_history_since("1720000000000")
+
+    assert "messages/search" in captured["url"]
+    assert captured["params"]["searchKey"] == "has:attachment"
+
+
+@pytest.mark.asyncio
+async def test_get_history_since_filters_out_stale_messages():
+    """Zoho has no server-side "received after" filter, so the adapter
+    must drop messages at-or-before the cursor itself rather than trusting
+    the API to have already excluded them."""
+    adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
+    since_ms = "1720000000000"
+
+    mock_json = {
+        "data": [
+            {
+                "messageId": "already_seen",
+                "folderId": "f1",
+                "receivedTime": "1719999999999",  # before cursor
+                "hasAttachment": "1",
+            },
+            {
+                "messageId": "at_cursor",
+                "folderId": "f1",
+                "receivedTime": since_ms,  # exactly at cursor
+                "hasAttachment": "1",
+            },
+            {
+                "messageId": "genuinely_new",
+                "folderId": "f1",
+                "receivedTime": "1720000100000",
+                "hasAttachment": "1",
+            },
+        ]
+    }
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = _make_mock_response(mock_json)
+        ids, new_cursor = await adapter.get_history_since(since_ms)
+
+    assert ids == ["f1|genuinely_new"]
+    assert new_cursor == "1720000100000"
 
 
 @pytest.mark.asyncio

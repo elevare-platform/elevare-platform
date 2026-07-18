@@ -36,6 +36,7 @@ from .enums import (
 
 if TYPE_CHECKING:
     from app.modules.applications.models import Application
+    from app.modules.introductions.models import IntroductionRequest
     from app.modules.talent_pool.models import TalentPoolProfiles
     from app.modules.users.models import User
 
@@ -133,6 +134,10 @@ class Job(BaseModel):
     )
     job_access_tokens: Mapped[list[JobAccessTokens]] = relationship(
         "JobAccessTokens", back_populates="job"
+    )
+    introduction_requests: Mapped[list[IntroductionRequest]] = relationship(
+        "IntroductionRequest",
+        back_populates="job",
     )
 
 

@@ -62,7 +62,9 @@ async def my_applications(
 
 
 @router.patch(
-    "/{application_id}/withdraw", status_code=200, response_model=CandidateApplicationResponse
+    "/{application_id}/withdraw",
+    status_code=200,
+    response_model=CandidateApplicationResponse,
 )
 async def withdraw_application(
     application_id: uuid.UUID,

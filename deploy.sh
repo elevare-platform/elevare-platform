@@ -8,7 +8,7 @@ cd /home/deploy/elevare
 echo "→ Pulling latest code..."
 git pull
 
-echo "->  Fixinf permisiions..."
+echo "->  Fixing permisiions..."
 sudo chown -R deploy:deploy /home/deploy/.docker
 
 

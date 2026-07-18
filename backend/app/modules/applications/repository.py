@@ -125,6 +125,12 @@ class ApplicationRepository:
         result = await self._db.execute(stmt)
         return [row[0] for row in result.fetchall()]
 
+    async def get_user_ids_for_job(self, job_id: uuid.UUID) -> list[uuid.UUID]:
+        """Return all candidate IDs for a given job."""
+        stmt = select(Application.candidate_id).where(Application.job_id == job_id)
+        result = await self._db.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+
     async def get_job_applicants(
         self,
         job_id: uuid.UUID,

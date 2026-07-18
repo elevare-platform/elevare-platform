@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from app.modules.ai.models import ParsedCVSubmission
     from app.modules.applications.models import Application
     from app.modules.candidates.models import CandidateProfile
+    from app.modules.introductions.models import IntroductionRequest
     from app.modules.jobs.models import Job
     from app.modules.users.models import User
 
@@ -149,4 +150,9 @@ class TalentPoolProfiles(BaseModel):
         "User",
         foreign_keys=[added_by],
         back_populates="talent_pool_added_by",
+    )
+
+    introduction_requests: Mapped[list[IntroductionRequest]] = relationship(
+        "IntroductionRequest",
+        back_populates="talent_pool_profile",
     )

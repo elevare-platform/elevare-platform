@@ -6,14 +6,18 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import os
+import re
 import uuid
 from datetime import UTC, datetime
 
+import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.celery_app import celery
 from app.core.config import settings
-from app.modules.ingestion.enums import ImportStatus, IntegrationStatus
+from app.modules.ingestion.enums import ImportStatus, IntegrationStatus, MailProvider
+from app.modules.talent_pool.enums import SourceType
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +25,66 @@ _RATE_LIMIT_DELAY = 0.15
 _MAX_PAGES = 200
 
 
-def _compute_cv_hash(text: str) -> str:
+def _compute_cv_hash(content: bytes | str) -> str:
+    data = content.encode() if isinstance(content, str) else content
     return hmac.new(
         settings.hmac_secret.encode(),
-        text.encode(),
+        data,
         hashlib.sha256,
     ).hexdigest()
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Strip path components and control characters from a sender-supplied
+    attachment filename before it's stored — email attachment filenames
+    are fully attacker-controlled (e.g. "../../etc/passwd" or embedded
+    newlines) and are displayed as-is in the Talent Pool UI."""
+    name = os.path.basename((filename or "").strip()) or "attachment"
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+    return name[:255] or "attachment"
+
+
+def _source_for_provider(provider: str) -> tuple[str, str]:
+    """Map a MailIntegration.provider to its SourceType and a human label
+    for the source_note prefix — so Zoho-sourced candidates are recorded
+    (and later filterable/displayed) as Zoho imports, not Gmail imports."""
+    if provider == MailProvider.ZOHO.value:
+        return SourceType.ZOHO_IMPORT.value, "Zoho import"
+    return SourceType.GMAIL_IMPORT.value, "Gmail import"
+
+
+async def _list_messages_with_refresh(
+    service, integration_id, adapter, query, max_results, page_token
+):
+    """adapter.list_messages, retrying once after a token refresh on a 401."""
+    try:
+        return await adapter.list_messages(
+            query=query, max_results=max_results, page_token=page_token
+        )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code != 401:
+            raise
+        await service.ensure_fresh_token(integration_id, adapter)
+        return await adapter.list_messages(
+            query=query, max_results=max_results, page_token=page_token
+        )
+
+
+async def _get_message_with_refresh(service, integration_id, adapter, message_id):
+    """adapter.get_message, retrying once after a token refresh on a 401.
+
+    Historical imports can run for up to two hours; OAuth access tokens
+    typically last about an hour. The proactive per-page refresh in the
+    caller covers the common case — this is the backstop for whatever it
+    doesn't catch in time (e.g. a token that lapses mid-page).
+    """
+    try:
+        return await adapter.get_message(message_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code != 401:
+            raise
+        await service.ensure_fresh_token(integration_id, adapter)
+        return await adapter.get_message(message_id)
 
 
 @celery.task(
@@ -96,8 +154,9 @@ async def _run_import_async(
             pages_fetched = 0
 
             while pages_fetched < _MAX_PAGES:
-                message_ids, page_token = await adapter.list_messages(
-                    query=query, max_results=500, page_token=page_token
+                await service.ensure_fresh_token(integration_id, adapter)
+                message_ids, page_token = await _list_messages_with_refresh(
+                    service, integration_id, adapter, query, 500, page_token
                 )
                 if not message_ids:
                     break
@@ -112,7 +171,9 @@ async def _run_import_async(
                 for message_id in message_ids:
                     await asyncio.sleep(_RATE_LIMIT_DELAY)
                     try:
-                        message = await adapter.get_message(message_id)
+                        message = await _get_message_with_refresh(
+                            service, integration_id, adapter, message_id
+                        )
                     except Exception:
                         logger.warning(
                             "Failed to fetch message %s", message_id, exc_info=True
@@ -149,6 +210,21 @@ async def _run_import_async(
                                 exc_info=True,
                             )
                             failed += 1
+
+                # Persist progress after every page, not just at the very end —
+                # otherwise a large mailbox leaves the UI showing 0 processed/
+                # skipped/failed for the entire run (it only reads what's in
+                # the DB), even though real work is happening.
+                await repo.update_import_run(
+                    run_id,
+                    {
+                        "emails_processed": processed,
+                        "emails_skipped": skipped,
+                        "emails_failed": failed,
+                        "emails_deduplicated": deduplicated,
+                    },
+                )
+                await db.commit()
 
                 if not page_token:
                     break
@@ -247,8 +323,6 @@ async def _sync_all_async():
 
 
 async def _sync_one(integration):
-    import httpx
-
     from app.core.storage import get_storage_service
     from app.modules.ingestion.attachment_filter import filter_message
     from app.modules.ingestion.repository import IngestionRepository
@@ -313,7 +387,9 @@ async def _sync_one(integration):
         for message_id in new_ids:
             await asyncio.sleep(_RATE_LIMIT_DELAY)
             try:
-                message = await adapter.get_message(message_id)
+                message = await _get_message_with_refresh(
+                    service, fresh.id, adapter, message_id
+                )
             except Exception:
                 failed += 1
                 continue
@@ -380,9 +456,10 @@ async def _process_attachment(
     from app.modules.ai.enums import CVParsingStatus
     from app.modules.ai.tasks import run_full_pipeline_task
     from app.modules.ingestion.repository import IngestionRepository
-    from app.modules.talent_pool.enums import SourceType
     from app.modules.talent_pool.models import TalentPoolProfiles
     from app.modules.users.repository import UserRepository
+
+    filename = _sanitize_filename(filename)
 
     try:
         text_result = extract_text_from_pdf(attachment_data)
@@ -390,7 +467,19 @@ async def _process_attachment(
     except Exception:
         cv_text = ""
 
-    cv_hash = _compute_cv_hash(cv_text)
+    # extract_text_from_pdf only understands PDF — .docx/.doc attachments
+    # (which the attachment filter allows) always come back with empty
+    # text here, as does any PDF that fails all extraction methods. If we
+    # hashed that empty string, every such attachment would collapse onto
+    # the same cv_hash and every candidate after the first would be
+    # silently treated as a duplicate of them — i.e. dropped. Hash the raw
+    # attachment bytes instead whenever extraction didn't yield real text,
+    # so dedup only ever matches byte-identical files.
+    cv_hash = (
+        _compute_cv_hash(cv_text)
+        if cv_text.strip()
+        else _compute_cv_hash(attachment_data)
+    )
     parsing_repo = CVParsingRepo(db, get_storage_service())
 
     existing = await parsing_repo.get_with_r2_key_by_hash(cv_hash)
@@ -405,11 +494,14 @@ async def _process_attachment(
             integration = await ingestion_repo.get_integration_by_id(integration_id)
             owner_id = integration.user_id if integration else None
             if owner_id:
+                source_value, source_label = _source_for_provider(
+                    integration.provider if integration else ""
+                )
                 db.add(
                     TalentPoolProfiles(
                         parsed_submission_id=existing.id,
-                        source=SourceType.GMAIL_IMPORT.value,
-                        source_note=f"Gmail import — {sender_email} · message {message_id}",
+                        source=source_value,
+                        source_note=f"{source_label} — {sender_email} · message {message_id}",
                         sourced_for_job_id=sourced_for_job_id,
                         added_by=owner_id,
                     )
@@ -424,6 +516,9 @@ async def _process_attachment(
     ingestion_repo = IngestionRepository(db)
     integration = await ingestion_repo.get_integration_by_id(integration_id)
     owner_id = integration.user_id if integration else uploader_id
+    source_value, source_label = _source_for_provider(
+        integration.provider if integration else ""
+    )
 
     submission = await parsing_repo.submit_cv_for_parsing(
         filename=filename,
@@ -438,8 +533,8 @@ async def _process_attachment(
         db.add(
             TalentPoolProfiles(
                 parsed_submission_id=submission.id,
-                source=SourceType.GMAIL_IMPORT.value,
-                source_note=f"Gmail import — {sender_email} · message {message_id}",
+                source=source_value,
+                source_note=f"{source_label} — {sender_email} · message {message_id}",
                 sourced_for_job_id=sourced_for_job_id,
                 added_by=owner_id,
             )

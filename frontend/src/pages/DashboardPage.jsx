@@ -4,11 +4,12 @@ import {
   LogOut, Briefcase, ArrowRight, MailCheck,
   Plus, TrendingUp, FileText, CheckCircle,
   Sparkles, Heart, Cpu, LayoutDashboard, Lock,
-  FileSearch, Mail
+  FileSearch, Mail, Send
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { useJobs } from '@/hooks/useJobs'
+import { useIntroductions } from '@/hooks/useIntroductions'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import api from '@/lib/api'
@@ -17,9 +18,9 @@ import { EmployerCVParser } from '@/pages/employer/EmployerCVParserPage'
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
-function StatCard({ icon: Icon, label, value, colour, loading }) {
-  return (
-    <div className="bg-white rounded-xl border border-border p-5 flex items-center gap-4">
+function StatCard({ icon: Icon, label, value, colour, loading, to, badge }) {
+  const content = (
+    <div className={`bg-white rounded-xl border border-border p-5 flex items-center gap-4 ${to ? 'hover:border-brand-blue/40 hover:shadow-sm transition-all' : ''}`}>
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colour}`}>
         <Icon size={18} className="text-white" />
       </div>
@@ -29,10 +30,14 @@ function StatCard({ icon: Icon, label, value, colour, loading }) {
         ) : (
           <p className="text-2xl font-bold text-text">{value ?? 0}</p>
         )}
-        <p className="text-xs text-text-muted">{label}</p>
+        <p className="text-xs text-text-muted flex items-center gap-1.5">
+          {label}
+          {!loading && badge}
+        </p>
       </div>
     </div>
   )
+  return to ? <Link to={to}>{content}</Link> : content
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -61,6 +66,8 @@ function EmployerDashboard({ user }) {
     endpoint: '/api/v1/jobs/mine',
     params: { limit: 10 }
   })
+  const { introductions, loading: introductionsLoading } = useIntroductions()
+  const pendingIntroductions = introductions.filter((i) => i.status === 'PENDING').length
 
   useEffect(() => {
     api.get('/api/v1/employer/stats')
@@ -153,11 +160,24 @@ function EmployerDashboard({ user }) {
           {activeTab === 'overview' && (
             <>
               {/* Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                 <StatCard icon={Briefcase} label="Total jobs" value={stats?.total_jobs} colour="bg-brand-blue" loading={statsLoading} />
                 <StatCard icon={CheckCircle} label="Active" value={stats?.active_jobs} colour="bg-green-500" loading={statsLoading} />
                 <StatCard icon={FileText} label="Drafts" value={stats?.draft_jobs} colour="bg-brand-amber" loading={statsLoading} />
                 <StatCard icon={TrendingUp} label="Applications" value={stats?.total_applications} colour="bg-purple-500" loading={statsLoading} />
+                <StatCard
+                  icon={Send}
+                  label="Introductions"
+                  value={introductions.length}
+                  colour="bg-amber-500"
+                  loading={introductionsLoading}
+                  to="/employer/introductions"
+                  badge={pendingIntroductions > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                      {pendingIntroductions} pending
+                    </span>
+                  )}
+                />
               </div>
 
               {/* Recent jobs */}

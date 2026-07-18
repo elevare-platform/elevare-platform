@@ -5,6 +5,7 @@ import { AdminTable, Th, Td, Pagination } from '@/components/admin/AdminTable'
 import StatusBadge from '@/components/admin/StatusBadge'
 import UserDetailDrawer from '@/components/admin/UserDetailDrawer'
 import ConfirmModal from '@/components/admin/ConfirmModal'
+import GrantCreditsModal from '@/components/admin/GrantCreditsModal'
 import { useToast } from '@/components/admin/Toast'
 import { useAdmin } from '@/hooks/useAdmin'
 
@@ -22,6 +23,7 @@ export default function AdminUsersPage() {
   const [selected, setSelected] = useState([])
   const [drawerUserId, setDrawerUserId] = useState(null)
   const [confirm, setConfirm] = useState(null) // { userId, action } or { bulk: true, action }
+  const [creditsTarget, setCreditsTarget] = useState(null) // employer user object
 
   const load = useCallback(async (reset = true, overrideCursor) => {
     try {
@@ -82,6 +84,14 @@ export default function AdminUsersPage() {
             setUsers((prev) => prev.map((u) => u.id === id ? { ...u, account_status: s } : u))
             show(`Status updated to ${s.replace(/_/g, ' ')}`)
           }}
+        />
+      )}
+
+      {creditsTarget && (
+        <GrantCreditsModal
+          employer={creditsTarget}
+          onClose={() => setCreditsTarget(null)}
+          onGranted={(data) => show(`Granted credits — new balance: ${data.balance}`)}
         />
       )}
 
@@ -202,6 +212,13 @@ export default function AdminUsersPage() {
                       onClick={() => setConfirm({ userId: u.id, action: 'BANNED' })}
                       className="text-xs text-red-800 hover:underline">
                       Ban
+                    </button>
+                  )}
+                  {u.role === 'EMPLOYER' && (
+                    <button
+                      onClick={() => setCreditsTarget(u)}
+                      className="text-xs text-brand-blue hover:underline">
+                      Grant Credits
                     </button>
                   )}
                 </div>

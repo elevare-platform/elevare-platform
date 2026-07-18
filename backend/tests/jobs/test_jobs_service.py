@@ -18,7 +18,9 @@ def make_create_request(**overrides) -> JobCreateRequest:
     """Build a JobCreateRequest with sensible defaults."""
     defaults = {
         "title": "Backend Engineer",
-        "description": "Build scalable APIs for our platform.",
+        "about_the_role": "Build scalable APIs for our platform.",
+        "key_responsibilities": "Design, build and maintain backend services.",
+        "requirements": "Strong Python skills and experience with FastAPI.",
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME,
         "work_model": WorkModel.HYBRID,
