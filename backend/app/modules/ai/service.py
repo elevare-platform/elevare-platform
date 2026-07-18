@@ -470,8 +470,13 @@ class EmbeddingAIService(AIService):
 
 
 def get_ai_service() -> AIService:
-    """FastAPI dependency — returns EmbeddingAIService. Falls back to keyword scoring when embeddings missing."""
-    return EmbeddingAIService()
+    """FastAPI dependency — returns EmbeddingAIService when an OpenAI key is configured.
+
+    Falls back to KeywordAIService when the key is absent (CI, local dev without key).
+    """
+    if settings.openai_api_key:
+        return EmbeddingAIService()
+    return KeywordAIService()
 
 
 # Alias used in Phase 12 tests — MockAIService already implements the full interface
