@@ -19,12 +19,14 @@ export default function PostJobPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [profileIncomplete, setProfileIncomplete] = useState(false)
+  const [kycRequired, setKycRequired] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
   async function handleSubmit(data) {
     setLoading(true)
     setError(null)
     setProfileIncomplete(false)
+    setKycRequired(false)
 
     try {
       await api.post('/api/v1/jobs', data)
@@ -34,6 +36,8 @@ export default function PostJobPage() {
       const body = err.response?.data
       if (code === 'PROFILE_INCOMPLETE') {
         setProfileIncomplete(true)
+      } else if (code === 'KYC_REQUIRED') {
+        setKycRequired(true)
       } else if (Array.isArray(body?.details)) {
         // Custom handler: { details: [{ field, message }] }
         setError(body.details.map((e) => `${e.field}: ${e.message}`).join(' · '))
@@ -66,6 +70,19 @@ export default function PostJobPage() {
                 You need to complete your company profile before posting jobs.{' '}
                 <a href="/employer/profile" className="underline font-medium hover:text-amber-900">
                   Complete your profile →
+                </a>
+              </p>
+            </div>
+          )}
+
+          {/* KYC required — actionable banner */}
+          {kycRequired && (
+            <div className="mb-6 rounded-md border border-brand-amber bg-brand-amber/10 px-4 py-3 text-sm">
+              <p className="font-medium text-amber-800">Company verification required.</p>
+              <p className="text-amber-700 mt-1">
+                You need to complete company verification (KYC) before posting jobs.{' '}
+                <a href="/employer/verification" className="underline font-medium hover:text-amber-900">
+                  Verify your company →
                 </a>
               </p>
             </div>

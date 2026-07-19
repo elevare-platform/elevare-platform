@@ -66,6 +66,22 @@ function relativeTime(isoString) {
   return `${Math.round(hours / 24)}d ago`
 }
 
+// Builds the mailbox search query automatically — the field is read-only
+// in the UI (most users aren't going to hand-write search syntax), so this
+// is the only place a query gets constructed.
+//
+// Deliberately just `has:attachment "<title>"` rather than an explicit
+// `subject:"x" OR "x"` — a bare quoted phrase already matches subject AND
+// body on both Gmail and Zoho, and their boolean-grouping syntax diverges
+// enough (Gmail: space/OR/parens, Zoho: "::"/"||") that building a single
+// query string valid on both providers is risky. This form is confirmed
+// working against live Gmail and Zoho search.
+function buildQueryFilter(jobTitle) {
+  if (!jobTitle) return 'has:attachment'
+  const escaped = jobTitle.replace(/"/g, '')
+  return `has:attachment "${escaped}"`
+}
+
 // ─── ImportRunCard ────────────────────────────────────────────────────────────
 
 function ImportRunCard({ integrationId, initialRunId, onComplete }) {
@@ -158,11 +174,15 @@ function ImportRunCard({ integrationId, initialRunId, onComplete }) {
 
 function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onViewTalentPool, onRunFinished }) {
   const [jobId, setJobId] = useState('')
-  const [queryFilter, setQueryFilter] = useState('has:attachment')
   const [submitting, setSubmitting] = useState(false)
   const [runId, setRunId] = useState(null)
   const [completed, setCompleted] = useState(false)
   const { show } = useToast()
+
+  // The query field is read-only and always derived from the selected job
+  // — never hand-typed — so it's a plain computed value, not state.
+  const jobTitle = (jobs ?? []).find(j => j.id === jobId)?.title
+  const queryFilter = buildQueryFilter(jobTitle)
 
   // Reopening on an integration with an active run (e.g. after navigating
   // away and back) should show live progress immediately, not the "start
@@ -176,7 +196,6 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
 
   const reset = () => {
     setJobId('')
-    setQueryFilter('has:attachment')
     setRunId(null)
     setCompleted(false)
   }
@@ -263,15 +282,15 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
                 </label>
                 <input
                   value={queryFilter}
-                  onChange={e => setQueryFilter(e.target.value)}
-                  placeholder="has:attachment"
-                  className="w-full text-sm rounded-lg border border-border px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                  readOnly
+                  aria-readonly="true"
+                  title="Set automatically from the job you selected above"
+                  className="w-full text-sm rounded-lg border border-border px-3 py-2.5 bg-surface-muted text-text-muted cursor-not-allowed focus:outline-none"
                 />
                 <p className="text-xs text-text-muted mt-1.5">
-                  {integration?.provider === 'ZOHO'
-                    ? 'Zoho Mail search syntax — e.g. has:attachment, after:2024-01-01, subject:CV'
-                    : 'Gmail search syntax — e.g. has:attachment, after:2024/01/01, subject:CV'}
-                  {' '}Leave blank to import all emails with attachments.
+                  {jobId
+                    ? 'Set automatically — only emails with attachments mentioning this job title are imported.'
+                    : 'All emails with attachments are imported. Pick a job above to narrow this down.'}
                 </p>
               </div>
             </>
