@@ -23,13 +23,23 @@ from app.modules.users.models import User
 from .schemas import (
     BulkJobActionRequest,
     BulkUserActionRequest,
+    CreditGrantRequest,
     InviteRequest,
     JobModerationRequest,
+    KYCModerationRequest,
     UserStatusUpdateRequest,
 )
 from .service import AdminService
 
 router = APIRouter()
+
+
+def get_admin_service(
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage_service),
+) -> AdminService:
+    """Construct AdminService with injected DB and storage (needed for KYC document URLs)."""
+    return AdminService(db, storage)
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +221,50 @@ async def list_applications(
 
 
 # ---------------------------------------------------------------------------
+# Employer KYC
+# ---------------------------------------------------------------------------
+
+
+@router.get("/employers/kyc", status_code=200)
+async def list_kyc_submissions(
+    status: str | None = Query(default=None),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=20, le=100),
+    admin_user: User = Depends(require_role("ADMIN")),
+    service: AdminService = Depends(get_admin_service),
+):
+    """List employer KYC submissions, optionally filtered by ?status=."""
+    return await service.list_kyc_submissions(status=status, cursor=cursor, limit=limit)
+
+
+@router.get("/employers/kyc/documents/{document_id}/url", status_code=200)
+async def get_kyc_document_url(
+    document_id: UUID = Path(...),
+    admin_user: User = Depends(require_role("ADMIN")),
+    service: AdminService = Depends(get_admin_service),
+):
+    """Generate a presigned URL so an admin can review a KYC document."""
+    url = await service.get_kyc_document_url(document_id)
+    return SuccessResponse(message="URL generated", data={"url": url})
+
+
+@router.patch("/employers/kyc/{employer_profile_id}", status_code=200)
+async def moderate_kyc(
+    employer_profile_id: UUID = Path(...),
+    data: KYCModerationRequest = ...,
+    admin_user: User = Depends(require_role("ADMIN")),
+    service: AdminService = Depends(get_admin_service),
+):
+    """Approve or reject an employer's KYC submission."""
+    return await service.moderate_kyc(
+        admin_id=admin_user.id,
+        employer_profile_id=employer_profile_id,
+        action=data.action,
+        reason=data.reason,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Stats
 # ---------------------------------------------------------------------------
 
@@ -357,13 +411,8 @@ async def reindex_ai(
     content hasn't changed, but since hashes are cleared here they will always
     run at least once.
     """
-    from sqlalchemy import update
+    from sqlalchemy import select, update
 
-    from app.modules.applications.models import Application
-    from app.modules.candidates.models import CandidateProfile
-    from app.modules.jobs.models import Job
-    from app.modules.jobs.enums import JobStatus
-    from app.modules.talent_pool.models import TalentPoolProfiles
     from app.modules.ai.tasks import (
         generate_candidate_embedding_task,
         generate_job_embedding_task,
@@ -371,15 +420,15 @@ async def reindex_ai(
         score_application_task,
         score_talent_pool_profile_task,
     )
-    from sqlalchemy import select
+    from app.modules.applications.models import Application
+    from app.modules.candidates.models import CandidateProfile
+    from app.modules.jobs.enums import JobStatus
+    from app.modules.jobs.models import Job
+    from app.modules.talent_pool.models import TalentPoolProfiles
 
     # ── 1. Clear embedding hashes ──────────────────────────────────────────
-    await db.execute(
-        update(CandidateProfile).values(embedding_source_hash=None)
-    )
-    await db.execute(
-        update(TalentPoolProfiles).values(embedding_source_hash=None)
-    )
+    await db.execute(update(CandidateProfile).values(embedding_source_hash=None))
+    await db.execute(update(TalentPoolProfiles).values(embedding_source_hash=None))
     await db.execute(
         update(Job)
         .where(Job.status == JobStatus.ACTIVE.value)
@@ -406,10 +455,10 @@ async def reindex_ai(
     candidate_ids = (await db.execute(select(CandidateProfile.id))).scalars().all()
     tp_ids = (await db.execute(select(TalentPoolProfiles.id))).scalars().all()
     job_ids = (
-        await db.execute(
-            select(Job.id).where(Job.status == JobStatus.ACTIVE.value)
-        )
-    ).scalars().all()
+        (await db.execute(select(Job.id).where(Job.status == JobStatus.ACTIVE.value)))
+        .scalars()
+        .all()
+    )
     application_ids = (await db.execute(select(Application.id))).scalars().all()
     tp_with_job = (
         await db.execute(
@@ -442,3 +491,25 @@ async def reindex_ai(
         "applications": len(application_ids),
         "talent_pool_scored": len(tp_with_job),
     }
+
+
+# ---------------------------------------------------------------------------
+# Credits
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/employers/{employer_id}/credits", status_code=200)
+async def grant_credits(
+    employer_id: UUID = Path(...),
+    data: CreditGrantRequest = ...,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """Grant credits to an employer and write an audit log entry."""
+    service = AdminService(db)
+    return await service.grant_employer_credits(
+        admin_id=admin_user.id,
+        employer_id=employer_id,
+        amount=data.amount,
+        reason=data.reason,
+    )

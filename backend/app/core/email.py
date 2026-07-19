@@ -34,7 +34,7 @@ class EmailService(ABC):
 
     @abstractmethod
     async def send_employer_notification(
-        self, employer_email: str, job_title: str, candidate_name: str
+        self, employer_email: str, job_title: str, candidate_name: str, job_id: str
     ) -> None:
         """Notify employer that a new application has been received."""
         ...
@@ -68,6 +68,46 @@ class EmailService(ABC):
         inquiry_type: str,
     ) -> None:
         """Notify the Elevare team of a new contact form submission."""
+        ...
+
+    @abstractmethod
+    async def send_introduction_request(
+        self,
+        candidate_email: str,
+        accept_url: str,
+        decline_url: str,
+        job_title: str,
+    ) -> None:
+        """Send an introduction request email with accept/decline magic links."""
+        ...
+
+    @abstractmethod
+    async def send_introduction_accepted(
+        self,
+        employer_email: str,
+        job_title: str,
+        profile_url: str,
+    ) -> None:
+        """Notify employer that a candidate accepted their introduction request."""
+        ...
+
+    @abstractmethod
+    async def send_kyc_rejection(
+        self,
+        employer_email: str,
+        company_name: str | None,
+        reason: str | None,
+    ) -> None:
+        """Notify employer that their KYC was rejected with a link to resubmit."""
+        ...
+
+    @abstractmethod
+    async def send_kyc_approved(
+        self,
+        employer_email: str,
+        company_name: str | None,
+    ) -> None:
+        """Notify employer that their KYC has been approved."""
         ...
 
 
@@ -173,7 +213,7 @@ def _render_email_layout(
               </table>
             </td>
           </tr>
-          
+
           <!-- Content Body -->
           <tr>
             <td style="padding: 24px 32px 40px 32px;" class="email-padding">
@@ -181,7 +221,7 @@ def _render_email_layout(
             </td>
           </tr>
         </table>
-        
+
         <!-- Footer -->
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%;">
           <tr>
@@ -285,7 +325,7 @@ class ResendEmailService(EmailService):
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Application Received</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your application for <strong>{job_title}</strong> at <strong>{company_name}</strong> has been successfully submitted.</p>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The hiring team will review your credentials and get in touch if your profile aligns with their needs. You can monitor the progress of your application on your dashboard.</p>
-        
+
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: left;">
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Application Details</div>
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 600; color: #0F172A; margin-bottom: 4px;">{job_title}</div>
@@ -317,7 +357,7 @@ class ResendEmailService(EmailService):
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Application Status Update</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your job application has been updated with a new status.</p>
-        
+
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: left;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
@@ -354,13 +394,14 @@ class ResendEmailService(EmailService):
         )
 
     async def send_employer_notification(
-        self, employer_email: str, job_title: str, candidate_name: str
+        self, employer_email: str, job_title: str, candidate_name: str, job_id: str
     ) -> None:
         """Notify an employer by email that a new application has been received."""
+        review_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New Application Received</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A new candidate has applied to your job posting.</p>
-        
+
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Candidate Name</div>
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 18px; font-weight: 700; color: #0F172A; margin-bottom: 12px;">{candidate_name}</div>
@@ -369,7 +410,7 @@ class ResendEmailService(EmailService):
 
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Review their profile, resume, and AI match score on your Elevare employer dashboard.</p>
 
-        {_render_button("Review Application", f"{settings.app_url}/employer/applications")}
+        {_render_button("Review Application", review_url)}
         """
 
         html_body = _render_email_layout(
@@ -400,9 +441,9 @@ class ResendEmailService(EmailService):
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Verify Your Email Address</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Welcome to Elevare! Click the button below to verify your email address and activate your account. This link will expire in 24 hours.</p>
-        
+
         {_render_button("Verify Email", verification_link)}
-        
+
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 24px; border-top: 1px solid #E2E8F0; padding-top: 20px;">
           <tr>
             <td>
@@ -457,7 +498,7 @@ class ResendEmailService(EmailService):
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New Contact Submission</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A new inquiry has been submitted via the Elevare website.</p>
-        
+
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size: 14px; line-height: 1.5;">
             <tr>
@@ -475,7 +516,7 @@ class ResendEmailService(EmailService):
             </tr>
           </table>
         </div>
-        
+
         <div style="background-color: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; text-align: left; margin-top: 20px;">
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">Message</div>
           <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #0F172A; white-space: pre-wrap;">{message}</p>
@@ -512,7 +553,7 @@ class ResendEmailService(EmailService):
 
             body_content_html = f"""
             <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Job Listing Approved</h2>
-            
+
             <div style="background-color: #ECFDF5; border: 1px solid #D1FAE5; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #065F46; margin-bottom: 8px;">Approved & Ready to Publish</div>
@@ -538,7 +579,7 @@ class ResendEmailService(EmailService):
 
             body_content_html = f"""
             <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Job Listing Requires Changes</h2>
-            
+
             <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #B45309; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #78350F; margin-bottom: 8px;">Revision Needed</div>
@@ -560,6 +601,158 @@ class ResendEmailService(EmailService):
 
         await self._send_html(
             subject=subject, recipients=[employer_email], html_body=html_body
+        )
+
+    async def send_introduction_request(
+        self,
+        candidate_email: str,
+        accept_url: str,
+        decline_url: str,
+        job_title: str,
+    ) -> None:
+        """Send introduction request email with accept/decline magic links."""
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You have an introduction request</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">An employer on Elevare is interested in connecting with you for the role of <strong>{job_title}</strong>.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">No login required — simply click Accept or Decline below. This link expires in 7 days.</p>
+        {_render_button("Accept Introduction", accept_url, is_primary=True)}
+        {_render_button("Decline", decline_url, is_primary=False)}
+        <p style="margin: 16px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">If you decline, your identity will not be shared with the employer.</p>
+        """
+        html_body = _render_email_layout(
+            title="Introduction Request — Elevare",
+            preheader=f"An employer wants to connect with you for the role of {job_title}.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because your CV is in the Elevare talent pool.",
+        )
+        await self._send_html(
+            subject=f"Introduction Request: {job_title}",
+            recipients=[candidate_email],
+            html_body=html_body,
+        )
+
+    async def send_introduction_accepted(
+        self,
+        employer_email: str,
+        job_title: str,
+        profile_url: str,
+    ) -> None:
+        """Notify employer that a candidate accepted their introduction request."""
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction Accepted</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A candidate has accepted your introduction request for <strong>{job_title}</strong>.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You can now view their full profile and contact details on your Elevare dashboard.</p>
+        {_render_button("View Full Profile", profile_url)}
+        """
+        html_body = _render_email_layout(
+            title=f"Introduction Accepted — {job_title}",
+            preheader=f"A candidate accepted your introduction request for {job_title}.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you requested a candidate introduction on Elevare.",
+        )
+        await self._send_html(
+            subject=f"Introduction Accepted: {job_title}",
+            recipients=[employer_email],
+            html_body=html_body,
+        )
+
+    async def send_introduction_declined(
+        self,
+        employer_email: str,
+        job_title: str,
+    ) -> None:
+        """Notify employer that a candidate declined their introduction request."""
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction Declined</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The candidate has declined your introduction request for <strong>{job_title}</strong>.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your credit has been refunded. You can request introductions from other matched candidates on your dashboard.</p>
+        {_render_button("View AI Matches", f"{settings.app_url}/employer/jobs")}
+        """
+        html_body = _render_email_layout(
+            title=f"Introduction Declined — {job_title}",
+            preheader=f"A candidate declined your introduction request for {job_title}. Your credit has been refunded.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you requested a candidate introduction on Elevare.",
+        )
+        await self._send_html(
+            subject=f"Introduction Declined: {job_title}",
+            recipients=[employer_email],
+            html_body=html_body,
+        )
+
+    async def send_kyc_rejection(
+        self,
+        employer_email: str,
+        company_name: str | None,
+        reason: str | None,
+    ) -> None:
+        """Notify employer that their KYC was rejected, with a link to resubmit."""
+        cta_url = f"{settings.app_url}/employer/verify"
+        company_label = company_name or "your company"
+        reason_block = (
+            f"""
+            <div style="background-color: #ffffff; border: 1px solid #FCD34D; border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #78350F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Reason</div>
+              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F; font-style: italic;">"{reason}"</p>
+            </div>
+            """
+            if reason
+            else ""
+        )
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Company Verification Update</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We were unable to verify <strong>{company_label}</strong> at this time.</p>
+
+        <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #B45309; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #78350F; margin-bottom: 8px;">Verification Rejected</div>
+          <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F;">Please upload the correct documents and resubmit your verification request.</p>
+          {reason_block}
+        </div>
+
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Click below to return to the verification page and resubmit.</p>
+        {_render_button("Resubmit Verification", cta_url)}
+        """
+        html_body = _render_email_layout(
+            title="Company Verification Rejected — Elevare",
+            preheader=f"Your company verification for {company_label} was not approved. Please resubmit.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you submitted a company verification request on Elevare.",
+        )
+        await self._send_html(
+            subject="Company Verification Update — Action Required",
+            recipients=[employer_email],
+            html_body=html_body,
+        )
+
+    async def send_kyc_approved(
+        self,
+        employer_email: str,
+        company_name: str | None,
+    ) -> None:
+        """Notify employer that their KYC has been approved."""
+        company_label = company_name or "your company"
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Company Verification Approved</h2>
+
+        <div style="background-color: #ECFDF5; border: 1px solid #D1FAE5; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #065F46; margin-bottom: 8px;">Verified ✓</div>
+          <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #065F46;"><strong>{company_label}</strong> has been successfully verified. You can now post jobs on Elevare.</p>
+        </div>
+
+        {_render_button("Post a Job", f"{settings.app_url}/employer/jobs/new")}
+        """
+        html_body = _render_email_layout(
+            title="Company Verified — Elevare",
+            preheader=f"{company_label} has been verified. You can now post jobs on Elevare.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you submitted a company verification request on Elevare.",
+        )
+        await self._send_html(
+            subject="Company Verified — You Can Now Post Jobs",
+            recipients=[employer_email],
+            html_body=html_body,
         )
 
 
@@ -589,14 +782,15 @@ class StubEmailService(EmailService):
         )
 
     async def send_employer_notification(
-        self, employer_email: str, job_title: str, candidate_name: str
+        self, employer_email: str, job_title: str, candidate_name: str, job_id: str
     ) -> None:
         """Log a stub employer new-application notification email."""
         logger.info(
-            "STUB EMAIL SENT to %s: New application for %s by %s",
+            "STUB EMAIL SENT to %s: New application for %s by %s (job_id=%s)",
             employer_email,
             job_title,
             candidate_name,
+            job_id,
         )
 
     async def send_verification_email(
@@ -655,6 +849,75 @@ class StubEmailService(EmailService):
             name,
             sender_email,
             inquiry_type,
+        )
+
+    async def send_introduction_request(
+        self,
+        candidate_email: str,
+        accept_url: str,
+        decline_url: str,
+        job_title: str,
+    ) -> None:
+        """Log a stub introduction request email."""
+        logger.info(
+            "STUB INTRODUCTION REQUEST to %s for role '%s'\n  Accept: %s\n  Decline: %s",
+            candidate_email,
+            job_title,
+            accept_url,
+            decline_url,
+        )
+
+    async def send_introduction_accepted(
+        self,
+        employer_email: str,
+        job_title: str,
+        profile_url: str,
+    ) -> None:
+        """Log a stub introduction accepted email."""
+        logger.info(
+            "STUB INTRODUCTION ACCEPTED to %s for role '%s'\n  Profile: %s",
+            employer_email,
+            job_title,
+            profile_url,
+        )
+
+    async def send_introduction_declined(
+        self,
+        employer_email: str,
+        job_title: str,
+    ) -> None:
+        """Log a stub introduction declined email."""
+        logger.info(
+            "STUB INTRODUCTION DECLINED to %s for role '%s' — credit refunded",
+            employer_email,
+            job_title,
+        )
+
+    async def send_kyc_rejection(
+        self,
+        employer_email: str,
+        company_name: str | None,
+        reason: str | None,
+    ) -> None:
+        """Log a stub KYC rejection email."""
+        logger.info(
+            "STUB KYC REJECTED to %s — company=%s reason=%s link=%s/employer/verify",
+            employer_email,
+            company_name,
+            reason,
+            settings.app_url,
+        )
+
+    async def send_kyc_approved(
+        self,
+        employer_email: str,
+        company_name: str | None,
+    ) -> None:
+        """Log a stub KYC approved email."""
+        logger.info(
+            "STUB KYC APPROVED to %s — company=%s",
+            employer_email,
+            company_name,
         )
 
 

@@ -62,6 +62,29 @@ export function useAdmin() {
   const moderateTestimonial = (id, status) =>
     request(() => api.patch(`/api/v1/admin/testimonials/${id}`, { status }).then((r) => r.data))
 
+  // Credits
+  const grantEmployerCredits = (employerId, amount, reason) =>
+    request(() =>
+      api.patch(`/api/v1/admin/employers/${employerId}/credits`, { amount, reason })
+        .then((r) => r.data)
+    )
+
+  // Employer KYC
+  const listKycSubmissions = (params) =>
+    request(() => api.get('/api/v1/admin/employers/kyc', { params }).then((r) => r.data))
+
+  const moderateKyc = (employerProfileId, action, reason = null) =>
+    request(() =>
+      api.patch(`/api/v1/admin/employers/kyc/${employerProfileId}`, { action, reason })
+        .then((r) => r.data)
+    )
+
+  const getKycDocumentUrl = (documentId) =>
+    request(() =>
+      api.get(`/api/v1/admin/employers/kyc/documents/${documentId}/url`)
+        .then((r) => r.data.data.url)
+    )
+
   return {
     loading,
     error,
@@ -77,5 +100,9 @@ export function useAdmin() {
     getCvUrl,
     listTestimonials,
     moderateTestimonial,
+    grantEmployerCredits,
+    listKycSubmissions,
+    moderateKyc,
+    getKycDocumentUrl,
   }
 }

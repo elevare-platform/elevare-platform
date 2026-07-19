@@ -46,6 +46,7 @@ celery = Celery(
         "app.modules.ai.tasks",  # CV parsing pipeline
         "app.modules.applications.tasks",
         "app.modules.ingestion.tasks",  # candidate ingestion
+        "app.modules.introductions.tasks",  # introduction request emails
     ],
 )
 

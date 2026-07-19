@@ -59,6 +59,7 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
+            kyc_status="APPROVED",
         )
         db_session.add(profile)
         await db_session.flush()
@@ -69,7 +70,9 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
 def job_payload(**overrides) -> dict:
     defaults = {
         "title": "Backend Engineer",
-        "description": "Build scalable APIs. Python and SQL required.",
+        "about_the_role": "Build scalable APIs. Python and SQL required.",
+        "key_responsibilities": "Design, build and maintain backend services.",
+        "requirements": "Strong Python, SQL and FastAPI skills.",
         "location": "Lagos",
         "contract_type": ContractType.FULL_TIME.value,
         "work_model": WorkModel.HYBRID.value,
@@ -221,11 +224,20 @@ class TestScoreHashing:
         assert h1 == h2
 
     def test_cv_hash_changes_when_skills_change(self):
+        """Hash is driven by work_history + role identity, not skills list."""
         h1 = hash_cv_scoring_inputs(
-            {"skills": ["Python"], "years_experience": 3, "seniority_level": "MID"}
+            {
+                "current_title": "Engineer",
+                "work_history": [{"title": "Dev", "company": "Acme", "description": "Python work"}],
+                "years_experience": 3,
+            }
         )
         h2 = hash_cv_scoring_inputs(
-            {"skills": ["Java"], "years_experience": 3, "seniority_level": "MID"}
+            {
+                "current_title": "Engineer",
+                "work_history": [{"title": "Dev", "company": "Acme", "description": "Java work"}],
+                "years_experience": 3,
+            }
         )
         assert h1 != h2
 

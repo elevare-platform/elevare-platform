@@ -29,7 +29,9 @@ def past_deadline(days: int = 1) -> str:
 def job_payload(**overrides) -> dict:
     defaults = {
         "title": "Backend Engineer",
-        "description": "Build scalable APIs for a growing platform.",
+        "about_the_role": "Build scalable APIs for a growing platform.",
+        "key_responsibilities": "Design, build and maintain backend services.",
+        "requirements": "Strong Python skills and experience with FastAPI.",
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME.value,
         "work_model": WorkModel.HYBRID.value,
@@ -72,6 +74,7 @@ async def register_and_activate(
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
+            kyc_status="APPROVED",
         )
         db_session.add(profile)
         await db_session.flush()
@@ -154,6 +157,16 @@ def override_storage():
     app.dependency_overrides[get_storage_service] = lambda: MockStorageService()
     yield
     app.dependency_overrides.pop(get_storage_service, None)
+
+
+@pytest.fixture(autouse=True)
+def mock_celery_task():
+    """Prevent real Celery tasks from firing — no broker available in tests."""
+    from unittest.mock import MagicMock, patch
+
+    with patch("app.modules.applications.service.score_application_task") as mock_task:
+        mock_task.delay = MagicMock()
+        yield mock_task
 
 
 # ---------------------------------------------------------------------------

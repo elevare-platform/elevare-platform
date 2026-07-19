@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.modules.employer.schemas import KYCDocumentResponse
 from app.modules.users.enums import AccountStatus, UserRole
 
 
@@ -135,3 +136,76 @@ class AdminApplicationResponse(BaseModel):
             ),
             candidate_email=candidate.email if candidate else None,
         )
+
+
+class KYCModerationRequest(BaseModel):
+    """Payload for approving or rejecting an employer's KYC submission."""
+
+    action: str  # "APPROVED" or "REJECTED"
+    reason: str | None = None
+
+
+class AdminKYCEmployerResponse(BaseModel):
+    """Employer KYC submission for admin review."""
+
+    employer_profile_id: UUID
+    user_id: UUID
+    company_name: str | None
+    first_name: str
+    last_name: str
+    email: str
+    kyc_status: str
+    kyc_submitted_at: datetime | None
+    kyc_reviewed_at: datetime | None
+    kyc_rejection_reason: str | None
+    documents: list[KYCDocumentResponse]
+
+    @classmethod
+    def from_profile(cls, profile) -> "AdminKYCEmployerResponse":
+        """Build from an EmployerProfile ORM object with user/documents loaded."""
+        return cls(
+            employer_profile_id=profile.id,
+            user_id=profile.user_id,
+            company_name=profile.company_name,
+            first_name=profile.user.first_name,
+            last_name=profile.user.last_name,
+            email=profile.user.email,
+            kyc_status=profile.kyc_status,
+            kyc_submitted_at=profile.kyc_submitted_at,
+            kyc_reviewed_at=profile.kyc_reviewed_at,
+            kyc_rejection_reason=profile.kyc_rejection_reason,
+            documents=[KYCDocumentResponse.model_validate(d) for d in profile.kyc_documents],
+        )
+
+
+class CreditGrantRequest(BaseModel):
+    """Payload for granting credits to an employer."""
+
+    amount: int = Field(..., gt=0)
+    reason: str | None = Field(None, max_length=200)
+
+
+class AuditLogAdminSummary(BaseModel):
+    """Safe admin summary embedded in audit log entries — no sensitive fields."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    first_name: str
+    last_name: str
+    email: str
+
+
+class AuditLogResponse(BaseModel):
+    """Safe audit log entry — excludes raw admin ORM object."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    action: str
+    reason: str | None = None
+    target_type: str
+    target_id: UUID
+    log_metadata: dict | None = None
+    admin: AuditLogAdminSummary | None = None

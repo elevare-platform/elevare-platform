@@ -16,7 +16,7 @@ import api from '@/lib/api'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const SOURCES = ['email', 'gmail_import', 'referral', 'linkedin', 'other']
+const SOURCES = ['email', 'gmail_import', 'zoho_import', 'referral', 'linkedin', 'other']
 const STATUSES = ['new', 'shortlisted', 'promoted_pending', 'promoted', 'archived']
 
 const STATUS_CONFIG = {
@@ -28,11 +28,11 @@ const STATUS_CONFIG = {
 }
 
 const SOURCE_ICONS = {
-  email: '📧', gmail_import: '📨', referral: '🤝', linkedin: '💼', other: '📎',
+  email: '📧', gmail_import: '📨', zoho_import: '📩', referral: '🤝', linkedin: '💼', other: '📎',
 }
 
 const SOURCE_LABELS = {
-  email: 'Email', gmail_import: 'Gmail', referral: 'Referral', linkedin: 'LinkedIn', other: 'Other',
+  email: 'Email', gmail_import: 'Gmail', zoho_import: 'Zoho', referral: 'Referral', linkedin: 'LinkedIn', other: 'Other',
 }
 
 function scoreColor(score) {
@@ -444,7 +444,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
           <p className="text-xs text-text-muted mt-0.5">
             {[profile.candidate_current_title, profile.candidate_email].filter(Boolean).join(' · ') ||
               (profile.source_note
-                ? profile.source_note.replace(/Gmail import — /, '').replace(/ · message .+$/, '')
+                ? profile.source_note.replace(/(Gmail|Zoho) import — /, '').replace(/ · message .+$/, '')
                 : `Added ${new Date(profile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`)
             }
           </p>
@@ -551,7 +551,7 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
           <span className="capitalize">{SOURCE_LABELS[profile.source] ?? profile.source}</span>
           {profile.candidate_current_title && <><span className="text-border">·</span><span>{profile.candidate_current_title}</span></>}
           {!profile.candidate_current_title && profile.source_note && (
-            <><span className="text-border">·</span><span className="truncate max-w-[140px]">{profile.source_note.replace(/Gmail import — /, '').replace(/ · message .+$/, '')}</span></>
+            <><span className="text-border">·</span><span className="truncate max-w-[140px]">{profile.source_note.replace(/(Gmail|Zoho) import — /, '').replace(/ · message .+$/, '')}</span></>
           )}
         </p>
       </div>

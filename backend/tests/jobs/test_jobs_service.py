@@ -18,7 +18,9 @@ def make_create_request(**overrides) -> JobCreateRequest:
     """Build a JobCreateRequest with sensible defaults."""
     defaults = {
         "title": "Backend Engineer",
-        "description": "Build scalable APIs for our platform.",
+        "about_the_role": "Build scalable APIs for our platform.",
+        "key_responsibilities": "Design, build and maintain backend services.",
+        "requirements": "Strong Python skills and experience with FastAPI.",
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME,
         "work_model": WorkModel.HYBRID,
@@ -45,6 +47,7 @@ async def test_create_job_returns_draft(db_session):
         industry="Technology",
         company_size="11-50",
         is_profile_complete=True,
+        kyc_status="APPROVED",
     )
     db_session.add(profile)
     await db_session.flush()

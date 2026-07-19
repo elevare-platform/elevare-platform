@@ -159,6 +159,7 @@ async def test_moderate_job_updates_status_and_logs(db_session):
         industry="Tech",
         company_size="11-50",
         is_profile_complete=True,
+        kyc_status="APPROVED",
     )
     db_session.add(profile)
     await db_session.flush()
@@ -234,6 +235,7 @@ async def test_stats_endpoint_returns_correct_counts(db_session):
         industry="Tech",
         company_size="11-50",
         is_profile_complete=True,
+        kyc_status="APPROVED",
     )
     db_session.add(profile)
     await db_session.flush()

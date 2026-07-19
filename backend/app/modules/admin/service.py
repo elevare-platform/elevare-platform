@@ -9,17 +9,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     CannotModifyAdminException,
+    DocumentNotFoundError,
     JobNotFoundError,
+    ProfileNotFoundException,
     UserNotFoundException,
     ValidationException,
 )
+from app.core.storage import StorageService
 from app.modules.admin.repository import AdminRepository
+from app.modules.employer.enums import KYCStatus
 from app.modules.jobs.enums import ModerationStatus
 from app.modules.users.enums import UserRole
 
 _VALID_MODERATION_ACTIONS = {
     ModerationStatus.APPROVED.value,
     ModerationStatus.REJECTED.value,
+}
+
+_VALID_KYC_ACTIONS = {
+    KYCStatus.APPROVED.value,
+    KYCStatus.REJECTED.value,
 }
 
 _BULK_LIMIT = 100
@@ -30,10 +39,11 @@ logger = logging.getLogger(__name__)
 class AdminService:
     """Orchestrates admin operations and audit logging."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, storage: StorageService | None = None) -> None:
         """Initialise the service with an async database session."""
         self._db = db
         self._repo = AdminRepository(db)
+        self._storage = storage
 
     # -----------------------------------------------------------------------
     # Users
@@ -164,14 +174,15 @@ class AdminService:
             job = await self._repo.set_job_status(job, "CLOSED")
         else:
             job = await self._repo.set_job_moderation_status(job, action)
-            # from app.modules.applications.tasks import send_job_moderation_email
-            # send_job_moderation_email.delay(
-            #     job.employer.email,
-            #     str(job.id),
-            #     job.title,
-            #     action,
-            #     reason,
-            # )
+            from app.modules.applications.tasks import send_job_moderation_email
+
+            send_job_moderation_email.delay(
+                job.employer.email,
+                str(job.id),
+                job.title,
+                action,
+                reason,
+            )
 
         await self._repo.write_audit_log(
             admin_id=admin_id,
@@ -223,6 +234,84 @@ class AdminService:
         return {"updated": updated}
 
     # -----------------------------------------------------------------------
+    # Employer KYC
+    # -----------------------------------------------------------------------
+
+    async def list_kyc_submissions(
+        self,
+        status: str | None = None,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Return a paginated list of employer KYC submissions."""
+        from app.modules.admin.schemas import AdminKYCEmployerResponse
+
+        result = await self._repo.list_kyc_submissions(status, cursor, limit)
+        result["items"] = [
+            AdminKYCEmployerResponse.from_profile(p) for p in result["items"]
+        ]
+        return result
+
+    async def get_kyc_document_url(self, document_id: UUID) -> str:
+        """Generate a presigned URL so an admin can review a KYC document."""
+        from app.modules.employer.repository import EmployerRepository
+
+        emp_repo = EmployerRepository(self._db)
+        doc = await emp_repo.get_kyc_document(document_id)
+        if not doc:
+            raise DocumentNotFoundError()
+        return await self._storage.generate_presigned_url(doc.key, 60 * 15)
+
+    async def moderate_kyc(
+        self,
+        admin_id: UUID,
+        employer_profile_id: UUID,
+        action: str,
+        reason: str | None = None,
+    ) -> object:
+        """Approve or reject an employer's KYC submission and write an audit log entry."""
+        from app.modules.admin.schemas import AdminKYCEmployerResponse
+        from app.modules.employer.repository import EmployerRepository
+
+        action = action.upper()
+        if action not in _VALID_KYC_ACTIONS:
+            raise ValidationException(message=f"Invalid KYC action: {action}")
+
+        profile = await self._repo.get_employer_profile_by_id(employer_profile_id)
+        if not profile:
+            raise ProfileNotFoundException()
+
+        before = profile.kyc_status
+        emp_repo = EmployerRepository(self._db)
+        profile = await emp_repo.set_kyc_status(profile, action, reason)
+
+        await self._repo.write_audit_log(
+            admin_id=admin_id,
+            action=f"MODERATE_KYC_{action}",
+            reason=reason,
+            target_type="employer_profile",
+            target_id=profile.id,
+            log_metadata={
+                "before": {"kyc_status": before},
+                "after": {"kyc_status": profile.kyc_status},
+            },
+        )
+        await self._db.commit()
+
+        # Send email notification to employer
+        from app.core.email import get_email_service
+
+        email_service = get_email_service()
+        employer_email = profile.user.email
+        company_name = profile.company_name
+
+        if action == KYCStatus.REJECTED.value:
+            await email_service.send_kyc_rejection(employer_email, company_name, reason)
+        elif action == KYCStatus.APPROVED.value:
+            await email_service.send_kyc_approved(employer_email, company_name)
+
+        return AdminKYCEmployerResponse.from_profile(profile)
+    # -----------------------------------------------------------------------
     # Applications
     # -----------------------------------------------------------------------
 
@@ -259,6 +348,39 @@ class AdminService:
         return self._repo.build_applications_csv(applications)
 
     # -----------------------------------------------------------------------
+    # Credits
+    # -----------------------------------------------------------------------
+
+    async def grant_employer_credits(
+        self,
+        admin_id: UUID,
+        employer_id: UUID,
+        amount: int,
+        reason: str | None = None,
+    ) -> dict:
+        """Grant credits to an employer, write an audit log entry, and commit."""
+        from app.modules.credits.service import CreditsService
+
+        credits_service = CreditsService(self._db)
+        new_balance = await credits_service.grant(
+            employer_id=employer_id,
+            amount=amount,
+        )
+        await self._repo.write_audit_log(
+            admin_id=admin_id,
+            action="GRANT_CREDITS",
+            target_type="employer",
+            target_id=employer_id,
+            log_metadata={
+                "amount": amount,
+                "reason": reason,
+                "new_balance": new_balance,
+            },
+        )
+        await self._db.commit()
+        return {"employer_id": str(employer_id), "balance": new_balance}
+
+    # -----------------------------------------------------------------------
     # Audit log
     # -----------------------------------------------------------------------
 
@@ -268,4 +390,8 @@ class AdminService:
         limit: int = 20,
     ) -> dict:
         """Return paginated audit log entries."""
-        return await self._repo.list_audit_log(cursor, limit)
+        from app.modules.admin.schemas import AuditLogResponse
+
+        result = await self._repo.list_audit_log(cursor, limit)
+        result["items"] = [AuditLogResponse.model_validate(e) for e in result["items"]]
+        return result

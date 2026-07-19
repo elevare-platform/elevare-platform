@@ -16,16 +16,18 @@ export function AuthProvider({ children }) {
         const me = await api.get('/api/v1/auth/me')
         const userData = me.data
 
-        // For employers, /me doesn't include is_profile_complete (it lives on
-        // employer_profile, not on the User model). Fetch it separately so the
-        // onboarding redirect works correctly on every page load.
+        // For employers, /me doesn't include is_profile_complete/kyc_status (they
+        // live on employer_profile, not on the User model). Fetch separately so
+        // the onboarding/verification redirects work correctly on every page load.
         if (userData.role === 'EMPLOYER') {
           try {
             const { data: profile } = await api.get('/api/v1/employer/profile')
             userData.is_profile_complete = profile.is_profile_complete ?? false
+            userData.kyc_status = profile.kyc_status ?? 'NOT_SUBMITTED'
           } catch {
-            // If profile fetch fails, default to false so onboarding is shown
+            // If profile fetch fails, default so onboarding/verification is shown
             userData.is_profile_complete = false
+            userData.kyc_status = 'NOT_SUBMITTED'
           }
         }
 
@@ -50,13 +52,15 @@ export function AuthProvider({ children }) {
     const { data } = await api.post('/api/v1/auth/login', { email, password })
     setAccessToken(data.access_token)
     const userData = data.user
-    // Populate is_profile_complete for employers (not in login response)
+    // Populate is_profile_complete/kyc_status for employers (not in login response)
     if (userData.role === 'EMPLOYER') {
       try {
         const { data: profile } = await api.get('/api/v1/employer/profile')
         userData.is_profile_complete = profile.is_profile_complete ?? false
+        userData.kyc_status = profile.kyc_status ?? 'NOT_SUBMITTED'
       } catch {
         userData.is_profile_complete = false
+        userData.kyc_status = 'NOT_SUBMITTED'
       }
     }
     setUser(userData)
@@ -109,7 +113,9 @@ export function isAccountRestricted(user) {
 export function getPostAuthRedirect(user) {
   if (!user) return '/login'
   if (user.role === 'EMPLOYER') {
-    return user.is_profile_complete ? '/dashboard' : '/employer/onboarding'
+    if (!user.is_profile_complete) return '/employer/onboarding'
+    if (user.kyc_status !== 'APPROVED') return '/employer/verification'
+    return '/dashboard'
   }
   if (user.role === 'CANDIDATE') {
     return '/candidate/dashboard'

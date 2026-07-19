@@ -13,7 +13,9 @@ def job_payload(**overrides) -> dict:
     """Return a valid job creation JSON payload with sensible defaults."""
     defaults = {
         "title": "Backend Engineer",
-        "description": "Build scalable APIs for our growing platform.",
+        "about_the_role": "Build scalable APIs for our growing platform.",
+        "key_responsibilities": "Design, build and maintain backend services.",
+        "requirements": "Strong Python skills and experience with FastAPI.",
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME.value,
         "work_model": WorkModel.HYBRID.value,
@@ -87,6 +89,7 @@ async def register_and_promote(client, db_session, role: str) -> str:
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
+            kyc_status="APPROVED",
         )
         db_session.add(profile)
         await db_session.flush()

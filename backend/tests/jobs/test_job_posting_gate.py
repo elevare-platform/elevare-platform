@@ -1,14 +1,15 @@
-"""Tests for the job posting gate — employer profile completeness check.
+"""Tests for the job posting gate — employer profile completeness + KYC checks.
 
 Covers:
 - Employer with incomplete profile cannot post a job (403)
-- Employer with complete profile can post a job (201)
+- Employer with complete profile and approved KYC can post a job (201)
+- Employer with complete profile but unapproved KYC cannot post a job (403)
 - Gate is enforced at the service layer via create_job
 """
 
 import pytest
 
-from app.core.exceptions import PermissionDeniedException
+from app.core.exceptions import KYCRequiredException, PermissionDeniedException
 from app.modules.jobs.enums import ContractType, WorkModel
 from app.modules.jobs.schemas import JobCreateRequest
 from app.modules.jobs.service import JobService
@@ -19,7 +20,9 @@ def make_create_request(**overrides) -> JobCreateRequest:
     """Build a JobCreateRequest with sensible defaults."""
     defaults = {
         "title": "Senior Engineer",
-        "description": "Build great things.",
+        "about_the_role": "Build great things at scale.",
+        "key_responsibilities": "Design, build and maintain backend services.",
+        "requirements": "Strong Python skills and experience with FastAPI.",
         "location": "Lagos, Nigeria",
         "contract_type": ContractType.FULL_TIME,
         "work_model": WorkModel.HYBRID,
@@ -29,7 +32,9 @@ def make_create_request(**overrides) -> JobCreateRequest:
     return JobCreateRequest(**defaults)
 
 
-async def create_employer_with_profile(db_session, is_complete: bool):
+async def create_employer_with_profile(
+    db_session, is_complete: bool, kyc_status: str = "APPROVED"
+):
     """Create an employer user with an EmployerProfile set to the given completeness."""
     from tests.conftest import make_employer
 
@@ -42,6 +47,7 @@ async def create_employer_with_profile(db_session, is_complete: bool):
         company_name="Acme Corp" if is_complete else None,
         industry="Technology" if is_complete else None,
         is_profile_complete=is_complete,
+        kyc_status=kyc_status,
     )
     db_session.add(profile)
     await db_session.flush()
@@ -79,13 +85,26 @@ async def test_create_job_blocked_for_incomplete_profile(db_session):
 
 @pytest.mark.asyncio
 async def test_create_job_allowed_for_complete_profile(db_session):
-    """create_job succeeds when employer profile is complete."""
+    """create_job succeeds when employer profile is complete and KYC is approved."""
     employer = await create_employer_with_profile(db_session, is_complete=True)
 
     service = JobService(db_session)
     result = await service.create_job(make_create_request(), employer=employer)
 
     assert result.employer_id == employer.id
+
+
+@pytest.mark.parametrize("kyc_status", ["NOT_SUBMITTED", "PENDING", "REJECTED"])
+@pytest.mark.asyncio
+async def test_create_job_blocked_when_kyc_not_approved(db_session, kyc_status):
+    """create_job raises KYCRequiredException when profile is complete but KYC isn't approved."""
+    employer = await create_employer_with_profile(
+        db_session, is_complete=True, kyc_status=kyc_status
+    )
+
+    service = JobService(db_session)
+    with pytest.raises(KYCRequiredException):
+        await service.create_job(make_create_request(), employer=employer)
 
 
 @pytest.mark.asyncio
@@ -156,7 +175,9 @@ async def test_post_job_returns_403_for_incomplete_profile(client, db_session):
         "/api/v1/jobs",
         json={
             "title": "Engineer",
-            "description": "Build things.",
+            "about_the_role": "Build things at scale.",
+            "key_responsibilities": "Design and build services.",
+            "requirements": "Python and FastAPI experience.",
             "location": "Lagos",
             "contract_type": ContractType.FULL_TIME.value,
             "work_model": WorkModel.HYBRID.value,
@@ -202,6 +223,7 @@ async def test_post_job_succeeds_for_complete_profile(client, db_session):
         company_name="Acme Corp",
         industry="Technology",
         is_profile_complete=True,
+        kyc_status="APPROVED",
     )
     db_session.add(profile)
     await db_session.flush()
@@ -213,7 +235,9 @@ async def test_post_job_succeeds_for_complete_profile(client, db_session):
         "/api/v1/jobs",
         json={
             "title": "Engineer",
-            "description": "Build things.",
+            "about_the_role": "Build things at scale.",
+            "key_responsibilities": "Design and build services.",
+            "requirements": "Python and FastAPI experience.",
             "location": "Lagos",
             "contract_type": ContractType.FULL_TIME.value,
             "work_model": WorkModel.HYBRID.value,
@@ -223,3 +247,63 @@ async def test_post_job_succeeds_for_complete_profile(client, db_session):
     )
 
     assert response.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_post_job_returns_403_for_unapproved_kyc(client, db_session):
+    """POST /jobs returns 403 KYC_REQUIRED when profile is complete but KYC isn't approved."""
+    from sqlalchemy import select
+
+    from app.modules.auth.jwt_handler import create_token_pair
+    from app.modules.users.models import User
+    from tests.conftest import make_register_data
+
+    data = make_register_data()
+    payload = {
+        "first_name": data.first_name,
+        "last_name": data.last_name,
+        "email": data.email,
+        "phone_number": data.phone_number,
+        "password": data.password,
+        "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
+    }
+    reg = await client.post("/api/v1/auth/register", json=payload)
+    assert reg.status_code == 201
+
+    result = await db_session.execute(select(User).where(User.email == data.email))
+    user = result.scalar_one()
+    user.role = "EMPLOYER"
+    user.account_status = "ACTIVE"
+    await db_session.flush()
+
+    profile = EmployerProfile(
+        user_id=user.id,
+        company_name="Acme Corp",
+        industry="Technology",
+        is_profile_complete=True,
+        kyc_status="PENDING",
+    )
+    db_session.add(profile)
+    await db_session.flush()
+
+    token_pair = create_token_pair(user.id, "EMPLOYER")
+    token = token_pair["access_token"]
+
+    response = await client.post(
+        "/api/v1/jobs",
+        json={
+            "title": "Engineer",
+            "about_the_role": "Build things at scale.",
+            "key_responsibilities": "Design and build services.",
+            "requirements": "Python and FastAPI experience.",
+            "location": "Lagos",
+            "contract_type": ContractType.FULL_TIME.value,
+            "work_model": WorkModel.HYBRID.value,
+            "work_location": "LOCAL",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "KYC_REQUIRED"

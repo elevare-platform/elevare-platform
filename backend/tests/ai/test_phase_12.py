@@ -58,6 +58,7 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
+            kyc_status="APPROVED",
         )
         db_session.add(profile)
         await db_session.flush()
@@ -257,30 +258,31 @@ class TestEmbeddingHashFunctions:
 
     def test_candidate_hash_same_inputs(self):
         h1 = hash_candidate_embedding_source(
-            ["Python", "SQL"], "Bio text", "Summary text"
+            "Software Engineer", "Engineering", "Worked at Acme", "Summary text"
         )
         h2 = hash_candidate_embedding_source(
-            ["Python", "SQL"], "Bio text", "Summary text"
+            "Software Engineer", "Engineering", "Worked at Acme", "Summary text"
         )
         assert h1 == h2
 
     def test_candidate_hash_skill_order_normalised(self):
-        h1 = hash_candidate_embedding_source(["Python", "SQL"], "bio", "summary")
-        h2 = hash_candidate_embedding_source(["SQL", "Python"], "bio", "summary")
+        # Skills are no longer part of embedding source — work history is
+        h1 = hash_candidate_embedding_source("Engineer", "Tech", "same history", "summary")
+        h2 = hash_candidate_embedding_source("Engineer", "Tech", "same history", "summary")
         assert h1 == h2
 
     def test_candidate_hash_changes_on_bio_update(self):
-        h1 = hash_candidate_embedding_source(["Python"], "old bio", "summary")
-        h2 = hash_candidate_embedding_source(["Python"], "new bio", "summary")
+        h1 = hash_candidate_embedding_source("Engineer", "Tech", "old work history", "summary")
+        h2 = hash_candidate_embedding_source("Engineer", "Tech", "new work history", "summary")
         assert h1 != h2
 
     def test_candidate_hash_changes_on_summary_update(self):
-        h1 = hash_candidate_embedding_source(["Python"], "bio", "old summary")
-        h2 = hash_candidate_embedding_source(["Python"], "bio", "new summary")
+        h1 = hash_candidate_embedding_source("Engineer", "Tech", "work history", "old summary")
+        h2 = hash_candidate_embedding_source("Engineer", "Tech", "work history", "new summary")
         assert h1 != h2
 
     def test_candidate_hash_handles_none(self):
-        h = hash_candidate_embedding_source(None, None, None)
+        h = hash_candidate_embedding_source(None, None, "", None)
         assert isinstance(h, str)
         assert len(h) == 64  # SHA-256 hex digest
 
@@ -300,13 +302,13 @@ class TestEmbeddingHashFunctions:
         assert h1 != h2
 
     def test_talent_pool_hash_same_inputs(self):
-        h1 = hash_talent_pool_embedding_source(["Python"], "summary text")
-        h2 = hash_talent_pool_embedding_source(["Python"], "summary text")
+        h1 = hash_talent_pool_embedding_source("Engineer", "Tech", "work history", "summary text")
+        h2 = hash_talent_pool_embedding_source("Engineer", "Tech", "work history", "summary text")
         assert h1 == h2
 
     def test_talent_pool_hash_changes_on_summary_update(self):
-        h1 = hash_talent_pool_embedding_source(["Python"], "old summary")
-        h2 = hash_talent_pool_embedding_source(["Python"], "new summary")
+        h1 = hash_talent_pool_embedding_source("Engineer", "Tech", "work history", "old summary")
+        h2 = hash_talent_pool_embedding_source("Engineer", "Tech", "work history", "new summary")
         assert h1 != h2
 
 
@@ -319,10 +321,9 @@ class TestEmbeddingHashInvalidation:
 
     def test_hash_unchanged_skips_generation(self):
         """If stored hash equals computed hash and embedding exists, skip — no API call needed."""
-        skills = ["Python", "SQL"]
-        bio = "Experienced developer"
-        summary = "Built scalable systems"
-        current_hash = hash_candidate_embedding_source(skills, bio, summary)
+        current_hash = hash_candidate_embedding_source(
+            "Engineer", "Tech", "Built scalable systems", "Experienced developer"
+        )
 
         stored_hash = current_hash  # same — hash hasn't changed
         has_embedding = True
@@ -332,10 +333,9 @@ class TestEmbeddingHashInvalidation:
 
     def test_hash_changed_triggers_regeneration(self):
         """If stored hash differs from computed hash, regeneration should run."""
-        skills = ["Python", "SQL"]
-        bio = "Updated bio"
-        summary = "Updated summary"
-        current_hash = hash_candidate_embedding_source(skills, bio, summary)
+        current_hash = hash_candidate_embedding_source(
+            "Engineer", "Tech", "Updated work history", "Updated summary"
+        )
 
         stored_hash = "stale_hash_abc123"  # outdated
         has_embedding = True
@@ -345,10 +345,9 @@ class TestEmbeddingHashInvalidation:
 
     def test_missing_embedding_triggers_regeneration_even_with_matching_hash(self):
         """If embedding is missing but hash matches (edge case), still regenerate."""
-        skills = ["Python"]
-        bio = "bio"
-        summary = "summary"
-        current_hash = hash_candidate_embedding_source(skills, bio, summary)
+        current_hash = hash_candidate_embedding_source(
+            "Engineer", "Tech", "work history", "summary"
+        )
 
         stored_hash = current_hash
         has_embedding = False  # embedding was deleted / never stored

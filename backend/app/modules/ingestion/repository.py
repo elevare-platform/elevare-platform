@@ -174,6 +174,29 @@ class IngestionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_runs_for_integrations(
+        self, integration_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, IngestionImportRun]:
+        """Return the most recent run per integration, in one query.
+
+        Powers the integrations list showing live/last-known import
+        progress without a browser tab having to stay open — DISTINCT ON
+        is a single indexed query rather than N lookups per integration.
+        """
+        if not integration_ids:
+            return {}
+        result = await self._db.execute(
+            select(IngestionImportRun)
+            .where(IngestionImportRun.integration_id.in_(integration_ids))
+            .distinct(IngestionImportRun.integration_id)
+            .order_by(
+                IngestionImportRun.integration_id,
+                IngestionImportRun.created_at.desc(),
+            )
+        )
+        runs = result.scalars().all()
+        return {run.integration_id: run for run in runs}
+
     async def update_import_run(
         self,
         run_id: uuid.UUID,
