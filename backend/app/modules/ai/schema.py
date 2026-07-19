@@ -3,10 +3,11 @@
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.modules.ai.enums import CVParsingStatus
+from app.modules.ai.enums import CVParsingStatus, JobDescriptionField, JobDescriptionMode
 
 
 class MatchResult(BaseModel):
@@ -66,3 +67,30 @@ class FitReasoningResult:
     strengths: list[str] = field(default_factory=list)
     weaknesses: list[str] = field(default_factory=list)
     fit_summary: str = ""
+
+
+class JobContext(BaseModel):
+    """Contextual metadata about the job, used to guide AI generation."""
+
+    title: str
+    seniority: str | None = None
+    skills: list[str] | None = None
+    industry: str | None = None
+    company_name: str | None = None
+
+
+class JobDescriptionRequest(BaseModel):
+    """Request payload for the AI job description writer."""
+
+    mode: JobDescriptionMode
+    field: JobDescriptionField
+    current_text: str | None = None
+    job_context: JobContext
+
+
+class JobDescriptionResponse(BaseModel):
+    """Response payload from the AI job description writer."""
+
+    generated_text: str
+    mode: JobDescriptionMode
+    field: JobDescriptionField
