@@ -8,10 +8,11 @@ const VARIANTS = {
   // Job status
   DRAFT: 'bg-gray-100 text-gray-600',
   CLOSED: 'bg-red-100 text-red-700',
-  // Moderation
+  // Moderation / KYC
   PENDING: 'bg-yellow-100 text-yellow-700',
   APPROVED: 'bg-green-100 text-green-700',
   REJECTED: 'bg-red-100 text-red-700',
+  NOT_SUBMITTED: 'bg-gray-100 text-gray-600',
   // Application
   SUBMITTED: 'bg-blue-100 text-blue-700',
   REVIEWING: 'bg-purple-100 text-purple-700',

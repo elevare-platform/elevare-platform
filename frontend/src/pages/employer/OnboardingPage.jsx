@@ -63,10 +63,11 @@ export default function OnboardingPage() {
   const onSubmit = async (values) => {
     setServerError(null)
     try {
-      await api.patch('/api/v1/employer/profile', values)
+      const { data } = await api.patch('/api/v1/employer/profile', values)
       // Sync local auth state so ProtectedRoute doesn't redirect back here
-      updateUser({ is_profile_complete: true })
-      navigate('/employer/jobs', { replace: true })
+      updateUser({ is_profile_complete: true, kyc_status: data.kyc_status })
+      const next = data.kyc_status === 'APPROVED' ? '/employer/jobs' : '/employer/verification'
+      navigate(next, { replace: true })
     } catch (err) {
       const msg = err.response?.data?.message ?? err.response?.data?.detail
       setServerError(msg || 'Something went wrong. Please try again.')

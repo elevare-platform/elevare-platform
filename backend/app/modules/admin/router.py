@@ -26,11 +26,20 @@ from .schemas import (
     CreditGrantRequest,
     InviteRequest,
     JobModerationRequest,
+    KYCModerationRequest,
     UserStatusUpdateRequest,
 )
 from .service import AdminService
 
 router = APIRouter()
+
+
+def get_admin_service(
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage_service),
+) -> AdminService:
+    """Construct AdminService with injected DB and storage (needed for KYC document URLs)."""
+    return AdminService(db, storage)
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +217,50 @@ async def list_applications(
         status=status,
         cursor=cursor,
         limit=limit,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Employer KYC
+# ---------------------------------------------------------------------------
+
+
+@router.get("/employers/kyc", status_code=200)
+async def list_kyc_submissions(
+    status: str | None = Query(default=None),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=20, le=100),
+    admin_user: User = Depends(require_role("ADMIN")),
+    service: AdminService = Depends(get_admin_service),
+):
+    """List employer KYC submissions, optionally filtered by ?status=."""
+    return await service.list_kyc_submissions(status=status, cursor=cursor, limit=limit)
+
+
+@router.get("/employers/kyc/documents/{document_id}/url", status_code=200)
+async def get_kyc_document_url(
+    document_id: UUID = Path(...),
+    admin_user: User = Depends(require_role("ADMIN")),
+    service: AdminService = Depends(get_admin_service),
+):
+    """Generate a presigned URL so an admin can review a KYC document."""
+    url = await service.get_kyc_document_url(document_id)
+    return SuccessResponse(message="URL generated", data={"url": url})
+
+
+@router.patch("/employers/kyc/{employer_profile_id}", status_code=200)
+async def moderate_kyc(
+    employer_profile_id: UUID = Path(...),
+    data: KYCModerationRequest = ...,
+    admin_user: User = Depends(require_role("ADMIN")),
+    service: AdminService = Depends(get_admin_service),
+):
+    """Approve or reject an employer's KYC submission."""
+    return await service.moderate_kyc(
+        admin_id=admin_user.id,
+        employer_profile_id=employer_profile_id,
+        action=data.action,
+        reason=data.reason,
     )
 
 

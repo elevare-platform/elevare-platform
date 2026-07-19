@@ -89,6 +89,7 @@ async def register_and_promote(client, db_session, role: str) -> str:
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
+            kyc_status="APPROVED",
         )
         db_session.add(profile)
         await db_session.flush()

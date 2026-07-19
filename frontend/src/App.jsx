@@ -36,6 +36,7 @@ const PostJobPage = lazy(() => import('@/pages/employer/PostJobPage'))
 const EditJobPage = lazy(() => import('@/pages/employer/EditJobPage'))
 const PublishJobPage = lazy(() => import('@/pages/employer/PublishJobPage'))
 const OnboardingPage = lazy(() => import('@/pages/employer/OnboardingPage'))
+const CompanyVerificationPage = lazy(() => import('@/pages/employer/CompanyVerificationPage'))
 const ApplicantsPage = lazy(() => import('@/pages/employer/ApplicantsPage'))
 const EmployerCVParserPage = lazy(() => import('@/pages/employer/EmployerCVParserPage'))
 const TalentPoolPage = lazy(() => import('@/pages/employer/TalentPoolPage'))
@@ -48,6 +49,7 @@ const AdminInvitePage = lazy(() => import('@/pages/admin/AdminInvitePage'))
 const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboardPage'))
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'))
 const AdminJobsPage = lazy(() => import('@/pages/admin/AdminJobsPage'))
+const AdminKycPage = lazy(() => import('@/pages/admin/AdminKycPage'))
 const AdminApplicationsPage = lazy(() => import('@/pages/admin/AdminApplicationsPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/admin/AdminAuditLogPage'))
 const AdminCVParserPage = lazy(() => import('@/pages/admin/AdminCVParserPage'))
@@ -121,6 +123,7 @@ function AppRoutes() {
         {/* Employer-only routes */}
         <Route element={<ProtectedRoute allowedRoles={['EMPLOYER', 'ADMIN']} />}>
           <Route path="/employer/onboarding" element={<OnboardingPage />} />
+          <Route path="/employer/verification" element={<CompanyVerificationPage />} />
           <Route path="/employer/jobs" element={<EmployerJobsPage />} />
           <Route path="/employer/jobs/new" element={<PostJobPage />} />
           <Route path="/employer/jobs/:id/edit" element={<EditJobPage />} />
@@ -138,6 +141,7 @@ function AppRoutes() {
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
+          <Route path="/admin/kyc" element={<AdminKycPage />} />
           <Route path="/admin/applications" element={<AdminApplicationsPage />} />
           <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
           <Route path="/admin/cv-parser" element={<AdminCVParserPage />} />

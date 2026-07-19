@@ -11,6 +11,7 @@ from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
+from app.modules.employer.enums import KYCStatus
 
 from .enums import AccountStatus, UserRole
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from app.modules.introductions.models import IntroductionRequest
     from app.modules.jobs.models import Job, JobAccessTokens
     from app.modules.talent_pool.models import TalentPoolProfiles
+    from app.modules.employer.models import KYCDocument
 
 
 class User(BaseModel):
@@ -206,8 +208,34 @@ class EmployerProfile(BaseModel):
         server_default=sa.false(),
     )
 
+    # =================== KYC ===========================
+    kyc_status: Mapped[KYCStatus] = mapped_column(
+        String(20),
+        nullable=True,
+        default=KYCStatus.NOT_SUBMITTED.value,
+        server_default=KYCStatus.NOT_SUBMITTED.value
+    )
+    kyc_rejection_reason: Mapped[str] = mapped_column(
+        Text,
+        nullable=True
+    )
+    kyc_submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    kyc_reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+
     # relationships
     user: Mapped[User] = relationship(
         "User",
         back_populates="employer_profile",
     )
+    kyc_documents: Mapped[list["KYCDocument"]] = relationship(
+        "KYCDocument",
+        back_populates="employer_profile",
+    )
+

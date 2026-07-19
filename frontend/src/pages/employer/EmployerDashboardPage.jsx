@@ -97,6 +97,7 @@ export default function EmployerDashboardPage() {
   }, [])
 
   const isProfileComplete = user?.is_profile_complete
+  const kycApproved = user?.kyc_status === 'APPROVED'
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-muted">
@@ -131,6 +132,22 @@ export default function EmployerDashboardPage() {
               <Link to="/employer/profile">
                 <Button size="sm" variant="outline" className="border-brand-amber text-brand-amber hover:bg-brand-amber hover:text-white flex-shrink-0">
                   Complete profile
+                </Button>
+              </Link>
+            </div>
+          )}
+
+          {/* KYC not approved banner */}
+          {isProfileComplete && !kycApproved && (
+            <div className="rounded-xl border border-brand-amber/30 bg-brand-amber/5 p-4 flex items-center justify-between gap-4">
+              <p className="text-sm text-amber-800">
+                {user?.kyc_status === 'PENDING'
+                  ? 'Your company verification is under review.'
+                  : 'Verify your company to unlock job posting.'}
+              </p>
+              <Link to="/employer/verification">
+                <Button size="sm" variant="outline" className="border-brand-amber text-brand-amber hover:bg-brand-amber hover:text-white flex-shrink-0">
+                  {user?.kyc_status === 'PENDING' ? 'View status' : 'Verify company'}
                 </Button>
               </Link>
             </div>

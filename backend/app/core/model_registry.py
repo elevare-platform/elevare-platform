@@ -26,6 +26,7 @@ from app.modules.candidates.models import (
 )
 from app.modules.contact.models import ContactSubmission
 from app.modules.credits.models import CreditTransaction, EmployerCredits
+from app.modules.employer.models import KYCDocument
 from app.modules.ingestion.models import IngestionImportRun, MailIntegration
 from app.modules.introductions.models import IntroductionRequest
 from app.modules.jobs.models import Job, JobAccessTokens
@@ -60,4 +61,5 @@ __all__ = [
     "EmployerCredits",
     "CreditTransaction",
     "IntroductionRequest",
+    "KYCDocument",
 ]
