@@ -339,21 +339,6 @@ function RegisterForm({ role, onBack }) {
           <FormMessage>{errors.confirm_password?.message}</FormMessage>
         </FormField>
 
-        {role === 'CANDIDATE' && (
-          <div className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
-            <input
-              id="cv_sharing_consent"
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 rounded border-border text-brand-blue focus:ring-brand-blue cursor-pointer"
-              {...register('cv_sharing_consent')}
-            />
-            <label htmlFor="cv_sharing_consent" className="text-xs text-text-muted cursor-pointer leading-relaxed">
-              I consent to my name being shown on recruiter-shared links when my CV is presented to potential clients.
-              You can change this anytime from your profile settings.
-            </label>
-          </div>
-        )}
-
         {/* CV sharing consent — candidate only */}
         {role === 'CANDIDATE' && (
           <div className="flex items-start gap-3 rounded-lg border border-border p-3 bg-surface">
