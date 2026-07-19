@@ -3,7 +3,6 @@ import Footer from '@/components/layout/Footer'
 import { FloatingWhatsApp } from '@/components/ui/FloatingWhatsApp'
 import { Helmet } from 'react-helmet-async'
 import { Link } from 'react-router-dom'
-import { AlertCircle } from 'lucide-react'
 
 const SECTIONS = [
   {
@@ -20,6 +19,11 @@ const SECTIONS = [
     title: 'Data Sharing',
     content:
       'Candidate profile information is shared with employers only when you apply for a role or set your profile to visible. Contact form submissions are shared internally with the relevant Elevare team.',
+  },
+  {
+    title: 'Gmail and Zoho Mail Integration',
+    content:
+      'Employers may optionally connect a Gmail or Zoho Mail account so Elevare can import candidate CVs sent to their recruitment inbox. With this connection, we access email metadata (sender, subject, date) and attachments in a read-only capacity, solely to identify and import CV attachments into that employer\'s Talent Pool. We do not read, store, or process email content unrelated to CV attachments, and we do not use this data for advertising or to train generalised AI/ML models. Access can be revoked at any time from the Mail Ingestion page in Elevare, or directly from your Google or Zoho account security settings. Elevare\'s use and transfer of information received from Google APIs to any other app will adhere to the Google API Services User Data Policy, including the Limited Use requirements.',
   },
   {
     title: 'Data Retention',
@@ -56,18 +60,6 @@ export default function PrivacyPage() {
         </section>
 
         <section className="py-16 sm:py-24 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Draft notice */}
-          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-5 py-4 mb-12">
-            <AlertCircle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-800">
-              This policy is being finalised. Please{' '}
-              <Link to="/contact" className="font-semibold underline hover:text-amber-900">
-                contact us
-              </Link>{' '}
-              for any questions in the meantime.
-            </p>
-          </div>
-
           <div className="space-y-10">
             {SECTIONS.map((s) => (
               <div key={s.title}>
@@ -91,7 +83,7 @@ export default function PrivacyPage() {
             ))}
           </div>
 
-          <p className="mt-16 text-xs text-text-muted">Last updated: June 2026</p>
+          <p className="mt-16 text-xs text-text-muted">Last updated: July 2026</p>
         </section>
       </main>
       <Footer />

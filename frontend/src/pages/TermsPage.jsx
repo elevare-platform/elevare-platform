@@ -3,7 +3,6 @@ import Footer from '@/components/layout/Footer'
 import { FloatingWhatsApp } from '@/components/ui/FloatingWhatsApp'
 import { Helmet } from 'react-helmet-async'
 import { Link } from 'react-router-dom'
-import { AlertCircle } from 'lucide-react'
 
 const SECTIONS = [
   {
@@ -25,6 +24,11 @@ const SECTIONS = [
     title: 'Candidate Responsibilities',
     content:
       'Candidates are responsible for the accuracy of their profile and CV. Submitting false information may result in account suspension. Applications must represent genuine interest in the role.',
+  },
+  {
+    title: 'Third-Party Mail Integrations',
+    content:
+      'Employers may connect a Gmail or Zoho Mail account to automatically import CVs from their recruitment inbox. This is optional, requires the employer\'s explicit authorisation via that provider\'s OAuth consent screen, and can be revoked at any time. See our Privacy Policy for details on how this data is accessed and used.',
   },
   {
     title: 'Intellectual Property',
@@ -66,18 +70,6 @@ export default function TermsPage() {
         </section>
 
         <section className="py-16 sm:py-24 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Draft notice */}
-          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-5 py-4 mb-12">
-            <AlertCircle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-800">
-              These terms are being finalised. Please{' '}
-              <Link to="/contact" className="font-semibold underline hover:text-amber-900">
-                contact us
-              </Link>{' '}
-              for any questions in the meantime.
-            </p>
-          </div>
-
           <div className="space-y-10">
             {SECTIONS.map((s) => (
               <div key={s.title}>
@@ -101,7 +93,7 @@ export default function TermsPage() {
             ))}
           </div>
 
-          <p className="mt-16 text-xs text-text-muted">Last updated: June 2026</p>
+          <p className="mt-16 text-xs text-text-muted">Last updated: July 2026</p>
         </section>
       </main>
       <Footer />
