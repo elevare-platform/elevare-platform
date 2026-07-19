@@ -3,11 +3,14 @@
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.modules.ai.enums import CVParsingStatus, JobDescriptionField, JobDescriptionMode
+from app.modules.ai.enums import (
+    CVParsingStatus,
+    JobDescriptionField,
+    JobDescriptionMode,
+)
 
 
 class MatchResult(BaseModel):

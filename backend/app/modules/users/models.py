@@ -26,11 +26,11 @@ if TYPE_CHECKING:
     )
     from app.modules.candidates.models import CandidateProfile, ProfileView
     from app.modules.credits.models import CreditTransaction, EmployerCredits
+    from app.modules.employer.models import KYCDocument
     from app.modules.ingestion.models import MailIntegration
     from app.modules.introductions.models import IntroductionRequest
     from app.modules.jobs.models import Job, JobAccessTokens
     from app.modules.talent_pool.models import TalentPoolProfiles
-    from app.modules.employer.models import KYCDocument
 
 
 class User(BaseModel):
@@ -234,7 +234,7 @@ class EmployerProfile(BaseModel):
         "User",
         back_populates="employer_profile",
     )
-    kyc_documents: Mapped[list["KYCDocument"]] = relationship(
+    kyc_documents: Mapped[list[KYCDocument]] = relationship(
         "KYCDocument",
         back_populates="employer_profile",
     )

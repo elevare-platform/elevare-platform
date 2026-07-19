@@ -16,10 +16,10 @@ from app.modules.ai.schema import JobContext
 from app.modules.ai.service import MockAIService
 from tests.conftest import make_register_data
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_job_context(**overrides) -> JobContext:
     defaults = {
@@ -34,9 +34,9 @@ def make_job_context(**overrides) -> JobContext:
 
 
 async def register_employer(client, db_session):
-    from app.modules.auth.jwt_handler import create_token_pair
     from sqlalchemy import select
 
+    from app.modules.auth.jwt_handler import create_token_pair
     from app.modules.users.models import EmployerProfile, User
 
     data = make_register_data(role="EMPLOYER")
@@ -74,9 +74,9 @@ async def register_employer(client, db_session):
 
 
 async def register_candidate(client, db_session):
-    from app.modules.auth.jwt_handler import create_token_pair
     from sqlalchemy import select
 
+    from app.modules.auth.jwt_handler import create_token_pair
     from app.modules.users.models import User
 
     data = make_register_data(role="CANDIDATE")
@@ -104,6 +104,7 @@ async def register_candidate(client, db_session):
 # ---------------------------------------------------------------------------
 # Unit tests — prompt builder
 # ---------------------------------------------------------------------------
+
 
 def test_prompt_builder_generate_mode_contains_field_label():
     """GENERATE prompt mentions the target field."""
@@ -143,7 +144,9 @@ def test_prompt_builder_generate_with_no_current_text_omits_existing_section():
 
 def test_prompt_builder_includes_job_context_fields():
     """Prompt embeds title, seniority, skills from job_context."""
-    ctx = make_job_context(title="Data Engineer", seniority="Senior", skills=["Spark", "Kafka"])
+    ctx = make_job_context(
+        title="Data Engineer", seniority="Senior", skills=["Spark", "Kafka"]
+    )
     prompt = build_job_description_prompt(
         mode=JobDescriptionMode.GENERATE,
         field=JobDescriptionField.REQUIREMENTS,
@@ -159,6 +162,7 @@ def test_prompt_builder_includes_job_context_fields():
 # ---------------------------------------------------------------------------
 # Unit tests — MockAIService
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_mock_service_returns_string():
@@ -191,6 +195,7 @@ async def test_mock_service_improve_mode_returns_string():
 # ---------------------------------------------------------------------------
 # Integration tests — router auth
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_job_description_endpoint_401_unauthenticated(client):
@@ -226,6 +231,7 @@ async def test_job_description_endpoint_403_for_candidate(client, db_session):
 # ---------------------------------------------------------------------------
 # Integration tests — happy path and validation
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_job_description_generate_returns_200(client, db_session):

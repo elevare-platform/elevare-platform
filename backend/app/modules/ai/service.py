@@ -243,7 +243,6 @@ class MockAIService(AIService):
         """Compute cosine similarity between two embeddings, scaled to 0-100."""
         return 75
 
-
     async def generate_job_description_text(
         self,
         mode: str,
@@ -493,7 +492,9 @@ class AnthropicCVExtractionService(AIService):
             raw = re.sub(r"\n?```$", "", raw)
             return raw.strip()
         except Exception as e:
-            logger.error("LLM job description generation failed", extra={"error": str(e)})
+            logger.error(
+                "LLM job description generation failed", extra={"error": str(e)}
+            )
             raise
 
 

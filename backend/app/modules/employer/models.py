@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 import uuid
+from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, String, Text, ForeignKey
+from sqlalchemy import UUID, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
@@ -26,7 +26,7 @@ class KYCDocument(BaseModel):
     document_type: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Relationships
-    employer_profile: Mapped["EmployerProfile"] = relationship(
+    employer_profile: Mapped[EmployerProfile] = relationship(
         "EmployerProfile",
         back_populates="kyc_documents",
     )
