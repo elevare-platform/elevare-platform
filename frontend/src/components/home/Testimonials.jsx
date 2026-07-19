@@ -59,7 +59,7 @@ export default function Testimonials() {
             color: '#1e293b',
             marginBottom: '3rem',
             lineHeight: 1.2,
-            fontFamily: "'Lobster Two', cursive",
+            fontFamily: "'Inter', system-ui, sans-serif",
           }}
         >
           What Our Clients Say

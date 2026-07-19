@@ -42,7 +42,7 @@ export default function HowItWorks() {
             color: '#1e293b',
             marginBottom: '3.5rem',
             lineHeight: 1.2,
-            fontFamily: "'Lobster Two', cursive",
+            fontFamily: "'Inter', system-ui, sans-serif",
           }}
         >
           Hiring Has Never Been This Simple

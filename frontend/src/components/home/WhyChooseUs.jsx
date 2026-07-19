@@ -105,7 +105,7 @@ export default function WhyChooseUs() {
               fontWeight: 800,
               color: '#1e293b',
               lineHeight: 1.2,
-              fontFamily: "'Lobster Two', cursive",
+              fontFamily: "'Inter', system-ui, sans-serif",
             }}
           >
             Why Leading Companies Choose Elevare

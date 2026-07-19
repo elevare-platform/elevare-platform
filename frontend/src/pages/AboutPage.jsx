@@ -149,7 +149,7 @@ export default function AboutPage() {
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35">
                 About Elevare Human Solutions
               </span>
-              <h1 className="text-4xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight leading-tight" style={{ fontFamily: "'Lobster Two', cursive" }}>
+              <h1 className="font-sans text-4xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight leading-tight">
                 Pioneering Workforce Transformation &amp; HR Excellence
               </h1>
               <p className="text-lg lg:text-xl text-blue-100/90 leading-relaxed max-w-2xl">

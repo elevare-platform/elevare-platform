@@ -154,8 +154,7 @@ export default function ImpactMetrics() {
             Platform Impact
           </span>
           <h2
-            className="text-4xl sm:text-5xl font-extrabold mt-6 tracking-tight text-white leading-tight"
-            style={{ fontFamily: "'Lobster Two', cursive" }}
+            className="font-sans text-4xl sm:text-5xl font-extrabold mt-6 tracking-tight text-white leading-tight"
           >
             Metrics That Validate Excellence
           </h2>

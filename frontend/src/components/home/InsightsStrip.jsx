@@ -174,7 +174,7 @@ export default function InsightsStrip() {
               fontWeight: 800,
               color: '#1e293b',
               lineHeight: 1.2,
-              fontFamily: "'Lobster Two', cursive",
+              fontFamily: "'Inter', system-ui, sans-serif",
             }}
           >
             HR Expertise, Straight from the Source
