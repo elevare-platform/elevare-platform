@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 
 // ─── FinalCTA ─────────────────────────────────────────────────────────────────
-// Premium CTA with background image, gradient overlay, Lobster Two heading,
+// Premium CTA with background image, gradient overlay,
 // and conversion-focused dual CTAs.
 
 export default function FinalCTA() {
@@ -44,8 +44,7 @@ export default function FinalCTA() {
         </span>
 
         <h2
-          className="text-3xl sm:text-4xl lg:text-6xl font-bold text-white mb-5"
-          style={{ fontFamily: "'Lobster Two', cursive" }}
+          className="font-sans text-3xl sm:text-4xl lg:text-6xl font-bold text-white mb-5"
         >
           Ready to Make Hiring Simple?
         </h2>

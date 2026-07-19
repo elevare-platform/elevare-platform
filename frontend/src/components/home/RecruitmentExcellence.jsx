@@ -28,10 +28,9 @@ export default function RecruitmentExcellence({ onBookConsultation }) {
           RECRUITMENT EXCELLENCE
         </span>
 
-        {/* Large Statement using Lobster Two */}
+        {/* Large Statement */}
         <h2
-          className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-[1.1] text-white"
-          style={{ fontFamily: "'Lobster Two', cursive" }}
+          className="font-sans text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-[1.1] text-white"
         >
           Elevating African Talent to a Global Standard
         </h2>

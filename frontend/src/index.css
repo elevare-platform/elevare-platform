@@ -43,14 +43,16 @@ body {
   min-height: 100vh;
 }
 
-/* Global headings with Lobster Two display font */
-h1, h2, h3, .font-heading {
-  font-family: var(--font-heading);
+/* Headings default to the legible sans font. The Lobster Two display font
+   is opt-in only via .font-heading — reserved for the homepage hero — so
+   new headings stay readable by default instead of silently inheriting a
+   decorative script font. */
+h1, h2, h3 {
+  font-family: var(--font-sans);
 }
 
-/* Allow font-sans utility to override the heading rule above — used on job titles */
-h1.font-sans, h2.font-sans, h3.font-sans, .font-sans {
-  font-family: var(--font-sans) !important;
+.font-heading {
+  font-family: var(--font-heading);
 }
 
 /* Spacing and weight adjustments for heading style readability */

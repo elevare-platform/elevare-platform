@@ -91,7 +91,7 @@ export default function EmployerStrip({ onBookConsultation }) {
               fontWeight: 800,
               color: '#ffffff',
               lineHeight: 1.2,
-              fontFamily: "'Lobster Two', cursive",
+              fontFamily: "'Inter', system-ui, sans-serif",
             }}
           >
             We Solve Your Toughest
