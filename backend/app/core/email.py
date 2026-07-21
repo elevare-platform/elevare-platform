@@ -777,6 +777,8 @@ class ResendEmailService(EmailService):
             recipients=[candidate_email],
             html_body=html_body,
             reply_to=employer_email,
+    )
+
     async def send_kyc_rejection(
         self,
         employer_email: str,
