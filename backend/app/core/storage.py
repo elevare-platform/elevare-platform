@@ -20,6 +20,11 @@ class StorageService(ABC):
         ...
 
     @abstractmethod
+    async def download_file(self, key: str) -> bytes:
+        """Download a file by its key and return the bytes."""
+        ...
+
+    @abstractmethod
     async def delete_file(self, key: str) -> None:
         """Delete a file by its key."""
         ...
@@ -41,6 +46,12 @@ class MockStorageService(StorageService):
         """Store file bytes in memory and return the key."""
         self._store[key] = file
         return key
+
+    async def download_file(self, key: str) -> bytes:
+        """Return file bytes from the in-memory store."""
+        if key not in self._store:
+            raise FileNotFoundError(f"Mock storage: key '{key}' not found")
+        return self._store[key]
 
     async def delete_file(self, key: str) -> None:
         """Remove a file from the in-memory store."""
@@ -88,6 +99,12 @@ class R2StorageService(StorageService):
                 ContentType=content_type,
             )
         return key
+
+    async def download_file(self, key: str) -> bytes:
+        """Download an object from R2 and return its bytes."""
+        async with self._session.client("s3", endpoint_url=self._endpoint_url) as s3:
+            response = await s3.get_object(Bucket=self._bucket, Key=key)
+            return await response["Body"].read()
 
     async def delete_file(self, key: str) -> None:
         """Delete an object from R2 by its key."""

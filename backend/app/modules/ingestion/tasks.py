@@ -467,20 +467,13 @@ async def _process_attachment(
     except Exception:
         cv_text = ""
 
-    # extract_text_from_pdf only understands PDF — .docx/.doc attachments
-    # (which the attachment filter allows) always come back with empty
-    # text here, as does any PDF that fails all extraction methods. If we
-    # hashed that empty string, every such attachment would collapse onto
-    # the same cv_hash and every candidate after the first would be
-    # silently treated as a duplicate of them — i.e. dropped. Hash the raw
-    # attachment bytes instead whenever extraction didn't yield real text,
-    # so dedup only ever matches byte-identical files.
     cv_hash = (
         _compute_cv_hash(cv_text)
         if cv_text.strip()
         else _compute_cv_hash(attachment_data)
     )
-    parsing_repo = CVParsingRepo(db, get_storage_service())
+    storage = get_storage_service()
+    parsing_repo = CVParsingRepo(db, storage)
 
     existing = await parsing_repo.get_with_r2_key_by_hash(cv_hash)
     if existing:
@@ -540,11 +533,28 @@ async def _process_attachment(
             )
         )
 
+    # Upload to R2 now so the pipeline task receives only the key.
+    # This keeps large file bytes out of Redis/Celery messages entirely,
+    # preventing OOM kills on the worker during large mailbox imports.
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    mime_map = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "doc": "application/msword",
+    }
+    content_type = mime_map.get(ext, "application/octet-stream")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    r2_key = f"cv-ingestion/{owner_id or 'system'}/{timestamp}_{filename}"
+    await storage.upload_file(attachment_data, r2_key, content_type)
+    await parsing_repo.update(submission.id, {"r2_key": r2_key})
+
     await db.commit()
+
+    # Pass r2_key instead of file bytes — pipeline downloads from R2 when it runs
     run_full_pipeline_task.delay(
         submission_id=str(submission.id),
         cache_key=f"cv_parse:{cv_hash}",
-        file=attachment_data,
+        r2_key=r2_key,
     )
-    logger.debug("Queued pipeline for %s (submission %s)", filename, submission.id)
+    logger.debug("Queued pipeline for %s (submission %s, r2=%s)", filename, submission.id, r2_key)
     return "queued"
