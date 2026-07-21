@@ -41,18 +41,25 @@ CACHE_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def run_full_pipeline_task(
     self,
-    submission_id: str,  # UUID as string — Celery serialises to JSON
+    submission_id: str,
     cache_key: str,
-    file: bytes,
+    file: bytes | None = None,
+    r2_key: str | None = None,
 ):
-    """Celery task — synchronous wrapper around the async pipeline."""
-    asyncio.run(_run_pipeline_async(submission_id, cache_key, file))
+    """Celery task — synchronous wrapper around the async pipeline.
+
+    Accepts either raw file bytes (legacy/manual upload path) or a pre-uploaded
+    R2 key (ingestion path — avoids passing large bytes through Redis).
+    Exactly one of file or r2_key must be provided.
+    """
+    asyncio.run(_run_pipeline_async(submission_id, cache_key, file=file, r2_key=r2_key))
 
 
 async def _run_pipeline_async(
     submission_id_str: str,
     cache_key: str,
-    file: bytes,
+    file: bytes | None = None,
+    r2_key: str | None = None,
 ) -> None:
     import dataclasses
 
@@ -85,8 +92,6 @@ async def _run_pipeline_async(
         redis = aioredis.from_url(settings.redis_url)
 
         try:
-            # Upload to R2 first — was previously done in the service (sync),
-            # now done here so the HTTP response returns immediately
             from datetime import UTC as _UTC
             from datetime import datetime as _datetime
 
@@ -98,11 +103,22 @@ async def _run_pipeline_async(
                     submission_id,
                 )
                 raise ValueError(f"Submission {submission_id} not found in DB")
-            uploader = submission_obj.uploaded_by or "system"
-            r2_key = f"cv-parsing/{uploader}/{timestamp}_{submission_obj.filename}"
+
             storage = get_storage_service()
-            await storage.upload_file(file, r2_key, "application/pdf")
-            await repo.update(submission_id, {"r2_key": r2_key})
+
+            if r2_key:
+                # File was pre-uploaded by the ingestion pipeline — download it
+                # so the extraction pipeline can process it without Redis holding bytes
+                file = await storage.download_file(r2_key)
+                # Ensure the submission row has the r2_key recorded
+                if not submission_obj.r2_key:
+                    await repo.update(submission_id, {"r2_key": r2_key})
+            else:
+                # Manual upload path — upload bytes to R2 now
+                uploader = submission_obj.uploaded_by or "system"
+                r2_key = f"cv-parsing/{uploader}/{timestamp}_{submission_obj.filename}"
+                await storage.upload_file(file, r2_key, "application/pdf")
+                await repo.update(submission_id, {"r2_key": r2_key})
 
             await repo.update(
                 submission_id, {"parse_status": CVParsingStatus.PROCESSING.value}
