@@ -1028,6 +1028,7 @@ class StubEmailService(EmailService):
             job_url,
             register_url,
         )
+
     async def send_kyc_rejection(
         self,
         employer_email: str,
