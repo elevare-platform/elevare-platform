@@ -44,6 +44,6 @@ jobs:
             sudo chown -R deploy:deploy /home/deploy/.docker
             docker compose -f docker-compose.prod.yml up -d --build
             docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
-            sleep 5
+            sleep 10
             curl -f http://127.0.0.1:8080/health || (echo "Health check failed" && exit 1)
             echo "Deploy complete: ${{ github.sha }}"

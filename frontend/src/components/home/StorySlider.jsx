@@ -115,12 +115,11 @@ export default function StorySlider() {
             </span>
           </div>
 
-          {/* Large Title with Lobster Two style */}
+          {/* Large Title */}
           <h2
-            className={`text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-6 leading-[1.15] transition-all duration-700 ease-out ${
+            className={`font-sans text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-6 leading-[1.15] transition-all duration-700 ease-out ${
               isTransitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'
             }`}
-            style={{ fontFamily: "'Lobster Two', cursive" }}
           >
             {SLIDES[current].headline}
           </h2>

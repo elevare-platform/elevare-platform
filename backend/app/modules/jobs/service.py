@@ -6,10 +6,12 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
+    KYCRequiredException,
     PermissionDeniedException,
     ProfileIncompleteException,
     ValidationException,
 )
+from app.modules.employer.enums import KYCStatus
 from app.modules.jobs.enums import JobStatus, ModerationStatus
 from app.modules.jobs.repository import JobRepository
 from app.modules.jobs.schemas import (
@@ -50,6 +52,8 @@ class JobService:
             or not employer.employer_profile.is_profile_complete
         ):
             raise ProfileIncompleteException()
+        if employer.employer_profile.kyc_status != KYCStatus.APPROVED.value:
+            raise KYCRequiredException()
         job = await self._repo.create(data, employer_id=employer.id)
         await self._db.commit()
 

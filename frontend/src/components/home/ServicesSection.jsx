@@ -236,7 +236,7 @@ export default function ServicesSection() {
               color: '#1e293b',
               lineHeight: 1.2,
               letterSpacing: '-0.02em',
-              fontFamily: "'Lobster Two', cursive",
+              fontFamily: "'Inter', system-ui, sans-serif",
             }}
           >
             Workforce Solutions Built for Growth

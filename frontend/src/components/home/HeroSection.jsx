@@ -2,59 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 
-// ─── Profile card data ────────────────────────────────────────────────────────
-// Each card has its own photo dimensions (w × h) to give a varied, organic feel.
-// Positions are relative to the right-panel container so the three cards cluster
-// in the centre of the column, close to each other.
-
-const PROFILE_CARDS = [
-  {
-    id: 1,
-    name: 'Jennifer O. Efe-Odiete',
-    title: 'Founder & Lead Consultant, ACIPM, HRPL',
-    available: true,
-    availableLabel: 'Available now',
-    imageUrl: '/hero-images/jennifer.png',
-    imgW: 270,
-    imgH: 215,
-    delay: '0s',
-    top: 70,
-    left: 10,
-    rotate: '-3deg',
-    zIndex: 2,
-  },
-  {
-    id: 2,
-    name: 'Josephine Joseph Smith',
-    title: 'Talent Acquisition & Business Development',
-    available: false,
-    availableLabel: 'Open to offers',
-    imageUrl: '/hero-images/josephine.png',
-    imgW: 270,
-    imgH: 215,
-    delay: '0.9s',
-    top: 270,
-    left: 310,
-    rotate: '2deg',
-    zIndex: 3,
-  },
-  {
-    id: 3,
-    name: 'Stephanie',
-    title: 'Talent Acquisition & Employer Branding Executive',
-    available: true,
-    availableLabel: 'Available now',
-    imageUrl: '/hero-images/stephanie.png',
-    imgW: 270,
-    imgH: 215,
-    delay: '1.8s',
-    top: 500,
-    left: 20,
-    rotate: '-2deg',
-    zIndex: 2,
-  },
-]
-
 // ─── Hero background slides ──────────────────────────────────────────────────
 // Images are served from /public/hero-images/ via Vite static assets.
 const HERO_SLIDES = [
@@ -112,119 +59,53 @@ function HeroSlideshow() {
 
 // ─── Social proof avatars ─────────────────────────────────────────────────────
 
-const AVATAR_URLS = [
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=40&h=40&fit=crop&crop=face',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=40&h=40&fit=crop&crop=face',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=40&h=40&fit=crop&crop=face',
+const AVATAR_PROFILES = [
+  { src: '/hero-images/jennifer.png', alt: 'Jennifer O. Efe-Odiete, Founder & Lead Consultant at Elevare' },
+  { src: '/hero-images/josephine.png', alt: 'Josephine Joseph Smith, Talent Acquisition & Business Development at Elevare' },
+  { src: '/hero-images/stephanie.png', alt: 'Stephanie, Talent Acquisition & Employer Branding Executive at Elevare' },
 ]
 
-// ─── Cellotape X SVG ──────────────────────────────────────────────────────────
-// Renders a semi-transparent tape strip crossing at the top-centre of the card,
-// like a piece of sellotape pinning a photograph to a wall.
+// ─── Right-panel feature list ────────────────────────────────────────────────
+// Echoes the three colour-coded phrases in the headline as a small glass
+// "what we deliver" panel, so the right side of the hero isn't empty once the
+// photo cards are gone — without reaching for stock photography.
 
-function TapeX() {
-  return (
-    <svg
-      aria-hidden="true"
-      style={{
-        position: 'absolute',
-        top: -14,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 10,
-        pointerEvents: 'none',
-      }}
-      width="64"
-      height="28"
-      viewBox="0 0 64 28"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* Tape body — semi-transparent warm white strip */}
-      <rect x="0" y="6" width="64" height="16" rx="3" fill="rgba(255,252,230,0.82)" />
-      {/* Tape sheen — subtle highlight across the middle */}
-      <rect x="0" y="10" width="64" height="4" rx="1" fill="rgba(255,255,255,0.35)" />
-      {/* X mark — two diagonal lines drawn in a slightly darker tape tone */}
-      <line x1="22" y1="9" x2="42" y2="19" stroke="rgba(180,160,80,0.55)" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="42" y1="9" x2="22" y2="19" stroke="rgba(180,160,80,0.55)" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-// ─── Floating photo card ──────────────────────────────────────────────────────
-
-function ProfileCard({ card }) {
-  return (
-    <article
-      className="hero-photo-card"
-      style={{
-        '--card-rotation': card.rotate,
-        // White card with a slight warm tint — like photo paper
-        background: '#fffef8',
-        borderRadius: '6px',
-        // Classic photo-print shadow
-        boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)',
-        // Photo-print padding: more at the bottom (caption area)
-        padding: '10px 10px 48px 10px',
-        width: card.imgW + 20,
-      }}
-    >
-      {/* Sellotape X pinning the card */}
-      <TapeX />
-
-      {/* Photo */}
-      <img
-        src={card.imageUrl}
-        alt={`${card.name}, ${card.title}`}
-        width={card.imgW}
-        height={card.imgH}
-        style={{
-          width: card.imgW,
-          height: card.imgH,
-          display: 'block',
-          objectFit: 'cover',
-          // Slight desaturation for that printed-photo feel
-          filter: 'saturate(0.92) contrast(1.04)',
-        }}
-      />
-
-      {/* Caption area — below the photo, inside the white border */}
-      <div style={{ marginTop: 10 }}>
-        <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#1e293b', lineHeight: 1.3 }}>
-          {card.name}
-        </p>
-        <p style={{ margin: '2px 0 6px', fontSize: 11, color: '#64748b' }}>
-          {card.title}
-        </p>
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 10,
-            fontWeight: 600,
-            padding: '2px 8px',
-            borderRadius: 999,
-            background: card.available ? '#f0fdf4' : '#fffbeb',
-            color: card.available ? '#15803d' : '#b45309',
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: card.available ? '#22c55e' : '#f59e0b',
-              display: 'inline-block',
-            }}
-            aria-hidden="true"
-          />
-          {card.availableLabel}
-        </span>
-      </div>
-    </article>
-  )
-}
+const FEATURE_ROWS = [
+  {
+    label: 'Human Capital Advisory',
+    color: '#38bdf8',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="3" y="7" width="18" height="12" rx="2" stroke="white" strokeWidth="1.6" />
+        <path d="M8 7V5.5C8 4.67157 8.67157 4 9.5 4H14.5C15.3284 4 16 4.67157 16 5.5V7" stroke="white" strokeWidth="1.6" />
+        <path d="M3 12H21" stroke="white" strokeWidth="1.6" />
+      </svg>
+    ),
+  },
+  {
+    label: 'Workforce Transformation',
+    color: '#1a4d8f',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 8C4 8 6.5 4.5 12 4.5C16 4.5 18.5 6.5 19.5 8" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M20 16C20 16 17.5 19.5 12 19.5C8 19.5 5.5 17.5 4.5 16" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M17 5L19.5 8L16.5 9.5" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M7 19L4.5 16L7.5 14.5" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
+    label: 'Recruitment Consulting',
+    color: '#e87722',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="8" stroke="white" strokeWidth="1.6" />
+        <circle cx="12" cy="12" r="4" stroke="white" strokeWidth="1.6" />
+        <circle cx="12" cy="12" r="0.75" fill="white" />
+      </svg>
+    ),
+  },
+]
 
 // ─── HeroSection ─────────────────────────────────────────────────────────────
 
@@ -253,25 +134,29 @@ export default function HeroSection({ onBookConsultation }) {
         aria-hidden="true"
       />
 
-      {/* Inner grid layout */}
+      {/* Inner content — text on the left, a small glass feature panel on the
+          right so the space the photo cards used to fill doesn't sit empty */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-20 sm:py-24 lg:py-0">
-        <div className="grid grid-cols-1 lg:grid-cols-[55fr_45fr] gap-8 lg:gap-0 items-center min-h-screen">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-10 lg:gap-12 items-center min-h-screen">
 
           {/* ── Left: text content ── */}
-          <div className="flex flex-col justify-center lg:pr-10">
+          <div className="flex flex-col justify-center max-w-2xl">
 
             {/* Eyebrow */}
-            <div className="hero-text-mask" style={{ marginBottom: '0.9rem' }}>
-              <p
-                className="font-bold text-sm tracking-widest uppercase hero-reveal-line"
-                style={{ color: '#FCD34D', animationDelay: '150ms' }}
+            <div className="hero-text-mask" style={{ marginBottom: '1.1rem' }}>
+              <div
+                className="hero-eyebrow-badge hero-reveal-line"
+                style={{ animationDelay: '150ms' }}
               >
-                HR Strategy &amp; Workforce Solutions
-              </p>
+                <span className="hero-eyebrow-dot" aria-hidden="true" />
+                <span className="font-bold text-sm tracking-widest uppercase" style={{ color: '#FCD34D' }}>
+                  HR Strategy &amp; Workforce Solutions
+                </span>
+              </div>
             </div>
 
             {/* Headline — merged into a single block to flow naturally and wrap, reducing vertical height */}
-            <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ marginBottom: '1.1rem' }}>
               <div className="hero-text-mask">
                 <h1
                   className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight hero-reveal-line"
@@ -284,6 +169,9 @@ export default function HeroSection({ onBookConsultation }) {
               </div>
             </div>
 
+            {/* Divider — a small brand-gradient accent that grounds the transition to body copy */}
+            <div className="hero-divider-line" style={{ marginBottom: '1.25rem', animationDelay: '1100ms' }} aria-hidden="true" />
+
             {/* Subheadline — enters as one block after the headline finishes */}
             <div className="hero-text-mask" style={{ marginBottom: '1.75rem' }}>
               <p
@@ -295,39 +183,41 @@ export default function HeroSection({ onBookConsultation }) {
               </p>
             </div>
 
-            {/* CTA buttons */}
+            {/* CTA panel — buttons sit on an elevated glass surface for more visual weight */}
             <div
-              className="flex flex-col sm:flex-row lg:flex-row gap-3 sm:gap-4 mb-6 sm:mb-10 hero-entrance-ctas"
-              style={{ animationDelay: '1550ms' }}
+              className="hero-cta-panel hero-entrance-ctas mb-6 sm:mb-8"
+              style={{ animationDelay: '1550ms', width: 'fit-content' }}
             >
-              <Link to="/register">
-                <Button
-                  size="lg"
-                  className="hero-btn-primary w-full sm:w-auto min-h-[44px] bg-brand-blue hover:bg-brand-blue-dark text-white border-0"
-                >
-                  Hire Talent <span className="hero-btn-arrow">→</span>
-                </Button>
-              </Link>
-              <Link to="/jobs">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="hero-btn-secondary w-full sm:w-auto min-h-[44px]"
-                  style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#ffffff', background: 'rgba(255,255,255,0.08)' }}
-                >
-                  Find a Role <span className="hero-btn-arrow">→</span>
-                </Button>
-              </Link>
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <Link to="/register">
+                  <Button
+                    size="lg"
+                    className="hero-btn-primary w-full sm:w-auto min-h-[44px] bg-brand-blue hover:bg-brand-blue-dark text-white border-0"
+                  >
+                    Hire Talent <span className="hero-btn-arrow">→</span>
+                  </Button>
+                </Link>
+                <Link to="/jobs">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="hero-btn-secondary w-full sm:w-auto min-h-[44px]"
+                    style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#ffffff', background: 'rgba(255,255,255,0.08)' }}
+                  >
+                    Find a Role <span className="hero-btn-arrow">→</span>
+                  </Button>
+                </Link>
+              </div>
             </div>
 
-            {/* Social proof avatar row */}
-            <div className="flex items-center gap-3 hero-entrance-social" style={{ animationDelay: '1800ms' }}>
+            {/* Social proof — an integrated glass chip rather than a bare row */}
+            <div className="hero-social-proof-chip hero-entrance-social" style={{ animationDelay: '1800ms' }}>
               <div className="flex -space-x-2">
-                {AVATAR_URLS.map((url, i) => (
+                {AVATAR_PROFILES.map((avatar, i) => (
                   <img
                     key={i}
-                    src={url}
-                    alt={`Professional ${i + 1} on Elevare`}
+                    src={avatar.src}
+                    alt={avatar.alt}
                     width={36}
                     height={36}
                     className="rounded-full border-2 border-white object-cover hero-social-avatar"
@@ -335,95 +225,64 @@ export default function HeroSection({ onBookConsultation }) {
                   />
                 ))}
               </div>
+              <span className="hero-social-proof-divider" aria-hidden="true" />
               <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.72)' }}>
                 Join <span style={{ color: '#ffffff', fontWeight: 700 }}>2,400+</span> professionals already on Elevare
               </p>
             </div>
           </div>
 
-          {/* ── Right: photo cards pinned to a corkboard ── */}
-          <div
-            className="relative hidden lg:flex items-center justify-start"
-            style={{ height: '100vh', paddingLeft: '8%' }}
-            aria-hidden="true"
-          >
-            {/* Subtle corkboard texture hint */}
+          {/* ── Right: glass feature panel ── */}
+          <div className="relative hidden lg:flex items-center justify-center" aria-hidden="true">
             <div
-              className="hero-corkboard-glow"
+              className="hero-panel-glow"
               style={{
                 position: 'absolute',
-                inset: 0,
-                background: 'radial-gradient(ellipse at 60% 50%, rgba(180,140,80,0.07) 0%, transparent 70%)',
-                pointerEvents: 'none',
+                top: '8%',
+                left: '10%',
+                width: '65%',
+                height: '45%',
+                background: 'radial-gradient(circle, rgba(56,189,248,0.5) 0%, transparent 70%)',
+              }}
+            />
+            <div
+              className="hero-panel-glow"
+              style={{
+                position: 'absolute',
+                bottom: '10%',
+                right: '8%',
+                width: '55%',
+                height: '40%',
+                background: 'radial-gradient(circle, rgba(232,119,34,0.45) 0%, transparent 70%)',
+                animationDelay: '3s',
               }}
             />
 
-            {/* Cards container — fixed px sizing so gaps are guaranteed */}
-            <div style={{ position: 'relative', width: 620, height: 840 }}>
-
-              {/* Waterfall connector — Jennifer top-centre to Josephine centre */}
-              <svg
-                aria-hidden="true"
-                className="hero-entrance-connector"
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  pointerEvents: 'none',
-                  zIndex: 1,
-                  overflow: 'visible',
-                }}
-                viewBox="0 0 620 840"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <defs>
-                  <marker id="wf-arrow" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
-                    <circle cx="3.5" cy="3.5" r="2.5" fill="#E87722" opacity="0.75" />
-                  </marker>
-                </defs>
-
-                {/*
-                  Jennifer top-centre: left=10, imgW=270 → centre x = 10+135 = 145, top y = 70
-                  Josephine centre: left=310, imgW=270 → centre x = 310+135 = 445, top=270, imgH=215 → centre y = 270+107 = 377
-                */}
-                <path
-                  d="M 155 70 C 60 190, 520 170, 450 377"
-                  stroke="#E87722"
-                  strokeWidth="1.8"
-                  strokeDasharray="7 6"
-                  strokeLinecap="round"
-                  strokeDashoffset="900"
-                  markerEnd="url(#wf-arrow)"
-                  style={{ animation: 'draw-waterfall 5s ease-in-out infinite' }}
-                />
-              </svg>
-
-              {PROFILE_CARDS.map((card, i) => (
-                <div
-                  key={card.id}
-                  className="hero-card-wrapper hero-card-drop"
-                  style={{
-                    position: 'absolute',
-                    top: card.top,
-                    left: card.left,
-                    zIndex: card.zIndex,
-                    width: card.imgW + 20,
-                    '--drop-delay': `${1400 + i * 380}ms`,
-                  }}
+            <div className="hero-feature-panel" style={{ animationDelay: '1200ms' }}>
+              <div className="hero-feature-panel-float">
+                <p
+                  className="font-bold text-xs tracking-widest uppercase"
+                  style={{ color: 'rgba(255,255,255,0.55)', marginBottom: 4 }}
                 >
-                  <div
-                    className="hero-card-float"
-                    style={{ animationDelay: card.delay }}
-                  >
-                    <ProfileCard card={card} />
+                  What We Deliver
+                </p>
+
+                {FEATURE_ROWS.map((row, i) => (
+                  <div key={row.label}>
+                    <div className="hero-feature-row">
+                      <div className="hero-feature-icon" style={{ background: row.color }}>
+                        {row.icon}
+                      </div>
+                      <p className="font-semibold text-base" style={{ color: '#ffffff' }}>
+                        {row.label}
+                      </p>
+                    </div>
+                    {i < FEATURE_ROWS.length - 1 && <div className="hero-feature-divider" />}
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-
         </div>
       </div>
     </section>

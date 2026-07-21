@@ -92,12 +92,22 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
-    async def send_introduction_declined(
+    async def send_kyc_rejection(
         self,
         employer_email: str,
-        job_title: str,
+        company_name: str | None,
+        reason: str | None,
     ) -> None:
-        """Notify employer that a candidate declined their introduction request."""
+        """Notify employer that their KYC was rejected with a link to resubmit."""
+        ...
+
+    @abstractmethod
+    async def send_kyc_approved(
+        self,
+        employer_email: str,
+        company_name: str | None,
+    ) -> None:
+        """Notify employer that their KYC has been approved."""
         ...
 
     @abstractmethod
@@ -767,6 +777,79 @@ class ResendEmailService(EmailService):
             recipients=[candidate_email],
             html_body=html_body,
             reply_to=employer_email,
+    async def send_kyc_rejection(
+        self,
+        employer_email: str,
+        company_name: str | None,
+        reason: str | None,
+    ) -> None:
+        """Notify employer that their KYC was rejected, with a link to resubmit."""
+        cta_url = f"{settings.app_url}/employer/verify"
+        company_label = company_name or "your company"
+        reason_block = (
+            f"""
+            <div style="background-color: #ffffff; border: 1px solid #FCD34D; border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #78350F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Reason</div>
+              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F; font-style: italic;">"{reason}"</p>
+            </div>
+            """
+            if reason
+            else ""
+        )
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Company Verification Update</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We were unable to verify <strong>{company_label}</strong> at this time.</p>
+
+        <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #B45309; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #78350F; margin-bottom: 8px;">Verification Rejected</div>
+          <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F;">Please upload the correct documents and resubmit your verification request.</p>
+          {reason_block}
+        </div>
+
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Click below to return to the verification page and resubmit.</p>
+        {_render_button("Resubmit Verification", cta_url)}
+        """
+        html_body = _render_email_layout(
+            title="Company Verification Rejected — Elevare",
+            preheader=f"Your company verification for {company_label} was not approved. Please resubmit.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you submitted a company verification request on Elevare.",
+        )
+        await self._send_html(
+            subject="Company Verification Update — Action Required",
+            recipients=[employer_email],
+            html_body=html_body,
+        )
+
+    async def send_kyc_approved(
+        self,
+        employer_email: str,
+        company_name: str | None,
+    ) -> None:
+        """Notify employer that their KYC has been approved."""
+        company_label = company_name or "your company"
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Company Verification Approved</h2>
+
+        <div style="background-color: #ECFDF5; border: 1px solid #D1FAE5; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #065F46; margin-bottom: 8px;">Verified ✓</div>
+          <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #065F46;"><strong>{company_label}</strong> has been successfully verified. You can now post jobs on Elevare.</p>
+        </div>
+
+        {_render_button("Post a Job", f"{settings.app_url}/employer/jobs/new")}
+        """
+        html_body = _render_email_layout(
+            title="Company Verified — Elevare",
+            preheader=f"{company_label} has been verified. You can now post jobs on Elevare.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you submitted a company verification request on Elevare.",
+        )
+        await self._send_html(
+            subject="Company Verified — You Can Now Post Jobs",
+            recipients=[employer_email],
+            html_body=html_body,
         )
 
 
@@ -942,6 +1025,31 @@ class StubEmailService(EmailService):
             job_title,
             job_url,
             register_url,
+    async def send_kyc_rejection(
+        self,
+        employer_email: str,
+        company_name: str | None,
+        reason: str | None,
+    ) -> None:
+        """Log a stub KYC rejection email."""
+        logger.info(
+            "STUB KYC REJECTED to %s — company=%s reason=%s link=%s/employer/verify",
+            employer_email,
+            company_name,
+            reason,
+            settings.app_url,
+        )
+
+    async def send_kyc_approved(
+        self,
+        employer_email: str,
+        company_name: str | None,
+    ) -> None:
+        """Log a stub KYC approved email."""
+        logger.info(
+            "STUB KYC APPROVED to %s — company=%s",
+            employer_email,
+            company_name,
         )
 
 

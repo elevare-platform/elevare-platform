@@ -6,6 +6,7 @@ import Footer from '@/components/layout/Footer'
 import { JobCard } from '@/components/jobs/JobCard'
 import { useJobs } from '@/hooks/useJobs'
 import { Button } from '@/components/ui/button'
+import StatusBadge from '@/components/admin/StatusBadge'
 import api from '@/lib/api'
 
 // ─── Skeleton placeholder ─────────────────────────────────────────────────────
@@ -127,9 +128,15 @@ export default function EmployerJobsPage() {
                   )}
                 </div>
               </div>
-              <Link to="/employer/onboarding">
-                <Button size="sm" variant="outline">Edit profile</Button>
-              </Link>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <Link to="/employer/verification" className="flex items-center gap-1.5">
+                  <span className="text-xs text-text-muted">Verification:</span>
+                  <StatusBadge value={profile.kyc_status ?? 'NOT_SUBMITTED'} />
+                </Link>
+                <Link to="/employer/onboarding">
+                  <Button size="sm" variant="outline">Edit profile</Button>
+                </Link>
+              </div>
             </div>
           )}
 

@@ -79,6 +79,21 @@ export function useAdmin() {
 
   const declineIntroduction = (id) =>
     request(() => api.post(`/api/v1/admin/introductions/${id}/decline`).then((r) => r.data))
+  // Employer KYC
+  const listKycSubmissions = (params) =>
+    request(() => api.get('/api/v1/admin/employers/kyc', { params }).then((r) => r.data))
+
+  const moderateKyc = (employerProfileId, action, reason = null) =>
+    request(() =>
+      api.patch(`/api/v1/admin/employers/kyc/${employerProfileId}`, { action, reason })
+        .then((r) => r.data)
+    )
+
+  const getKycDocumentUrl = (documentId) =>
+    request(() =>
+      api.get(`/api/v1/admin/employers/kyc/documents/${documentId}/url`)
+        .then((r) => r.data.data.url)
+    )
 
   return {
     loading,
@@ -99,5 +114,8 @@ export function useAdmin() {
     listAssignedIntroductions,
     acceptIntroduction,
     declineIntroduction,
+    listKycSubmissions,
+    moderateKyc,
+    getKycDocumentUrl,
   }
 }

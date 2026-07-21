@@ -17,7 +17,7 @@ from app.modules.applications.models import Application
 from app.modules.jobs.enums import JobStatus, ModerationStatus
 from app.modules.jobs.models import Job
 from app.modules.users.enums import AccountStatus, UserRole
-from app.modules.users.models import User
+from app.modules.users.models import EmployerProfile, User
 
 
 class AdminRepository:
@@ -126,6 +126,40 @@ class AdminRepository:
         job.status = status
         await self._db.flush()
         return job
+
+    # -----------------------------------------------------------------------
+    # Employer KYC
+    # -----------------------------------------------------------------------
+
+    async def list_kyc_submissions(
+        self,
+        status: str | None = None,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Return a paginated cursor result of employer KYC submissions."""
+        stmt = select(EmployerProfile).options(
+            selectinload(EmployerProfile.user),
+            selectinload(EmployerProfile.kyc_documents),
+        )
+        if status:
+            stmt = stmt.where(EmployerProfile.kyc_status == status)
+        return await paginate_cursor(stmt, self._db, cursor, limit)
+
+    async def get_employer_profile_by_id(
+        self, employer_profile_id: UUID
+    ) -> EmployerProfile | None:
+        """Fetch an employer profile by UUID with user and KYC documents loaded."""
+        stmt = (
+            select(EmployerProfile)
+            .where(EmployerProfile.id == employer_profile_id)
+            .options(
+                selectinload(EmployerProfile.user),
+                selectinload(EmployerProfile.kyc_documents),
+            )
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
 
     # -----------------------------------------------------------------------
     # Applications

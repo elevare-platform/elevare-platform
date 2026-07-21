@@ -75,6 +75,7 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
+            kyc_status="APPROVED",
         )
         db_session.add(profile)
         await db_session.flush()
@@ -160,6 +161,16 @@ def override_storage():
     app.dependency_overrides[get_storage_service] = lambda: MockStorageService()
     yield
     app.dependency_overrides.pop(get_storage_service, None)
+
+
+@pytest.fixture(autouse=True)
+def mock_celery_task():
+    """Prevent real Celery tasks from firing — no broker available in tests."""
+    from unittest.mock import MagicMock, patch
+
+    with patch("app.modules.applications.service.score_application_task") as mock_task:
+        mock_task.delay = MagicMock()
+        yield mock_task
 
 
 # ---------------------------------------------------------------------------

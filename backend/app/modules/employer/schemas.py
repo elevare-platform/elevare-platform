@@ -1,6 +1,9 @@
 """Pydantic schemas for employer-specific responses."""
 
-from pydantic import BaseModel
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
 
 
 class EmployerStats(BaseModel):
@@ -20,3 +23,26 @@ class EmployerStats(BaseModel):
     draft_jobs: int
     closed_jobs: int
     total_applications: int = 0
+
+
+class KYCDocumentResponse(BaseModel):
+    """A single KYC document uploaded by an employer."""
+
+    id: uuid.UUID
+    document_type: str
+    filename: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KYCStatusResponse(BaseModel):
+    """KYC status for the authenticated employer."""
+
+    kyc_status: str | None
+    kyc_rejection_reason: str | None
+    kyc_submitted_at: datetime | None
+    kyc_reviewed_at: datetime | None
+    documents: list[KYCDocumentResponse]
+
+    model_config = ConfigDict(from_attributes=True)

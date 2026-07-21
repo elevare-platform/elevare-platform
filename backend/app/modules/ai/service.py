@@ -104,6 +104,17 @@ class AIService(ABC):
         """Compute cosine similarity between two embeddings, scaled to 0-100."""
         ...
 
+    @abstractmethod
+    async def generate_job_description_text(
+        self,
+        mode: str,
+        field: str,
+        current_text: str | None,
+        job_context,
+    ) -> str:
+        """Generate or improve a job description field using AI."""
+        ...
+
 
 class KeywordAIService(AIService):
     """Deterministic keyword-matching implementation of AIService."""
@@ -167,6 +178,19 @@ class KeywordAIService(AIService):
         """Compute cosine similarity between two embeddings, scaled to 0-100."""
         raise NotImplementedError()
 
+    async def generate_job_description_text(
+        self,
+        mode: str,
+        field: str,
+        current_text: str | None,
+        job_context,
+    ) -> str:
+        """Return a template-based fallback — no LLM required."""
+        field_label = field.replace("_", " ")
+        if current_text and current_text.strip():
+            return f"[Improved] {current_text.strip()}"
+        return f"[Generated {field_label} for {job_context.title}]"
+
 
 class MockAIService(AIService):
     """Fixed-score implementation for tests — no real computation."""
@@ -218,6 +242,16 @@ class MockAIService(AIService):
     ) -> int:
         """Compute cosine similarity between two embeddings, scaled to 0-100."""
         return 75
+
+    async def generate_job_description_text(
+        self,
+        mode: str,
+        field: str,
+        current_text: str | None,
+        job_context,
+    ) -> str:
+        """Return a fixed string for test purposes."""
+        return f"Mock generated text for {field} in {mode} mode."
 
 
 class AnthropicCVExtractionService(AIService):
@@ -424,6 +458,45 @@ class AnthropicCVExtractionService(AIService):
         """Compute cosine similarity between two embeddings, scaled to 0-100."""
         raise NotImplementedError()
 
+    async def generate_job_description_text(
+        self,
+        mode: str,
+        field: str,
+        current_text: str | None,
+        job_context,
+    ) -> str:
+        """Generate or improve a job description field via Claude."""
+        from app.modules.ai.enums import JobDescriptionField, JobDescriptionMode
+        from app.modules.ai.prompts.job_description import (
+            JOB_DESCRIPTION_SYSTEM_PROMPT,
+            build_job_description_prompt,
+        )
+
+        user_prompt = build_job_description_prompt(
+            mode=JobDescriptionMode(mode),
+            field=JobDescriptionField(field),
+            current_text=current_text,
+            job_context=job_context,
+        )
+
+        try:
+            response = await self._client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=1024,
+                system=JOB_DESCRIPTION_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            raw = response.content[0].text.strip()
+            # Strip any accidental code fences the model may add
+            raw = re.sub(r"^```[a-z]*\n?", "", raw)
+            raw = re.sub(r"\n?```$", "", raw)
+            return raw.strip()
+        except Exception as e:
+            logger.error(
+                "LLM job description generation failed", extra={"error": str(e)}
+            )
+            raise
+
 
 class EmbeddingAIService(AIService):
     """Embedding-based scoring service backed by the OpenAI embedding API."""
@@ -468,10 +541,27 @@ class EmbeddingAIService(AIService):
         """Not implemented — EmbeddingAIService does not generate fit reasoning."""
         raise NotImplementedError("EmbeddingAIService does not generate fit reasoning.")
 
+    async def generate_job_description_text(
+        self,
+        mode: str,
+        field: str,
+        current_text: str | None,
+        job_context,
+    ) -> str:
+        """Delegate to AnthropicCVExtractionService for job description generation."""
+        return await AnthropicCVExtractionService().generate_job_description_text(
+            mode, field, current_text, job_context
+        )
+
 
 def get_ai_service() -> AIService:
-    """FastAPI dependency — returns EmbeddingAIService. Falls back to keyword scoring when embeddings missing."""
-    return EmbeddingAIService()
+    """FastAPI dependency — returns EmbeddingAIService when an OpenAI key is configured.
+
+    Falls back to KeywordAIService when the key is absent (CI, local dev without key).
+    """
+    if settings.openai_api_key:
+        return EmbeddingAIService()
+    return KeywordAIService()
 
 
 # Alias used in Phase 12 tests — MockAIService already implements the full interface

@@ -503,3 +503,31 @@ class CannotModifyAdminException(PlatformError):
     ) -> None:
         """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
+
+
+class KYCRequiredException(PlatformError):
+    """Raised when an employer tries to post a job without approved KYC."""
+
+    def __init__(
+        self,
+        message: str = "Company verification (KYC) is required before posting jobs",
+        code: str = "KYC_REQUIRED",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class KYCAlreadySubmittedException(PlatformError):
+    """Raised when an employer tries to resubmit KYC that is already pending/approved."""
+
+    def __init__(
+        self,
+        message: str = "KYC verification has already been submitted",
+        code: str = "KYC_ALREADY_SUBMITTED",
+        status_code: int = 409,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)

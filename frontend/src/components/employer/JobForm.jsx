@@ -2,13 +2,21 @@ import React from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Loader2, X } from 'lucide-react'
+import { Loader2, X, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FormField, FormMessage } from '@/components/ui/form'
 import { WorkLocationToggle } from '@/components/jobs/WorkLocationToggle'
+import { AiAssistModal, AiAssistButton } from '@/components/employer/AiAssistModal'
 import { cn } from '@/lib/utils'
+
+// Fields eligible for AI writing assistance, keyed by field name.
+const AI_ASSIST_FIELDS = {
+  about_the_role: 'About the Role',
+  key_responsibilities: 'Key Responsibilities',
+  requirements: 'Requirements',
+}
 
 const jobSchema = z
   .object({
@@ -177,11 +185,31 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
     handleSubmit,
     control,
     watch,
+    setValue,
+    getValues,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(jobSchema),
     defaultValues: initialValues,
   })
+
+  // ─── AI Assist (job description writer) ────────────────────────────────
+  const [aiModalField, setAiModalField] = React.useState(null) // field key or null
+  const [undoState, setUndoState] = React.useState(null) // { field, previousValue }
+
+  const openAiAssist = (field) => setAiModalField(field)
+  const closeAiAssist = () => setAiModalField(null)
+
+  const applyAiSuggestion = (field, text) => {
+    setUndoState({ field, previousValue: getValues(field) })
+    setValue(field, text, { shouldDirty: true, shouldValidate: true })
+  }
+
+  const undoAiSuggestion = () => {
+    if (!undoState) return
+    setValue(undoState.field, undoState.previousValue, { shouldDirty: true, shouldValidate: true })
+    setUndoState(null)
+  }
 
   const watchedValues = watch()
   React.useEffect(() => {
@@ -218,9 +246,12 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
 
       {/* About the Role */}
       <FormField>
-        <Label htmlFor="about_the_role">
-          About the Role <span className="text-red-500">*</span>
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="about_the_role">
+            About the Role <span className="text-red-500">*</span>
+          </Label>
+          <AiAssistButton onClick={() => openAiAssist('about_the_role')} />
+        </div>
         <textarea
           id="about_the_role"
           rows={4}
@@ -228,14 +259,20 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
           className={textareaClass}
           {...register('about_the_role')}
         />
+        {undoState?.field === 'about_the_role' && (
+          <UndoBanner onUndo={undoAiSuggestion} />
+        )}
         <FormMessage>{errors.about_the_role?.message}</FormMessage>
       </FormField>
 
       {/* Key Responsibilities */}
       <FormField>
-        <Label htmlFor="key_responsibilities">
-          Key Responsibilities <span className="text-red-500">*</span>
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="key_responsibilities">
+            Key Responsibilities <span className="text-red-500">*</span>
+          </Label>
+          <AiAssistButton onClick={() => openAiAssist('key_responsibilities')} />
+        </div>
         <textarea
           id="key_responsibilities"
           rows={5}
@@ -243,6 +280,9 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
           className={textareaClass}
           {...register('key_responsibilities')}
         />
+        {undoState?.field === 'key_responsibilities' && (
+          <UndoBanner onUndo={undoAiSuggestion} />
+        )}
         <FormMessage>{errors.key_responsibilities?.message}</FormMessage>
       </FormField>
 
@@ -250,9 +290,12 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
 
       {/* Requirements */}
       <FormField>
-        <Label htmlFor="requirements">
-          Requirements <span className="text-red-500">*</span>
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="requirements">
+            Requirements <span className="text-red-500">*</span>
+          </Label>
+          <AiAssistButton onClick={() => openAiAssist('requirements')} />
+        </div>
         <textarea
           id="requirements"
           rows={4}
@@ -260,6 +303,9 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
           className={textareaClass}
           {...register('requirements')}
         />
+        {undoState?.field === 'requirements' && (
+          <UndoBanner onUndo={undoAiSuggestion} />
+        )}
         <FormMessage>{errors.requirements?.message}</FormMessage>
       </FormField>
 
@@ -442,6 +488,42 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
         {loading ? <><Loader2 size={16} className="mr-2 animate-spin" />Saving job…</> : 'Save job'}
       </Button>
 
+      {aiModalField && (
+        <AiAssistModal
+          isOpen={Boolean(aiModalField)}
+          onClose={closeAiAssist}
+          fieldKey={aiModalField}
+          fieldLabel={AI_ASSIST_FIELDS[aiModalField]}
+          currentText={getValues(aiModalField) || ''}
+          jobContext={{
+            title: watchedValues.title,
+            seniority_level: watchedValues.seniority_level,
+            contract_type: watchedValues.contract_type,
+            work_model: watchedValues.work_model,
+            location: watchedValues.location,
+            required_skills: watchedValues.required_skills,
+          }}
+          onApply={(text) => applyAiSuggestion(aiModalField, text)}
+        />
+      )}
+
     </form>
+  )
+}
+
+// Small dismissible banner shown right after an AI suggestion is applied to a field.
+function UndoBanner({ onUndo }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-brand-blue">
+      <span>AI suggestion applied.</span>
+      <button
+        type="button"
+        onClick={onUndo}
+        className="inline-flex items-center gap-1 font-medium hover:text-brand-blue-dark transition-colors"
+      >
+        <Undo2 size={12} />
+        Undo
+      </button>
+    </div>
   )
 }

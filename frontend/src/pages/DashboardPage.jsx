@@ -94,7 +94,7 @@ function EmployerDashboard({ user }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text">Welcome back, {user?.first_name}</h1>
+          <h1 className="text-2xl font-bold text-text">Welcome Back, {user?.first_name}</h1>
           <p className="text-text-muted text-sm mt-1">
             {profile?.company_name ?? 'Your employer dashboard'}
           </p>
@@ -328,7 +328,7 @@ function CandidateDashboard({ user }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-text">Welcome back, {user?.first_name}</h1>
+        <h1 className="text-2xl font-bold text-text">Welcome Back, {user?.first_name}</h1>
         <p className="text-text-muted mt-1 text-sm">Find your next opportunity.</p>
       </div>
       <div className="rounded-lg border border-border bg-white p-8 text-center text-text-muted">

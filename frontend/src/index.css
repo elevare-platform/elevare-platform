@@ -43,14 +43,16 @@ body {
   min-height: 100vh;
 }
 
-/* Global headings with Lobster Two display font */
-h1, h2, h3, .font-heading {
-  font-family: var(--font-heading);
+/* Headings default to the legible sans font. The Lobster Two display font
+   is opt-in only via .font-heading — reserved for the homepage hero — so
+   new headings stay readable by default instead of silently inheriting a
+   decorative script font. */
+h1, h2, h3 {
+  font-family: var(--font-sans);
 }
 
-/* Allow font-sans utility to override the heading rule above — used on job titles */
-h1.font-sans, h2.font-sans, h3.font-sans, .font-sans {
-  font-family: var(--font-sans) !important;
+.font-heading {
+  font-family: var(--font-heading);
 }
 
 /* Spacing and weight adjustments for heading style readability */
@@ -122,9 +124,6 @@ h2 {
 
 /* ─── Keyframe animations ─────────────────────────────────────────── */
 
-/* Note: @keyframes float is defined in the Hero Section block below,
-   where rotation is handled as a static CSS transform on .hero-photo-card */
-
 /* Social proof bar — horizontal scroll */
 @keyframes scroll-x {
   from { transform: translateX(0); }
@@ -153,16 +152,6 @@ h2 {
 
 .animate-scroll-y:hover {
   animation-play-state: paused;
-}
-
-/* ─── Connector arrow draw-and-fade (hero card links) ────────────── */
-
-@keyframes draw-waterfall {
-  0%   { stroke-dashoffset: 900; opacity: 0; }
-  8%   { opacity: 1; }
-  72%  { stroke-dashoffset: 0;   opacity: 1; }
-  88%  { stroke-dashoffset: 0;   opacity: 0; }
-  100% { stroke-dashoffset: 900; opacity: 0; }
 }
 
 /* ─── Brand panel grid background (Hero + auth pages) ────────────── */
@@ -354,11 +343,6 @@ h2 {
     animation: hero-reduced-fade 0.4s ease forwards !important;
     transform: none !important;
   }
-  .hero-card-drop {
-    animation: hero-reduced-fade 0.4s ease forwards !important;
-    animation-delay: var(--drop-delay, 0ms) !important;
-    transform: none !important;
-  }
   @keyframes hero-reduced-fade {
     to { opacity: 1; }
   }
@@ -459,93 +443,6 @@ h2 {
   }
 }
 
-/* Background pulse glow */
-.hero-corkboard-glow {
-  animation: corkboard-glow-pulse 8s ease-in-out infinite;
-}
-
-@keyframes corkboard-glow-pulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1.1; }
-}
-
-/* Pinned photo cards float + hover architecture */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
-.hero-card-float {
-  animation: float 6s ease-in-out infinite;
-  will-change: transform;
-}
-
-.hero-card-wrapper {
-  /* Entrance handled by .hero-card-drop on the same element */
-  transition: z-index 0s;
-}
-
-.hero-card-wrapper:hover {
-  z-index: 99 !important;
-}
-
-@keyframes hero-card-drop {
-  0% {
-    opacity: 0;
-    transform: translateY(-60px) scale(0.88) rotate(var(--drop-initial-rotate, 0deg));
-  }
-  55% {
-    opacity: 1;
-    transform: translateY(6px) scale(1.03);
-  }
-  75% {
-    transform: translateY(-4px) scale(0.99);
-  }
-  90% {
-    transform: translateY(2px) scale(1.005);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-/* hero-card-drop uses the CSS custom property --drop-delay for stagger */
-.hero-card-drop {
-  opacity: 0;
-  animation:
-    hero-card-drop 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  animation-delay: var(--drop-delay, 600ms);
-}
-
-.hero-photo-card {
-  will-change: transform;
-  transform: rotate(var(--card-rotation, 0deg));
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.hero-card-wrapper:hover .hero-photo-card {
-  transform: scale(1.05) rotate(calc(var(--card-rotation, 0deg) * 0.25)) translateY(-8px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2), 0 6px 12px rgba(0, 0, 0, 0.1);
-}
-
-/* Connector line entrance */
-.hero-entrance-connector {
-  opacity: 0;
-  animation: hero-connector-fade 1s ease-out forwards;
-  animation-delay: 1.2s;
-}
-
-@keyframes hero-connector-fade {
-  to {
-    opacity: 1;
-  }
-}
-
 /* ─── Accessibility Support: Reduced Motion ───────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   @keyframes hero-fade-in-up {
@@ -577,29 +474,174 @@ h2 {
   @keyframes hero-avatar-entrance-reduced {
     to { opacity: 1; }
   }
-  .hero-corkboard-glow {
+}
+
+/* ─── Hero foreground — eyebrow badge, divider, CTA panel, social chip,
+   and the right-side feature panel that replaces the old photo cards.
+   Purely additive: does not touch .hero-slideshow / .hero-slide-*. ──── */
+
+.hero-eyebrow-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.hero-eyebrow-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fcd34d;
+  box-shadow: 0 0 0 rgba(252, 211, 77, 0.6);
+  animation: hero-eyebrow-dot-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes hero-eyebrow-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(252, 211, 77, 0.45); }
+  50%      { box-shadow: 0 0 0 5px rgba(252, 211, 77, 0); }
+}
+
+.hero-divider-line {
+  height: 3px;
+  width: 64px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8, #1a4d8f 55%, #e87722);
+  transform-origin: left center;
+  animation: hero-divider-grow 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes hero-divider-grow {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+/* CTA panel — gives the buttons a grounded, elevated surface */
+.hero-cta-panel {
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Social proof — integrated glass chip rather than a bare row */
+.hero-social-proof-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px 10px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  width: fit-content;
+}
+
+.hero-social-proof-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ─── Right-side feature panel (replaces the old photo cluster) ──── */
+
+.hero-panel-glow {
+  border-radius: 999px;
+  filter: blur(46px);
+  animation: hero-panel-glow-pulse 9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes hero-panel-glow-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(1.08); }
+}
+
+.hero-feature-panel {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  padding: 28px;
+  border-radius: 24px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  opacity: 0;
+  animation: hero-panel-entrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes hero-panel-entrance {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hero-feature-panel-float {
+  animation: hero-panel-float 7s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes hero-panel-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+.hero-feature-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-feature-row:hover {
+  transform: translateX(4px);
+}
+
+.hero-feature-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-feature-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-eyebrow-dot {
     animation: none;
   }
-  .hero-card-wrapper {
-    opacity: 0;
-    animation: hero-card-reveal-reduced 0.5s ease-out forwards;
+  .hero-divider-line {
+    animation: hero-reduced-fade 0.4s ease forwards !important;
+    transform: none !important;
   }
-  .hero-card-wrapper:hover {
-    z-index: initial !important;
+  .hero-panel-glow {
+    animation: none;
+    opacity: 0.4;
   }
-  @keyframes hero-card-reveal-reduced {
-    to { opacity: 1; }
+  .hero-feature-panel {
+    animation: hero-reduced-fade 0.4s ease forwards !important;
+    transform: none !important;
   }
-  .hero-card-float {
+  .hero-feature-panel-float {
     animation: none;
   }
-  .hero-photo-card {
-    transform: rotate(var(--card-rotation, 0deg));
-    animation: none;
-  }
-  .hero-card-wrapper:hover .hero-photo-card {
-    transform: rotate(var(--card-rotation, 0deg)) !important;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10) !important;
+  .hero-feature-row:hover {
+    transform: none;
   }
 }
 

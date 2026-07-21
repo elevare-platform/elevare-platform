@@ -71,8 +71,7 @@ export default function CandidateSuccess() {
             For Candidates
           </span>
           <h2
-            className="text-4xl sm:text-5xl font-extrabold mt-6 tracking-tight text-slate-900 leading-tight"
-            style={{ fontFamily: "'Lobster Two', cursive" }}
+            className="font-sans text-4xl sm:text-5xl font-extrabold mt-6 tracking-tight text-slate-900 leading-tight"
           >
             Empowering Your Professional Journey
           </h2>

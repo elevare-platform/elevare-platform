@@ -65,5 +65,6 @@ class EmployerProfileResponse(BaseModel):
     website: str | None
     company_logo_url: str | None
     is_profile_complete: bool
+    kyc_status: str | None
 
     model_config = ConfigDict(from_attributes=True)
