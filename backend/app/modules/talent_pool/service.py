@@ -34,6 +34,19 @@ from app.modules.users.repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
+# Below this blended score, a match is hidden rather than shown at a
+# technically-top-N-but-obviously-irrelevant percentage. Initial estimate —
+# tune after observing real score distributions post-launch.
+_MIN_SIMILARITY_SCORE = 40
+
+# How many candidates over the requested limit to pull by raw embedding
+# distance before re-ranking by the blended (embedding + skill-overlap)
+# score. Needed because skill overlap can promote a candidate who wasn't
+# in the top-N by embedding distance alone — over-fetch so re-ranking can
+# actually change who shows up, not just the displayed number.
+_MATCH_OVERFETCH_MULTIPLIER = 4
+_MATCH_OVERFETCH_CAP = 100
+
 
 async def resolve_match_display_fields(
     db: AsyncSession,
@@ -102,7 +115,10 @@ async def resolve_match_display_fields(
         "name": parsed_name,
         "current_title": parsed_current_title,
         "profession": parsed_profession,
-        "skills": parsed_skills[:5],
+        # Full list, not truncated — callers need the complete set for
+        # skill-overlap scoring against job.required_skills. Truncate to
+        # top_skills for display separately.
+        "skills": parsed_skills,
         "location": parsed_location,
         "years_of_experience": parsed_years,
     }
@@ -441,6 +457,7 @@ class TalentPoolService:
         limit: int = 20,
     ) -> "TalentMatchListResponse":
         """Return AI-matched talent pool profiles for a job, ranked by embedding similarity."""
+        from app.core.storage import get_storage_service
         from app.modules.applications.repository import ApplicationRepository
         from app.modules.talent_pool.schema import (
             TalentMatchListResponse,
@@ -449,6 +466,7 @@ class TalentPoolService:
 
         job_repo = JobRepository(self._db)
         application_repo = ApplicationRepository(self._db)
+        storage_service = get_storage_service()
 
         job = await job_repo.get_by_id(job_id)
         if not job:
@@ -464,25 +482,108 @@ class TalentPoolService:
 
         user_ids = await application_repo.get_user_ids_for_job(job_id)
 
+        fetch_limit = min(limit * _MATCH_OVERFETCH_MULTIPLIER, _MATCH_OVERFETCH_CAP)
         matches = await self._repo.find_matches_for_job(
             job_embedding=job.job_embedding,
+            employer_id=employer_id,
             exclude_user_ids=user_ids,
-            limit=limit,
+            limit=fetch_limit,
         )
 
-        items: list[TalentMatchResponse] = []
+        from app.modules.ai.scoring_service import compute_skill_overlap_modulator
+
+        # Pass 1 — score every over-fetched candidate. Cheap (no presigned
+        # URLs / extra queries yet) since most of these won't survive the
+        # floor + limit below.
+        scored: list[dict] = []
         for profile, distance in matches:
             fields = await resolve_match_display_fields(self._db, profile, employer_id)
+
+            embedding_score = max(0, min(100, round((1 - distance) * 100)))
+            modulator = compute_skill_overlap_modulator(
+                fields["skills"], job.required_skills
+            )
+            final_score = max(0, min(100, round(embedding_score * modulator)))
+
+            if profile.candidate_profile_id:
+                ownership = "self_registered"
+            elif profile.added_by == employer_id:
+                ownership = "own_sourced"
+            else:
+                ownership = "admin_sourced"
+
+            scored.append(
+                {
+                    "profile": profile,
+                    "fields": fields,
+                    "ownership": ownership,
+                    "final_score": final_score,
+                }
+            )
+
+        # Hide matches below the floor, then re-rank by the blended score —
+        # skill overlap can promote someone who wasn't in the top-N by raw
+        # embedding distance, so this can change who shows up, not just the
+        # displayed number.
+        scored = [s for s in scored if s["final_score"] >= _MIN_SIMILARITY_SCORE]
+        scored.sort(key=lambda s: s["final_score"], reverse=True)
+        scored = scored[:limit]
+
+        # Pass 2 — only for the final set that will actually display, resolve
+        # the CV download URL (presigned URL generation + an extra query for
+        # the admin_sourced/accepted-introduction check).
+        items: list[TalentMatchResponse] = []
+        for entry in scored:
+            profile = entry["profile"]
+            fields = entry["fields"]
+            ownership = entry["ownership"]
+            cv_download_url: str | None = None
+
+            if ownership == "own_sourced":
+                # Employer owns this CV — always provide the download URL
+                if profile.parsed_submission and profile.parsed_submission.r2_key:
+                    cv_download_url = await storage_service.generate_presigned_url(
+                        profile.parsed_submission.r2_key,
+                        expires_seconds=600,
+                    )
+            elif ownership == "admin_sourced":
+                # Only unlock URL if an accepted introduction exists for this employer+profile
+                from sqlalchemy import select
+
+                from app.modules.introductions.enums import IntroductionStatus
+                from app.modules.introductions.models import IntroductionRequest
+
+                accepted = await self._db.execute(
+                    select(IntroductionRequest.id)
+                    .where(
+                        IntroductionRequest.employer_id == employer_id,
+                        IntroductionRequest.talent_pool_profile_id == profile.id,
+                        IntroductionRequest.status == IntroductionStatus.ACCEPTED.value,
+                    )
+                    .limit(1)
+                )
+                if (
+                    accepted.scalar_one_or_none()
+                    and profile.parsed_submission
+                    and profile.parsed_submission.r2_key
+                ):
+                    cv_download_url = await storage_service.generate_presigned_url(
+                        profile.parsed_submission.r2_key,
+                        expires_seconds=600,
+                    )
+
             items.append(
                 TalentMatchResponse.from_match(
                     profile=profile,
-                    distance=distance,
+                    similarity_score=entry["final_score"],
                     candidate_name=fields["name"],
                     current_title=fields["current_title"],
                     profession=fields["profession"],
                     years_of_experience=fields["years_of_experience"],
                     location=fields["location"],
-                    top_skills=fields["skills"],
+                    top_skills=fields["skills"][:5],
+                    ownership=ownership,
+                    cv_download_url=cv_download_url,
                 )
             )
 

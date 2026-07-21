@@ -1,5 +1,6 @@
 """Tests for IntroductionService — create, accept, decline, lazy expiry, refund."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,7 @@ from app.modules.introductions.service import (
 )
 from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
 from app.modules.talent_pool.models import TalentPoolProfiles
+from app.modules.users.enums import UserRole
 from tests.conftest import make_employer, make_job
 
 
@@ -43,8 +45,22 @@ def make_intro_request(employer_id, job_id, profile_id, **overrides):
 
 
 def _profile_mock(email="candidate@test.com"):
+    """Simulate an admin-sourced CV import profile.
+
+    Imported CVs have no candidate_profile_id. The profile's uploader
+    (added_by_user) is an admin — so request_introduction routes the
+    email to the admin, not the candidate directly.
+    """
     m = MagicMock()
+    # No self-registered candidate attached
+    m.candidate_profile_id = None
     m.candidate_profile = None
+    # Sourced by a different entity (an admin), not the requesting employer
+    m.added_by = uuid.uuid4()
+    m.added_by_user = MagicMock()
+    m.added_by_user.role = UserRole.ADMIN.value
+    m.added_by_user.email = "admin@elevare.com"
+    # Parsed CV data still carries the candidate email for other helpers
     m.parsed_submission.parsed_data = {"email": email}
     return m
 
@@ -102,7 +118,7 @@ async def test_request_introduction_deducts_credit_and_creates_row(db_session):
         "app.modules.introductions.tasks.send_introduction_request_email", mock_task
     ):
         with patch(
-            "app.modules.introductions.service.TalentPoolRepository.get_by_id_joined_with_parsed_data",
+            "app.modules.introductions.service.TalentPoolRepository.get_by_id_joined_with_other_data",
             return_value=_profile_mock(),
         ):
             result = await service.request_introduction(
@@ -134,7 +150,7 @@ async def test_request_introduction_raises_when_no_credits(db_session):
 
     with pytest.raises(ValidationException, match="Insufficient credits"):
         with patch(
-            "app.modules.introductions.service.TalentPoolRepository.get_by_id_joined_with_parsed_data",
+            "app.modules.introductions.service.TalentPoolRepository.get_by_id_joined_with_other_data",
             return_value=_profile_mock(),
         ):
             await service.request_introduction(
@@ -169,7 +185,7 @@ async def test_request_introduction_raises_on_duplicate_pending(db_session):
 
     with pytest.raises(ValidationException, match="already pending"):
         with patch(
-            "app.modules.introductions.service.TalentPoolRepository.get_by_id_joined_with_parsed_data",
+            "app.modules.introductions.service.TalentPoolRepository.get_by_id_joined_with_other_data",
             return_value=_profile_mock(),
         ):
             await service.request_introduction(

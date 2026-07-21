@@ -9,7 +9,9 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import paginate_cursor
+from app.modules.candidates.models import CandidateProfile
 from app.modules.talent_pool.models import TalentPoolProfiles
+from app.modules.users.enums import UserRole
 
 
 class TalentPoolRepository:
@@ -64,7 +66,7 @@ class TalentPoolRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_id_joined_with_parsed_data(
+    async def get_by_id_joined_with_other_data(
         self,
         profile_id: uuid.UUID,
     ) -> TalentPoolProfiles | None:
@@ -74,7 +76,13 @@ class TalentPoolRepository:
         result = await self._db.execute(
             select(TalentPoolProfiles)
             .where(TalentPoolProfiles.id == profile_id)
+            .options(selectinload(TalentPoolProfiles.added_by_user))
             .options(selectinload(TalentPoolProfiles.parsed_submission))
+            .options(
+                selectinload(TalentPoolProfiles.candidate_profile).selectinload(
+                    CandidateProfile.user
+                )
+            )
         )
         return result.scalar_one_or_none()
 
@@ -171,6 +179,7 @@ class TalentPoolRepository:
     async def find_matches_for_job(
         self,
         job_embedding: list[float],
+        employer_id: uuid.UUID,
         exclude_user_ids: list[uuid.UUID],
         limit: int = 20,
     ) -> list[tuple[TalentPoolProfiles, float]]:
@@ -182,24 +191,61 @@ class TalentPoolRepository:
         """
         from sqlalchemy.orm import selectinload
 
+        from app.modules.ai.enums import CVParsingStatus
+        from app.modules.ai.models import ParsedCVSubmission
         from app.modules.candidates.models import CandidateProfile
 
         await self._db.execute(text("SET ivfflat.probes = 10"))
 
         distance = TalentPoolProfiles.profile_embedding.cosine_distance(job_embedding)
+
+        from app.modules.users.models import User as UserModel
+
+        # Correlated subquery: is the profile's uploader an admin?
+        admin_subq = (
+            select(UserModel.id)
+            .where(UserModel.id == TalentPoolProfiles.added_by)
+            .where(UserModel.role == UserRole.ADMIN.value)
+            .correlate(TalentPoolProfiles)
+            .exists()
+        )
+
         stmt = (
             select(TalentPoolProfiles, distance.label("distance"))
             .outerjoin(
                 CandidateProfile,
                 TalentPoolProfiles.candidate_profile_id == CandidateProfile.id,
             )
+            .outerjoin(
+                ParsedCVSubmission,
+                TalentPoolProfiles.parsed_submission_id == ParsedCVSubmission.id,
+            )
             .where(TalentPoolProfiles.profile_embedding.is_not(None))
-            # For self-registered candidates, require consent.
-            # Sourced profiles (candidate_profile_id IS NULL) pass through unconditionally.
+            # Visibility + ownership in one expression:
+            # - Self-registered (candidate_profile_id IS NOT NULL): require cv_sharing_consent
+            # - Sourced (candidate_profile_id IS NULL): only show if added by this employer OR an admin,
+            #   AND the CV parse actually completed cleanly — a FLAGGED/FAILED/PENDING
+            #   parse means low-confidence extraction, non-English, scanned/OCR, or the
+            #   document not being a real CV at all (e.g. a presentation or unrelated
+            #   PDF mistakenly uploaded). Those still get an embedding generated from
+            #   whatever text WAS extracted and can score deceptively well due to
+            #   embedding-model anisotropy — exclude them at the source instead of
+            #   trying to catch it downstream in scoring.
             .where(
                 sa.or_(
-                    TalentPoolProfiles.candidate_profile_id.is_(None),
-                    CandidateProfile.cv_sharing_consent.is_(True),
+                    sa.and_(
+                        TalentPoolProfiles.candidate_profile_id.is_not(None),
+                        CandidateProfile.cv_sharing_consent.is_(True),
+                    ),
+                    sa.and_(
+                        TalentPoolProfiles.candidate_profile_id.is_(None),
+                        sa.or_(
+                            TalentPoolProfiles.added_by == employer_id,
+                            admin_subq,
+                        ),
+                        ParsedCVSubmission.parse_status
+                        == CVParsingStatus.COMPLETED.value,
+                    ),
                 )
             )
             .options(

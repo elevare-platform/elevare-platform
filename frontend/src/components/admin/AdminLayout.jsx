@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Briefcase, FileText,
-  ScrollText, LogOut, Menu, UserPlus, FileSearch, MessageSquareQuote, Mail, ShieldCheck,
+  ScrollText, LogOut, Menu, UserPlus, FileSearch, MessageSquareQuote, Mail, Send, TrendingUp, ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import ehsLogo from '@/assets/ehs-logo.png'
@@ -13,7 +13,9 @@ const NAV = [
   { to: '/admin/jobs', icon: Briefcase, label: 'Jobs' },
   { to: '/admin/kyc', icon: ShieldCheck, label: 'KYC Verification' },
   { to: '/admin/applications', icon: FileText, label: 'Applications' },
+  { to: '/admin/introductions', icon: Send, label: 'Introductions' },
   { to: '/admin/cv-parser', icon: FileSearch, label: 'CV Parser' },
+  { to: '/employer/talent-pool', icon: TrendingUp, label: 'Talent Pipeline' },
   { to: '/admin/testimonials', icon: MessageSquareQuote, label: 'Testimonials' },
   { to: '/admin/audit-log', icon: ScrollText, label: 'Audit Log' },
   { to: '/admin/invite', icon: UserPlus, label: 'Invite' },

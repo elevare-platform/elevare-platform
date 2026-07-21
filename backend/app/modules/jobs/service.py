@@ -203,9 +203,10 @@ class JobService:
         employer: User,
         cursor: str | None = None,
         limit: int = 20,
+        search: str | None = None,
     ) -> JobListResponse:
         """Return paginated jobs owned by the authenticated employer."""
-        result = await self._repo.list_by_employer(employer.id, cursor, limit)
+        result = await self._repo.list_by_employer(employer.id, cursor, limit, search)
         return JobListResponse(
             items=[JobResponse.from_job(j) for j in result["items"]],
             next_cursor=result["next_cursor"],

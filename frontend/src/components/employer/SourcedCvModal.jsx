@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Users, Brain } from 'lucide-react'
+import { X, Users, Brain, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 
@@ -86,6 +86,17 @@ export default function SourcedCvModal({ profileId, onClose }) {
                   )}
                 </div>
               </div>
+
+              {profile.cv_download_url && (
+                <a
+                  href={profile.cv_download_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 w-full rounded-lg border border-brand-blue text-brand-blue px-4 py-2 text-sm font-medium hover:bg-brand-blue/5 transition-colors"
+                >
+                  <Download size={14} /> Download CV
+                </a>
+              )}
 
               {/* AI Score */}
               {profile.ai_score != null && (

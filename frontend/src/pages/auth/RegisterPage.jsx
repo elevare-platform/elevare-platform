@@ -182,9 +182,13 @@ function RegisterForm({ role, onBack }) {
 
   const params = new URLSearchParams(location.search)
   const next = params.get('next')
+  // Pre-fill from a link like /register?role=candidate&email=ada%40x.com —
+  // e.g. the "Create your free profile" CTA in the role-notification email.
+  const prefillEmail = params.get('email') || ''
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
+    defaultValues: { email: prefillEmail },
   })
 
   const onSubmit = async (values) => {
@@ -384,12 +388,19 @@ function RegisterForm({ role, onBack }) {
 // ─── RegisterPage ─────────────────────────────────────────────────────────────
 
 export default function RegisterPage() {
-  const [role, setRole] = useState(null)
+  const location = useLocation()
+  const params = new URLSearchParams(location.search)
+
+  // Pre-select role from a link like /register?role=candidate — skips the
+  // role-selection step entirely when a valid role is provided. Lazy
+  // initializer runs before first paint, so there's no flash of RoleStep.
+  const [role, setRole] = useState(() => {
+    const roleParam = params.get('role')?.toUpperCase()
+    return roleParam === 'CANDIDATE' || roleParam === 'EMPLOYER' ? roleParam : null
+  })
   const { user, authReady } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
 
-  const params = new URLSearchParams(location.search)
   const next = params.get('next') || null
 
   useEffect(() => {

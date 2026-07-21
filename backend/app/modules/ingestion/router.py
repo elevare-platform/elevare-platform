@@ -11,6 +11,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Query
@@ -29,6 +30,8 @@ from app.modules.ingestion.schema import (
 from app.modules.ingestion.service import IngestionService
 from app.modules.users.enums import UserRole
 from app.modules.users.models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -134,6 +137,7 @@ async def zoho_callback(
             requesting_user_id=user_id,
         )
     except Exception:
+        logger.exception("Zoho OAuth callback failed for user %s", user_id)
         return RedirectResponse(
             url=f"{settings.app_url}/employer/mail-ingestion?connected=error",
             status_code=302,

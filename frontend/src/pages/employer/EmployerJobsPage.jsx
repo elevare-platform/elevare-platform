@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Building2, Globe } from 'lucide-react'
+import { Building2, Globe, Search, X } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { JobCard } from '@/components/jobs/JobCard'
@@ -36,8 +36,18 @@ function SkeletonCard() {
  * Requirements: 4.1–4.11
  */
 export default function EmployerJobsPage() {
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  // Debounce — avoid firing a request on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
   const { jobs, setJobs, loading, error, hasMore, loadMore } = useJobs({
     endpoint: '/api/v1/jobs/mine',
+    params: { search: debouncedSearch },
   })
 
   const [profile, setProfile] = useState(null)
@@ -143,6 +153,29 @@ export default function EmployerJobsPage() {
             </Link>
           </div>
 
+          {/* Search */}
+          <div className="relative mb-6 max-w-sm">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by job title…"
+              aria-label="Search my jobs by title"
+              className="w-full pl-9 pr-9 py-2 text-sm rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-brand-blue"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
           {/* Error state */}
           {error && !loading && (
             <p className="text-red-600 text-sm mb-6">{error}</p>
@@ -164,7 +197,15 @@ export default function EmployerJobsPage() {
           )}
 
           {/* Empty state — Req 4.1 */}
-          {!loading && jobs.length === 0 && (
+          {!loading && jobs.length === 0 && debouncedSearch && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <p className="text-xl font-semibold text-text mb-2">No jobs match "{debouncedSearch}"</p>
+              <p className="text-text-muted mb-6">Try a different title, or clear the search.</p>
+              <Button variant="outline" onClick={() => setSearch('')}>Clear search</Button>
+            </div>
+          )}
+
+          {!loading && jobs.length === 0 && !debouncedSearch && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <p className="text-xl font-semibold text-text mb-2">No jobs yet</p>
               <p className="text-text-muted mb-6">

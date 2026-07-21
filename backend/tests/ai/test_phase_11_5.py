@@ -228,14 +228,18 @@ class TestScoreHashing:
         h1 = hash_cv_scoring_inputs(
             {
                 "current_title": "Engineer",
-                "work_history": [{"title": "Dev", "company": "Acme", "description": "Python work"}],
+                "work_history": [
+                    {"title": "Dev", "company": "Acme", "description": "Python work"}
+                ],
                 "years_experience": 3,
             }
         )
         h2 = hash_cv_scoring_inputs(
             {
                 "current_title": "Engineer",
-                "work_history": [{"title": "Dev", "company": "Acme", "description": "Java work"}],
+                "work_history": [
+                    {"title": "Dev", "company": "Acme", "description": "Java work"}
+                ],
                 "years_experience": 3,
             }
         )

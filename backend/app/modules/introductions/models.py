@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, DateTime, ForeignKey, String
+from sqlalchemy import UUID, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
@@ -77,4 +77,44 @@ class IntroductionRequest(BaseModel):
         "TalentPoolProfiles",
         foreign_keys=[talent_pool_profile_id],
         back_populates="introduction_requests",
+    )
+
+
+class RoleNotification(BaseModel):
+    """
+    Records that an employer notified an own-sourced candidate about a role.
+
+    Free, one-way action — no token, no status lifecycle. Existence of a
+    row is the persisted "notified" state so the button doesn't reset to
+    'Notify for this role' on page reload.
+    """
+
+    __tablename__ = "role_notifications"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "employer_id",
+            "job_id",
+            "talent_pool_profile_id",
+            name="uq_role_notification",
+        ),
+    )
+
+    employer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    talent_pool_profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("talent_pool_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
