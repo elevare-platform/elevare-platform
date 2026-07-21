@@ -606,6 +606,7 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
             parsed_cv_summary: str | None = None
             parsed_current_title: str | None = None
             parsed_profession: str | None = None
+            parsed_skills: list[str] | None = None
             work_history_parts: list[str] = []
 
             # Resolve parsed CV summary via the default CV → submission chain
@@ -619,6 +620,7 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                     parsed_cv_summary = pd.get("summary")
                     parsed_current_title = pd.get("current_title")
                     parsed_profession = pd.get("profession")
+                    parsed_skills = pd.get("skills")
 
                     for role in pd.get("work_history") or []:
                         title = role.get("title") or ""
@@ -630,6 +632,10 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                             )
 
             work_history_text = "\n".join(work_history_parts)
+            # Candidate's own curated skills list takes priority over the
+            # auto-extracted CV skills, same precedence used for display
+            # elsewhere (talent_pool/service.py: resolve_match_display_fields).
+            candidate_skills = profile.skills or parsed_skills or []
 
             # Hash check — skip if source content hasn't changed
             new_hash = hash_candidate_embedding_source(
@@ -637,6 +643,7 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                 profession=parsed_profession,
                 work_history_text=work_history_text,
                 parsed_cv_summary=parsed_cv_summary,
+                skills=candidate_skills,
             )
 
             if (
@@ -649,10 +656,16 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                 )
                 return
 
-            # Build embedding text - work history and role identity are primary signals
+            # Build embedding text - work history and role identity are primary
+            # signals. Skills are included so unrelated professions with
+            # similar-sounding narrative text (title/summary) don't land at
+            # deceptively high similarity — skills are the clearest
+            # discriminator between e.g. "HR" and "Machine Learning Engineer".
+            skills_text = ", ".join(candidate_skills)
             embedding_text = (
                 f"Current title: {parsed_current_title or ''}\n"
                 f"Profession: {parsed_profession or ''}\n"
+                f"Skills: {skills_text}\n"
                 f"Work history:\n{work_history_text}\n"
                 f"Summary: {parsed_cv_summary or ''}"
             ).strip()
@@ -664,6 +677,35 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
             profile.profile_embedding = embedding
             profile.embedding_source_hash = new_hash
             profile.embedding_generated_at = _datetime.now(_UTC)
+
+            # Propagate to the linked talent_pool_profiles row (if any) — that's
+            # the table AI Talent Match actually queries. Self-registered
+            # candidates never get an embedding generated on their own
+            # talent-pool row otherwise (generate_talent_pool_embedding_task
+            # only handles sourced-only rows with a parsed_submission_id), so
+            # without this they could never appear in AI Talent Match at all.
+            try:
+                from sqlalchemy import select as _select
+
+                from app.modules.talent_pool.models import TalentPoolProfiles
+
+                tp_result = await db.execute(
+                    _select(TalentPoolProfiles).where(
+                        TalentPoolProfiles.candidate_profile_id == profile.id
+                    )
+                )
+                tp_profile = tp_result.scalar_one_or_none()
+                if tp_profile:
+                    tp_profile.profile_embedding = embedding
+                    tp_profile.embedding_source_hash = new_hash
+                    tp_profile.embedding_generated_at = _datetime.now(_UTC)
+            except Exception:
+                logger.warning(
+                    "generate_candidate_embedding: failed to propagate embedding "
+                    "to talent_pool_profiles for candidate %s",
+                    profile_id,
+                    exc_info=True,
+                )
             await db.commit()
 
             logger.info(
@@ -752,6 +794,7 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
             new_hash = hash_job_embedding_source(
                 description=effective_description,
                 required_skills=job.required_skills,
+                title=job.title,
             )
             if job.embedding_source_hash == new_hash and job.job_embedding is not None:
                 logger.info(
@@ -760,8 +803,15 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
                 )
                 return
 
-            # Build embedding text and generate vector
-            embedding_text = f"Job description: {effective_description}"
+            # Build embedding text and generate vector — title and required_skills
+            # are the strongest role-identity signals and must anchor the vector,
+            # otherwise unrelated professions can land at non-trivial similarity.
+            skills_text = ", ".join(job.required_skills or [])
+            embedding_text = (
+                f"Job title: {job.title}\n"
+                f"Required skills: {skills_text}\n"
+                f"Job description: {effective_description}"
+            )
 
             ai_service = EmbeddingAIService()
             embedding = await ai_service.generate_embedding(embedding_text)
@@ -848,6 +898,7 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
     from datetime import UTC as _UTC
     from datetime import datetime as _datetime
 
+    from app.modules.ai.enums import CVParsingStatus
     from app.modules.ai.scoring_service import hash_talent_pool_embedding_source
     from app.modules.ai.service import EmbeddingAIService
 
@@ -885,6 +936,19 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
                 )
                 return
 
+            if submission.parse_status != CVParsingStatus.COMPLETED.value:
+                # FLAGGED (low confidence / non-English / scanned-OCR) or
+                # FAILED — don't spend an embedding call on a document that
+                # may not even be a real CV. find_matches_for_job also
+                # excludes these at query time; this just stops generating
+                # them in the first place.
+                logger.info(
+                    "generate_talent_pool_embedding: parse_status=%s for profile %s, skipping",
+                    submission.parse_status,
+                    profile_id,
+                )
+                return
+
             parsed = submission.parsed_data
             summary = parsed.get("summary") or ""
             current_title = parsed.get("current_title") or ""
@@ -898,12 +962,14 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
                     tp_work_history_parts.append(f"{title}: {description}".strip(": "))
 
             tp_work_history_text = "\n".join(tp_work_history_parts)
+            tp_skills = parsed.get("skills") or []
 
             new_hash = hash_talent_pool_embedding_source(
                 current_title=current_title,
                 profession=profession,
                 work_history_text=tp_work_history_text,
                 summary=summary,
+                skills=tp_skills,
             )
 
             if (
@@ -919,6 +985,7 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
             embedding_text = (
                 f"Current title: {current_title}\n"
                 f"Profession: {profession}\n"
+                f"Skills: {', '.join(tp_skills)}\n"
                 f"Work history:\n{tp_work_history_text}\n"
                 f"Summary: {summary}"
             )

@@ -61,6 +61,34 @@ def _skills_coverage(candidate_skills: list[str], required_skills: list[str]) ->
     return matched / len(required_skills) * 100
 
 
+def compute_skill_overlap_modulator(
+    candidate_skills: list[str] | None,
+    required_skills: list[str] | None,
+) -> float:
+    """Return a 0.5-1.0 multiplier reflecting skill overlap, for blending with
+    embedding similarity in AI Talent Match.
+
+    Purely a penalty for irrelevance, never a boost — full overlap preserves
+    the embedding score unchanged (1.0), confirmed zero overlap halves it
+    (0.5), and jobs with no ``required_skills`` filled in are left untouched
+    (1.0), so this can't regress matches for jobs that never specify skills.
+
+    Critically: a candidate with NO skills data at all is left untouched
+    (1.0) too — there's nothing to judge overlap against, so treating that
+    the same as "confirmed zero overlap" would unfairly halve every
+    candidate whose skills list just happens to be empty (common — sparse
+    CV parsing, self-registered candidates who never filled it in), not
+    just genuinely unrelated ones.
+    """
+    if not required_skills or not candidate_skills:
+        return 1.0
+
+    coverage_ratio = _skills_coverage(candidate_skills, required_skills) / 100
+    if coverage_ratio == 0:
+        return 0.5
+    return 0.5 + 0.5 * coverage_ratio
+
+
 def _experience_score(
     candidate_years: int | None,
     job_min_years: int | None = None,
@@ -165,26 +193,35 @@ def hash_candidate_embedding_source(
     profession: str | None,
     work_history_text: str,
     parsed_cv_summary: str | None,
+    skills: list[str] | None = None,
 ) -> str:
     """SHA-256 of candidate fields that affect the embedding.
 
-    Based on work history, role identity and summary - skills and bio
-    are no longer part of the embedding source.
+    Based on work history, role identity, summary, and skills — skills were
+    reintroduced because role title/profession/summary text alone let
+    unrelated professions (e.g. HR vs. Machine Learning Engineer) land at
+    deceptively non-trivial cosine similarity in embedding space.
     """
-    payload = f"{current_title or ''}|{profession or ''}|{work_history_text}|{parsed_cv_summary or ''}"
+    payload = (
+        f"{current_title or ''}|{profession or ''}|{work_history_text}|"
+        f"{parsed_cv_summary or ''}|{sorted(skills or [])}"
+    )
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def hash_job_embedding_source(
     description: str | None,
     required_skills: list[str] | None,
+    title: str | None = None,
 ) -> str:
     """SHA-256 of job fields that affect the embedding.
 
     ``description`` here is the pre-concatenated full description built from
-    all structured fields via ``build_full_description()``.
+    all structured fields via ``build_full_description()``. ``title`` was
+    added because the role title (e.g. "Machine Learning Engineer") is the
+    single strongest identity signal and was previously excluded entirely.
     """
-    payload = f"{description or ''}|{sorted(required_skills or [])}"
+    payload = f"{title or ''}|{description or ''}|{sorted(required_skills or [])}"
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -193,9 +230,11 @@ def hash_talent_pool_embedding_source(
     profession: str | None,
     work_history_text: str,
     summary: str | None,
+    skills: list[str] | None = None,
 ) -> str:
     """SHA-256 of talent pool profile fields that affect the embedding."""
     payload = (
-        f"{current_title or ''}|{profession or ''}|{work_history_text}|{summary or ''}"
+        f"{current_title or ''}|{profession or ''}|{work_history_text}|"
+        f"{summary or ''}|{sorted(skills or [])}"
     )
     return hashlib.sha256(payload.encode()).hexdigest()

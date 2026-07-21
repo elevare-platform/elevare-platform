@@ -100,6 +100,44 @@ class EmailService(ABC):
         """Notify employer that a candidate declined their introduction request."""
         ...
 
+    @abstractmethod
+    async def send_introduction_request_admin(
+        self,
+        admin_email: str,
+        employer_name: str,
+        job_title: str,
+        candidate_name: str,
+    ) -> None:
+        """Notify the sourcing admin that an employer wants an introduction.
+
+        Sent instead of send_introduction_request when the profile was
+        sourced by an admin — the admin does the outreach manually, so this
+        has no accept/decline links, just enough context to act on.
+        """
+        ...
+
+    @abstractmethod
+    async def send_role_notification(
+        self,
+        candidate_email: str,
+        employer_name: str,
+        job_title: str,
+        job_url: str,
+        register_url: str,
+        employer_email: str | None = None,
+    ) -> None:
+        """One-way heads-up to a candidate an employer already owns/sourced.
+
+        No accept/decline — the employer already has full access to this
+        profile, this just flags that a specific role might interest them.
+        Two CTAs, both shown together: "View Job" (primary) and "Create your
+        free profile" (secondary, growth channel) — not an either/or choice.
+        ``employer_email`` is used as the Reply-To so a candidate who wants
+        to respond directly can, since the employer already has this
+        relationship (that's what makes it "own_sourced").
+        """
+        ...
+
 
 def _render_email_layout(
     title: str,
@@ -284,24 +322,29 @@ class ResendEmailService(EmailService):
         self._resend = resend_sdk
 
     async def _send_html(
-        self, subject: str, recipients: list[str], html_body: str
+        self,
+        subject: str,
+        recipients: list[str],
+        html_body: str,
+        reply_to: str | None = None,
     ) -> None:
         """Run the blocking Resend SDK call in a thread pool to avoid blocking the event loop."""
         import asyncio
 
         loop = asyncio.get_event_loop()
+        payload = {
+            "from": settings.mail_from,
+            "to": recipients,
+            "subject": subject,
+            "html": html_body,
+        }
+        if reply_to:
+            # Resend's SDK expects snake_case "reply_to" — only included when
+            # set, so the many other email types that don't use this aren't
+            # sending a stray null field.
+            payload["reply_to"] = reply_to
         try:
-            await loop.run_in_executor(
-                None,
-                lambda: self._resend.Emails.send(
-                    {
-                        "from": settings.mail_from,
-                        "to": recipients,
-                        "subject": subject,
-                        "html": html_body,
-                    }
-                ),
-            )
+            await loop.run_in_executor(None, lambda: self._resend.Emails.send(payload))
             logger.info("Email sent to %s — subject: %s", recipients, subject)
         except Exception as exc:
             logger.error("Resend delivery failed to %s: %s", recipients, exc)
@@ -670,6 +713,62 @@ class ResendEmailService(EmailService):
             html_body=html_body,
         )
 
+    async def send_introduction_request_admin(
+        self,
+        admin_email: str,
+        employer_name: str,
+        job_title: str,
+        candidate_name: str,
+    ) -> None:
+        """Notify the sourcing admin to manually reach out to the candidate."""
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction request — candidate you sourced</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{employer_name}</strong> would like an introduction to <strong>{candidate_name}</strong> for the role of <strong>{job_title}</strong>.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Reach out to the candidate off-platform to confirm interest, then mark this request Accepted or Declined from the Introductions queue in the admin console.</p>
+        {_render_button("Open Introductions Queue", f"{settings.app_url}/admin/introductions")}
+        """
+        html_body = _render_email_layout(
+            title="Introduction Request — Action Needed",
+            preheader=f"{employer_name} wants an introduction to {candidate_name} for {job_title}.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you sourced this candidate into the Elevare talent pool.",
+        )
+        await self._send_html(
+            subject=f"Action needed: introduction request for {candidate_name}",
+            recipients=[admin_email],
+            html_body=html_body,
+        )
+
+    async def send_role_notification(
+        self,
+        candidate_email: str,
+        employer_name: str,
+        job_title: str,
+        job_url: str,
+        register_url: str,
+        employer_email: str | None = None,
+    ) -> None:
+        """One-way notification for a candidate the employer already owns."""
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">A role that might interest you</h2>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{employer_name}</strong> thinks you'd be a good fit for their <strong>{job_title}</strong> role and wanted you to know about it.</p>
+        {_render_button("View Job", job_url)}
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Want employers to find you for roles like this one?</p>
+        {_render_button("Create your free profile", register_url, is_primary=False)}
+        """
+        html_body = _render_email_layout(
+            title=f"A role at {employer_name} — Elevare",
+            preheader=f"{employer_name} thinks you'd be a good fit for {job_title}.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because your CV is in the Elevare talent pool.",
+        )
+        await self._send_html(
+            subject=f"{employer_name} has a role that might interest you",
+            recipients=[candidate_email],
+            html_body=html_body,
+            reply_to=employer_email,
+        )
+
 
 class StubEmailService(EmailService):
     """Concrete implementation that logs to stdout — used in tests and CI."""
@@ -806,6 +905,43 @@ class StubEmailService(EmailService):
             "STUB INTRODUCTION DECLINED to %s for role '%s' — credit refunded",
             employer_email,
             job_title,
+        )
+
+    async def send_introduction_request_admin(
+        self,
+        admin_email: str,
+        employer_name: str,
+        job_title: str,
+        candidate_name: str,
+    ) -> None:
+        """Log a stub admin introduction request email."""
+        logger.info(
+            "STUB ADMIN INTRODUCTION REQUEST to %s — %s wants an intro to %s for '%s'",
+            admin_email,
+            employer_name,
+            candidate_name,
+            job_title,
+        )
+
+    async def send_role_notification(
+        self,
+        candidate_email: str,
+        employer_name: str,
+        job_title: str,
+        job_url: str,
+        register_url: str,
+        employer_email: str | None = None,
+    ) -> None:
+        """Log a stub role notification email."""
+        logger.info(
+            "STUB ROLE NOTIFICATION to %s (reply-to=%s) — %s thinks you'd fit '%s'\n"
+            "  View Job: %s\n  Register: %s",
+            candidate_email,
+            employer_email,
+            employer_name,
+            job_title,
+            job_url,
+            register_url,
         )
 
 

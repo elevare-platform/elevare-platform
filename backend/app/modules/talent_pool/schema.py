@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -76,23 +77,33 @@ class TalentMatchResponse(BaseModel):
     location: str | None = None
     top_skills: list[str] = []
     candidate_profile_id: uuid.UUID | None = None  # None for sourced-only CVs
+    ownership: Literal["self_registered", "own_sourced", "admin_sourced"]
+    cv_download_url: str | None = None
 
     @classmethod
     def from_match(
         cls,
         profile: "TalentPoolProfiles",
-        distance: float,
+        similarity_score: int,
         candidate_name: str | None = None,
         current_title: str | None = None,
         profession: str | None = None,
         years_of_experience: int | None = None,
         location: str | None = None,
         top_skills: list[str] | None = None,
+        ownership: str = "admin_sourced",
+        cv_download_url: str | None = None,
     ) -> "TalentMatchResponse":
-        """Build from a repository result with pre-resolved fields."""
+        """Build from a pre-resolved, pre-scored match.
+
+        ``similarity_score`` is the final blended score (embedding
+        similarity modulated by skill overlap) — computed by the caller,
+        not derived here, since scoring now needs job.required_skills
+        which this schema has no access to.
+        """
         return cls(
             profile_id=profile.id,
-            similarity_score=max(0, min(100, round((1 - distance) * 100))),
+            similarity_score=max(0, min(100, similarity_score)),
             candidate_name=candidate_name,
             current_title=current_title,
             profession=profession,
@@ -100,6 +111,8 @@ class TalentMatchResponse(BaseModel):
             location=location,
             top_skills=top_skills or [],
             candidate_profile_id=profile.candidate_profile_id,
+            ownership=ownership,
+            cv_download_url=cv_download_url,
         )
 
 

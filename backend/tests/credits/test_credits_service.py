@@ -1,6 +1,5 @@
 """Tests for CreditsService — ledger mutations and balance enforcement."""
 
-
 import pytest
 
 from app.core.exceptions import ValidationException

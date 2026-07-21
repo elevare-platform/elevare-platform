@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Briefcase, FileText, CheckCircle, TrendingUp,
-  ChevronRight, Building2, Star, AlertCircle,
+  ChevronRight, Building2, Star, AlertCircle, Send,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import { ProfileStrengthBar } from '@/components/candidate/ProfileStrengthBar'
 import { useCandidateProfile } from '@/hooks/useCandidateProfile'
+import { useCandidateIntroductions } from '@/hooks/useCandidateIntroductions'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
@@ -44,22 +45,24 @@ function StatusBadge({ status }) {
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
-function StatCard({ icon: Icon, label, value, colour, loading }) {
-  return (
-    <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-3">
-      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', colour)}>
-        <Icon size={16} className="text-white" />
+function StatCard({ icon: Icon, label, value, colour, loading, to, badge }) {
+  const content = (
+    <div className={cn('flex-1 min-w-[152px] bg-white rounded-xl border border-border p-4 flex flex-col gap-2', to && 'hover:border-brand-blue/40 hover:shadow-md transition-all')}>
+      <div className="flex items-center justify-between gap-2">
+        <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', colour)}>
+          <Icon size={16} className="text-white" />
+        </div>
+        {!loading && badge}
       </div>
-      <div>
-        {loading ? (
-          <div className="h-5 w-8 bg-gray-200 rounded animate-pulse mb-0.5" />
-        ) : (
-          <p className="text-xl font-bold text-text leading-none">{value ?? 0}</p>
-        )}
-        <p className="text-xs text-text-muted mt-0.5">{label}</p>
-      </div>
+      {loading ? (
+        <div className="h-6 w-10 bg-gray-200 rounded animate-pulse" />
+      ) : (
+        <p className="text-xl font-bold text-text leading-none">{value ?? 0}</p>
+      )}
+      <p className="text-xs text-text-muted whitespace-nowrap">{label}</p>
     </div>
   )
+  return to ? <Link to={to} className="contents">{content}</Link> : content
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -73,6 +76,8 @@ function Skeleton({ className }) {
 export default function CandidateDashboardPage() {
   const { user } = useAuth()
   const { profile, loading: profileLoading } = useCandidateProfile()
+  const { introductions, loading: introsLoading } = useCandidateIntroductions()
+  const pendingIntros = introductions.filter((i) => i.status === 'PENDING').length
 
   const [applications, setApplications] = useState([])
   const [appsLoading, setAppsLoading] = useState(true)
@@ -135,11 +140,24 @@ export default function CandidateDashboardPage() {
           </div>
 
           {/* ── Stats row ── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="flex flex-wrap gap-3">
             <StatCard icon={FileText}    label="Applied"     value={stats.total}       colour="bg-brand-blue"  loading={appsLoading} />
             <StatCard icon={TrendingUp}  label="Reviewing"   value={stats.reviewing}   colour="bg-amber-500"   loading={appsLoading} />
             <StatCard icon={Star}        label="Shortlisted" value={stats.shortlisted} colour="bg-green-500"   loading={appsLoading} />
             <StatCard icon={CheckCircle} label="Hired"       value={stats.hired}       colour="bg-emerald-600" loading={appsLoading} />
+            <StatCard
+              icon={Send}
+              label="Introductions"
+              value={introductions.length}
+              colour="bg-purple-500"
+              loading={introsLoading}
+              to="/candidate/introductions"
+              badge={pendingIntros > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold whitespace-nowrap">
+                  {pendingIntros} new
+                </span>
+              )}
+            />
           </div>
 
           {/* ── Main grid ── */}
@@ -330,6 +348,7 @@ export default function CandidateDashboardPage() {
                 <h2 className="font-semibold text-text text-sm mb-3">Quick Links</h2>
                 {[
                   { label: 'My Applications', to: '/candidate/applications' },
+                  { label: 'Introduction Requests', to: '/candidate/introductions' },
                   { label: 'Edit Profile', to: '/candidate/profile' },
                   { label: 'Profile Views', to: '/candidate/profile-views' },
                   { label: 'Browse Jobs', to: '/jobs' },

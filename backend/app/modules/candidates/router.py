@@ -60,6 +60,29 @@ async def update_my_profile(
     return await service.update_my_profile(current_user.id, data)
 
 
+@router.get("/me/introductions", status_code=200)
+async def get_my_introductions(
+    current_user: User = Depends(require_role("CANDIDATE")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return every introduction request made about the authenticated candidate.
+
+    Lets a self-registered candidate see requests in-app instead of only
+    via email — see docs/talent-pool-isolation-and-introduction-routing.md.
+    """
+    from app.core.exceptions import ProfileNotFoundException
+    from app.modules.candidates.repository import CandidateRepository
+    from app.modules.introductions.service import IntroductionService
+
+    candidate_repo = CandidateRepository(db)
+    profile = await candidate_repo.get_by_user_id(current_user.id)
+    if profile is None:
+        raise ProfileNotFoundException()
+
+    intro_service = IntroductionService(db)
+    return await intro_service.list_for_candidate(profile.id)
+
+
 # ------------------------------------------------------------------
 # Candidate — CVs
 # ------------------------------------------------------------------

@@ -266,18 +266,30 @@ class TestEmbeddingHashFunctions:
 
     def test_candidate_hash_skill_order_normalised(self):
         # Skills are no longer part of embedding source — work history is
-        h1 = hash_candidate_embedding_source("Engineer", "Tech", "same history", "summary")
-        h2 = hash_candidate_embedding_source("Engineer", "Tech", "same history", "summary")
+        h1 = hash_candidate_embedding_source(
+            "Engineer", "Tech", "same history", "summary"
+        )
+        h2 = hash_candidate_embedding_source(
+            "Engineer", "Tech", "same history", "summary"
+        )
         assert h1 == h2
 
     def test_candidate_hash_changes_on_bio_update(self):
-        h1 = hash_candidate_embedding_source("Engineer", "Tech", "old work history", "summary")
-        h2 = hash_candidate_embedding_source("Engineer", "Tech", "new work history", "summary")
+        h1 = hash_candidate_embedding_source(
+            "Engineer", "Tech", "old work history", "summary"
+        )
+        h2 = hash_candidate_embedding_source(
+            "Engineer", "Tech", "new work history", "summary"
+        )
         assert h1 != h2
 
     def test_candidate_hash_changes_on_summary_update(self):
-        h1 = hash_candidate_embedding_source("Engineer", "Tech", "work history", "old summary")
-        h2 = hash_candidate_embedding_source("Engineer", "Tech", "work history", "new summary")
+        h1 = hash_candidate_embedding_source(
+            "Engineer", "Tech", "work history", "old summary"
+        )
+        h2 = hash_candidate_embedding_source(
+            "Engineer", "Tech", "work history", "new summary"
+        )
         assert h1 != h2
 
     def test_candidate_hash_handles_none(self):
@@ -301,13 +313,21 @@ class TestEmbeddingHashFunctions:
         assert h1 != h2
 
     def test_talent_pool_hash_same_inputs(self):
-        h1 = hash_talent_pool_embedding_source("Engineer", "Tech", "work history", "summary text")
-        h2 = hash_talent_pool_embedding_source("Engineer", "Tech", "work history", "summary text")
+        h1 = hash_talent_pool_embedding_source(
+            "Engineer", "Tech", "work history", "summary text"
+        )
+        h2 = hash_talent_pool_embedding_source(
+            "Engineer", "Tech", "work history", "summary text"
+        )
         assert h1 == h2
 
     def test_talent_pool_hash_changes_on_summary_update(self):
-        h1 = hash_talent_pool_embedding_source("Engineer", "Tech", "work history", "old summary")
-        h2 = hash_talent_pool_embedding_source("Engineer", "Tech", "work history", "new summary")
+        h1 = hash_talent_pool_embedding_source(
+            "Engineer", "Tech", "work history", "old summary"
+        )
+        h2 = hash_talent_pool_embedding_source(
+            "Engineer", "Tech", "work history", "new summary"
+        )
         assert h1 != h2
 
 

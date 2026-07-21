@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   MapPin, Briefcase, Sparkles, User, Bookmark, BookmarkCheck,
-  Send, Coins, Loader2, Clock, CheckCircle2, XCircle, Eye, FileText,
+  Send, Coins, Loader2, Clock, CheckCircle2, XCircle, Eye, FileText, Bell,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
@@ -45,9 +45,18 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
   const [showShortlistConfirm, setShowShortlistConfirm] = useState(false)
   const [showProfilePanel, setShowProfilePanel] = useState(false)
   const [showCvModal, setShowCvModal] = useState(false)
+  const [notifyState, setNotifyState] = useState('idle') // idle | sending | sent
+
+  // 'own_sourced' — an employer's own imported candidate. They already have
+  // full access to this profile (Talent Pipeline), so no credit/consent
+  // flow is needed — just a free, one-way heads-up that this job might fit.
+  // Falls back to the existing Request Introduction flow if `ownership` is
+  // absent (older API responses, before this field shipped).
+  const isOwnSourced = match.ownership === 'own_sourced'
 
   // Restore the real introduction status on mount so the badge survives a page reload.
   useEffect(() => {
+    if (isOwnSourced) return
     let cancelled = false
     api.get(`/api/v1/jobs/${jobId}/talent-matches/${match.profile_id}/introductions`)
       .then(({ data }) => {
@@ -59,7 +68,21 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [jobId, match.profile_id])
+  }, [jobId, match.profile_id, isOwnSourced])
+
+  // Same idea for own_sourced — restore the 'Notified' state on reload
+  // instead of always showing 'Notify for this role'.
+  useEffect(() => {
+    if (!isOwnSourced) return
+    let cancelled = false
+    api.get(`/api/v1/jobs/${jobId}/talent-matches/${match.profile_id}/notify`)
+      .then(({ data }) => {
+        if (cancelled) return
+        if (data?.notified) setNotifyState('sent')
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [jobId, match.profile_id, isOwnSourced])
 
   const handleShortlist = async () => {
     if (shortlistState !== 'idle') return
@@ -71,6 +94,18 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
     } catch {
       setShortlistState('idle')
       onError?.('Could not shortlist this candidate. Please try again.')
+    }
+  }
+
+  const handleNotify = async () => {
+    if (notifyState !== 'idle') return
+    setNotifyState('sending')
+    try {
+      await api.post(`/api/v1/jobs/${jobId}/talent-matches/${match.profile_id}/notify`)
+      setNotifyState('sent')
+    } catch {
+      setNotifyState('idle')
+      onError?.('Could not notify this candidate. Please try again.')
     }
   }
 
@@ -231,7 +266,27 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
           </div>
         )}
 
-        {introState === 'accepted' ? (
+        {isOwnSourced ? (
+          <button
+            type="button"
+            onClick={handleNotify}
+            disabled={notifyState !== 'idle'}
+            className={cn(
+              'inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-1 disabled:opacity-80',
+              notifyState === 'sent'
+                ? 'bg-green-50 text-green-700 border border-green-200'
+                : 'bg-brand-blue text-white hover:bg-brand-blue-dark'
+            )}
+          >
+            {notifyState === 'sending' ? (
+              <><Loader2 size={13} className="animate-spin" /> Notifying…</>
+            ) : notifyState === 'sent' ? (
+              <><CheckCircle2 size={13} /> Notified</>
+            ) : (
+              <><Bell size={13} /> Notify for this role</>
+            )}
+          </button>
+        ) : introState === 'accepted' ? (
           <button
             type="button"
             onClick={() => match.candidate_profile_id ? setShowProfilePanel(true) : setShowCvModal(true)}
@@ -328,7 +383,14 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
         )}
       </div>
 
-      {introState === 'pending' && (
+      {isOwnSourced && notifyState === 'sent' && (
+        <p className="relative text-[11px] text-text-muted mt-2 flex items-center gap-1">
+          <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
+          They've been let know about this role — you already have their full profile in your Talent Pipeline.
+        </p>
+      )}
+
+      {!isOwnSourced && introState === 'pending' && (
         <p className="relative text-[11px] text-text-muted mt-2 flex items-center gap-1">
           <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
           We've emailed the candidate. You'll be notified once they respond.

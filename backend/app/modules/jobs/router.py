@@ -47,17 +47,20 @@ async def list_jobs(
 async def list_my_jobs(
     cursor: str | None = None,
     limit: int = 20,
+    search: str | None = None,
     current_user: User = Depends(require_role("EMPLOYER")),
     db: AsyncSession = Depends(get_db),
 ) -> JobListResponse:
     """Return all jobs owned by the authenticated employer.
 
     Must be declared before /{job_id} to prevent route conflict.
+    ``search`` filters by job title (case-insensitive substring match).
     """
     return await JobService(db).list_employer_jobs(
         employer=current_user,
         cursor=cursor,
         limit=limit,
+        search=search,
     )
 
 

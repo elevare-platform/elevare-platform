@@ -117,8 +117,12 @@ class JobRepository:
         employer_id: UUID,
         cursor: str | None = None,
         limit: int = 20,
+        search: str | None = None,
     ) -> dict:
         """Return paginated jobs owned by a specific employer, with application counts.
+
+        ``search`` does a case-insensitive substring match on the job title —
+        lets an employer with a large job list find one without scrolling.
 
         Application counts are fetched in a single bulk query and attached to
         each Job instance as a transient ``application_count`` attribute.
@@ -131,6 +135,8 @@ class JobRepository:
             .where(Job.employer_id == employer_id)
             .options(self._with_employer_profile())
         )
+        if search:
+            stmt = stmt.where(Job.title.ilike(f"%{search}%"))
         result = await paginate_cursor(stmt, self._db, cursor, limit)
         jobs = result["items"]
 

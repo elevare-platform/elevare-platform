@@ -69,6 +69,17 @@ export function useAdmin() {
         .then((r) => r.data)
     )
 
+  // Introduction ops queue — admin-sourced profiles routed to this admin
+  // for manual candidate outreach (see docs/talent-pool-isolation-and-introduction-routing.md)
+  const listAssignedIntroductions = (params) =>
+    request(() => api.get('/api/v1/admin/introductions', { params }).then((r) => r.data))
+
+  const acceptIntroduction = (id) =>
+    request(() => api.post(`/api/v1/admin/introductions/${id}/accept`).then((r) => r.data))
+
+  const declineIntroduction = (id) =>
+    request(() => api.post(`/api/v1/admin/introductions/${id}/decline`).then((r) => r.data))
+
   return {
     loading,
     error,
@@ -85,5 +96,8 @@ export function useAdmin() {
     listTestimonials,
     moderateTestimonial,
     grantEmployerCredits,
+    listAssignedIntroductions,
+    acceptIntroduction,
+    declineIntroduction,
   }
 }

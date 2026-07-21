@@ -52,6 +52,7 @@ from app.modules.contact.router import router as contact_router
 from app.modules.credits.router import router as credits_router
 from app.modules.employer.router import router as employer_router
 from app.modules.ingestion.router import router as ingestion_router
+from app.modules.introductions.router import admin_router as intro_admin_router
 from app.modules.introductions.router import mine_router as intro_mine_router
 from app.modules.introductions.router import public_router as intro_public_router
 from app.modules.jobs.access_token_router import router as access_token_router
@@ -188,3 +189,4 @@ app.include_router(intro_public_router, prefix="/api/v1/public", tags=["introduc
 app.include_router(
     intro_mine_router, prefix="/api/v1/introductions", tags=["introductions"]
 )
+app.include_router(intro_admin_router, prefix="/api/v1/admin", tags=["introductions"])

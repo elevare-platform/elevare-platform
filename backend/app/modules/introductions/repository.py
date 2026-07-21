@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.introductions.enums import IntroductionStatus
-from app.modules.introductions.models import IntroductionRequest
+from app.modules.introductions.models import IntroductionRequest, RoleNotification
 
 
 class IntroductionRepository:
@@ -63,6 +63,89 @@ class IntroductionRepository:
             await self._db.flush()
 
         return row
+
+    async def get_by_id(self, intro_id: uuid.UUID) -> IntroductionRequest | None:
+        """Fetch by primary key with lazy expiry, same rules as get_by_token.
+
+        Used by admin accept/decline (authenticated action, not a magic-link
+        click) — Does NOT commit. Caller must commit if status changed.
+        """
+        stmt = (
+            select(IntroductionRequest)
+            .where(IntroductionRequest.id == intro_id)
+            .options(
+                selectinload(IntroductionRequest.employer),
+                selectinload(IntroductionRequest.job),
+            )
+        )
+        result = await self._db.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+
+        if (
+            row.status == IntroductionStatus.PENDING.value
+            and row.expires_at < datetime.now(UTC)
+        ):
+            row.status = IntroductionStatus.EXPIRED.value
+            await self._db.flush()
+
+        return row
+
+    async def list_for_admin(self, admin_id: uuid.UUID) -> list[IntroductionRequest]:
+        """Return introduction requests for profiles this admin sourced.
+
+        These are the requests routed to this admin's ops queue. Eager-loads
+        the same relationships as list_for_employer so the service can build
+        an enriched response without extra queries.
+        """
+        from app.modules.candidates.models import CandidateProfile
+        from app.modules.talent_pool.models import TalentPoolProfiles
+
+        stmt = (
+            select(IntroductionRequest)
+            .join(
+                TalentPoolProfiles,
+                IntroductionRequest.talent_pool_profile_id == TalentPoolProfiles.id,
+            )
+            .where(TalentPoolProfiles.added_by == admin_id)
+            .where(TalentPoolProfiles.candidate_profile_id.is_(None))
+            .order_by(IntroductionRequest.created_at.desc())
+            .options(
+                selectinload(IntroductionRequest.job),
+                selectinload(IntroductionRequest.employer),
+                selectinload(IntroductionRequest.talent_pool_profile)
+                .selectinload(TalentPoolProfiles.candidate_profile)
+                .selectinload(CandidateProfile.user),
+                selectinload(IntroductionRequest.talent_pool_profile).selectinload(
+                    TalentPoolProfiles.parsed_submission
+                ),
+            )
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().unique().all())
+
+    async def list_for_candidate(
+        self, candidate_profile_id: uuid.UUID
+    ) -> list[IntroductionRequest]:
+        """Return introduction requests made to a specific self-registered candidate."""
+        from app.modules.talent_pool.models import TalentPoolProfiles
+
+        stmt = (
+            select(IntroductionRequest)
+            .join(
+                TalentPoolProfiles,
+                IntroductionRequest.talent_pool_profile_id == TalentPoolProfiles.id,
+            )
+            .where(TalentPoolProfiles.candidate_profile_id == candidate_profile_id)
+            .order_by(IntroductionRequest.created_at.desc())
+            .options(
+                selectinload(IntroductionRequest.job),
+                selectinload(IntroductionRequest.employer),
+            )
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().unique().all())
 
     async def get_pending_for_profile(
         self,
@@ -135,5 +218,36 @@ class IntroductionRepository:
         """Mark a request DECLINED. Does NOT commit."""
         row.status = IntroductionStatus.DECLINED.value
         row.responded_at = datetime.now(UTC)
+        await self._db.flush()
+        return row
+
+    async def get_role_notification(
+        self,
+        employer_id: uuid.UUID,
+        job_id: uuid.UUID,
+        talent_pool_profile_id: uuid.UUID,
+    ) -> RoleNotification | None:
+        """Return the existing notification for this employer+job+profile, if any."""
+        stmt = select(RoleNotification).where(
+            RoleNotification.employer_id == employer_id,
+            RoleNotification.job_id == job_id,
+            RoleNotification.talent_pool_profile_id == talent_pool_profile_id,
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_role_notification(
+        self,
+        employer_id: uuid.UUID,
+        job_id: uuid.UUID,
+        talent_pool_profile_id: uuid.UUID,
+    ) -> RoleNotification:
+        """Record that this candidate was notified about this role. Does NOT commit."""
+        row = RoleNotification(
+            employer_id=employer_id,
+            job_id=job_id,
+            talent_pool_profile_id=talent_pool_profile_id,
+        )
+        self._db.add(row)
         await self._db.flush()
         return row

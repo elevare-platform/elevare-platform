@@ -50,6 +50,7 @@ const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'))
 const AdminJobsPage = lazy(() => import('@/pages/admin/AdminJobsPage'))
 const AdminApplicationsPage = lazy(() => import('@/pages/admin/AdminApplicationsPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/admin/AdminAuditLogPage'))
+const AdminIntroductionsPage = lazy(() => import('@/pages/admin/AdminIntroductionsPage'))
 const AdminCVParserPage = lazy(() => import('@/pages/admin/AdminCVParserPage'))
 const AdminTestimonialsPage = lazy(() => import('@/pages/admin/AdminTestimonialsPage'))
 const TestimonialSubmitPage = lazy(() => import('@/pages/TestimonialSubmitPage'))
@@ -59,6 +60,7 @@ const CandidateProfilePage = lazy(() => import('@/pages/candidate/CandidateProfi
 const CandidateDocumentsPage = lazy(() => import('@/pages/candidate/CandidateDocumentsPage'))
 const MyApplicationsPage = lazy(() => import('@/pages/candidate/MyApplicationsPage'))
 const ProfileViewsPage = lazy(() => import('@/pages/candidate/ProfileViewsPage'))
+const CandidateIntroductionsPage = lazy(() => import('@/pages/candidate/CandidateIntroductionsPage'))
 
 // ─── Shared loading fallback ──────────────────────────────────────────────────
 
@@ -140,6 +142,7 @@ function AppRoutes() {
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
           <Route path="/admin/applications" element={<AdminApplicationsPage />} />
           <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
+          <Route path="/admin/introductions" element={<AdminIntroductionsPage />} />
           <Route path="/admin/cv-parser" element={<AdminCVParserPage />} />
           <Route path="/admin/talent-pool" element={<TalentPoolPage />} />
           <Route path="/admin/testimonials" element={<AdminTestimonialsPage />} />
@@ -152,6 +155,7 @@ function AppRoutes() {
           <Route path="/candidate/profile" element={<CandidateProfilePage />} />
           <Route path="/candidate/applications" element={<MyApplicationsPage />} />
           <Route path="/candidate/profile-views" element={<ProfileViewsPage />} />
+          <Route path="/candidate/introductions" element={<CandidateIntroductionsPage />} />
         </Route>
 
         {/* Legal */}
