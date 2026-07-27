@@ -281,8 +281,9 @@ async def test_match_score_field_present_in_application_response(client, db_sess
         headers={"Authorization": f"Bearer {candidate_token}"},
     )
     assert apply_resp.status_code == 201, apply_resp.text
-    # Candidate-facing response intentionally excludes AI score fields
-    assert "match_score" not in apply_resp.json()
+    # Candidate-facing response includes AI score fields but they are null
+    assert apply_resp.json().get("match_score") is None
+    assert apply_resp.json().get("ai_score") is None
 
     # Employer applicant list must expose match_score (null until background task runs)
     resp = await client.get(
