@@ -439,7 +439,11 @@ class AnthropicCVExtractionService(AIService):
             )
         except (KeyError, TypeError, Exception) as e:
             logger.error(
-                "LLM Fit Reasoning failed", extra={"error": str(e), "raw": raw[:500]}
+                "LLM Fit Reasoning failed: %s | prompt_length=%d | candidate_context=%s | job_context=%s",
+                e,
+                len(user_prompt),
+                candidate_context[:300],
+                job_context[:300],
             )
             return FitReasoningResult(score=0)
 
