@@ -164,7 +164,7 @@ export default function PublishJobPage() {
         if (cancelled) return
         const body = err.response?.data
         const msg = body?.message ?? body?.detail ?? ''
-        // Already active means employer clicked the link again — treat as success
+        // Already active means employer clicked the link again - treat as success
         if (typeof msg === 'string' && msg.toLowerCase().includes('active')) {
           setStatus('success')
         } else {

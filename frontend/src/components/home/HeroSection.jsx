@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button'
 // ─── Hero background slides ──────────────────────────────────────────────────
 // Images are served from /public/hero-images/ via Vite static assets.
 const HERO_SLIDES = [
-  { src: '/hero-images/img1.jpg', alt: 'Aerial view of Victoria Island, Lagos — Civic Centre Towers and the waterfront' },
+  { src: '/hero-images/img1.jpg', alt: 'Aerial view of Victoria Island, Lagos - Civic Centre Towers and the waterfront' },
   { src: '/hero-images/img4.jpg', alt: 'Lagos skyline looking south along the marina corridor' },
-  { src: '/hero-images/img3.jpg', alt: 'Lekki-Ikoyi Link Bridge at dusk — an engineering landmark' },
-  { src: '/hero-images/img2.jpg', alt: 'Lagos cityscape at golden hour — the mainland and harbour' },
-  { src: '/hero-images/img5.jpg', alt: 'Lagos panorama — lush greenery meets a modern skyline' },
+  { src: '/hero-images/img3.jpg', alt: 'Lekki-Ikoyi Link Bridge at dusk - an engineering landmark' },
+  { src: '/hero-images/img2.jpg', alt: 'Lagos cityscape at golden hour - the mainland and harbour' },
+  { src: '/hero-images/img5.jpg', alt: 'Lagos panorama - lush greenery meets a modern skyline' },
 ]
 
 // ─── HeroSlideshow ───────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ const AVATAR_PROFILES = [
 // ─── Right-panel feature list ────────────────────────────────────────────────
 // Echoes the three colour-coded phrases in the headline as a small glass
 // "what we deliver" panel, so the right side of the hero isn't empty once the
-// photo cards are gone — without reaching for stock photography.
+// photo cards are gone - without reaching for stock photography.
 
 const FEATURE_ROWS = [
   {
@@ -119,7 +119,7 @@ export default function HeroSection({ onBookConsultation }) {
       {/* ── Crossfade background slideshow ── */}
       <HeroSlideshow />
 
-      {/* Grid pattern overlay — only covers the left portion */}
+      {/* Grid pattern overlay - only covers the left portion */}
       <div
         className="absolute inset-0 pointer-events-none hero-grid-pattern"
         style={{
@@ -134,7 +134,7 @@ export default function HeroSection({ onBookConsultation }) {
         aria-hidden="true"
       />
 
-      {/* Inner content — text on the left, a small glass feature panel on the
+      {/* Inner content - text on the left, a small glass feature panel on the
           right so the space the photo cards used to fill doesn't sit empty */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-20 sm:py-24 lg:py-0">
         <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-10 lg:gap-12 items-center min-h-screen">
@@ -155,7 +155,7 @@ export default function HeroSection({ onBookConsultation }) {
               </div>
             </div>
 
-            {/* Headline — merged into a single block to flow naturally and wrap, reducing vertical height */}
+            {/* Headline - merged into a single block to flow naturally and wrap, reducing vertical height */}
             <div style={{ marginBottom: '1.1rem' }}>
               <div className="hero-text-mask">
                 <h1
@@ -169,21 +169,23 @@ export default function HeroSection({ onBookConsultation }) {
               </div>
             </div>
 
-            {/* Divider — a small brand-gradient accent that grounds the transition to body copy */}
+            {/* Divider - a small brand-gradient accent that grounds the transition to body copy */}
             <div className="hero-divider-line" style={{ marginBottom: '1.25rem', animationDelay: '1100ms' }} aria-hidden="true" />
 
-            {/* Subheadline — enters as one block after the headline finishes */}
+            {/* Subheadline - enters as one block after the headline finishes */}
             <div className="hero-text-mask" style={{ marginBottom: '1.75rem' }}>
               <p
                 className="text-base sm:text-lg leading-relaxed max-w-xl hero-reveal-line"
                 style={{ color: 'rgba(255,255,255,0.78)', animationDelay: '1250ms' }}
               >
-                Where Talent Meets Opportunity. Elevating People, Empowering Businesses.
-                We align state-of-the-art talent strategies with organizational goals to drive real business growth.
+                <b>
+                  Where Talent Meets Opportunity. Elevating People, Growing Businesses.
+                  We connect organisations with the right professionals through structured, data-driven recruitment.
+                </b>
               </p>
             </div>
 
-            {/* CTA panel — buttons sit on an elevated glass surface for more visual weight */}
+            {/* CTA panel - buttons sit on an elevated glass surface for more visual weight */}
             <div
               className="hero-cta-panel hero-entrance-ctas mb-6 sm:mb-8"
               style={{ animationDelay: '1550ms', width: 'fit-content' }}
@@ -202,7 +204,8 @@ export default function HeroSection({ onBookConsultation }) {
                     size="lg"
                     variant="outline"
                     className="hero-btn-secondary w-full sm:w-auto min-h-[44px]"
-                    style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#ffffff', background: 'rgba(255,255,255,0.08)' }}
+                    // style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#ffffff', background: 'rgba(255,255,255,0.08)' }}
+                    style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#ffffff', background: 'rgb(232, 119, 34)' }}
                   >
                     Find a Role <span className="hero-btn-arrow">→</span>
                   </Button>
@@ -210,7 +213,7 @@ export default function HeroSection({ onBookConsultation }) {
               </div>
             </div>
 
-            {/* Social proof — an integrated glass chip rather than a bare row */}
+            {/* Social proof - an integrated glass chip rather than a bare row */}
             <div className="hero-social-proof-chip hero-entrance-social" style={{ animationDelay: '1800ms' }}>
               <div className="flex -space-x-2">
                 {AVATAR_PROFILES.map((avatar, i) => (

@@ -1,7 +1,7 @@
 import api from '@/lib/api'
 
 /**
- * AI Job Description service — abstracts the (not-yet-built) backend endpoint.
+ * AI Job Description service - abstracts the (not-yet-built) backend endpoint.
  *
  * TODO(backend): replace with a real call once `POST /api/v1/ai/job-description`
  * ships (see backend roadmap). Expected request/response shape is documented
@@ -42,7 +42,7 @@ export const MODES_REQUIRING_TEXT = new Set([
 
 /**
  * Backend's JobContext schema (backend/app/modules/ai/schema.py) only knows
- * title / seniority / skills / industry / company_name — translate the
+ * title / seniority / skills / industry / company_name - translate the
  * JobForm's field names into that shape here, at the service boundary.
  */
 function toBackendJobContext(jobContext) {
@@ -72,7 +72,7 @@ export async function generateJobDescriptionText({ mode, field, currentText, job
     })
     return { text: data.generated_text }
   } catch (err) {
-    // Endpoint doesn't exist yet (404) or backend unreachable in this environment —
+    // Endpoint doesn't exist yet (404) or backend unreachable in this environment- 
     // fall back to a local mock so the UX can be built/demoed end-to-end now.
     // TODO(backend): remove this fallback once the real endpoint ships.
     if (import.meta.env.DEV) {

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import api from '@/lib/api'
 
 /**
- * useCandidateIntroductions — introduction requests made about the
+ * useCandidateIntroductions - introduction requests made about the
  * authenticated (self-registered) candidate. GET /api/v1/candidates/me/introductions
  */
 export function useCandidateIntroductions() {

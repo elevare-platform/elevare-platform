@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   User, MapPin, Briefcase, DollarSign, Clock, GraduationCap,
   Award, FileText, Star, ExternalLink, Globe, X,
@@ -6,7 +7,7 @@ import {
 import api from '@/lib/api'
 
 /**
- * CandidateProfilePanel — slide-in panel showing a self-registered candidate's
+ * CandidateProfilePanel - slide-in panel showing a self-registered candidate's
  * full profile (bio, skills, work experience, education, CVs, links).
  *
  * Shared between ApplicantsPage's "View profile" action and TalentMatchCard's
@@ -34,7 +35,12 @@ export default function CandidateProfilePanel({ profileId, jobId, onClose }) {
       .finally(() => setLoading(false))
   }, [profileId, jobId])
 
-  return (
+  // Portalled to <body> — opened from cards that apply a CSS transform on
+  // hover (e.g. TalentMatchCard) and/or overflow-hidden; a `position: fixed`
+  // descendant of a transformed ancestor is no longer fixed to the
+  // viewport, causing the panel to flicker/clip against the card instead
+  // of covering the screen. See SourcedCvModal for the same fix.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex justify-end"
       onClick={onClose}
@@ -263,6 +269,7 @@ export default function CandidateProfilePanel({ profileId, jobId, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

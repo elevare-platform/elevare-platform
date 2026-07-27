@@ -17,21 +17,21 @@ function formatAddedDate(isoString) {
 }
 
 /**
- * CvSection — renders the candidate's CV list with download, set-default,
+ * CvSection - renders the candidate's CV list with download, set-default,
  * and delete actions, plus an "Upload New CV" CTA that scrolls to the
  * upload zone.
  *
  * Props:
- *   cvs          — CandidateCvsResponse[]
- *   onDownload   — (id: string) => void
- *   onSetDefault — (id: string) => void
- *   onDelete     — (id: string) => void
- *   uploadRef    — React ref pointing to the CV upload component
+ *   cvs         - CandidateCvsResponse[]
+ *   onDownload  - (id: string) => void
+ *   onSetDefault - (id: string) => void
+ *   onDelete    - (id: string) => void
+ *   uploadRef   - React ref pointing to the CV upload component
  *
  * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
  */
 export function CvSection({ cvs = [], onDownload, onSetDefault, onDelete, uploadRef }) {
-  // Requirement 4.5 — scroll to the upload zone
+  // Requirement 4.5-  scroll to the upload zone
   function handleUploadClick() {
     if (uploadRef?.current) {
       uploadRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -49,7 +49,7 @@ export function CvSection({ cvs = [], onDownload, onSetDefault, onDelete, upload
           Your CVs
         </h2>
 
-        {/* Requirement 4.5 — Upload New CV CTA */}
+        {/* Requirement 4.5-  Upload New CV CTA */}
         <Button
           variant="outline"
           size="sm"
@@ -61,7 +61,7 @@ export function CvSection({ cvs = [], onDownload, onSetDefault, onDelete, upload
         </Button>
       </div>
 
-      {/* CV list — Requirement 4.1 */}
+      {/* CV list - Requirement 4.1 */}
       {cvs.length === 0 ? (
         <p className="text-sm text-text-muted py-4">
           No CVs uploaded yet.
@@ -83,7 +83,7 @@ export function CvSection({ cvs = [], onDownload, onSetDefault, onDelete, upload
                     {cv.filename}
                   </span>
 
-                  {/* Requirement 4.1 — "Default" badge */}
+                  {/* Requirement 4.1-  "Default" badge */}
                   {cv.is_default && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-blue text-white">
                       <Star size={10} aria-hidden="true" />
@@ -92,7 +92,7 @@ export function CvSection({ cvs = [], onDownload, onSetDefault, onDelete, upload
                   )}
                 </div>
 
-                {/* Requirement 4.1 — formatted created_at date */}
+                {/* Requirement 4.1-  formatted created_at date */}
                 <p className="text-xs text-text-muted mt-0.5">
                   {formatAddedDate(cv.created_at)}
                 </p>
@@ -100,7 +100,7 @@ export function CvSection({ cvs = [], onDownload, onSetDefault, onDelete, upload
 
               {/* Right: action buttons */}
               <div className="flex items-center gap-2 flex-shrink-0">
-                {/* Requirement 4.2 — Download */}
+                {/* Requirement 4.2-  Download */}
                 <button
                   type="button"
                   onClick={() => onDownload?.(cv.id)}
@@ -110,7 +110,7 @@ export function CvSection({ cvs = [], onDownload, onSetDefault, onDelete, upload
                   <Download size={15} aria-hidden="true" />
                 </button>
 
-                {/* Requirement 4.3 — Set as Default (hidden if already default) */}
+                {/* Requirement 4.3-  Set as Default (hidden if already default) */}
                 {!cv.is_default && (
                   <button
                     type="button"
@@ -123,7 +123,7 @@ export function CvSection({ cvs = [], onDownload, onSetDefault, onDelete, upload
                   </button>
                 )}
 
-                {/* Requirement 4.4 — Delete */}
+                {/* Requirement 4.4-  Delete */}
                 <button
                   type="button"
                   onClick={() => onDelete?.(cv.id)}

@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Send, Clock, CheckCircle2, XCircle, User, Briefcase } from 'lucide-react'
+import { Send, Clock, CheckCircle2, XCircle, User, Briefcase, Eye, FileText } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { cn } from '@/lib/utils'
 import { useIntroductions } from '@/hooks/useIntroductions'
+import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
+import SourcedCvModal from '@/components/employer/SourcedCvModal'
 
 const STATUS_STYLES = {
   PENDING: { icon: Clock, label: 'Pending', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -38,6 +40,11 @@ function StatusBadge({ status }) {
 
 function IntroductionRow({ intro }) {
   const displayName = intro.candidate_name ?? 'Private profile'
+  const [showPanel, setShowPanel] = useState(false)
+  const [showCvModal, setShowCvModal] = useState(false)
+
+  const isSelfRegistered = intro.ownership === 'self_registered' && intro.candidate_profile_id
+  const canView = intro.status === 'ACCEPTED'
 
   return (
     <div className="rounded-xl border border-border bg-white p-4 flex flex-wrap items-center gap-4">
@@ -49,13 +56,22 @@ function IntroductionRow({ intro }) {
         <p className="font-semibold text-text text-sm truncate">{displayName}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
           {intro.candidate_current_title && <span>{intro.candidate_current_title}</span>}
-          <Link
-            to={`/employer/jobs/${intro.job_id}/applicants`}
-            className="flex items-center gap-1 text-brand-blue hover:underline"
-          >
-            <Briefcase size={11} />
-            {intro.job_title}
-          </Link>
+          {intro.is_general_interest ? (
+            // No real job to link to — a General Interest introduction
+            // isn't anchored to an actual posting (see CandidateActionModal).
+            <span className="flex items-center gap-1">
+              <Briefcase size={11} />
+              General interest (not a specific role)
+            </span>
+          ) : (
+            <Link
+              to={`/employer/jobs/${intro.job_id}/applicants`}
+              className="flex items-center gap-1 text-brand-blue hover:underline"
+            >
+              <Briefcase size={11} />
+              {intro.job_title}
+            </Link>
+          )}
         </div>
       </div>
 
@@ -65,7 +81,28 @@ function IntroductionRow({ intro }) {
         {intro.status === 'PENDING' && <span>· Expires {formatDate(intro.expires_at)}</span>}
       </div>
 
+      {canView && (
+        <button
+          type="button"
+          onClick={() => (isSelfRegistered ? setShowPanel(true) : setShowCvModal(true))}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors flex-shrink-0"
+        >
+          {isSelfRegistered ? <><Eye size={13} /> View Profile</> : <><FileText size={13} /> View CV</>}
+        </button>
+      )}
+
       <StatusBadge status={intro.status} />
+
+      {showPanel && (
+        <CandidateProfilePanel profileId={intro.candidate_profile_id} onClose={() => setShowPanel(false)} />
+      )}
+      {showCvModal && (
+        <SourcedCvModal
+          profileId={intro.talent_pool_profile_id}
+          jobId={intro.is_general_interest ? undefined : intro.job_id}
+          onClose={() => setShowCvModal(false)}
+        />
+      )}
     </div>
   )
 }

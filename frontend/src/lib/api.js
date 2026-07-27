@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { ACCOUNT_STATUS_CODES } from '@/lib/accountStatus'
 
-// In-memory token — never stored in localStorage or cookies
+// In-memory token - never stored in localStorage or cookies
 let accessToken = null
 
 export const setAccessToken = (token) => { accessToken = token }
@@ -13,7 +13,7 @@ const api = axios.create({
   withCredentials: true, // sends httpOnly refresh token cookie automatically
 })
 
-// Request interceptor — attach Bearer token to every outgoing request
+// Request interceptor - attach Bearer token to every outgoing request
 api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
@@ -33,7 +33,7 @@ const processQueue = (error, token = null) => {
   failedQueue = []
 }
 
-// Response interceptor — on 401, silently refresh and retry original request
+// Response interceptor - on 401, silently refresh and retry original request
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -68,7 +68,7 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null)
         clearAccessToken()
-        // Don't redirect if the failure is an account-status restriction —
+        // Don't redirect if the failure is an account-status restriction- 
         // the user is still authenticated, just restricted. Let the UI handle it.
         const code = refreshError.response?.data?.code
         if (!ACCOUNT_STATUS_CODES.includes(code)) {

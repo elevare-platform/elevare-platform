@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import api from '@/lib/api'
 
 /**
- * useIntroductions — fetches every introduction request the authenticated
+ * useIntroductions - fetches every introduction request the authenticated
  * employer has made, across all jobs (GET /api/v1/introductions/mine).
  */
 export function useIntroductions() {

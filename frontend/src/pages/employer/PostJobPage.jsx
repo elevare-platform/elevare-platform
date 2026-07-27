@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 
 /**
- * PostJobPage — /employer/jobs/new
+ * PostJobPage-  /employer/jobs/new
  * Protected: EMPLOYER role only (enforced via ProtectedRoute in App.jsx)
  * Requirements: 5.1, 5.2, 5.3, 5.7, 5.8, 5.9
  */
@@ -62,7 +62,7 @@ export default function PostJobPage() {
             </p>
           </div>
 
-          {/* Profile incomplete — actionable banner */}
+          {/* Profile incomplete - actionable banner */}
           {profileIncomplete && (
             <div className="mb-6 rounded-md border border-brand-amber bg-brand-amber/10 px-4 py-3 text-sm">
               <p className="font-medium text-amber-800">Your company profile is incomplete.</p>
@@ -75,7 +75,7 @@ export default function PostJobPage() {
             </div>
           )}
 
-          {/* KYC required — actionable banner */}
+          {/* KYC required - actionable banner */}
           {kycRequired && (
             <div className="mb-6 rounded-md border border-brand-amber bg-brand-amber/10 px-4 py-3 text-sm">
               <p className="font-medium text-amber-800">Company verification required.</p>
@@ -88,7 +88,7 @@ export default function PostJobPage() {
             </div>
           )}
 
-          {/* Success state — pending approval notice */}
+          {/* Success state - pending approval notice */}
           {submitted ? (
             <div className="rounded-xl border border-green-200 bg-green-50 p-6 space-y-4">
               <div className="flex items-start gap-3">
@@ -97,7 +97,7 @@ export default function PostJobPage() {
                   <h2 className="font-semibold text-green-900 text-base">Job submitted for review</h2>
                   <p className="text-sm text-green-800 mt-1 leading-relaxed">
                     Your listing has been created and is now pending admin approval.
-                    You'll receive an email once it's approved — the email will include
+                    You'll receive an email once it's approved - the email will include
                     a direct link to publish it and start receiving applications.
                   </p>
                 </div>

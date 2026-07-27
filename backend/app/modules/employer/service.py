@@ -63,7 +63,9 @@ class EmployerService:
             kyc_rejection_reason=profile.kyc_rejection_reason,
             kyc_submitted_at=profile.kyc_submitted_at,
             kyc_reviewed_at=profile.kyc_reviewed_at,
-            documents=[KYCDocumentResponse.model_validate(d) for d in profile.kyc_documents],
+            documents=[
+                KYCDocumentResponse.model_validate(d) for d in profile.kyc_documents
+            ],
         )
 
     async def upload_kyc_document(
@@ -94,9 +96,7 @@ class EmployerService:
                 message="Cannot upload documents while KYC is under review"
             )
         if current_status == KYCStatus.APPROVED.value:
-            raise KYCAlreadySubmittedException(
-                message="KYC is already approved"
-            )
+            raise KYCAlreadySubmittedException(message="KYC is already approved")
 
         ext = filename.rsplit(".", 1)[-1].lower()
         content_type = _EXT_TO_MIME.get(ext, "application/octet-stream")
@@ -107,7 +107,9 @@ class EmployerService:
             uploaded_key = await self._storage.upload_file(file, key, content_type)
         except Exception as e:
             logger.error("KYC document upload failed for user %s: %s", user_id, e)
-            raise ValidationException(message="File upload failed. Please try again.") from e
+            raise ValidationException(
+                message="File upload failed. Please try again."
+            ) from e
 
         doc = await self._repo.save_kyc_document(
             employer_profile_id=profile.id,
@@ -183,5 +185,7 @@ class EmployerService:
             kyc_rejection_reason=profile.kyc_rejection_reason,
             kyc_submitted_at=profile.kyc_submitted_at,
             kyc_reviewed_at=profile.kyc_reviewed_at,
-            documents=[KYCDocumentResponse.model_validate(d) for d in profile.kyc_documents],
+            documents=[
+                KYCDocumentResponse.model_validate(d) for d in profile.kyc_documents
+            ],
         )

@@ -29,7 +29,14 @@ class IntroductionSummaryResponse(BaseModel):
     id: UUID
     job_id: UUID
     job_title: str
+    is_general_interest: bool = (
+        False  # job_id is a hidden placeholder, not a real posting
+    )
     talent_pool_profile_id: UUID
+    candidate_profile_id: UUID | None = None  # set only for self-registered candidates
+    ownership: str = (
+        "admin_sourced"  # "self_registered" | "own_sourced" | "admin_sourced"
+    )
     candidate_name: str | None = None
     candidate_current_title: str | None = None
     status: str

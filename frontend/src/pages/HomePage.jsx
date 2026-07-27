@@ -1,4 +1,4 @@
-// HomePage — assembles all home section components in order.
+// HomePage - assembles all home section components in order.
 import { useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import Navbar from '@/components/layout/Navbar'
@@ -31,9 +31,9 @@ export default function HomePage() {
   return (
     <>
       <Helmet>
-        <title>Elevare Human Solutions — Connecting Talent with Opportunity in Africa</title>
+        <title>Elevare Human Solutions - Connecting Talent with Opportunity in Africa</title>
         <meta name="description" content="Elevare connects exceptional talent with ambitious companies across Africa. Post a job or find your next role today." />
-        <meta property="og:title" content="Elevare Human Solutions — Connecting Talent with Opportunity" />
+        <meta property="og:title" content="Elevare Human Solutions - Connecting Talent with Opportunity" />
         <meta property="og:description" content="Elevare connects exceptional talent with ambitious companies across Africa." />
         <meta property="og:url" content="https://elevare.com.ng/" />
         <meta property="og:type" content="website" />
@@ -49,13 +49,13 @@ export default function HomePage() {
         <PartnersSection />
         <JobBoardPreview />
         
-        {/* SECTION TYPE A — Background Image Story Slider */}
+        {/* SECTION TYPE A - Background Image Story Slider */}
         <StorySlider />
 
-        {/* SECTION TYPE B — Employer Journey Showcase */}
+        {/* SECTION TYPE B - Employer Journey Showcase */}
         <EmployerJourney />
 
-        {/* SECTION TYPE D — Impact Metrics Section (Replaces old static StatsSection) */}
+        {/* SECTION TYPE D - Impact Metrics Section (Replaces old static StatsSection) */}
         <ImpactMetrics />
 
         {/* Requirements 3.1, 3.2 */}
@@ -66,12 +66,12 @@ export default function HomePage() {
         {/* Requirements 4.1–4.4 */}
         <EmployerStrip onBookConsultation={openModal} />
 
-        {/* SECTION TYPE C — Candidate Success Showcase */}
+        {/* SECTION TYPE C - Candidate Success Showcase */}
         <CandidateSuccess />
         
         <HowItWorks />
 
-        {/* SECTION TYPE E — Recruitment Excellence Banner */}
+        {/* SECTION TYPE E - Recruitment Excellence Banner */}
         <RecruitmentExcellence onBookConsultation={openModal} />
         
         <Testimonials />

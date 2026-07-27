@@ -129,7 +129,7 @@ function Field({ label, value }) {
   return (
     <div>
       <p className="text-xs text-text-muted">{label}</p>
-      <p className="font-medium text-text">{value ?? '—'}</p>
+      <p className="font-medium text-text">{value ?? ' - '}</p>
     </div>
   )
 }
@@ -241,7 +241,7 @@ export default function AdminCVParserPage() {
     setDownloading(true)
     try {
       const url = await downloadCV(id)
-      // Open presigned URL in new tab — browser handles the download
+      // Open presigned URL in new tab - browser handles the download
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch {
       show('Failed to generate download link', 'error')
@@ -259,7 +259,7 @@ export default function AdminCVParserPage() {
         <p className="text-sm text-text-muted mt-1">Upload CVs to extract candidate data automatically.</p>
       </div>
 
-      {/* Cost summary — admin only */}
+      {/* Cost summary - admin only */}
       {isAdmin && costs && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           <CostCard label="Month" value={costs.month} />
@@ -371,7 +371,7 @@ export default function AdminCVParserPage() {
             <tr key={s.id} className="hover:bg-surface-muted/50 cursor-pointer"
               onClick={() => setSelected(s)}>
               <Td className="font-medium text-text">{s.filename}</Td>
-              <Td className="text-text-muted text-xs">{s.uploaded_by_email ?? '—'}</Td>
+              <Td className="text-text-muted text-xs">{s.uploaded_by_email ?? ' - '}</Td>
               <Td><CVParseStatusBadge status={s.parse_status} /></Td>
               <Td className="text-text-muted text-xs">
                 {new Date(s.created_at).toLocaleDateString()}

@@ -73,7 +73,7 @@ export default function CandidateSuccess() {
           <h2
             className="font-sans text-4xl sm:text-5xl font-extrabold mt-6 tracking-tight text-slate-900 leading-tight"
           >
-            Empowering Your Professional Journey
+            Your Career, Accelerated
           </h2>
           <p className="mt-4 text-text-muted text-base sm:text-lg max-w-xl">
             We provide candidates with the jobs, matching support, and training needed to land dream jobs and scale their careers in Africa.

@@ -8,7 +8,12 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import JobNotFoundError
 from app.core.pagination import paginate_cursor
-from app.modules.jobs.enums import JobStatus, ModerationStatus
+from app.modules.jobs.enums import (
+    ContractType,
+    JobStatus,
+    ModerationStatus,
+    WorkLocation,
+)
 from app.modules.jobs.models import Job
 from app.modules.jobs.schemas import JobCreateRequest, JobFilterParams, JobUpdateRequest
 from app.modules.users.models import User
@@ -36,6 +41,38 @@ class JobRepository:
         self._db.add(job)
         await self._db.flush()
         # Re-fetch with employer profile loaded so from_job() can access it
+        return await self.get_by_id(job.id)
+
+    async def get_general_interest_job(self, employer_id: UUID) -> Job | None:
+        """Return this employer's standing "General Interest" placeholder job, if it exists."""
+        stmt = select(Job).where(
+            Job.employer_id == employer_id,
+            Job.is_general_interest.is_(True),
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_general_interest_job(self, employer_id: UUID) -> Job:
+        """Create the standing "General Interest" placeholder job for an employer.
+
+        Bypasses JobCreateRequest entirely — this isn't a user-submitted
+        job posting, just an anchor so Candidate Search's introduction flow
+        has a job_id to attach to when the employer has no real postings
+        yet. Stays DRAFT forever (never published, never shown to
+        candidates or on the public job board) and is explicitly excluded
+        from list_by_employer/employer stats.
+        """
+        job = Job(
+            employer_id=employer_id,
+            title="General Interest",
+            contract_type=ContractType.FULL_TIME.value,
+            location="Not specified",
+            work_location=WorkLocation.LOCAL.value,
+            status=JobStatus.DRAFT.value,
+            is_general_interest=True,
+        )
+        self._db.add(job)
+        await self._db.flush()
         return await self.get_by_id(job.id)
 
     async def get_by_id(self, job_id: UUID) -> Job:
@@ -132,7 +169,10 @@ class JobRepository:
 
         stmt = (
             select(Job)
-            .where(Job.employer_id == employer_id)
+            .where(
+                Job.employer_id == employer_id,
+                Job.is_general_interest.is_(False),
+            )
             .options(self._with_employer_profile())
         )
         if search:

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.modules.candidates.models import CandidateProfile
     from app.modules.introductions.models import IntroductionRequest
     from app.modules.jobs.models import Job
+    from app.modules.notifications.models import MatchNotification
     from app.modules.users.models import User
 
 
@@ -154,5 +155,9 @@ class TalentPoolProfiles(BaseModel):
 
     introduction_requests: Mapped[list[IntroductionRequest]] = relationship(
         "IntroductionRequest",
+        back_populates="talent_pool_profile",
+    )
+    match_notifications: Mapped[list[MatchNotification]] = relationship(
+        "MatchNotification",
         back_populates="talent_pool_profile",
     )

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import api from '@/lib/api'
 
 /**
- * useCredits — fetches the authenticated employer's credit balance.
+ * useCredits - fetches the authenticated employer's credit balance.
  *
  * `refetch` is exposed so callers can resync after spending/refunding a
  * credit (e.g. after a Request Introduction call succeeds or fails).

@@ -5,11 +5,12 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { initAnalytics, trackPageview } from '@/lib/analytics'
 
 // ─── Page-level code splitting ────────────────────────────────────────────────
-// Each lazy() call becomes its own JS chunk — only loaded when first visited.
+// Each lazy() call becomes its own JS chunk - only loaded when first visited.
 
 const HomePage = lazy(() => import('@/pages/HomePage'))
 const ServicesPage = lazy(() => import('@/pages/ServicesPage'))
 const AboutPage = lazy(() => import('@/pages/AboutPage'))
+const AIRecruiterPage = lazy(() => import('@/pages/AIRecruiterPage'))
 const TalentPipelinePage = lazy(() => import('@/pages/TalentPipelinePage'))
 const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
 const WorkforceToolsPage = lazy(() => import('@/pages/WorkforceToolsPage'))
@@ -40,6 +41,7 @@ const CompanyVerificationPage = lazy(() => import('@/pages/employer/CompanyVerif
 const ApplicantsPage = lazy(() => import('@/pages/employer/ApplicantsPage'))
 const EmployerCVParserPage = lazy(() => import('@/pages/employer/EmployerCVParserPage'))
 const TalentPoolPage = lazy(() => import('@/pages/employer/TalentPoolPage'))
+const CandidateSearchPage = lazy(() => import('@/pages/employer/CandidateSearchPage'))
 const IntroductionsPage = lazy(() => import('@/pages/employer/IntroductionsPage'))
 const SharedApplicantsPage = lazy(() => import('@/pages/SharedApplicantsPage'))
 const IntroductionResponsePage = lazy(() => import('@/pages/IntroductionResponsePage'))
@@ -63,6 +65,7 @@ const CandidateDocumentsPage = lazy(() => import('@/pages/candidate/CandidateDoc
 const MyApplicationsPage = lazy(() => import('@/pages/candidate/MyApplicationsPage'))
 const ProfileViewsPage = lazy(() => import('@/pages/candidate/ProfileViewsPage'))
 const CandidateIntroductionsPage = lazy(() => import('@/pages/candidate/CandidateIntroductionsPage'))
+const CandidateMatchesPage = lazy(() => import('@/pages/candidate/CandidateMatchesPage'))
 
 // ─── Shared loading fallback ──────────────────────────────────────────────────
 
@@ -97,7 +100,8 @@ function AppRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/talent-pipeline" element={<TalentPipelinePage />} />
+        <Route path="/ai-recruiter" element={<AIRecruiterPage />} />
+        <Route path="/talent-pipeline" element={<AIRecruiterPage />} />
         <Route path="/training" element={<TrainingPage />} />
         <Route path="/workforce-tools" element={<WorkforceToolsPage />} />
         <Route path="/partnership" element={<PartnershipPage />} />
@@ -112,7 +116,7 @@ function AppRoutes() {
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/unauthorised" element={<UnauthorisedPage />} />
 
-        {/* Public routes — no auth */}
+        {/* Public routes - no auth */}
         <Route path="/jobs" element={<JobBoardPage />} />
         <Route path="/jobs/:id" element={<JobDetailPage />} />
         <Route path="/shared/jobs/:token" element={<SharedApplicantsPage />} />
@@ -133,6 +137,7 @@ function AppRoutes() {
           <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
           <Route path="/employer/cv-parser" element={<EmployerCVParserPage />} />
           <Route path="/employer/talent-pool" element={<TalentPoolPage />} />
+          <Route path="/employer/candidate-search" element={<CandidateSearchPage />} />
           <Route path="/employer/introductions" element={<IntroductionsPage />} />
           <Route path="/employer/mail-ingestion" element={<MailIngestionPage />} />
         </Route>
@@ -160,13 +165,14 @@ function AppRoutes() {
           <Route path="/candidate/applications" element={<MyApplicationsPage />} />
           <Route path="/candidate/profile-views" element={<ProfileViewsPage />} />
           <Route path="/candidate/introductions" element={<CandidateIntroductionsPage />} />
+          <Route path="/candidate/matches" element={<CandidateMatchesPage />} />
         </Route>
 
         {/* Legal */}
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
 
-        {/* Catch-all — 404 */}
+        {/* Catch-all-  404 */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>

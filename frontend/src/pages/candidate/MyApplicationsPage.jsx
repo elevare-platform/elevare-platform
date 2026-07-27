@@ -47,7 +47,7 @@ function ApplicationCard({ application, onWithdraw }) {
       await api.patch(`/api/v1/applications/${application.id}/withdraw`)
       onWithdraw(application.id)
     } catch {
-      // silently ignore — button stays available for retry
+      // silently ignore - button stays available for retry
     } finally {
       setWithdrawing(false)
     }
@@ -165,7 +165,7 @@ export default function MyApplicationsPage() {
     <>
       <Navbar />
 
-      <main className="min-h-screen bg-background">
+      <main className="min-h-screen bg-background pt-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
           <h1 className="text-2xl font-bold text-text mb-6">My Applications</h1>

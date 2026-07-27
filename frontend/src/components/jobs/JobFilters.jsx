@@ -92,7 +92,7 @@ function FilterSelect({ id, label, value, options, onChange }) {
 }
 
 /**
- * ExperienceRange — two selects for min and max years of experience.
+ * ExperienceRange - two selects for min and max years of experience.
  * Max defaults to "Any" when not set. If only max is set, it acts as a ceiling.
  * If both are set, it filters to a range.
  */
@@ -155,7 +155,7 @@ function ExperienceRange({ minValue, maxValue, onChange }) {
 // ─── JobFilters ───────────────────────────────────────────────────────────────
 
 /**
- * JobFilters — contract type, work model, seniority, posted time, and
+ * JobFilters - contract type, work model, seniority, posted time, and
  * experience range filters.
  *
  * @param {Object} props

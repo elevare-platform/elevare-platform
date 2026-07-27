@@ -188,7 +188,7 @@ export default function JobDetailPage() {
       <Helmet>
         {job ? (
           <>
-            <title>{job.title} — {job.location} | Elevare</title>
+            <title>{job.title}-  {job.location} | Elevare</title>
             <meta name="description" content={`${job.title} at ${job.company_name || 'a leading company'}. ${job.location} · ${job.contract_type}. Apply on Elevare.`} />
             <meta property="og:title" content={`${job.title} at ${job.company_name || 'Elevare'}`} />
             <meta property="og:description" content={`${job.title} · ${job.location} · ${job.contract_type}. Apply now on Elevare.`} />
@@ -335,7 +335,7 @@ export default function JobDetailPage() {
                 </div>
               )}
 
-              {/* ── Job description — structured (new) or legacy fallback ── */}
+              {/* ── Job description - structured (new) or legacy fallback ── */}
               <div className="space-y-6">
                 {job.about_the_role ? (
                   <>

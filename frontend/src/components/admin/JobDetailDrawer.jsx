@@ -78,7 +78,7 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
                 <Building2 size={16} className="text-text-muted flex-shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <p className="font-semibold text-sm text-text">
-                    {job.company_name ?? '—'}
+                    {job.company_name ?? ' - '}
                   </p>
                   <p className="text-xs text-text-muted mt-0.5">
                     {[job.company_industry, job.company_size ? `${job.company_size} employees` : null]
@@ -185,7 +185,7 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
               </div>
             )}
 
-            {/* Description — structured (new jobs) or legacy fallback */}
+            {/* Description - structured (new jobs) or legacy fallback */}
             <div>
               <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Description</p>
               {job.about_the_role ? (
@@ -208,7 +208,7 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
                 </div>
               ) : (
                 <p className="text-sm text-text leading-relaxed whitespace-pre-line">
-                  {job.description ?? '—'}
+                  {job.description ?? ' - '}
                 </p>
               )}
             </div>
@@ -221,7 +221,7 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
               {rejectMode && (
                 <div className="space-y-2">
                   <label htmlFor="reject-reason" className="text-xs text-text-muted">
-                    Reason for rejection (optional — shown to employer)
+                    Reason for rejection (optional - shown to employer)
                   </label>
                   <textarea
                     id="reject-reason"

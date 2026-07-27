@@ -31,7 +31,7 @@ function SkeletonCard() {
 // ─── EmployerJobsPage ─────────────────────────────────────────────────────────
 
 /**
- * Employer job management page — /employer/jobs
+ * Employer job management page-  /employer/jobs
  * Protected: EMPLOYER role only (enforced via ProtectedRoute in App.jsx)
  * Requirements: 4.1–4.11
  */
@@ -39,7 +39,7 @@ export default function EmployerJobsPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
-  // Debounce — avoid firing a request on every keystroke
+  // Debounce - avoid firing a request on every keystroke
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
     return () => clearTimeout(t)
@@ -60,7 +60,7 @@ export default function EmployerJobsPage() {
 
   const [publishError, setPublishError] = useState(null)
 
-  // Req 4.7 — Publish a DRAFT job and update local state on success
+  // Req 4.7-  Publish a DRAFT job and update local state on success
   const handlePublish = useCallback(async (job) => {
     setPublishError(null)
     try {
@@ -77,7 +77,7 @@ export default function EmployerJobsPage() {
     }
   }, [setJobs])
 
-  // Req 4.8 — Close an ACTIVE job and update local state on success
+  // Req 4.8-  Close an ACTIVE job and update local state on success
   const handleClose = useCallback(async (job) => {
     try {
       await api.post(`/api/v1/jobs/${job.id}/close`)
@@ -85,7 +85,7 @@ export default function EmployerJobsPage() {
         prev.map((j) => (j.id === job.id ? { ...j, status: 'CLOSED' } : j))
       )
     } catch {
-      // Silently ignore — the button remains available for retry
+      // Silently ignore - the button remains available for retry
     }
   }, [setJobs])
 
@@ -187,7 +187,7 @@ export default function EmployerJobsPage() {
             </div>
           )}
 
-          {/* Skeleton loading — Req 4.1 */}
+          {/* Skeleton loading - Req 4.1 */}
           {loading && jobs.length === 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -196,7 +196,7 @@ export default function EmployerJobsPage() {
             </div>
           )}
 
-          {/* Empty state — Req 4.1 */}
+          {/* Empty state - Req 4.1 */}
           {!loading && jobs.length === 0 && debouncedSearch && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <p className="text-xl font-semibold text-text mb-2">No jobs match "{debouncedSearch}"</p>
@@ -217,7 +217,7 @@ export default function EmployerJobsPage() {
             </div>
           )}
 
-          {/* Job list — Req 4.4–4.10 */}
+          {/* Job list - Req 4.4–4.10 */}
           {jobs.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {jobs.map((job) => (
@@ -232,7 +232,7 @@ export default function EmployerJobsPage() {
             </div>
           )}
 
-          {/* Load more — Req 4.11 */}
+          {/* Load more - Req 4.11 */}
           {hasMore && (
             <div className="flex justify-center mt-10">
               <Button

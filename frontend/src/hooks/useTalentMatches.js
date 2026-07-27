@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import api from '@/lib/api'
 
 /**
- * useTalentMatches — fetches AI-ranked talent pool profiles for a job.
+ * useTalentMatches - fetches AI-ranked talent pool profiles for a job.
  *
  * `notReady` distinguishes "job embedding not generated yet" (backend
  * raises a VALIDATION_FAILED error) from a genuine fetch failure, so the

@@ -103,17 +103,26 @@ class ApplicationResponse(BaseModel):
 class CandidateApplicationResponse(ApplicationResponse):
     """Candidate-facing view of an application — AI scoring fields are excluded.
 
-    Inherits all fields from ApplicationResponse but overrides the AI fields
-    so they are never serialised in candidate-facing responses.
+    Inherits all fields from ApplicationResponse but strips AI fields from
+    serialised output so candidates never see scoring data.
     """
 
-    ai_score: None = Field(default=None, exclude=True)
-    ai_fit_summary: None = Field(default=None, exclude=True)
-    ai_strengths: None = Field(default=None, exclude=True)
-    ai_weaknesses: None = Field(default=None, exclude=True)
-    ai_score_computed_at: None = Field(default=None, exclude=True)
-    match_score: None = Field(default=None, exclude=True)
-    score_computed_at: None = Field(default=None, exclude=True)
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_application(
+        cls, application, cv_url: str | None = None
+    ) -> "CandidateApplicationResponse":
+        instance = super().from_application(application, cv_url=cv_url)
+        # Null out AI fields so they are omitted from candidate-facing responses
+        instance.ai_score = None
+        instance.ai_fit_summary = None
+        instance.ai_strengths = None
+        instance.ai_weaknesses = None
+        instance.ai_score_computed_at = None
+        instance.match_score = None
+        instance.score_computed_at = None
+        return instance
 
 
 class ApplicationList(BaseModel):

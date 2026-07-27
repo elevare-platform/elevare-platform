@@ -91,7 +91,7 @@ export default function AdminUsersPage() {
         <GrantCreditsModal
           employer={creditsTarget}
           onClose={() => setCreditsTarget(null)}
-          onGranted={(data) => show(`Granted credits — new balance: ${data.balance}`)}
+          onGranted={(data) => show(`Granted credits - new balance: ${data.balance}`)}
         />
       )}
 

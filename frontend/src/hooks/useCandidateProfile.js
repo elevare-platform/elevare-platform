@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import api from '@/lib/api'
 
 /**
- * useCandidateProfile — fetches and manages the candidate's ProfileResponse.
+ * useCandidateProfile - fetches and manages the candidate's ProfileResponse.
  *
  * Fetches GET /api/v1/candidates/me once on mount. Exposes optimistic
  * mutation helpers for CVs and documents so callers can update local state
@@ -21,7 +21,7 @@ export function useCandidateProfile() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  // Increment to trigger a re-fetch (Requirement 2.5 — only re-fetches on explicit refresh)
+  // Increment to trigger a re-fetch (Requirement 2.5-  only re-fetches on explicit refresh)
   const [fetchTick, setFetchTick] = useState(0)
 
   useEffect(() => {
@@ -47,12 +47,12 @@ export function useCandidateProfile() {
     return () => { cancelled = true }
   }, [fetchTick])
 
-  // Explicit refresh — increments tick to re-run the effect (Requirement 2.4)
+  // Explicit refresh - increments tick to re-run the effect (Requirement 2.4)
   const refetch = useCallback(() => {
     setFetchTick((t) => t + 1)
   }, [])
 
-  // Optimistic CV list updater — accepts a new array or an updater function
+  // Optimistic CV list updater - accepts a new array or an updater function
   const setCvs = useCallback((updater) => {
     setProfile((prev) => {
       if (!prev) return prev
@@ -61,7 +61,7 @@ export function useCandidateProfile() {
     })
   }, [])
 
-  // Optimistic documents list updater — accepts a new array or an updater function
+  // Optimistic documents list updater - accepts a new array or an updater function
   const setDocuments = useCallback((updater) => {
     setProfile((prev) => {
       if (!prev) return prev

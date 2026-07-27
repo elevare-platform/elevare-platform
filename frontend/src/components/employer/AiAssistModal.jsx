@@ -12,9 +12,9 @@ import {
 } from '@/services/aiJobDescription'
 
 /**
- * AiAssistModal — mode picker + preview/apply flow for AI-assisted
+ * AiAssistModal - mode picker + preview/apply flow for AI-assisted
  * job description writing. Opened from a per-field "AI Assist" button
- * in JobForm. Does not mutate form state itself — calls onApply(text)
+ * in JobForm. Does not mutate form state itself - calls onApply(text)
  * only when the user explicitly applies a suggestion.
  */
 export function AiAssistModal({ isOpen, onClose, fieldLabel, fieldKey, currentText, jobContext, onApply }) {
@@ -60,7 +60,7 @@ export function AiAssistModal({ isOpen, onClose, fieldLabel, fieldKey, currentTe
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Sparkles size={18} className="text-brand-blue" />
-            <h2 className="text-sm font-semibold">AI Assist — {fieldLabel}</h2>
+            <h2 className="text-sm font-semibold">AI Assist-  {fieldLabel}</h2>
           </div>
           <button
             type="button"
@@ -94,7 +94,7 @@ export function AiAssistModal({ isOpen, onClose, fieldLabel, fieldKey, currentTe
             </div>
             {!hasText && (
               <p className="text-xs text-text-muted mt-2">
-                This field is empty — only "Generate from scratch" is available. Fill in the job title
+                This field is empty - only "Generate from scratch" is available. Fill in the job title
                 and required skills above for a better result.
               </p>
             )}
@@ -123,7 +123,7 @@ export function AiAssistModal({ isOpen, onClose, fieldLabel, fieldKey, currentTe
           {suggestion && !loading && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-text-muted">
-                Preview {hasText && <span className="text-text-muted/70">— additions in green, removals struck through</span>}
+                Preview {hasText && <span className="text-text-muted/70"> - additions in green, removals struck through</span>}
               </p>
               <div className="rounded-md border border-border bg-background px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">
                 {hasText ? (

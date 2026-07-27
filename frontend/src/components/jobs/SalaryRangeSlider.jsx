@@ -31,12 +31,12 @@ function fmt(value) {
 }
 
 /**
- * SalaryRangeSlider — dual-handle range slider for salary filtering.
+ * SalaryRangeSlider - dual-handle range slider for salary filtering.
  *
  * @param {Object}   props
- * @param {number}   props.min        - Current lower bound (controlled)
- * @param {number}   props.max        - Current upper bound (controlled)
- * @param {Function} props.onChange   - Called with { min, max } on every change
+ * @param {number}   props.min      - Current lower bound (controlled)
+ * @param {number}   props.max      - Current upper bound (controlled)
+ * @param {Function} props.onChange - Called with { min, max } on every change
  */
 export function SalaryRangeSlider({ min, max, onChange }) {
   const trackRef = useRef(null)
@@ -79,7 +79,7 @@ export function SalaryRangeSlider({ min, max, onChange }) {
     window.removeEventListener('pointerup', onPointerUp)
   }, [onPointerMove, onPointerUp])
 
-  // Track click — jump the nearest handle to the clicked position
+  // Track click - jump the nearest handle to the clicked position
   const onTrackClick = useCallback((e) => {
     if (dragging.current) return
     const val = clientXToValue(e.clientX)

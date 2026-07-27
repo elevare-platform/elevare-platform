@@ -144,7 +144,7 @@ export default function CandidateIntroductionsPage() {
             </button>
           </div>
           <p className="text-sm text-text-muted mb-6">
-            Employers who'd like to connect with you, in one place — no need to dig through email.
+            Employers who'd like to connect with you, in one place - no need to dig through email.
           </p>
 
           {error && <p className="text-sm text-red-600 mb-4" role="alert">{error}</p>}

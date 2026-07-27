@@ -63,6 +63,24 @@ class JobService:
 
         return JobResponse.from_job(job)
 
+    async def get_or_create_general_interest_job(
+        self, employer_id: UUID
+    ) -> JobResponse:
+        """Return (creating if needed) this employer's "General Interest" placeholder job.
+
+        Deliberately bypasses the profile-completeness/KYC gate in
+        ``create_job`` — a brand-new employer with no completed onboarding
+        yet should still be able to reach out to a candidate found via
+        Candidate Search, same as ``request_introduction`` itself doesn't
+        require KYC. This job is never published and stays invisible to
+        candidates and the public job board.
+        """
+        job = await self._repo.get_general_interest_job(employer_id)
+        if job is None:
+            job = await self._repo.create_general_interest_job(employer_id)
+            await self._db.commit()
+        return JobResponse.from_job(job)
+
     async def publish_job(self, job_id: UUID, current_user: User) -> JobResponse:
         """Transition a job from DRAFT to ACTIVE.
 
@@ -79,6 +97,11 @@ class JobService:
         if job.moderation_status == ModerationStatus.APPROVED.value:
             job = await self._repo.set_status(job, JobStatus.ACTIVE)
             await self._db.commit()
+
+            from app.modules.ai.tasks import score_job_against_talent_pool_task
+
+            score_job_against_talent_pool_task.delay(str(job_id))
+
             return JobResponse.from_job(job)
         raise ValidationException("Job listing isn't approved yet")
 

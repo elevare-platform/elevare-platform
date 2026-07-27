@@ -101,7 +101,7 @@ function InviteTokenCard({ token, email, onResend, resending }) {
 // ─── AdminInvitePage ──────────────────────────────────────────────────────────
 
 /**
- * Admin invite management page — /admin/invite
+ * Admin invite management page-  /admin/invite
  * Protected: ADMIN role only.
  * Calls POST /api/v1/admin/employers/invite to generate an invite token.
  * Calls POST /api/v1/admin/employers/invite/{token}/resend to rotate a token.
@@ -158,7 +158,7 @@ export default function AdminInvitePage() {
         )
       }
     } catch (err) {
-      // Surface error inline on the card — don't wipe the whole page
+      // Surface error inline on the card - don't wipe the whole page
       const msg = err.response?.data?.message ?? 'Failed to resend invite.'
       setServerError(msg)
     } finally {

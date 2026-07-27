@@ -139,14 +139,14 @@ function SectionDivider({ title }) {
 }
 
 /**
- * JobForm — shared create/edit form for job postings.
+ * JobForm - shared create/edit form for job postings.
  *
  * Uses structured description fields (about_the_role, key_responsibilities,
  * requirements, preferred_certifications, technical_competencies, what_we_offer)
  * instead of a single generic description textarea.
  *
  * When draftKey is provided, form state is auto-saved to localStorage
- * and restored on mount — survives page reloads.
+ * and restored on mount - survives page reloads.
  */
 export function JobForm({ defaultValues, onSubmit, loading = false, error = null, draftKey = null }) {
   const resolvedDefaults = {
@@ -317,7 +317,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
         <textarea
           id="preferred_certifications"
           rows={2}
-          placeholder="e.g. PMP, AWS Certified, CPA — nice-to-haves only…"
+          placeholder="e.g. PMP, AWS Certified, CPA - nice-to-haves only…"
           className={textareaClass}
           {...register('preferred_certifications')}
         />

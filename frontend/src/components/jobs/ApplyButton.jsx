@@ -27,10 +27,10 @@ export function ApplyButton({ jobId, jobStatus, size = 'default', initialApplied
     return () => { cancelled = true }
   }, [jobId, isCandidate, isActive, initialApplied])
 
-  // Not active — never show the button
+  // Not active - never show the button
   if (!isActive) return null
 
-  // Unauthenticated — show Apply Now, redirect to login with return URL
+  // Unauthenticated - show Apply Now, redirect to login with return URL
   if (!user) {
     return (
       <Button
@@ -47,7 +47,7 @@ export function ApplyButton({ jobId, jobStatus, size = 'default', initialApplied
     )
   }
 
-  // Unverified — nudge to verify before applying
+  // Unverified - nudge to verify before applying
   if (user.account_status === 'PENDING_VERIFICATION') {
     return (
       <div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -65,7 +65,7 @@ export function ApplyButton({ jobId, jobStatus, size = 'default', initialApplied
     )
   }
 
-  // Employer / admin — don't show apply button
+  // Employer / admin - don't show apply button
   if (!isCandidate) return null
 
   const handleSuccess = () => {

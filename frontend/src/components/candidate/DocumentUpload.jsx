@@ -17,10 +17,10 @@ function formatBytes(bytes) {
 }
 
 /**
- * DocumentUpload — drag-and-drop career document upload component.
+ * DocumentUpload - drag-and-drop career document upload component.
  *
  * Props:
- *   onUploadSuccess — (newDoc: CandidateDocumentsResponse) => void   called after 201
+ *   onUploadSuccess - (newDoc: CandidateDocumentsResponse) => void   called after 201
  *
  * Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6
  */
@@ -112,7 +112,7 @@ export function DocumentUpload({ onUploadSuccess }) {
 
   return (
     <div className="space-y-3">
-      {/* Requirement 7.4 — document type selector */}
+      {/* Requirement 7.4-  document type selector */}
       <div className="flex flex-col gap-1">
         <label htmlFor="document-type" className="text-sm font-medium text-text">
           Document Type
@@ -131,7 +131,7 @@ export function DocumentUpload({ onUploadSuccess }) {
         </select>
       </div>
 
-      {/* Requirement 7.1 — drag-and-drop zone */}
+      {/* Requirement 7.1-  drag-and-drop zone */}
       <div
         role="button"
         tabIndex={0}
@@ -157,11 +157,11 @@ export function DocumentUpload({ onUploadSuccess }) {
           Drag your document here, or{' '}
           <span className="text-brand-blue underline underline-offset-2">click to browse</span>
         </p>
-        {/* Requirement 7.1 — accepted formats subtext */}
+        {/* Requirement 7.1-  accepted formats subtext */}
         <p className="text-xs text-text-muted">PDF, Word, PNG, JPG · Max 5MB</p>
       </div>
 
-      {/* Hidden file input — click-to-browse */}
+      {/* Hidden file input - click-to-browse */}
       <input
         ref={inputRef}
         type="file"
@@ -172,7 +172,7 @@ export function DocumentUpload({ onUploadSuccess }) {
         onChange={onInputChange}
       />
 
-      {/* Requirement 7.2 / 7.3 — inline validation error */}
+      {/* Requirement 7.2 / 7.3-  inline validation error */}
       {validationError && (
         <p role="alert" className="text-sm text-red-600">
           {validationError}
@@ -200,14 +200,14 @@ export function DocumentUpload({ onUploadSuccess }) {
         </div>
       )}
 
-      {/* Requirement 7.6 — upload error */}
+      {/* Requirement 7.6-  upload error */}
       {uploadError && (
         <p role="alert" className="text-sm text-red-600">
           {uploadError}
         </p>
       )}
 
-      {/* Requirement 7.5 — confirm upload button */}
+      {/* Requirement 7.5-  confirm upload button */}
       {selectedFile && !validationError && (
         <Button
           onClick={handleUpload}

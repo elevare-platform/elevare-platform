@@ -15,7 +15,7 @@ const PAIN_POINTS = [
     id: 'time-to-hire',
     problem: 'Spending weeks on a single hire?',
     solution:
-      'Our pre-vetted talent pool cuts average time-to-hire to under 14 days — without sacrificing quality.',
+      'Our pre-vetted talent pool cuts average time-to-hire to under 14 days - without sacrificing quality.',
   },
   {
     id: 'compliance',
@@ -58,7 +58,7 @@ export default function EmployerStrip({ onBookConsultation }) {
         style={{
           maxWidth: '72rem',
           margin: '0 auto',
-          // Requirements 4.4 — stack vertically on mobile, side-by-side on desktop
+          // Requirements 4.4-  stack vertically on mobile, side-by-side on desktop
           display: 'grid',
           gridTemplateColumns: '1fr',
           gap: '3rem',
@@ -188,11 +188,11 @@ export default function EmployerStrip({ onBookConsultation }) {
                 lineHeight: 1.5,
               }}
             >
-              of our placements are still in role after 12 months — well above the industry average.
+              of our placements are still in role after 12 months - well above the industry average.
             </p>
           </div>
 
-          {/* Book a Consultation CTA — Requirements 4.2 */}
+          {/* Book a Consultation CTA - Requirements 4.2 */}
           <Button
             size="lg"
             onClick={onBookConsultation}

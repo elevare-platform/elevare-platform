@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Menu, X, LogOut, LayoutDashboard } from 'lucide-react'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
+import NotificationBell from '@/components/layout/NotificationBell'
 import ehsLogo from '@/assets/ehs-logo.png'
 
 // ─── Dropdown data ────────────────────────────────────────────────────────────
@@ -92,7 +93,7 @@ function AuthNav({ user, onLogout }) {
 
   return (
     <div className="flex items-center gap-2">
-      {/* Avatar + label — direct link to dashboard */}
+      {/* Avatar + label - direct link to dashboard */}
       <button
         onClick={() => navigate(getPostAuthRedirect(user))}
         className="flex items-center gap-2 cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded-full"
@@ -230,7 +231,7 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
               <MobileAccordionItem label="For Employers" items={EMPLOYERS_ITEMS} onClose={onClose} />
               <MobileAccordionItem label="For Candidates" items={CANDIDATES_ITEMS} onClose={onClose} />
               <Link
-                to="/talent-pipeline"
+                to="/ai-recruiter"
                 onClick={onClose}
                 className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue flex items-center justify-between"
               >
@@ -261,7 +262,7 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
                 Contact Us
               </Link>
 
-              {/* Book a Consultation CTA — always visible in mobile drawer */}
+              {/* Book a Consultation CTA - always visible in mobile drawer */}
               {onBookConsultation && (
                 <div className="pt-4">
                   <Button
@@ -360,7 +361,7 @@ export default function Navbar({ onBookConsultation }) {
             <img src={ehsLogo} alt="Elevare Human Solutions" width={140} height={48} className="h-12 w-auto" />
           </Link>
 
-          {/* Centre nav — desktop only */}
+          {/* Centre nav - desktop only */}
           <div className="hidden lg:flex items-center gap-2.5 lg:gap-4.5">
             <NavDropdown
               label="For Employers"
@@ -377,7 +378,7 @@ export default function Navbar({ onBookConsultation }) {
               onClose={() => setCandidatesOpen(false)}
             />
             <Link
-              to="/talent-pipeline"
+              to="/ai-recruiter"
               className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap flex items-center gap-1.5"
             >
               AI Recruiter
@@ -405,10 +406,13 @@ export default function Navbar({ onBookConsultation }) {
             </Link>
           </div>
 
-          {/* Right side — desktop only */}
+          {/* Right side - desktop only */}
           <div className="hidden lg:flex items-center gap-3">
             {user ? (
-              <AuthNav user={user} onLogout={logout} />
+              <>
+                <NotificationBell />
+                <AuthNav user={user} onLogout={logout} />
+              </>
             ) : (
               <div className="flex items-center gap-3">
                 <Link
@@ -429,7 +433,7 @@ export default function Navbar({ onBookConsultation }) {
             )}
           </div>
 
-          {/* Hamburger — mobile only */}
+          {/* Hamburger - mobile only */}
           <button
             className="lg:hidden p-2 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
             onClick={() => setMobileOpen(true)}

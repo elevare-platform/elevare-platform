@@ -47,7 +47,7 @@ function SkeletonCard() {
 
 /**
  * Renders a single job opportunity card.
- * Requirement 9.2 — role title, company type badge, location, "View Opening →" link.
+ * Requirement 9.2-  role title, company type badge, location, "View Opening →" link.
  */
 function OpportunityCard({ job }) {
   // Derive a company type label from available fields
@@ -66,7 +66,7 @@ function OpportunityCard({ job }) {
           </span>
         )}
 
-        {/* Location — Requirement 9.2 */}
+        {/* Location - Requirement 9.2 */}
         {job.location && (
           <span className="flex items-center gap-1 text-xs text-text-muted">
             <MapPin size={11} aria-hidden="true" />
@@ -75,12 +75,12 @@ function OpportunityCard({ job }) {
         )}
       </div>
 
-      {/* Role title — Requirement 9.2 */}
+      {/* Role title - Requirement 9.2 */}
       <h3 className="text-sm font-semibold text-text leading-snug line-clamp-2 font-sans">
         {job.title}
       </h3>
 
-      {/* "View Opening →" link — Requirement 9.2 */}
+      {/* "View Opening →" link - Requirement 9.2 */}
       <Link
         to={`/jobs/${job.id}`}
         className="inline-flex items-center gap-1 text-sm font-semibold text-brand-blue hover:text-brand-amber transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded mt-auto"
@@ -104,7 +104,7 @@ export function OpportunitiesSection() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Requirement 9.1 — fetch 3 active jobs on mount, same source as JobBoardPreview
+  // Requirement 9.1-  fetch 3 active jobs on mount, same source as JobBoardPreview
   useEffect(() => {
     let cancelled = false
 
@@ -145,14 +145,14 @@ export function OpportunitiesSection() {
         </div>
       )}
 
-      {/* Error state — silent degradation, no jobs shown */}
+      {/* Error state - silent degradation, no jobs shown */}
       {!loading && error && (
         <p className="text-sm text-text-muted py-2">
           Unable to load opportunities right now.
         </p>
       )}
 
-      {/* Job cards — Requirement 9.1, 9.2 */}
+      {/* Job cards - Requirement 9.1, 9.2 */}
       {!loading && !error && jobs.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {jobs.map((job) => (
@@ -168,7 +168,7 @@ export function OpportunitiesSection() {
         </p>
       )}
 
-      {/* Requirement 9.3 — "Browse All Open Roles →" CTA */}
+      {/* Requirement 9.3-  "Browse All Open Roles →" CTA */}
       <div className="mt-4">
         <Link
           to="/jobs"

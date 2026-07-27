@@ -556,5 +556,7 @@ async def _process_attachment(
         cache_key=f"cv_parse:{cv_hash}",
         r2_key=r2_key,
     )
-    logger.debug("Queued pipeline for %s (submission %s, r2=%s)", filename, submission.id, r2_key)
+    logger.debug(
+        "Queued pipeline for %s (submission %s, r2=%s)", filename, submission.id, r2_key
+    )
     return "queued"

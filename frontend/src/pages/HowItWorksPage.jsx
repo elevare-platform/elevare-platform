@@ -39,7 +39,7 @@ const EMPLOYER_STEPS = [
     number: '03',
     icon: ClipboardList,
     title: 'You Interview Shortlisted Candidates',
-    desc: 'Receive a curated shortlist of the best-fit candidates. Review profiles, CVs, and match scores — then schedule interviews.',
+    desc: 'Receive a curated shortlist of the best-fit candidates. Review profiles, CVs, and match scores - then schedule interviews.',
   },
   {
     number: '04',
@@ -54,7 +54,7 @@ const CANDIDATE_STEPS = [
     number: '01',
     icon: UserPlus,
     title: 'Create Your Profile',
-    desc: 'Sign up and build your professional profile. Add your skills, experience, and career goals — it only takes a few minutes.',
+    desc: 'Sign up and build your professional profile. Add your skills, experience, and career goals - it only takes a few minutes.',
   },
   {
     number: '02',
@@ -72,7 +72,7 @@ const CANDIDATE_STEPS = [
     number: '04',
     icon: BarChart2,
     title: 'Track Your Applications',
-    desc: 'Monitor every application from your dashboard. Get notified when your status changes — from reviewing to shortlisted to hired.',
+    desc: 'Monitor every application from your dashboard. Get notified when your status changes - from reviewing to shortlisted to hired.',
   },
 ]
 
@@ -179,7 +179,7 @@ export default function HowItWorksPage() {
   const [audience, setAudience] = useState('employers')
   const location = useLocation()
 
-  // Drive tab from URL hash — /how-it-works#candidates or #employers
+  // Drive tab from URL hash-  /how-it-works#candidates or #employers
   useEffect(() => {
     if (location.hash === '#candidates') setAudience('candidates')
     else if (location.hash === '#employers') setAudience('employers')
@@ -189,9 +189,9 @@ export default function HowItWorksPage() {
     <>
       <Helmet>
         <title>How It Works | Elevare Human Solutions</title>
-        <meta name="description" content="See how Elevare works for employers and candidates — from posting a role to getting hired, step by step." />
+        <meta name="description" content="See how Elevare works for employers and candidates - from posting a role to getting hired, step by step." />
         <meta property="og:title" content="How It Works | Elevare Human Solutions" />
-        <meta property="og:description" content="See how Elevare works for employers and candidates — from posting a role to getting hired, step by step." />
+        <meta property="og:description" content="See how Elevare works for employers and candidates - from posting a role to getting hired, step by step." />
         <meta property="og:url" content="https://elevare.com.ng/how-it-works" />
         <meta property="og:type" content="website" />
         <link rel="canonical" href="https://elevare.com.ng/how-it-works" />

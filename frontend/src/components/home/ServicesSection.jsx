@@ -53,7 +53,7 @@ const SERVICES = [
     cluster: 'Training & Development',
     icon: GraduationCap,
     name: 'Corporate Training Programs',
-    description: 'Bespoke upskilling and professional development programs that elevate team capabilities and productivity.',
+    description: 'Bespoke upskilling and professional development programs that strengthen team capabilities and productivity.',
   },
 ]
 
@@ -66,7 +66,7 @@ const CLUSTER_STYLES = {
   'Training & Development': { bg: '#fef2f2', color: '#991b1b' },
 }
 
-// ─── Framer Motion card variants — staggered scroll-triggered reveal ──────────
+// ─── Framer Motion card variants - staggered scroll-triggered reveal ──────────
 const cardVariants = {
   hidden:  { opacity: 0, y: 28, scale: 0.97 },
   visible: (i) => ({
@@ -106,7 +106,7 @@ function ServiceCard({ service, index, isVisible }) {
         boxShadow: '0 2px 8px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.03)',
       }}
     >
-      {/* Top-edge accent bar — slides in on hover */}
+      {/* Top-edge accent bar - slides in on hover */}
       <span className="svc-card-accent" aria-hidden="true" />
 
       {/* Icon Wrapper */}

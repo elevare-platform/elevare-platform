@@ -8,7 +8,7 @@ vi.mock('@/lib/api', () => ({
   default: { post: vi.fn() },
 }))
 
-// Mock analytics — no-op in tests
+// Mock analytics - no-op in tests
 vi.mock('@/lib/analytics', () => ({
   trackEvent: vi.fn(),
 }))

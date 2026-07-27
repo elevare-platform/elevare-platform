@@ -66,12 +66,12 @@ function relativeTime(isoString) {
   return `${Math.round(hours / 24)}d ago`
 }
 
-// Builds the mailbox search query automatically — the field is read-only
+// Builds the mailbox search query automatically - the field is read-only
 // in the UI (most users aren't going to hand-write search syntax), so this
 // is the only place a query gets constructed.
 //
 // Deliberately just `has:attachment "<title>"` rather than an explicit
-// `subject:"x" OR "x"` — a bare quoted phrase already matches subject AND
+// `subject:"x" OR "x"`-  a bare quoted phrase already matches subject AND
 // body on both Gmail and Zoho, and their boolean-grouping syntax diverges
 // enough (Gmail: space/OR/parens, Zoho: "::"/"||") that building a single
 // query string valid on both providers is risky. This form is confirmed
@@ -180,13 +180,13 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
   const { show } = useToast()
 
   // The query field is read-only and always derived from the selected job
-  // — never hand-typed — so it's a plain computed value, not state.
+  //-  never hand-typed - so it's a plain computed value, not state.
   const jobTitle = (jobs ?? []).find(j => j.id === jobId)?.title
   const queryFilter = buildQueryFilter(jobTitle)
 
   // Reopening on an integration with an active run (e.g. after navigating
   // away and back) should show live progress immediately, not the "start
-  // a new import" form — the backend would reject a second run anyway.
+  // a new import" form - the backend would reject a second run anyway.
   useEffect(() => {
     if (!open) return
     if (initialRun && ['RUNNING', 'PENDING'].includes(initialRun.status)) {
@@ -264,7 +264,7 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
                 <div className="relative">
                   <select value={jobId} onChange={e => setJobId(e.target.value)}
                     className="w-full text-sm rounded-lg border border-border px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-blue bg-white">
-                    <option value="">No job — add to pipeline only</option>
+                    <option value="">No job - add to pipeline only</option>
                     {(jobs ?? []).map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
                   </select>
                   <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -289,7 +289,7 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
                 />
                 <p className="text-xs text-text-muted mt-1.5">
                   {jobId
-                    ? 'Set automatically — only emails with attachments mentioning this job title are imported.'
+                    ? 'Set automatically - only emails with attachments mentioning this job title are imported.'
                     : 'All emails with attachments are imported. Pick a job above to narrow this down.'}
                 </p>
               </div>
@@ -335,7 +335,7 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
             </Button>
           ) : (
             <Button onClick={() => { reset(); onClose() }} variant="outline" className="w-full" size="lg">
-              Run in background — close
+              Run in background - close
             </Button>
           )}
         </div>
@@ -430,7 +430,7 @@ function IntegrationCard({ integration, onImportClick, onDisconnectClick }) {
           </div>
           <div>
             <p className="font-semibold text-text text-sm">
-              {/* Show only the email part — strip the |account_id suffix Zoho stores */}
+              {/* Show only the email part - strip the |account_id suffix Zoho stores */}
               {(integration.email_address || '').split('|')[0]}
             </p>
             <IntegrationStatusDot status={integration.status} />
@@ -447,7 +447,7 @@ function IntegrationCard({ integration, onImportClick, onDisconnectClick }) {
         </span>
       </div>
 
-      {/* Persisted import progress/summary — survives navigating away and back,
+      {/* Persisted import progress/summary - survives navigating away and back,
           so the user doesn't have to keep a tab open to see it. */}
       {runActive ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 space-y-1.5">
@@ -539,11 +539,11 @@ export default function MailIngestionPage() {
       const { data } = await api.get('/api/v1/ingestion/integrations')
       setIntegrations(data)
     } catch {
-      // silently fail — user will see empty state
+      // silently fail - user will see empty state
     } finally {
       setLoading(false)
     }
-  }, [])  // no deps — setIntegrations is stable
+  }, [])  // no deps - setIntegrations is stable
 
   const loadJobs = useCallback(async () => {
     try {
@@ -570,10 +570,10 @@ export default function MailIngestionPage() {
       loadIntegrations()
       setConnecting(null)
     } else if (connected === 'error') {
-      show('Failed to connect mailbox — please try again', 'error')
+      show('Failed to connect mailbox - please try again', 'error')
       setConnecting(null)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps — intentionally run once on mount
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps - intentionally run once on mount
 
   const pollTimerRef = useRef(null)
 

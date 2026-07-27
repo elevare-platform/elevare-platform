@@ -3,11 +3,11 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
- * SkillsInput — tag chip input for managing a list of skill strings.
+ * SkillsInput - tag chip input for managing a list of skill strings.
  *
  * Props:
- *   value    — string[]  current list of skills
- *   onChange — (skills: string[]) => void  called when the list changes
+ *   value   - string[]  current list of skills
+ *   onChange - (skills: string[]) => void  called when the list changes
  *
  * A skill is added when the user presses Enter or types a comma.
  * A skill is removed by clicking its × button.
@@ -30,7 +30,7 @@ export function SkillsInput({ value = [], onChange }) {
     setInputValue('')
   }
 
-  // Requirement 11.9 — add on Enter or comma keypress
+  // Requirement 11.9-  add on Enter or comma keypress
   function handleKeyDown(e) {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault()
@@ -56,7 +56,7 @@ export function SkillsInput({ value = [], onChange }) {
     }
   }
 
-  // Requirement 11.9 — remove a skill by clicking its chip button
+  // Requirement 11.9-  remove a skill by clicking its chip button
   function removeSkill(skill) {
     onChange(value.filter((s) => s !== skill))
   }
@@ -84,7 +84,7 @@ export function SkillsInput({ value = [], onChange }) {
           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue/10 text-brand-blue text-xs font-medium"
         >
           {skill}
-          {/* Requirement 11.9 — remove button */}
+          {/* Requirement 11.9-  remove button */}
           <button
             type="button"
             onClick={(e) => {

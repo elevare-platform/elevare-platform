@@ -10,7 +10,7 @@ import { useEmployerKyc } from '@/hooks/useEmployerKyc'
 import { useAuth } from '@/context/AuthContext'
 
 /**
- * CompanyVerificationPage — /employer/verification
+ * CompanyVerificationPage-  /employer/verification
  * Company Verification (KYC) step. Employers upload verification documents
  * here and submit them for admin review before they can post jobs.
  */

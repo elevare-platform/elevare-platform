@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 
-// ─── Skeleton card — mirrors real card structure to prevent layout shift ──────
+// ─── Skeleton card - mirrors real card structure to prevent layout shift ──────
 
 function SkeletonCard() {
   return (
@@ -88,7 +88,7 @@ function EmptyState({ hasFilters, onReset }) {
       <p className="text-sm text-slate-500 max-w-[280px] leading-relaxed mb-6">
         {hasFilters
           ? 'Try broadening your search or removing some filters to see more results.'
-          : 'Check back soon — new opportunities are posted regularly.'}
+          : 'Check back soon - new opportunities are posted regularly.'}
       </p>
 
       {hasFilters && (
@@ -249,7 +249,7 @@ function HeroSection({ totalJobs, searchQuery, onSearch }) {
             Discover roles that align with your values, skills, and the change you want to make.
           </p>
 
-          {/* Search bar — directly below hero text */}
+          {/* Search bar - directly below hero text */}
           <SearchBar value={searchQuery} onSearch={onSearch} />
 
           {totalJobs > 0 && (
@@ -427,7 +427,7 @@ export default function JobBoardPage() {
   const { jobs, loading, error, hasMore, loadMore, total } = useJobs({ params: apiParams })
   const { user } = useAuth()
 
-  // Batch has-applied — one request for all visible jobs instead of N individual calls
+  // Batch has-applied - one request for all visible jobs instead of N individual calls
   const [appliedMap, setAppliedMap] = useState({})
   useEffect(() => {
     if (user?.role !== 'CANDIDATE' || jobs.length === 0) return
@@ -436,7 +436,7 @@ export default function JobBoardPage() {
 
     api.post('/api/v1/applications/has-applied/batch', { job_ids: activeIds })
       .then(({ data }) => setAppliedMap((prev) => ({ ...prev, ...data })))
-      .catch(() => {}) // non-critical — individual checks will fall back
+      .catch(() => {}) // non-critical - individual checks will fall back
   }, [jobs, user?.role])
 
   const displayedJobs = useMemo(
@@ -477,9 +477,9 @@ export default function JobBoardPage() {
     <>
       <Helmet>
         <title>Browse Jobs in Africa | Elevare</title>
-        <meta name="description" content="Find your next role on Elevare — browse hundreds of active job listings across Nigeria and Africa." />
+        <meta name="description" content="Find your next role on Elevare - browse hundreds of active job listings across Nigeria and Africa." />
         <meta property="og:title" content="Browse Jobs in Africa | Elevare" />
-        <meta property="og:description" content="Find your next role on Elevare — browse hundreds of active job listings across Nigeria and Africa." />
+        <meta property="og:description" content="Find your next role on Elevare - browse hundreds of active job listings across Nigeria and Africa." />
         <meta property="og:url" content="https://elevare.com.ng/jobs" />
         <meta property="og:type" content="website" />
         <link rel="canonical" href="https://elevare.com.ng/jobs" />

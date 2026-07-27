@@ -64,6 +64,20 @@ async def list_my_jobs(
     )
 
 
+@router.post("/general-interest", response_model=JobResponse, status_code=200)
+async def get_or_create_general_interest_job(
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> JobResponse:
+    """Return (creating if needed) the employer's "General Interest" placeholder job.
+
+    Anchors an introduction/notify request from Candidate Search when the
+    employer has no real job postings yet. Must be declared before
+    /{job_id} to prevent route conflict.
+    """
+    return await JobService(db).get_or_create_general_interest_job(current_user.id)
+
+
 @router.get("/{job_id}", response_model=JobResponse, status_code=200)
 async def get_job(
     job_id: UUID,

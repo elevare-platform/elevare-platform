@@ -10,11 +10,11 @@ const FIELD_LABELS = {
 }
 
 /**
- * ProfileStrengthBar — displays a labeled progress bar showing how complete
+ * ProfileStrengthBar - displays a labeled progress bar showing how complete
  * the candidate's profile is, a checklist of missing fields, and a CTA.
  *
  * Props:
- *   profile — ProfileResponse object or null
+ *   profile - ProfileResponse object or null
  *
  * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5
  */
@@ -41,13 +41,13 @@ export function ProfileStrengthBar({ profile }) {
 
   return (
     <div className="rounded-lg border border-border bg-surface p-5 space-y-4">
-      {/* Label + percentage — Requirement 3.2 */}
+      {/* Label + percentage - Requirement 3.2 */}
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-text">Profile Strength</span>
         <span className="text-sm font-semibold text-text">{strength}%</span>
       </div>
 
-      {/* Progress bar — Requirement 3.2 */}
+      {/* Progress bar - Requirement 3.2 */}
       <div className="w-full h-2 rounded-full bg-border overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${barColor}`}
@@ -60,14 +60,14 @@ export function ProfileStrengthBar({ profile }) {
         />
       </div>
 
-      {/* Encouraging copy — Requirement 3.3 (shown when below 100%) */}
+      {/* Encouraging copy - Requirement 3.3 (shown when below 100%) */}
       {strength < 100 && (
         <p className="text-sm text-text-muted">
           Stronger profiles are prioritised by our recruiters.
         </p>
       )}
 
-      {/* Missing fields checklist — Requirement 3.4 (shown when below 100%) */}
+      {/* Missing fields checklist - Requirement 3.4 (shown when below 100%) */}
       {strength < 100 && missingFields.length > 0 && (
         <ul className="space-y-1">
           {missingFields.map((field) => (
@@ -85,7 +85,7 @@ export function ProfileStrengthBar({ profile }) {
         </ul>
       )}
 
-      {/* CTA — Requirement 3.5 (always shown; label changes at 100%) */}
+      {/* CTA - Requirement 3.5 (always shown; label changes at 100%) */}
       <Link
         to="/candidate/profile"
         className="inline-block text-sm font-medium text-brand-blue hover:text-brand-blue-dark transition-colors"

@@ -1,5 +1,5 @@
 // Minimal word-level diff (LCS-based) for highlighting AI suggestion changes.
-// No external dependency — good enough for short-to-medium job description text.
+// No external dependency - good enough for short-to-medium job description text.
 
 export function wordDiff(oldText, newText) {
   const a = oldText.split(/(\s+)/).filter((t) => t !== '')

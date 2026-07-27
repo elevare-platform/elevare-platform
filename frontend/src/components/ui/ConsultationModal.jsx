@@ -13,11 +13,17 @@ const schema = z.object({
   email: z.string().email('Please enter a valid email address'),
   company: z.string().optional(),
   message: z.string().optional(),
-  // Honeypot — must stay empty; bots fill it, humans never see it
+  // Honeypot - must stay empty; bots fill it, humans never see it
   website: z.string().optional(),
 })
 
-export function ConsultationModal({ isOpen, onClose }) {
+export function ConsultationModal({
+  isOpen,
+  onClose,
+  title = 'Book a Consultation',
+  subtitle = "We'll reach out within 24 hours to schedule a call.",
+  defaultMessage = '',
+}) {
   const [serverError, setServerError] = useState(null)
 
   const {
@@ -25,7 +31,7 @@ export function ConsultationModal({ isOpen, onClose }) {
     handleSubmit,
     formState: { errors, isSubmitting, isSubmitSuccessful },
     reset,
-  } = useForm({ resolver: zodResolver(schema) })
+  } = useForm({ resolver: zodResolver(schema), defaultValues: { message: defaultMessage } })
 
   // Close on Escape
   useEffect(() => {
@@ -52,9 +58,9 @@ export function ConsultationModal({ isOpen, onClose }) {
         // Pad message if empty so it passes the backend 20-char minimum
         message: data.message?.trim()
           ? data.message
-          : 'Consultation request — no additional message provided.',
+          : 'Consultation request - no additional message provided.',
         inquiry_type: 'employer_inquiry',
-        honeypot: data.website || '',  // hidden field — bots fill it, humans don't
+        honeypot: data.website || '',  // hidden field - bots fill it, humans don't
       })
     } catch (err) {
       const detail = err.response?.data?.detail
@@ -88,10 +94,10 @@ export function ConsultationModal({ isOpen, onClose }) {
         </button>
 
         <h2 id="consultation-modal-title" className="mb-1 text-xl font-semibold text-gray-900 font-sans">
-          Book a Consultation
+          {title}
         </h2>
         <p className="text-sm text-gray-500 mb-5">
-          We'll reach out within 24 hours to schedule a call.
+          {subtitle}
         </p>
 
         {isSubmitSuccessful ? (
@@ -100,7 +106,7 @@ export function ConsultationModal({ isOpen, onClose }) {
           </p>
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-            {/* Honeypot — visually hidden, only bots fill this */}
+            {/* Honeypot - visually hidden, only bots fill this */}
             <div aria-hidden="true" style={{ display: 'none' }}>
               <input
                 type="text"

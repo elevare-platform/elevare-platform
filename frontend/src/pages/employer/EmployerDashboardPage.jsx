@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Briefcase, Plus, TrendingUp, FileText, CheckCircle, XCircle, FileSearch, Mail, Send } from 'lucide-react'
+import { Briefcase, Plus, TrendingUp, FileText, CheckCircle, XCircle, FileSearch, Mail, Send, Search } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
@@ -67,7 +67,7 @@ export default function EmployerDashboardPage() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState(null)
 
-  // Recent jobs — first page only, no load-more needed here
+  // Recent jobs - first page only, no load-more needed here
   const { jobs, loading: jobsLoading } = useJobs({
     endpoint: '/api/v1/jobs/mine',
     limit: 5,
@@ -84,7 +84,7 @@ export default function EmployerDashboardPage() {
         const { data } = await api.get(`/api/v1/emp/${user.id}/stats`)
         setStats(data)
       } catch (err) {
-        // Stats are non-critical — show zeros rather than breaking the page
+        // Stats are non-critical - show zeros rather than breaking the page
         setStatsError('Could not load stats')
         setStats({ total_jobs: 0, active_jobs: 0, draft_jobs: 0, closed_jobs: 0, total_applications: 0 })
       } finally {
@@ -293,6 +293,18 @@ export default function EmployerDashboardPage() {
               <div>
                 <p className="font-semibold text-text text-sm">CV Parser</p>
                 <p className="text-text-muted text-xs mt-0.5">Upload CVs and extract candidate data</p>
+              </div>
+            </Link>
+            <Link
+              to="/employer/candidate-search"
+              className="rounded-xl border border-border bg-white p-5 hover:border-brand-blue/40 hover:shadow-sm transition-all group flex items-center gap-4"
+            >
+              <div className="w-9 h-9 rounded-lg bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+                <Search size={18} className="text-brand-blue" />
+              </div>
+              <div>
+                <p className="font-semibold text-text text-sm">Candidate Search</p>
+                <p className="text-text-muted text-xs mt-0.5">Filter and search public candidate profiles</p>
               </div>
             </Link>
             <Link

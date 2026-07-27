@@ -5,6 +5,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from app.modules.candidates.enums import AvailabilityBucket
+from app.modules.jobs.enums import SeniorityLevel
+
 # ------------------------------------------
 #           REQUEST SCHEMAS
 # ------------------------------------------
@@ -199,3 +202,72 @@ class ProfileResponse(BaseModel):
             instance.first_name = getattr(obj.user, "first_name", None)
             instance.last_name = getattr(obj.user, "last_name", None)
         return instance
+
+
+# ------------------------------------------
+#           SEARCH SCHEMAS
+# ------------------------------------------
+
+
+class CandidateSearchFilters(BaseModel):
+    """Structured filter object used by both the search UI and the NL copilot.
+
+    The copilot parses free text into exactly this shape so the recruiter
+    reviews and edits the same object the manual search form produces —
+    there is no separate "AI filter" representation.
+    """
+
+    skills: list[str] | None = None
+    job_title: str | None = (
+        None  # e.g. "Backend Engineer" — matched against current title/profession
+    )
+    min_experience: int | None = None
+    max_experience: int | None = None
+    location: str | None = None
+    seniority: list[SeniorityLevel] | None = None
+    availability: list[AvailabilityBucket] | None = None
+    query: str | None = None  # free-text used for semantic (pgvector) ranking
+
+
+class CandidateSearchProfile(BaseModel):
+    """Search-result-facing candidate summary.
+
+    Search spans both self-registered candidates and employer-sourced CVs
+    (the talent pool), which don't share a single underlying table — this
+    mirrors ``talent_pool.schema.TalentMatchResponse``'s shape rather than
+    the full ``ProfileResponse`` (which only self-registered candidates have).
+    """
+
+    id: UUID  # talent pool profile id
+    candidate_profile_id: UUID | None = None  # set only for self-registered candidates
+    ownership: str  # "self_registered" | "own_sourced" | "admin_sourced"
+    # Whether the requesting employer can view this candidate's CV/profile
+    # right now. Always true for self_registered (their own visibility
+    # setting governs access at /candidates/{id}) and own_sourced (they
+    # already own the upload); for admin_sourced, true only once the
+    # candidate has accepted an introduction to this employer.
+    has_cv_access: bool = True
+    candidate_name: str | None = None
+    current_title: str | None = None
+    profession: str | None = None
+    years_of_experience: int | None = None
+    notice_period_days: int | None = None  # only known for self-registered candidates
+    location: str | None = None
+    skills: list[str] = []
+
+
+class CandidateSearchResultItem(BaseModel):
+    """A single ranked, explainable search result."""
+
+    profile: CandidateSearchProfile
+    match_score: float  # 0-100
+    matched_skills: list[str] = []
+    explanation: list[str] = []  # human-readable reasons this profile ranked here
+
+
+class CandidateSearchResponse(BaseModel):
+    """Response for a structured candidate search."""
+
+    results: list[CandidateSearchResultItem]
+    total: int
+    filters_applied: CandidateSearchFilters

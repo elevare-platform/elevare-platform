@@ -54,7 +54,7 @@ function BrandPanel() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full border border-white/5" />
       </div>
       <div className="relative z-10">
-        <img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" />
+        <Link to="/"><img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" /></Link>
       </div>
       <div className="relative z-10 space-y-6">
         <h1 className="text-4xl font-bold text-white leading-tight">
@@ -81,7 +81,7 @@ function BrandPanel() {
   )
 }
 
-// ─── Step 1 — Role selection ──────────────────────────────────────────────────
+// ─── Step 1-  Role selection ──────────────────────────────────────────────────
 
 function RoleCard({ role, selected, onClick }) {
   const isEmployer = role === 'EMPLOYER'
@@ -137,7 +137,7 @@ function RoleStep({ onNext }) {
   return (
     <div className="w-full max-w-md space-y-8">
       <div className="flex items-center gap-3 lg:hidden">
-        <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
+        <Link to="/"><img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" /></Link>
       </div>
 
       <div className="space-y-2">
@@ -169,7 +169,7 @@ function RoleStep({ onNext }) {
   )
 }
 
-// ─── Step 2 — Registration form ───────────────────────────────────────────────
+// ─── Step 2-  Registration form ───────────────────────────────────────────────
 
 function RegisterForm({ role, onBack }) {
   const { register: registerUser } = useAuth()
@@ -182,7 +182,7 @@ function RegisterForm({ role, onBack }) {
 
   const params = new URLSearchParams(location.search)
   const next = params.get('next')
-  // Pre-fill from a link like /register?role=candidate&email=ada%40x.com —
+  // Pre-fill from a link like /register?role=candidate&email=ada%40x.com- 
   // e.g. the "Create your free profile" CTA in the role-notification email.
   const prefillEmail = params.get('email') || ''
 
@@ -207,7 +207,7 @@ function RegisterForm({ role, onBack }) {
       // Store intended destination so VerifyEmailPage can redirect there after verification.
       const postVerifyDest = next || getPostAuthRedirect(user)
       storePostVerifyNext(postVerifyDest)
-      // Always go to verify-email page first — user needs to verify before accessing the app
+      // Always go to verify-email page first - user needs to verify before accessing the app
       navigate('/verify-email', { replace: true })
     } catch (err) {
       const status = err.response?.status
@@ -228,7 +228,7 @@ function RegisterForm({ role, onBack }) {
   return (
     <div className="w-full max-w-md space-y-8">
       <div className="flex items-center gap-3 lg:hidden">
-        <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
+        <Link to="/"><img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" /></Link>
       </div>
 
       <div className="space-y-2">
@@ -343,7 +343,7 @@ function RegisterForm({ role, onBack }) {
           <FormMessage>{errors.confirm_password?.message}</FormMessage>
         </FormField>
 
-        {/* CV sharing consent — candidate only */}
+        {/* CV sharing consent - candidate only */}
         {role === 'CANDIDATE' && (
           <div className="flex items-start gap-3 rounded-lg border border-border p-3 bg-surface">
             <input
@@ -391,7 +391,7 @@ export default function RegisterPage() {
   const location = useLocation()
   const params = new URLSearchParams(location.search)
 
-  // Pre-select role from a link like /register?role=candidate — skips the
+  // Pre-select role from a link like /register?role=candidate - skips the
   // role-selection step entirely when a valid role is provided. Lazy
   // initializer runs before first paint, so there's no flash of RoleStep.
   const [role, setRole] = useState(() => {
