@@ -3,17 +3,21 @@ import { useNavigate, Link } from 'react-router-dom'
 import {
   LogOut, Briefcase, ArrowRight, MailCheck,
   Plus, TrendingUp, FileText, CheckCircle,
-  Sparkles, Heart, Cpu, LayoutDashboard, Lock,
-  FileSearch, Mail, Send
+  Sparkles, Heart, Cpu, LayoutDashboard,
+  FileSearch, Mail, Send, User, Eye
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { useJobs } from '@/hooks/useJobs'
 import { useIntroductions } from '@/hooks/useIntroductions'
+import { useSavedCandidates } from '@/hooks/useSavedCandidates'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import api from '@/lib/api'
 import { EmployerCVParser } from '@/pages/employer/EmployerCVParserPage'
+import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
+import SourcedCvModal from '@/components/employer/SourcedCvModal'
+import SaveHeartButton from '@/components/employer/SaveHeartButton'
 
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
@@ -36,6 +40,119 @@ function StatCard({ icon: Icon, label, value, colour, loading, to, badge }) {
     </div>
   )
   return to ? <Link to={to} className="contents">{content}</Link> : content
+}
+
+// ─── Saved candidates ─────────────────────────────────────────────────────────
+
+function SavedCandidateCard({ item, onUnsaved }) {
+  const [showPanel, setShowPanel] = useState(false)
+  const [showCvModal, setShowCvModal] = useState(false)
+
+  const isSelfRegistered = item.ownership === 'self_registered' && item.candidate_profile_id
+
+  return (
+    <div className="rounded-lg border border-border bg-white p-4 flex flex-wrap items-center gap-3">
+      <span className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+        <User size={15} className="text-brand-blue" />
+      </span>
+
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-text text-sm truncate">{item.candidate_name ?? 'Private profile'}</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
+          {item.current_title && <span>{item.current_title}</span>}
+          {item.location && <span>{item.location}</span>}
+          {item.years_of_experience != null && <span>{item.years_of_experience} yrs exp</span>}
+        </div>
+        {item.note && (
+          <p className="text-xs text-text-muted italic mt-1">"{item.note}"</p>
+        )}
+        {item.skills?.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {item.skills.slice(0, 6).map((s) => (
+              <span key={s} className="px-1.5 py-0.5 rounded-full bg-surface-muted text-text-muted text-[10px]">{s}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => (isSelfRegistered ? setShowPanel(true) : setShowCvModal(true))}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors flex-shrink-0"
+      >
+        {isSelfRegistered ? <><Eye size={13} /> View Profile</> : <><FileText size={13} /> View CV</>}
+      </button>
+
+      <SaveHeartButton
+        saved
+        onToggle={() => onUnsaved(item)}
+      />
+
+      {showPanel && (
+        <CandidateProfilePanel profileId={item.candidate_profile_id} onClose={() => setShowPanel(false)} />
+      )}
+      {showCvModal && (
+        <SourcedCvModal profileId={item.talent_pool_profile_id} onClose={() => setShowCvModal(false)} />
+      )}
+    </div>
+  )
+}
+
+function SavedCandidatesTab() {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const { toggle } = useSavedCandidates()
+
+  const load = () => {
+    setLoading(true)
+    api.get('/api/v1/saved-candidates')
+      .then(({ data }) => setItems(data.items ?? []))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleUnsave = async (item) => {
+    await toggle({
+      talentPoolProfileId: item.talent_pool_profile_id,
+      candidateProfileId: item.candidate_profile_id,
+    })
+    setItems((prev) => prev.filter((i) => i.id !== item.id))
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-16 rounded-lg bg-gray-100 animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-border p-8 text-center max-w-xl mx-auto space-y-3">
+        <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mx-auto shadow border border-purple-200">
+          <Heart size={22} />
+        </div>
+        <h2 className="text-xl font-bold text-text">No saved candidates yet</h2>
+        <p className="text-text-muted text-sm leading-relaxed">
+          Click the heart on any candidate — in Candidate Search, AI Talent Matches, or your
+          applicants list — to bookmark them here.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <SavedCandidateCard key={item.id} item={item} onUnsaved={handleUnsave} />
+      ))}
+    </div>
+  )
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -85,7 +202,7 @@ function EmployerDashboard({ user }) {
     { id: 'talent-pipeline', label: 'Talent Pipeline', icon: Sparkles, badge: 'AI' },
     { id: 'mail-ingestion', label: 'Mail Ingestion', icon: Mail },
     { id: 'saved-candidates', label: 'Saved Candidates', icon: Heart },
-    { id: 'ai-recommendations', label: 'AI Recommendations', icon: Cpu, badge: 'AI' },
+    { id: 'ai-recommendations', label: 'Candidate Search', icon: Cpu, badge: 'AI' },
     { id: 'cv-parser', label: 'CV Parser', icon: FileSearch }
   ]
 
@@ -277,37 +394,23 @@ function EmployerDashboard({ user }) {
             </div>
           )}
 
-          {activeTab === 'saved-candidates' && (
-            <div className="bg-white rounded-xl border border-border p-8 text-center max-w-xl mx-auto space-y-4">
-              <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mx-auto shadow border border-purple-200">
-                <Heart size={22} />
-              </div>
-              <h2 className="text-xl font-bold text-text">Saved Candidates</h2>
-              <p className="text-text-muted text-sm leading-relaxed">
-                Feature coming soon. Bookmark your high-potential hires, build dedicated talent pools, and manage prospective applicant profiles for future roles.
-              </p>
-              <div className="flex justify-center gap-2 pt-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-muted text-text-muted border border-border text-[11px] font-bold">
-                  <Lock size={12} /> Upcoming Feature
-                </span>
-              </div>
-            </div>
-          )}
+          {activeTab === 'saved-candidates' && <SavedCandidatesTab />}
 
           {activeTab === 'ai-recommendations' && (
             <div className="bg-white rounded-xl border border-border p-8 text-center max-w-xl mx-auto space-y-4">
               <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto shadow border border-blue-200">
                 <Cpu size={22} />
               </div>
-              <h2 className="text-xl font-bold text-text">AI Recommendations</h2>
+              <h2 className="text-xl font-bold text-text">Candidate Search</h2>
               <p className="text-text-muted text-sm leading-relaxed">
-                Feature coming soon. Smart matching, automated candidate grading, and profile suitability scoring powered by our upcoming recommendation engines.
+                Search your talent pool in natural language or by filter — skills, experience,
+                location, seniority, and availability — with ranked, explainable results.
               </p>
-              <div className="flex justify-center gap-2 pt-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-muted text-text-muted border border-border text-[11px] font-bold">
-                  <Lock size={12} /> Under Development
-                </span>
-              </div>
+              <Link to="/employer/candidate-search">
+                <Button className="flex items-center gap-2 mx-auto">
+                  Open Candidate Search <ArrowRight size={15} />
+                </Button>
+              </Link>
             </div>
           )}
 
@@ -352,7 +455,7 @@ export default function DashboardPage() {
     navigate('/login')
   }
 
-  // Pending verification — show a minimal notice, not the full dashboard
+  // Pending verification - show a minimal notice, not the full dashboard
   if (user?.account_status === 'PENDING_VERIFICATION') {
     return (
       <div className="min-h-screen flex flex-col bg-surface-muted">

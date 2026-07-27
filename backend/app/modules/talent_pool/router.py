@@ -122,11 +122,18 @@ async def list_talent_pool(
 @router.get("/{profile_id}", response_model=TalentPoolProfileResponse)
 async def get_talent_pool_profile(
     profile_id: uuid.UUID,
+    job_id: uuid.UUID | None = Query(default=None),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> TalentPoolProfileResponse:
-    """Return a single talent pool profile by ID."""
-    return await service.get_profile(profile_id)
+    """Return a single talent pool profile by ID.
+
+    ``job_id`` is optional context — pass it when viewing this profile from
+    a specific job's match list, so the AI assessment only shows if it's
+    actually current for that job (see ``TalentPoolService.get_profile``).
+    Omit it entirely for job-less contexts (e.g. Candidate Search).
+    """
+    return await service.get_profile(profile_id, current_user, job_id)
 
 
 @router.patch("/{profile_id}/status", response_model=TalentPoolProfileResponse)
@@ -161,3 +168,39 @@ async def score_against_job(
     Returns immediately with a count of queued tasks — scoring runs in the background.
     """
     return await service.score_against_job(job_id)
+
+
+@router.get("/matches/{job_id}/new-count", response_model=dict)
+async def get_new_matches_count(
+    job_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+) -> dict:
+    """Return the number of new (unseen) matches for a job without consuming them.
+
+    Use this to power the badge on the AI Recruiter tab before the employer opens it.
+    """
+    from app.modules.notifications.match_repository import MatchNotificationRepository
+
+    repo = MatchNotificationRepository(db)
+    count = await repo.count_new_for_job(job_id)
+    return {"job_id": str(job_id), "new_count": count}
+
+
+@router.get("/matches/{job_id}", response_model=dict)
+async def get_job_matches(
+    job_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: TalentPoolService = Depends(_get_talent_pool_service),
+) -> dict:
+    """Return AI-matched talent pool profiles for a job, ranked by blended score.
+
+    Also marks all new matches as viewed — call this endpoint to consume the new-match badge.
+    """
+    result = await service.get_job_matches(
+        job_id=job_id,
+        employer_id=current_user.id,
+        limit=limit,
+    )
+    return result.model_dump()

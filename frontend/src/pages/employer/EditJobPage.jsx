@@ -7,7 +7,7 @@ import { JobForm } from '@/components/employer/JobForm'
 import api from '@/lib/api'
 
 /**
- * EditJobPage — /employer/jobs/:id/edit
+ * EditJobPage-  /employer/jobs/:id/edit
  * Loads the existing job, pre-fills JobForm, submits PATCH /api/v1/jobs/:id
  */
 export default function EditJobPage() {
@@ -48,7 +48,7 @@ export default function EditJobPage() {
     }
   }
 
-  // Map job fields to form defaults — normalise nulls to empty strings
+  // Map job fields to form defaults - normalise nulls to empty strings
   const defaultValues = job ? {
     title:                      job.title ?? '',
     about_the_role:             job.about_the_role ?? '',

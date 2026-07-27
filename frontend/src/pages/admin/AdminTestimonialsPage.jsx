@@ -97,7 +97,7 @@ export default function AdminTestimonialsPage() {
                 </div>
               </Td>
               <Td className="text-text-muted text-xs">
-                {[t.position, t.company].filter(Boolean).join(', ') || '—'}
+                {[t.position, t.company].filter(Boolean).join(', ') || ' - '}
               </Td>
               <Td>
                 <p className="text-sm text-text max-w-xs truncate" title={t.testimony}>

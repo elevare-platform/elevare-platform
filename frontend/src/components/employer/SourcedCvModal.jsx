@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Users, Brain, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
@@ -11,12 +12,12 @@ function scoreColor(s) {
 }
 
 /**
- * SourcedCvModal — shown for sourced-only talent pool profiles (no
+ * SourcedCvModal - shown for sourced-only talent pool profiles (no
  * CandidateProfile, no login) once an introduction has been ACCEPTED.
- * There's no separate "profile" to view for these — the parsed CV data
+ * There's no separate "profile" to view for these - the parsed CV data
  * itself, fetched by profile ID, is the full extent of what's available.
  */
-export default function SourcedCvModal({ profileId, onClose }) {
+export default function SourcedCvModal({ profileId, jobId, onClose }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -25,14 +26,23 @@ export default function SourcedCvModal({ profileId, onClose }) {
     let cancelled = false
     setLoading(true)
     setError(false)
-    api.get(`/api/v1/talent-pool/${profileId}`)
+    const params = jobId ? { job_id: jobId } : {}
+    api.get(`/api/v1/talent-pool/${profileId}`, { params })
       .then(({ data }) => { if (!cancelled) setProfile(data) })
       .catch(() => { if (!cancelled) setError(true) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [profileId])
+  }, [profileId, jobId])
 
-  return (
+  // Portalled straight to <body> - this modal is opened from cards that use
+  // CSS transforms (e.g. TalentMatchCard's hover:-translate-y-0.5) and/or
+  // overflow-hidden. A `position: fixed` descendant of a transformed
+  // ancestor stops being fixed to the viewport and is clipped/repositioned
+  // relative to that ancestor instead — which is what caused the reported
+  // flicker (the modal fighting the card's hover transform for its
+  // containing block). Rendering into `document.body` sidesteps that
+  // entirely, regardless of what card this is opened from.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
       <div
@@ -87,7 +97,7 @@ export default function SourcedCvModal({ profileId, onClose }) {
                 </div>
               </div>
 
-              {profile.cv_download_url && (
+              {profile.cv_download_url ? (
                 <a
                   href={profile.cv_download_url}
                   target="_blank"
@@ -96,6 +106,14 @@ export default function SourcedCvModal({ profileId, onClose }) {
                 >
                   <Download size={14} /> Download CV
                 </a>
+              ) : (
+                // Access is fine (we got here) but no file is stored for
+                // this submission — say so explicitly rather than silently
+                // omitting the button, which reads as broken rather than
+                // "there's genuinely no file on record."
+                <p className="text-xs text-text-muted text-center py-2 border border-dashed border-border rounded-lg">
+                  No CV file is on record for this candidate.
+                </p>
               )}
 
               {/* AI Score */}
@@ -151,6 +169,7 @@ export default function SourcedCvModal({ profileId, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

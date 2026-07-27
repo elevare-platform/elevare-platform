@@ -39,7 +39,7 @@ function InstagramIcon({ size = 16 }) {
 
 const RC_NUMBER = 'RC: 8724076'
 
-// Column 2 — Learn More
+// Column 2-  Learn More
 const LEARN_MORE_LINKS = [
   { label: 'Our Services', href: '/services' },
   { label: 'About Us', href: '/about' },
@@ -47,7 +47,7 @@ const LEARN_MORE_LINKS = [
   { label: 'Talent Pipeline', href: '/talent-pipeline' },
 ]
 
-// Column 3 — For Employers
+// Column 3-  For Employers
 const EMPLOYER_LINKS = [
   { label: 'Post a Job', href: '/employer/jobs/new' },
   { label: 'Talent Pipeline (AI)', href: '/talent-pipeline' },
@@ -55,13 +55,13 @@ const EMPLOYER_LINKS = [
   { label: 'B2B Partnerships', href: '/partnership' },
 ]
 
-// Column 4 — For Candidates
+// Column 4-  For Candidates
 const CANDIDATE_LINKS = [
   { label: 'Browse Jobs', href: '/jobs' },
   { label: 'Professional Training', href: '/training' },
 ]
 
-// Column 5 — Connect (Req 12.4)
+// Column 5-  Connect (Req 12.4)
 const SOCIAL_LINKS = [
   { label: 'LinkedIn', href: 'https://www.linkedin.com/company/elevare-human-solutions-ltd/?viewAsMember=true', Icon: LinkedInIcon },
   { label: 'Instagram (Business)', href: 'https://www.instagram.com/elevare_recruits_ehls?igsh=MTVidmozZ2VzOXN6aQ%3D%3D&utm_source=qr', Icon: InstagramIcon },
@@ -184,7 +184,7 @@ export default function Footer({ onBookConsultation }) {
         */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-10">
 
-          {/* Column 1 — Brand (Req 12.1) — full width on mobile */}
+          {/* Column 1-  Brand (Req 12.1) - full width on mobile */}
           <div className="col-span-2 lg:col-span-1">
             <div className="mb-3">
               <img
@@ -225,7 +225,7 @@ export default function Footer({ onBookConsultation }) {
             </button>
           </div>
 
-          {/* Column 2 — Learn More (Req 12.2) */}
+          {/* Column 2-  Learn More (Req 12.2) */}
           <div>
             <FooterHeading>Learn More</FooterHeading>
             <ul className="space-y-3">
@@ -237,7 +237,7 @@ export default function Footer({ onBookConsultation }) {
             </ul>
           </div>
 
-          {/* Column 3 — For Employers (Req 12.2) */}
+          {/* Column 3-  For Employers (Req 12.2) */}
           <div>
             <FooterHeading>For Employers</FooterHeading>
             <ul className="space-y-3">
@@ -249,7 +249,7 @@ export default function Footer({ onBookConsultation }) {
             </ul>
           </div>
 
-          {/* Column 4 — For Candidates (Req 12.2) */}
+          {/* Column 4-  For Candidates (Req 12.2) */}
           <div>
             <FooterHeading>For Candidates</FooterHeading>
             <ul className="space-y-3">
@@ -261,7 +261,7 @@ export default function Footer({ onBookConsultation }) {
             </ul>
           </div>
 
-          {/* Column 5 — Connect + Newsletter (Req 12.2, 12.4, 11.3) */}
+          {/* Column 5-  Connect + Newsletter (Req 12.2, 12.4, 11.3) */}
           <div className="col-span-2 lg:col-span-1 space-y-8">
             {/* Social links (Req 12.4) */}
             <div>

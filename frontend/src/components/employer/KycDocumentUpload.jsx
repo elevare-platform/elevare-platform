@@ -12,10 +12,10 @@ function formatBytes(bytes) {
 }
 
 /**
- * KycDocumentUpload — drag-and-drop upload for KYC verification documents.
+ * KycDocumentUpload - drag-and-drop upload for KYC verification documents.
  *
  * Props:
- *   onUpload — (file, documentType) => Promise   called on confirm
+ *   onUpload - (file, documentType) => Promise   called on confirm
  */
 export function KycDocumentUpload({ onUpload }) {
   const inputRef = useRef(null)

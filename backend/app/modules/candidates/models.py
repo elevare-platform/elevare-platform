@@ -31,6 +31,7 @@ from app.modules.jobs.enums import WorkModel
 
 if TYPE_CHECKING:
     from app.modules.jobs.models import Job
+    from app.modules.notifications.models import MatchNotification
     from app.modules.talent_pool.models import TalentPoolProfiles
     from app.modules.users.models import User
 
@@ -134,6 +135,10 @@ class CandidateProfile(BaseModel):
         "TalentPoolProfiles",
         back_populates="candidate_profile",
         uselist=False,
+    )
+    match_notifications: Mapped[list[MatchNotification]] = relationship(
+        "MatchNotification",
+        back_populates="candidate_profile",
     )
 
 

@@ -1,4 +1,4 @@
-// Shared company/partner list — single source of truth for SocialProofBar and PartnersSection
+// Shared company/partner list - single source of truth for SocialProofBar and PartnersSection
 import GourmetTwistLogo from './GourmetTwistLogo'
 
 export { GourmetTwistLogo }
@@ -17,7 +17,7 @@ export const COMPANIES = [
   { name: 'The Smiths Group', logo: 'https://scontent.cdninstagram.com/v/t51.2885-19/470042214_454856731007855_6597041336044451919_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=104&ccb=7-5&_nc_sid=f7ccc5&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy44MDAuQzMifQ%3D%3D&_nc_ohc=n122gBplSPAQ7kNvwGZKdfQ&_nc_oc=Adpb2W736Us_tNYAxlbu-t4XWrqQd979ZHN6_anVbLeOZ-UsxVLsduxEnAH9LLTchxE&_nc_zt=24&_nc_ht=scontent.cdninstagram.com&_nc_ss=7ba8c&oh=00_AQDAgDRv-bzxe0LOvQA51jIDy4gZ0dq7V6uQMEInlvpgPg&oe=6A4D32FC' },
   { name: 'POA ADIT Nigeria Limited', logo: 'https://poaadit.com/poaadit.png' },
   { name: 'Citimobile Media', logo: 'https://www.citimobilemedia.com/wp-content/uploads/2020/06/Citimobile-media-logo-1.png' },
-  // Light/transparent logos — rendered on a dark pill so they're visible on white background
+  // Light/transparent logos - rendered on a dark pill so they're visible on white background
   { name: 'Charvet Nigeria Limited', logo: 'https://charvetgroup.com/wp-content/uploads/2022/11/charvet-logo.png', isDark: true },
   { name: 'Un Arena by LVG Lifestyle', logo: 'https://unarenabylvg.com/wp-content/uploads/2024/02/un-arena.png', isDark: true },
   { name: 'DataDash', logo: 'https://www.datadash.com.ng/assets/images/f50a32d5a8_19.png' },

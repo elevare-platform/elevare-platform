@@ -4,6 +4,7 @@ import {
   User, ArrowLeft, ChevronDown, X,
   Share2, Link as LinkIcon, Copy, Check as CheckIcon,
   Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3, Sparkles, Coins,
+  Eye, FileText, CalendarCheck,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -12,8 +13,13 @@ import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useTalentMatches } from '@/hooks/useTalentMatches'
 import { useCredits } from '@/hooks/useCredits'
+import { useSavedCandidates } from '@/hooks/useSavedCandidates'
+import { useInterviewList } from '@/hooks/useInterviewList'
 import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
+import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import TalentMatchCard from '@/components/employer/TalentMatchCard'
+import SaveHeartButton from '@/components/employer/SaveHeartButton'
+import InterviewListButton from '@/components/employer/InterviewListButton'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -390,7 +396,7 @@ function ShareModal({ jobId, onClose }) {
 
 // ─── Applicant card ───────────────────────────────────────────────────────────
 
-function ApplicantCard({ application, jobId, onError }) {
+function ApplicantCard({ application, jobId, onError, savedCandidates, interviewList }) {
   const [status, setStatus] = useState(application.status)
   const [updating, setUpdating] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -451,8 +457,22 @@ function ApplicantCard({ application, jobId, onError }) {
           </div>
         </div>
 
-        {/* Right-side controls — wrap onto next line on small screens */}
+        {/* Right-side controls - wrap onto next line on small screens */}
         <div className="flex flex-wrap items-center gap-2 ml-auto">
+          {savedCandidates && application.candidate_profile_id && (
+            <SaveHeartButton
+              saved={savedCandidates.isSaved({ candidateProfileId: application.candidate_profile_id })}
+              onToggle={() => savedCandidates.toggle({ candidateProfileId: application.candidate_profile_id })}
+            />
+          )}
+
+          {interviewList && application.candidate_profile_id && (
+            <InterviewListButton
+              onList={interviewList.isOnList({ candidateProfileId: application.candidate_profile_id })}
+              onToggle={() => interviewList.toggle({ candidateProfileId: application.candidate_profile_id })}
+            />
+          )}
+
           <StatusBadge status={status} />
 
           {/* AI score badge with popout reasoning panel */}
@@ -657,7 +677,7 @@ function TalentPoolProfilePanel({ profile, onClose }) {
 
 // ─── Pipeline Tab (Item 2) ────────────────────────────────────────────────────
 
-function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh }) {
+function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh, interviewList }) {
   const scoreColor = (s) => {
     if (s == null) return 'bg-gray-100 text-gray-400 border-gray-200'
     if (s >= 75) return 'bg-green-100 text-green-700 border-green-200'
@@ -705,36 +725,54 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh }) {
       {!loading && profiles.length > 0 && (
         <div className="space-y-2">
           {profiles.map((p, i) => (
-            <button
+            <div
               key={p.id}
-              onClick={() => onProfileClick(p)}
-              className="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all text-left group"
+              className="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all group"
             >
-              <span className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold flex items-center justify-center flex-shrink-0">
-                {i + 1}
-              </span>
-              <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
-                <Users size={15} className="text-brand-blue" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-text truncate">
-                  {p.candidate_name ?? p.candidate_email ?? 'Unnamed Candidate'}
-                </p>
-                <p className="text-xs text-text-muted truncate">
-                  {[p.candidate_current_title, p.candidate_email].filter(Boolean).join(' · ') || 'No details yet'}
-                </p>
-              </div>
-              <div className={cn(
-                'w-11 h-11 rounded-full border-2 flex items-center justify-center text-sm font-bold flex-shrink-0',
-                scoreColor(p.ai_score)
-              )}>
-                {p.ai_score != null ? p.ai_score : 'N/A'}
-              </div>
-              <span className="text-xs text-text-muted capitalize px-2.5 py-0.5 rounded-full border border-border">
-                {(p.status || '').replace('_', ' ')}
-              </span>
-              <Brain size={14} className="text-text-muted group-hover:text-brand-blue transition-colors flex-shrink-0" />
-            </button>
+              <button
+                type="button"
+                onClick={() => onProfileClick(p)}
+                className="flex items-center gap-4 flex-1 min-w-0 text-left"
+              >
+                <span className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold flex items-center justify-center flex-shrink-0">
+                  {i + 1}
+                </span>
+                <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+                  <Users size={15} className="text-brand-blue" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-text truncate">
+                    {p.candidate_name ?? p.candidate_email ?? 'Unnamed Candidate'}
+                  </p>
+                  <p className="text-xs text-text-muted truncate">
+                    {[p.candidate_current_title, p.candidate_email].filter(Boolean).join(' · ') || 'No details yet'}
+                  </p>
+                </div>
+                <div className={cn(
+                  'w-11 h-11 rounded-full border-2 flex items-center justify-center text-sm font-bold flex-shrink-0',
+                  scoreColor(p.ai_score)
+                )}>
+                  {p.ai_score != null ? p.ai_score : 'N/A'}
+                </div>
+                <span className="text-xs text-text-muted capitalize px-2.5 py-0.5 rounded-full border border-border">
+                  {(p.status || '').replace('_', ' ')}
+                </span>
+                <Brain size={14} className="text-text-muted group-hover:text-brand-blue transition-colors flex-shrink-0" />
+              </button>
+
+              {interviewList && (
+                <InterviewListButton
+                  onList={interviewList.isOnList({
+                    talentPoolProfileId: p.id,
+                    candidateProfileId: p.candidate_profile_id,
+                  })}
+                  onToggle={() => interviewList.toggle({
+                    talentPoolProfileId: p.id,
+                    candidateProfileId: p.candidate_profile_id,
+                  })}
+                />
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -766,7 +804,7 @@ function AiMatchesSkeletonCard() {
 
 function AiMatchesTab({
   matches, loading, error, notReady, onRefresh,
-  jobId, creditsBalance, creditsLoading, onCreditSpent, onError,
+  jobId, creditsBalance, creditsLoading, onCreditSpent, onError, savedCandidates, interviewList,
 }) {
   return (
     <div className="space-y-4">
@@ -832,10 +870,117 @@ function AiMatchesTab({
               hasCredits={(creditsBalance ?? 0) > 0}
               onCreditSpent={onCreditSpent}
               onError={onError}
+              savedCandidates={savedCandidates}
+              interviewList={interviewList}
             />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Interview List Tab ───────────────────────────────────────────────────────
+
+function InterviewListRow({ item, jobId, onRemoved }) {
+  const [showPanel, setShowPanel] = useState(false)
+  const [showCvModal, setShowCvModal] = useState(false)
+  const [removing, setRemoving] = useState(false)
+
+  const isSelfRegistered = item.ownership === 'self_registered' && item.candidate_profile_id
+
+  const handleRemove = async () => {
+    if (removing) return
+    setRemoving(true)
+    try {
+      await api.delete('/api/v1/interview-list', {
+        params: { job_id: jobId, talent_pool_profile_id: item.talent_pool_profile_id },
+      })
+      onRemoved(item.id)
+    } finally {
+      setRemoving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-white p-4 flex flex-wrap items-center gap-4">
+      <span className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+        <User size={16} className="text-brand-blue" />
+      </span>
+
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-text text-sm truncate">{item.candidate_name ?? 'Private profile'}</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
+          {item.current_title && <span>{item.current_title}</span>}
+          {item.location && <span>{item.location}</span>}
+          {item.years_of_experience != null && <span>{item.years_of_experience} yrs exp</span>}
+        </div>
+        {item.note && <p className="text-xs text-text-muted italic mt-1">"{item.note}"</p>}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => (isSelfRegistered ? setShowPanel(true) : setShowCvModal(true))}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors flex-shrink-0"
+      >
+        {isSelfRegistered ? <><Eye size={13} /> View Profile</> : <><FileText size={13} /> View CV</>}
+      </button>
+
+      <InterviewListButton onList onToggle={handleRemove} className={removing ? 'opacity-50' : ''} />
+
+      {showPanel && (
+        <CandidateProfilePanel profileId={item.candidate_profile_id} onClose={() => setShowPanel(false)} />
+      )}
+      {showCvModal && (
+        <SourcedCvModal profileId={item.talent_pool_profile_id} jobId={jobId} onClose={() => setShowCvModal(false)} />
+      )}
+    </div>
+  )
+}
+
+function InterviewListTab({ jobId }) {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    api.get('/api/v1/interview-list', { params: { job_id: jobId } })
+      .then(({ data }) => setItems(data.items ?? []))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false))
+  }, [jobId])
+
+  useEffect(() => { load() }, [load])
+
+  const handleRemoved = (entryId) => {
+    setItems((prev) => prev.filter((i) => i.id !== entryId))
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-xl bg-white border border-border animate-pulse" />)}
+      </div>
+    )
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+        <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
+        <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
+        <p className="text-xs text-text-muted">
+          Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <InterviewListRow key={item.id} item={item} jobId={jobId} onRemoved={handleRemoved} />
+      ))}
     </div>
   )
 }
@@ -855,7 +1000,7 @@ export default function ApplicantsPage() {
   const [cursor, setCursor] = useState(null)
   const [hasMore, setHasMore] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-  // Pipeline tab — talent pool profiles sourced for this job
+  // Pipeline tab - talent pool profiles sourced for this job
   const [mainTab, setMainTab] = useState('applicants') // 'applicants' | 'pipeline' | 'ai-matches'
   const [pipeline, setPipeline] = useState([])
   const [pipelineLoading, setPipelineLoading] = useState(false)
@@ -870,6 +1015,16 @@ export default function ApplicantsPage() {
     fetchTalentMatches,
   } = useTalentMatches(jobId)
   const { balance: creditsBalance, loading: creditsLoading, refetch: refetchCredits } = useCredits()
+  const savedCandidates = useSavedCandidates()
+  const interviewList = useInterviewList(jobId)
+
+  // New match count - fetched on load to power the badge on the tab
+  const [newMatchCount, setNewMatchCount] = useState(0)
+  useEffect(() => {
+    api.get(`/api/v1/talent-pool/matches/${jobId}/new-count`)
+      .then(({ data }) => setNewMatchCount(data.new_count ?? 0))
+      .catch(() => {})
+  }, [jobId])
 
   const showToast = useCallback((msg) => {
     setToast(msg)
@@ -965,21 +1120,27 @@ export default function ApplicantsPage() {
             </Button>
           </div>
 
-          {/* Main tab switcher — Applicants vs Pipeline */}
+          {/* Main tab switcher - Applicants vs Pipeline */}
           <div className="flex gap-1 p-1 bg-surface-muted rounded-xl border border-border mb-6 w-fit">
             {[
               { key: 'applicants', label: 'Applicants' },
               { key: 'pipeline', label: 'Talent Pipeline' },
               { key: 'ai-matches', label: 'AI Talent Matches' },
+              { key: 'interview-list', label: 'Interview List' },
             ].map(({ key, label }) => (
-              <button key={key} onClick={() => setMainTab(key)}
+              <button key={key} onClick={() => { setMainTab(key); if (key === 'ai-matches') setNewMatchCount(0) }}
                 className={cn(
-                  'px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
+                  'px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5',
                   mainTab === key
                     ? 'bg-white text-text shadow-sm border border-border'
                     : 'text-text-muted hover:text-text'
                 )}>
                 {label}
+                {key === 'ai-matches' && newMatchCount > 0 && (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-brand-amber text-white text-[9px] font-bold leading-none">
+                    {newMatchCount > 9 ? '9+' : newMatchCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -991,6 +1152,7 @@ export default function ApplicantsPage() {
               loading={pipelineLoading}
               jobId={jobId}
               onProfileClick={setSelectedProfile}
+              interviewList={interviewList}
               onRefresh={() => {
                 setPipelineLoading(true)
                 api.get('/api/v1/talent-pool', { params: { job_id: jobId, limit: 100 } })
@@ -1011,7 +1173,11 @@ export default function ApplicantsPage() {
               creditsLoading={creditsLoading}
               onCreditSpent={refetchCredits}
               onError={showToast}
+              savedCandidates={savedCandidates}
+              interviewList={interviewList}
             />
+          ) : mainTab === 'interview-list' ? (
+            <InterviewListTab jobId={jobId} onProfileClick={setSelectedProfile} />
           ) : (
           <>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter applicants by status">
@@ -1080,6 +1246,8 @@ export default function ApplicantsPage() {
                   application={app}
                   jobId={jobId}
                   onError={showToast}
+                  savedCandidates={savedCandidates}
+                  interviewList={interviewList}
                 />
               ))}
             </div>

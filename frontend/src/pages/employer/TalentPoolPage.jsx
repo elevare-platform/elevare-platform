@@ -48,7 +48,7 @@ function ScoreBadge({ score }) {
       'w-12 h-12 rounded-full border-2 flex items-center justify-center text-sm font-bold flex-shrink-0',
       scoreColor(score)
     )}>
-      {score != null ? score : '—'}
+      {score != null ? score : ' - '}
     </div>
   )
 }
@@ -145,15 +145,15 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
       const status = err.response?.status
       const detail = err.response?.data?.detail
       if (status === 413) {
-        setError('Files are too large. Each CV should be under 10 MB — try compressing or splitting the batch.')
+        setError('Files are too large. Each CV should be under 10 MB - try compressing or splitting the batch.')
       } else if (status === 415 || (typeof detail === 'string' && detail.toLowerCase().includes('pdf'))) {
         setError('Only PDF files are accepted. Please check your files and try again.')
       } else if (status === 429) {
         setError('Too many uploads. Please wait a moment and try again.')
       } else if (status === 422) {
-        setError('Invalid request — please check your files and form fields.')
+        setError('Invalid request - please check your files and form fields.')
       } else if (status >= 500) {
-        setError('Server error. Our team has been notified — please try again shortly.')
+        setError('Server error. Our team has been notified - please try again shortly.')
       } else {
         setError(detail ?? 'Upload failed. Please try again.')
       }
@@ -176,7 +176,7 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
         <div className="flex items-center justify-between px-6 py-5 border-b border-border">
           <div>
             <h2 className="font-semibold text-text text-base">Add to Talent Pool</h2>
-            <p className="text-xs text-text-muted mt-0.5">Upload up to 20 CVs — batch processed</p>
+            <p className="text-xs text-text-muted mt-0.5">Upload up to 20 CVs - batch processed</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-muted transition-colors">
             <X size={18} />
@@ -297,12 +297,12 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
           {/* Job attachment */}
           <div>
             <label className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2 block">
-              Attach to Job <span className="normal-case font-normal">(optional — enables immediate scoring)</span>
+              Attach to Job <span className="normal-case font-normal">(optional - enables immediate scoring)</span>
             </label>
             <div className="relative">
               <select value={jobId} onChange={e => setJobId(e.target.value)}
                 className="w-full text-sm rounded-lg border border-border px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-blue bg-white">
-                <option value="">No job — add to pipeline only</option>
+                <option value="">No job - add to pipeline only</option>
                 {(jobs ?? []).map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
               </select>
               <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -344,10 +344,10 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
                 onClick={() => { onUploaded(); onClose() }}
                 className="w-full text-xs font-medium text-brand-blue hover:text-brand-blue-dark transition-colors py-1.5 rounded-lg border border-brand-blue/20 hover:bg-brand-blue/5"
               >
-                Run in background — close drawer
+                Run in background - close drawer
               </button>
               <button onClick={() => { reset(); onClose() }} className="w-full text-xs text-text-muted hover:text-text transition-colors py-1">
-                Done — close drawer
+                Done - close drawer
               </button>
             </div>
           )}
@@ -374,7 +374,7 @@ function ViewCvButton({ submissionId }) {
     } catch (err) {
       const status = err.response?.status
       if (status === 425) {
-        setErrMsg('Still processing — try again in a few seconds.')
+        setErrMsg('Still processing - try again in a few seconds.')
       } else if (status === 404) {
         setErrMsg('CV file not found.')
       } else {
@@ -444,7 +444,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
           <p className="text-xs text-text-muted mt-0.5">
             {[profile.candidate_current_title, profile.candidate_email].filter(Boolean).join(' · ') ||
               (profile.source_note
-                ? profile.source_note.replace(/(Gmail|Zoho) import — /, '').replace(/ · message .+$/, '')
+                ? profile.source_note.replace(/(Gmail|Zoho) import-  /, '').replace(/ · message .+$/, '')
                 : `Added ${new Date(profile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`)
             }
           </p>
@@ -551,7 +551,7 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
           <span className="capitalize">{SOURCE_LABELS[profile.source] ?? profile.source}</span>
           {profile.candidate_current_title && <><span className="text-border">·</span><span>{profile.candidate_current_title}</span></>}
           {!profile.candidate_current_title && profile.source_note && (
-            <><span className="text-border">·</span><span className="truncate max-w-[140px]">{profile.source_note.replace(/(Gmail|Zoho) import — /, '').replace(/ · message .+$/, '')}</span></>
+            <><span className="text-border">·</span><span className="truncate max-w-[140px]">{profile.source_note.replace(/(Gmail|Zoho) import-  /, '').replace(/ · message .+$/, '')}</span></>
           )}
         </p>
       </div>
@@ -669,7 +669,7 @@ function StatsBar({ profiles }) {
         { label: 'Total profiles', value: total, icon: Users, color: 'text-brand-blue' },
         { label: 'Scored', value: scored, icon: BarChart3, color: 'text-green-600' },
         { label: 'Shortlisted', value: shortlisted, icon: Star, color: 'text-amber-600' },
-        { label: 'Avg. AI score', value: avgScore != null ? `${avgScore}` : '—', icon: Brain, color: 'text-purple-600' },
+        { label: 'Avg. AI score', value: avgScore != null ? `${avgScore}` : ' - ', icon: Brain, color: 'text-purple-600' },
       ].map(({ label, value, icon: Icon, color }) => (
         <div key={label} className="rounded-xl border border-border bg-white px-4 py-3 flex items-center gap-3">
           <div className={cn('w-8 h-8 rounded-lg bg-current/10 flex items-center justify-center flex-shrink-0', color.replace('text-', 'bg-').replace('600', '100').replace('blue', 'blue/10'))}>
@@ -698,7 +698,7 @@ export default function TalentPoolPage() {
   const [loading, setLoading] = useState(true)
   const [jobs, setJobs] = useState([])
 
-  // Filters — seed from URL params so external links can pre-filter
+  // Filters - seed from URL params so external links can pre-filter
   const [activeJob, setActiveJob] = useState(() => searchParams.get('job_id') ?? '')
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') ?? '')
   const [sourceFilter, setSourceFilter] = useState(() => searchParams.get('source') ?? '')
@@ -785,7 +785,7 @@ export default function TalentPoolPage() {
               <p className="text-sm text-text-muted mt-1">
                 {mode === 'job'
                   ? `Showing candidates ranked against ${activeJobTitle ?? 'selected job'}`
-                  : 'Browse your talent pipeline — select a job to see AI rankings'}
+                  : 'Browse your talent pipeline - select a job to see AI rankings'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -802,7 +802,7 @@ export default function TalentPoolPage() {
             </div>
           </div>
 
-          {/* Job selector — the primary control */}
+          {/* Job selector - the primary control */}
           <div className="rounded-xl border border-border bg-white p-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
               <div className="flex items-center gap-2 flex-shrink-0">

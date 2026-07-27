@@ -2,8 +2,8 @@ import { ArrowRight, FileText, Mic, DollarSign } from 'lucide-react'
 
 /**
  * Static career resource cards.
- * Requirements 8.2 — exactly these 3 cards in this order.
- * Requirement 8.4 — no API calls; data is static.
+ * Requirements 8.2-  exactly these 3 cards in this order.
+ * Requirement 8.4-  no API calls; data is static.
  */
 const RESOURCES = [
   {
@@ -30,8 +30,8 @@ const RESOURCES = [
 ]
 
 /**
- * ResourceCard — a single static career resource card.
- * Requirement 8.3 — icon, title, one-line description, "Read More →" link.
+ * ResourceCard - a single static career resource card.
+ * Requirement 8.3-  icon, title, one-line description, "Read More →" link.
  */
 function ResourceCard({ resource }) {
   const Icon = resource.icon
@@ -56,7 +56,7 @@ function ResourceCard({ resource }) {
         {resource.description}
       </p>
 
-      {/* "Read More →" link — Requirement 8.3 */}
+      {/* "Read More →" link - Requirement 8.3 */}
       <a
         href={resource.href}
         className="inline-flex items-center gap-1 text-sm font-semibold text-brand-blue hover:text-brand-amber transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded"
@@ -69,7 +69,7 @@ function ResourceCard({ resource }) {
 }
 
 /**
- * CareerResources — renders exactly 3 static career resource cards.
+ * CareerResources - renders exactly 3 static career resource cards.
  *
  * Requirements: 8.1, 8.2, 8.3, 8.4
  */

@@ -200,7 +200,7 @@ export default function AdminJobsPage() {
                 </button>
               </Td>
               <Td className="text-text-muted">
-                {j.employer?.employer_profile?.company_name ?? '—'}
+                {j.employer?.employer_profile?.company_name ?? ' - '}
               </Td>
               <Td><StatusBadge value={j.status} /></Td>
               <Td><StatusBadge value={j.moderation_status} /></Td>

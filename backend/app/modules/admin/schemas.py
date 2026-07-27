@@ -104,6 +104,7 @@ class AdminApplicationResponse(BaseModel):
     ai_score_computed_at: datetime | None = None
     status_updated_at: datetime
     created_at: datetime
+    cv_id: UUID | None = None
     # Flattened from relationships
     job_title: str | None = None
     candidate_name: str | None = None
@@ -128,6 +129,7 @@ class AdminApplicationResponse(BaseModel):
             ai_score_computed_at=app.ai_score_computed_at,
             status_updated_at=app.status_updated_at,
             created_at=app.created_at,
+            cv_id=app.cv_id,
             job_title=job.title if job else None,
             candidate_name=(
                 f"{candidate.first_name} {candidate.last_name}".strip()
@@ -174,7 +176,9 @@ class AdminKYCEmployerResponse(BaseModel):
             kyc_submitted_at=profile.kyc_submitted_at,
             kyc_reviewed_at=profile.kyc_reviewed_at,
             kyc_rejection_reason=profile.kyc_rejection_reason,
-            documents=[KYCDocumentResponse.model_validate(d) for d in profile.kyc_documents],
+            documents=[
+                KYCDocumentResponse.model_validate(d) for d in profile.kyc_documents
+            ],
         )
 
 

@@ -8,7 +8,7 @@ const METRICS = [
     value: 12450,
     suffix: '+',
     label: 'Candidates Placed',
-    description: 'Empowered professionals matching career aspirations across Africa.',
+    description: 'Professionals placed in roles across Africa, from entry-level to executive.',
     color: '#E87722',
   },
   {
@@ -24,7 +24,7 @@ const METRICS = [
     value: 12,
     suffix: '+ years',
     label: 'Years Experience',
-    description: 'Of deep regional presence, technical recruitment expertise, and ecosystem trust.',
+    description: 'Of deep regional presence, technical recruitment expertise, and industry trust.',
     color: '#10b981',
   },
   {

@@ -6,7 +6,7 @@ const PILLS = [
 ]
 
 /**
- * WorkLocationToggle — LOCAL / INTERNATIONAL pill toggle.
+ * WorkLocationToggle - LOCAL / INTERNATIONAL pill toggle.
  * Pills maintain consistent height and handle long text without overflow.
  *
  * @param {Object} props

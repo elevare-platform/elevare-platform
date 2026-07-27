@@ -52,6 +52,10 @@ class TalentPoolProfileResponse(BaseModel):
     ai_weaknesses: list[str] | None = None
     ai_score_computed_at: datetime | None = None
 
+    # Populated by the service only once the requester's access is verified —
+    # never present on an unentitled fetch.
+    cv_download_url: str | None = None
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -80,6 +84,12 @@ class TalentMatchResponse(BaseModel):
     ownership: Literal["self_registered", "own_sourced", "admin_sourced"]
     cv_download_url: str | None = None
 
+    ai_strengths: list[str] | None = None
+    ai_weaknesses: list[str] | None = None
+    ai_fit_summary: str | None = None
+    is_new: bool = False
+    matched_skills: list[str] = []
+
     @classmethod
     def from_match(
         cls,
@@ -91,16 +101,11 @@ class TalentMatchResponse(BaseModel):
         years_of_experience: int | None = None,
         location: str | None = None,
         top_skills: list[str] | None = None,
+        matched_skills: list[str] | None = None,
         ownership: str = "admin_sourced",
         cv_download_url: str | None = None,
+        is_new: bool = False,
     ) -> "TalentMatchResponse":
-        """Build from a pre-resolved, pre-scored match.
-
-        ``similarity_score`` is the final blended score (embedding
-        similarity modulated by skill overlap) — computed by the caller,
-        not derived here, since scoring now needs job.required_skills
-        which this schema has no access to.
-        """
         return cls(
             profile_id=profile.id,
             similarity_score=max(0, min(100, similarity_score)),
@@ -110,9 +115,14 @@ class TalentMatchResponse(BaseModel):
             years_of_experience=years_of_experience,
             location=location,
             top_skills=top_skills or [],
+            matched_skills=matched_skills or [],
             candidate_profile_id=profile.candidate_profile_id,
             ownership=ownership,
             cv_download_url=cv_download_url,
+            ai_strengths=profile.ai_strengths,
+            ai_weaknesses=profile.ai_weaknesses,
+            ai_fit_summary=profile.ai_fit_summary,
+            is_new=is_new,
         )
 
 

@@ -43,7 +43,7 @@ const PASSWORD_RULES = [
 // ─── InviteAcceptPage ─────────────────────────────────────────────────────────
 
 /**
- * Invite acceptance page — /invite/accept?token=<raw_token>
+ * Invite acceptance page-  /invite/accept?token=<raw_token>
  * Reads the token from the URL, submits to POST /api/v1/auth/invite/accept,
  * then redirects based on the returned user's role and profile state.
  */
@@ -81,7 +81,7 @@ export default function InviteAcceptPage() {
           confirm_password: values.confirm_password,
         }
       )
-      // Manually set auth state — same pattern as AuthContext.register
+      // Manually set auth state - same pattern as AuthContext.register
       setAccessToken(data.access_token)
       updateUser(data.user)
       navigate(getPostAuthRedirect(data.user), { replace: true })
@@ -114,7 +114,7 @@ export default function InviteAcceptPage() {
           <div className="absolute bottom-24 -left-24 w-80 h-80 rounded-full border border-white/10" />
         </div>
         <div className="relative z-10 flex items-center gap-3">
-          <img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" />
+          <Link to="/"><img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" /></Link>
         </div>
         <div className="relative z-10 space-y-4">
           <h1 className="text-4xl font-bold text-white leading-tight">
@@ -134,7 +134,7 @@ export default function InviteAcceptPage() {
         <div className="w-full max-w-md space-y-8">
           {/* Mobile logo */}
           <div className="flex items-center gap-3 lg:hidden">
-            <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
+            <Link to="/"><img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" /></Link>
           </div>
 
           <div className="space-y-2">
@@ -144,7 +144,7 @@ export default function InviteAcceptPage() {
             </p>
           </div>
 
-          {/* Token error state — shown if token is clearly invalid before submit */}
+          {/* Token error state - shown if token is clearly invalid before submit */}
           {serverError && serverError.includes('expired') && (
             <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
               <AlertCircle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />

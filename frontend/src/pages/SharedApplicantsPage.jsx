@@ -49,7 +49,7 @@ function ApplicantCard({ applicant, rank }) {
           'w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0',
           scoreColour(applicant.ai_score)
         )}>
-          {applicant.ai_score != null ? `${applicant.ai_score}` : '—'}
+          {applicant.ai_score != null ? `${applicant.ai_score}` : ' - '}
         </span>
 
         {/* Expand toggle */}

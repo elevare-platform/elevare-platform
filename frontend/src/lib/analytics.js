@@ -1,5 +1,5 @@
 /**
- * Analytics helper — wraps react-ga4 so all calls are no-ops when
+ * Analytics helper - wraps react-ga4 so all calls are no-ops when
  * VITE_GA4_ID is not set (local dev without the env var, CI, etc.)
  */
 import ReactGA from 'react-ga4'

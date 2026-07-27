@@ -334,10 +334,22 @@ class IntroductionService:
         from app.core.config import settings
         from app.modules.introductions.tasks import send_introduction_accepted_email
 
+        # A General Interest introduction has no real job for the employer
+        # to view this on — /employer/jobs/{id}/applicants would land on a
+        # hidden placeholder job with no real applicants/matches to show.
+        # Route to the cross-job "My Introductions" list instead, which
+        # shows this specific accepted candidate directly.
+        is_general_interest = bool(intro.job and intro.job.is_general_interest)
+        profile_url = (
+            f"{settings.app_url}/employer/introductions"
+            if is_general_interest
+            else f"{settings.app_url}/employer/jobs/{intro.job_id}/applicants"
+        )
+
         send_introduction_accepted_email.delay(
             employer_email=intro.employer.email,
             job_title=intro.job.title if intro.job else "a role",
-            profile_url=f"{settings.app_url}/employer/jobs/{intro.job_id}/applicants",
+            profile_url=profile_url,
         )
 
         await self._db.commit()
@@ -412,12 +424,24 @@ class IntroductionService:
         items = []
         for row in rows:
             accepted = row.status == IntroductionStatus.ACCEPTED.value
+            tp = row.talent_pool_profile
+
+            if tp.candidate_profile_id:
+                ownership = "self_registered"
+            elif tp.added_by == employer_id:
+                ownership = "own_sourced"
+            else:
+                ownership = "admin_sourced"
+
             items.append(
                 IntroductionSummaryResponse(
                     id=row.id,
                     job_id=row.job_id,
                     job_title=row.job.title if row.job else "",
+                    is_general_interest=bool(row.job and row.job.is_general_interest),
                     talent_pool_profile_id=row.talent_pool_profile_id,
+                    candidate_profile_id=tp.candidate_profile_id,
+                    ownership=ownership,
                     candidate_name=_resolve_display_name(
                         row.talent_pool_profile, accepted
                     ),

@@ -75,7 +75,7 @@ function WorkExperienceEntry({ entry, onDelete }) {
           <p className="text-sm font-medium text-text">{entry.job_title}</p>
           <p className="text-xs text-text-muted">{entry.company_name}</p>
           <p className="text-xs text-text-muted mt-0.5">
-            {entry.start_date ?? '—'} → {entry.is_current ? 'Present' : (entry.end_date ?? '—')}
+            {entry.start_date ?? ' - '} → {entry.is_current ? 'Present' : (entry.end_date ?? ' - ')}
           </p>
         </div>
         <button type="button" onClick={() => onDelete(entry.id)}
@@ -162,7 +162,7 @@ function EducationEntry({ entry, onDelete }) {
         <p className="text-xs text-text-muted">{entry.institution_name}</p>
         {(entry.start_year || entry.end_year) && (
           <p className="text-xs text-text-muted mt-0.5">
-            {entry.start_year ?? '—'} – {entry.end_year ?? 'Present'}
+            {entry.start_year ?? ' - '} – {entry.end_year ?? 'Present'}
           </p>
         )}
       </div>
@@ -514,9 +514,9 @@ export default function CandidateProfilePage() {
                 <Field label="Profile Visibility" htmlFor="visibility">
                   <select id="visibility" value={values.visibility}
                     onChange={(e) => setField('visibility', e.target.value)} className={INPUT_CLS}>
-                    <option value="PUBLIC">Public — visible to all employers</option>
-                    <option value="APPLIED_ONLY">Applied Only — visible to employers you've applied to</option>
-                    <option value="PRIVATE">Private — hidden from all employers</option>
+                    <option value="PUBLIC">Public - visible to all employers</option>
+                    <option value="APPLIED_ONLY">Applied Only - visible to employers you've applied to</option>
+                    <option value="PRIVATE">Private - hidden from all employers</option>
                   </select>
                 </Field>
 

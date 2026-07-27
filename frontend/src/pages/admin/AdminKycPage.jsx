@@ -93,7 +93,7 @@ export default function AdminKycPage() {
         <tbody>
           {submissions.map((s) => (
             <tr key={s.employer_profile_id} className="hover:bg-surface-muted/50">
-              <Td className="font-medium text-text">{s.company_name ?? '—'}</Td>
+              <Td className="font-medium text-text">{s.company_name ?? ' - '}</Td>
               <Td className="text-text-muted">
                 <div>{s.first_name} {s.last_name}</div>
                 <div className="text-xs">{s.email}</div>
@@ -120,7 +120,7 @@ export default function AdminKycPage() {
                 </div>
               </Td>
               <Td className="text-text-muted text-xs">
-                {s.kyc_submitted_at ? new Date(s.kyc_submitted_at).toLocaleDateString() : '—'}
+                {s.kyc_submitted_at ? new Date(s.kyc_submitted_at).toLocaleDateString() : ' - '}
               </Td>
               <Td>
                 {s.kyc_status === 'PENDING' && (

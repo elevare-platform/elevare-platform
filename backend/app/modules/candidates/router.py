@@ -12,6 +12,8 @@ from app.core.storage import StorageService, get_storage_service
 from app.modules.candidates.schema import (
     CandidateCvsResponse,
     CandidateDocumentsResponse,
+    CandidateSearchFilters,
+    CandidateSearchResponse,
     CertificationCreateSchema,
     CertificationResponse,
     EducationCreateSchema,
@@ -351,3 +353,20 @@ async def list_all_candidates(
 ):
     """Return all candidate profiles (admin only)."""
     return await service.list_all_profiles()
+
+
+@router.post("/search", response_model=CandidateSearchResponse, status_code=200)
+async def search_candidates(
+    filters: CandidateSearchFilters,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: CandidateService = Depends(get_service),
+):
+    """Employer-facing structured candidate search — filters, ranked, explainable results.
+
+    A POST body is used (rather than query params) because filters include
+    lists (skills, seniority, availability) that don't map cleanly onto a
+    GET querystring. ``filters.query`` is free text embedded for semantic
+    ranking — recruiters fill in structured fields and free text directly,
+    with no LLM parsing step in between.
+    """
+    return await service.search_candidates(filters, current_user)

@@ -124,6 +124,51 @@ async def resolve_match_display_fields(
     }
 
 
+async def get_top_matches_for_job(
+    db: AsyncSession,
+    job,
+    employer_id: uuid.UUID,
+    limit: int = 20,
+    exclude_user_ids: list[uuid.UUID] | None = None,
+) -> list[tuple[TalentPoolProfiles, int, list[str]]]:
+    """Return the top N talent pool profiles for a job using the full blended scoring.
+
+    Replicates the exact logic from get_job_matches (overfetch → embedding score
+    * skill modulator → floor filter → re-rank) so the Celery task and the API
+    endpoint always agree on which profiles are top matches.
+
+    Returns list of (profile, final_score, matched_skills) sorted by final_score descending.
+    matched_skills is the intersection of candidate skills and job.required_skills (max 3).
+    """
+    from app.modules.ai.scoring_service import compute_skill_overlap_modulator
+
+    repo = TalentPoolRepository(db)
+    fetch_limit = min(limit * _MATCH_OVERFETCH_MULTIPLIER, _MATCH_OVERFETCH_CAP)
+    matches = await repo.find_matches_for_job(
+        job_embedding=job.job_embedding,
+        employer_id=employer_id,
+        exclude_user_ids=exclude_user_ids or [],
+        limit=fetch_limit,
+    )
+
+    job_skills_lower = {s.lower() for s in (job.required_skills or [])}
+
+    scored: list[tuple[TalentPoolProfiles, int, list[str]]] = []
+    for profile, distance in matches:
+        fields = await resolve_match_display_fields(db, profile, employer_id)
+        embedding_score = max(0, min(100, round((1 - distance) * 100)))
+        modulator = compute_skill_overlap_modulator(
+            fields["skills"], job.required_skills
+        )
+        final_score = max(0, min(100, round(embedding_score * modulator)))
+        if final_score >= _MIN_SIMILARITY_SCORE:
+            matched = [s for s in fields["skills"] if s.lower() in job_skills_lower][:3]
+            scored.append((profile, final_score, matched))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored[:limit]
+
+
 class TalentPoolService:
     """Orchestrates talent pool CV submissions, scoring, and candidate promotion."""
 
@@ -280,13 +325,123 @@ class TalentPoolService:
         result["items"] = enriched
         return result
 
-    async def get_profile(self, id: uuid.UUID) -> TalentPoolProfileResponse:
-        """Fetch a single talent pool profile by ID, or raise SubmissionNotFound."""
+    async def get_profile(
+        self,
+        id: uuid.UUID,
+        current_user: User,
+        job_id: uuid.UUID | None = None,
+    ) -> TalentPoolProfileResponse:
+        """Fetch a single talent pool profile by ID — sourced CVs only.
+
+        This backs ``SourcedCvModal``, which by design only shows sourced
+        (no-login) candidates. Self-registered candidates are viewed through
+        ``GET /api/v1/candidates/{id}``, which already enforces the
+        candidate's visibility setting — so a profile with
+        ``candidate_profile_id`` set has no business being fetched here at
+        all.
+
+        Access to the sourced candidate's identity, CV, and AI assessment is
+        only granted if the requester sourced it themselves, is an admin, or
+        has an ACCEPTED introduction for this candidate (from any job — an
+        acceptance is the candidate agreeing to be introduced to this
+        employer, not to one specific posting). Everyone else gets a 403,
+        not a partial/empty profile — there is no legitimate "preview" tier
+        for a sourced CV the employer hasn't been granted access to.
+
+        ``ai_score``/``ai_fit_summary``/etc. are a single set of columns per
+        profile — computed against whichever job most recently triggered
+        scoring, not per job viewed from. Without a ``job_id`` (e.g. the
+        job-less Candidate Search flow) there is no job to judge relevance
+        against, so the assessment is never included. With a ``job_id``, it's
+        only included if ``ai_score_job_hash`` still matches that job's
+        current scoring inputs — otherwise the stored assessment is stale
+        (computed against a different job) and would be actively misleading
+        to show as if it were about this one.
+        """
+        from sqlalchemy import select
+
+        from app.core.storage import get_storage_service
+        from app.modules.introductions.enums import IntroductionStatus
+        from app.modules.introductions.models import IntroductionRequest
+
         profile = await self._repo.get_by_id(id)
         if not profile:
             raise SubmissionNotFound()
+
+        if profile.candidate_profile_id is not None:
+            raise PermissionDeniedException(
+                "Self-registered candidates are viewed via /candidates/{id}, not this endpoint."
+            )
+
+        is_admin = current_user.role == UserRole.ADMIN.value
+        is_owner = profile.added_by == current_user.id
+
+        entitled = is_admin or is_owner
+        if not entitled:
+            accepted = await self._db.execute(
+                select(IntroductionRequest.id)
+                .where(
+                    IntroductionRequest.employer_id == current_user.id,
+                    IntroductionRequest.talent_pool_profile_id == id,
+                    IntroductionRequest.status == IntroductionStatus.ACCEPTED.value,
+                )
+                .limit(1)
+            )
+            entitled = accepted.scalar_one_or_none() is not None
+
+        if not entitled:
+            raise PermissionDeniedException(
+                "You don't have access to this candidate's CV yet."
+            )
+
         response = TalentPoolProfileResponse.model_validate(profile)
-        return await self._enrich(profile, response)
+        response = await self._enrich(profile, response)
+
+        # Only surface the AI assessment if it's verifiably about the job
+        # currently being viewed from — never guess, never show it
+        # unqualified.
+        assessment_is_current_for_job = False
+        if job_id and profile.ai_score_job_hash:
+            job = await JobRepository(self._db).get_by_id(job_id)
+            if job:
+                from app.modules.ai.scoring_service import hash_job_scoring_inputs
+                from app.modules.jobs.schemas import build_full_description
+
+                current_job_hash = hash_job_scoring_inputs(
+                    build_full_description(
+                        about_the_role=job.about_the_role,
+                        key_responsibilities=job.key_responsibilities,
+                        requirements=job.requirements,
+                        preferred_certifications=job.preferred_certifications,
+                        technical_competencies=job.technical_competencies,
+                        what_we_offer=job.what_we_offer,
+                        legacy_description=job.description,
+                    ),
+                    job.required_skills or [],
+                    job.seniority_level,
+                )
+                assessment_is_current_for_job = (
+                    current_job_hash == profile.ai_score_job_hash
+                )
+
+        if not assessment_is_current_for_job:
+            response.ai_score = None
+            response.ai_fit_summary = None
+            response.ai_strengths = None
+            response.ai_weaknesses = None
+            response.ai_score_computed_at = None
+
+        if profile.parsed_submission_id:
+            submission = await self._ai_repo.get_submission_by_id(
+                profile.parsed_submission_id
+            )
+            if submission and submission.r2_key:
+                storage_service = get_storage_service()
+                response.cv_download_url = await storage_service.generate_presigned_url(
+                    submission.r2_key, expires_seconds=600
+                )
+
+        return response
 
     async def update_status(
         self,
@@ -459,6 +614,9 @@ class TalentPoolService:
         """Return AI-matched talent pool profiles for a job, ranked by embedding similarity."""
         from app.core.storage import get_storage_service
         from app.modules.applications.repository import ApplicationRepository
+        from app.modules.notifications.match_repository import (
+            MatchNotificationRepository,
+        )
         from app.modules.talent_pool.schema import (
             TalentMatchListResponse,
             TalentMatchResponse,
@@ -482,52 +640,33 @@ class TalentPoolService:
 
         user_ids = await application_repo.get_user_ids_for_job(job_id)
 
-        fetch_limit = min(limit * _MATCH_OVERFETCH_MULTIPLIER, _MATCH_OVERFETCH_CAP)
-        matches = await self._repo.find_matches_for_job(
-            job_embedding=job.job_embedding,
-            employer_id=employer_id,
-            exclude_user_ids=user_ids,
-            limit=fetch_limit,
+        # Fetch which profiles are flagged as new before building the response
+        match_notif_repo = MatchNotificationRepository(self._db)
+        new_profile_ids = await match_notif_repo.get_new_profile_ids_for_job(job_id)
+
+        # Use the shared helper — same scoring logic as the Celery task
+        top_matches = await get_top_matches_for_job(
+            self._db, job, employer_id, limit=limit, exclude_user_ids=user_ids
         )
 
-        from app.modules.ai.scoring_service import compute_skill_overlap_modulator
-
-        # Pass 1 — score every over-fetched candidate. Cheap (no presigned
-        # URLs / extra queries yet) since most of these won't survive the
-        # floor + limit below.
         scored: list[dict] = []
-        for profile, distance in matches:
+        for profile, final_score, matched_skills in top_matches:
             fields = await resolve_match_display_fields(self._db, profile, employer_id)
-
-            embedding_score = max(0, min(100, round((1 - distance) * 100)))
-            modulator = compute_skill_overlap_modulator(
-                fields["skills"], job.required_skills
-            )
-            final_score = max(0, min(100, round(embedding_score * modulator)))
-
             if profile.candidate_profile_id:
                 ownership = "self_registered"
             elif profile.added_by == employer_id:
                 ownership = "own_sourced"
             else:
                 ownership = "admin_sourced"
-
             scored.append(
                 {
                     "profile": profile,
                     "fields": fields,
                     "ownership": ownership,
                     "final_score": final_score,
+                    "matched_skills": matched_skills,
                 }
             )
-
-        # Hide matches below the floor, then re-rank by the blended score —
-        # skill overlap can promote someone who wasn't in the top-N by raw
-        # embedding distance, so this can change who shows up, not just the
-        # displayed number.
-        scored = [s for s in scored if s["final_score"] >= _MIN_SIMILARITY_SCORE]
-        scored.sort(key=lambda s: s["final_score"], reverse=True)
-        scored = scored[:limit]
 
         # Pass 2 — only for the final set that will actually display, resolve
         # the CV download URL (presigned URL generation + an extra query for
@@ -572,6 +711,12 @@ class TalentPoolService:
                         expires_seconds=600,
                     )
 
+            matched_skills = entry["matched_skills"]
+            matched_lower = {s.lower() for s in matched_skills}
+            remaining_skills = [
+                s for s in fields["skills"] if s.lower() not in matched_lower
+            ]
+
             items.append(
                 TalentMatchResponse.from_match(
                     profile=profile,
@@ -581,11 +726,17 @@ class TalentPoolService:
                     profession=fields["profession"],
                     years_of_experience=fields["years_of_experience"],
                     location=fields["location"],
-                    top_skills=fields["skills"][:5],
+                    top_skills=remaining_skills[:5],
+                    matched_skills=matched_skills,
                     ownership=ownership,
                     cv_download_url=cv_download_url,
+                    is_new=profile.id in new_profile_ids,
                 )
             )
+
+        # Mark all new matches as viewed now that the employer has seen them
+        await match_notif_repo.mark_job_matches_viewed(job_id)
+        await self._db.commit()
 
         return TalentMatchListResponse(
             items=items,

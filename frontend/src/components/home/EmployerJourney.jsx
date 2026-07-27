@@ -6,36 +6,36 @@ const STEPS = [
   {
     icon: FileText,
     title: 'Employer Need',
-    tagline: 'Step 01 — Define Requirements',
+    tagline: 'Step 01 - Define Requirements',
     description: 'Post your requirements, salary range, and company culture expectations in under 10 minutes.',
     color: '#E87722',
   },
   {
     icon: Search,
     title: 'Talent Matching',
-    tagline: 'Step 02 — AI-Powered Search',
+    tagline: 'Step 02 - AI-Powered Search',
     description: 'Our AI matches your job against a curated pool of pre-screened candidates sourced and managed by our recruitment team.',
     color: '#1A4D8F',
   },
   {
     icon: Brain,
     title: 'AI Screening',
-    tagline: 'Step 03 — Deterministic Scoring',
+    tagline: 'Step 03 - Deterministic Scoring',
     description: 'Candidates are evaluated and ranked based on tech stack fit, years of experience, and seniority alignment.',
     color: '#8b5cf6',
   },
   {
     icon: UserCheck,
     title: 'Shortlisting',
-    tagline: 'Step 04 — Curated Matches',
-    description: 'Receive a structured, AI-scored shortlist of the strongest matches — ranked and ready for your review.',
+    tagline: 'Step 04 - Curated Matches',
+    description: 'Receive a structured, AI-scored shortlist of the strongest matches, ranked and ready for your review.',
     color: '#06b6d4',
   },
   {
     icon: Award,
     title: 'Hiring Success',
-    tagline: 'Step 05 — Onboarding & Growth',
-    description: 'Conduct interviews with confidence, backed by data. Our human-in-the-loop process ensures quality at every stage.',
+    tagline: 'Step 05 - Onboarding & Growth',
+    description: 'Conduct interviews with confidence, backed by data. Our human-in-the-loop process maintains quality at every stage.',
     color: '#10b981',
   },
 ]
@@ -122,7 +122,7 @@ export default function EmployerJourney() {
                 Streamlined pipeline that guarantees results.
               </h3>
               <p className="text-slate-300 text-sm sm:text-base leading-relaxed mb-8">
-                As you scroll, notice how each step connects seamlessly to the next, forming an integrated path that drives productivity and ensures recruitment success.
+                Each step in the hiring pipeline feeds directly into the next, giving you a clear view of progress from first search to final placement.
               </p>
             </div>
 

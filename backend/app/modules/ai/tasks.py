@@ -729,6 +729,18 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                 profile_id,
             )
 
+            # --- Phase 18: notify candidate of new job matches ---
+            try:
+                await _notify_candidate_new_matches(
+                    db, profile.user_id, profile.profile_embedding
+                )
+            except Exception:
+                logger.warning(
+                    "generate_candidate_embedding: failed to create match notifications for %s",
+                    profile_id,
+                    exc_info=True,
+                )
+
             # Re-queue scoring for all pending applications — keyword fallback may have run first
             try:
                 from sqlalchemy import select as _select
@@ -839,6 +851,19 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
             await db.commit()
 
             logger.info("generate_job_embedding: stored embedding for job %s", job_id)
+
+            # --- Phase 18: notify employer of new candidate matches ---
+            if job.employer_id:
+                try:
+                    await _notify_employer_new_matches(
+                        db, job.employer_id, job_id, job.job_embedding, job.title
+                    )
+                except Exception:
+                    logger.warning(
+                        "generate_job_embedding: failed to create match notifications for job %s",
+                        job_id,
+                        exc_info=True,
+                    )
 
         except Exception:
             logger.exception("generate_job_embedding: failed for job %s", job_id)
@@ -1089,6 +1114,237 @@ async def _upload_cv_to_r2_async(
             logger.exception(
                 "upload_cv_to_r2: failed for submission %s", submission_id_str
             )
+            raise
+        finally:
+            await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Phase 18 — notification helpers (called from embedding tasks)
+# ---------------------------------------------------------------------------
+
+
+async def _notify_candidate_new_matches(db, user_id, candidate_embedding) -> None:
+    """Create a 'new job matches' notification for a candidate after their embedding updates.
+
+    Finds the top-N active jobs by cosine similarity and fires one notification
+    summarising the count. Skips if no matches exist or no OpenAI key is configured
+    (embedding not available in that env).
+    """
+    from sqlalchemy import select as _select
+    from sqlalchemy import text as _text
+
+    from app.modules.jobs.enums import JobStatus, ModerationStatus
+    from app.modules.jobs.models import Job
+    from app.modules.notifications.models import MatchNotification
+    from app.modules.notifications.repository import NotificationRepository
+    from app.modules.talent_pool.models import TalentPoolProfiles
+
+    if not candidate_embedding:
+        return
+
+    await db.execute(_text("SET ivfflat.probes = 10"))
+
+    distance = Job.job_embedding.cosine_distance(candidate_embedding)
+    stmt = (
+        _select(Job, distance.label("distance"))
+        .where(Job.job_embedding.is_not(None))
+        .where(Job.status == JobStatus.ACTIVE.value)
+        .where(Job.moderation_status == ModerationStatus.APPROVED.value)
+        .order_by(distance.asc())
+        .limit(10)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    # Only notify for jobs with meaningful similarity (cosine distance < 0.6 → > 70% sim)
+    strong_matches = [r for r in rows if r[1] < 0.6]
+    if not strong_matches:
+        return
+
+    # Resolve the talent_pool_profiles row for this candidate (if any)
+    tp_result = await db.execute(
+        _select(TalentPoolProfiles).where(
+            TalentPoolProfiles.candidate_profile_id.is_not(None)
+        )
+        # We need the row linked to this user — join via candidate_profile
+        # but keep it simple: look up by user_id via the candidate_profile relation
+    )
+    # Look up talent pool profile linked to this user
+    from app.modules.candidates.models import CandidateProfile
+
+    cp_result = await db.execute(
+        _select(CandidateProfile).where(CandidateProfile.user_id == user_id)
+    )
+    cp = cp_result.scalar_one_or_none()
+    tp_profile_id = None
+    if cp:
+        tp_result = await db.execute(
+            _select(TalentPoolProfiles).where(
+                TalentPoolProfiles.candidate_profile_id == cp.id
+            )
+        )
+        tp = tp_result.scalar_one_or_none()
+        if tp:
+            tp_profile_id = tp.id
+
+    # Write a match_notifications row per strong match (skip if already exists)
+    for job, dist in strong_matches:
+        score = max(0, min(100, round((1 - dist) * 100)))
+        existing = await db.execute(
+            _select(MatchNotification).where(
+                MatchNotification.job_id == job.id,
+                MatchNotification.talent_pool_profile_id == tp_profile_id,
+            )
+        )
+        if existing.scalar_one_or_none() is None and tp_profile_id:
+            db.add(
+                MatchNotification(
+                    job_id=job.id,
+                    talent_pool_profile_id=tp_profile_id,
+                    score=score,
+                    is_new=True,
+                )
+            )
+
+    count = len(strong_matches)
+    top_job = strong_matches[0][0]
+    body = f'Top match: "{top_job.title}"' if top_job.title else None
+
+    repo = NotificationRepository(db)
+    await repo.create(
+        recipient_id=user_id,
+        type="NEW_JOB_MATCHES",
+        title=f"{count} new job{'s' if count != 1 else ''} match your profile",
+        body=body,
+        entity_type="JOB",
+        entity_id=top_job.id,
+    )
+    await db.commit()
+
+
+async def _notify_employer_new_matches(
+    db, employer_id, job_id, job_embedding, job_title: str
+) -> None:
+    """Create a 'new candidate matches' notification for an employer after a job embedding updates.
+
+    Queries the talent pool for the top-N matching candidates and fires one summary notification.
+    Also writes a match_notifications row per strong match so the frontend can highlight new cards.
+    """
+    from sqlalchemy import select as _select
+    from sqlalchemy import text as _text
+
+    from app.modules.ai.enums import CVParsingStatus
+    from app.modules.ai.models import ParsedCVSubmission
+    from app.modules.notifications.models import MatchNotification
+    from app.modules.notifications.repository import NotificationRepository
+    from app.modules.talent_pool.models import TalentPoolProfiles
+
+    if job_embedding is None or len(job_embedding) == 0:
+        return
+
+    await db.execute(_text("SET ivfflat.probes = 10"))
+
+    distance = TalentPoolProfiles.profile_embedding.cosine_distance(job_embedding)
+    stmt = (
+        _select(TalentPoolProfiles, distance.label("distance"))
+        .outerjoin(
+            ParsedCVSubmission,
+            TalentPoolProfiles.parsed_submission_id == ParsedCVSubmission.id,
+        )
+        .where(TalentPoolProfiles.profile_embedding.is_not(None))
+        .where(
+            (TalentPoolProfiles.candidate_profile_id.is_not(None))
+            | (ParsedCVSubmission.parse_status == CVParsingStatus.COMPLETED.value)
+        )
+        .order_by(distance.asc())
+        .limit(20)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    strong_matches = [r for r in rows if r[1] < 0.6]
+    if not strong_matches:
+        return
+
+    # Write a match_notifications row per strong match (skip if already exists)
+    for profile, dist in strong_matches:
+        score = max(0, min(100, round((1 - dist) * 100)))
+        existing = await db.execute(
+            _select(MatchNotification).where(
+                MatchNotification.job_id == job_id,
+                MatchNotification.talent_pool_profile_id == profile.id,
+            )
+        )
+        if existing.scalar_one_or_none() is None:
+            db.add(
+                MatchNotification(
+                    job_id=job_id,
+                    talent_pool_profile_id=profile.id,
+                    score=score,
+                    is_new=True,
+                )
+            )
+
+    count = len(strong_matches)
+    repo = NotificationRepository(db)
+    await repo.create(
+        recipient_id=employer_id,
+        type="NEW_CANDIDATE_MATCHES",
+        title=f"{count} new candidate{'s' if count != 1 else ''} match '{job_title}'",
+        body="Open the AI Recruiter to review them.",
+        entity_type="JOB",
+        entity_id=job_id,
+    )
+    await db.commit()
+
+
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def score_job_against_talent_pool_task(self, job_id: str) -> None:
+    """Queue scoring for all talent pool profiles with embeddings against a newly published job.
+
+    Fires when a job transitions to ACTIVE. Each profile is scored individually
+    via score_talent_pool_profile_task so the all-pairs explosion is avoided —
+    only this specific job is scored, not every job × every candidate.
+    """
+    asyncio.run(_score_job_against_talent_pool_async(job_id))
+
+
+async def _score_job_against_talent_pool_async(job_id_str: str) -> None:
+    from app.modules.jobs.repository import JobRepository as _JobRepo
+    from app.modules.talent_pool.service import get_top_matches_for_job
+
+    job_id = uuid.UUID(job_id_str)
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with SessionLocal() as db:
+        try:
+            job_repo = _JobRepo(db)
+            job = await job_repo.get_by_id(job_id)
+            if job is None or len(job.job_embedding) == 0:
+                logger.info(
+                    "score_job_against_talent_pool: job %s has no embedding, skipping",
+                    job_id,
+                )
+                return
+
+            # Use the same scoring logic as the API — embedding * modulator,
+            # floor filter, top 20. Only these profiles get LLM scoring queued.
+            employer_id = job.employer_id
+            top_matches = await get_top_matches_for_job(db, job, employer_id, limit=20)
+
+            for profile, _, _matched in top_matches:
+                score_talent_pool_profile_task.delay(str(profile.id), job_id_str)
+
+            logger.info(
+                "score_job_against_talent_pool: queued LLM scoring for %d top profiles against job %s",
+                len(top_matches),
+                job_id,
+            )
+        except Exception:
+            logger.exception("score_job_against_talent_pool: failed for job %s", job_id)
             raise
         finally:
             await engine.dispose()

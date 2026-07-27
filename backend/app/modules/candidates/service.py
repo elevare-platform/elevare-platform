@@ -1,6 +1,7 @@
 """Business logic for candidate profiles, CVs, and documents."""
 
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 
@@ -19,12 +20,16 @@ from app.core.file_validation import (
     validate_pdf_upload,
 )
 from app.core.storage import StorageService
-from app.modules.candidates.enums import VisibilityStatus
+from app.modules.candidates.enums import AvailabilityBucket, VisibilityStatus
 from app.modules.candidates.models import CandidateCvs
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.candidates.schema import (
     CandidateCvsResponse,
     CandidateDocumentsResponse,
+    CandidateSearchFilters,
+    CandidateSearchProfile,
+    CandidateSearchResponse,
+    CandidateSearchResultItem,
     CertificationCreateSchema,
     CertificationResponse,
     EducationCreateSchema,
@@ -34,7 +39,28 @@ from app.modules.candidates.schema import (
     WorkExperienceCreateSchema,
     WorkExperienceResponse,
 )
+from app.modules.jobs.enums import SeniorityLevel
 from app.modules.users.enums import UserRole
+from app.modules.users.models import User
+
+# Seniority is not a stored column — it's derived from years_of_experience
+# using the same SeniorityLevel enum jobs already use, so search filters and
+# job postings speak the same vocabulary without a schema migration.
+_SENIORITY_EXPERIENCE_RANGES: dict[SeniorityLevel, tuple[int, int | None]] = {
+    SeniorityLevel.JUNIOR: (0, 2),
+    SeniorityLevel.MID: (2, 5),
+    SeniorityLevel.SENIOR: (5, 9),
+    SeniorityLevel.LEAD: (9, 15),
+    SeniorityLevel.EXECUTIVE: (15, None),
+}
+
+# Availability is likewise derived, from notice_period_days.
+_AVAILABILITY_MAX_NOTICE_DAYS: dict[AvailabilityBucket, int | None] = {
+    AvailabilityBucket.IMMEDIATE: 7,
+    AvailabilityBucket.TWO_WEEKS: 14,
+    AvailabilityBucket.ONE_MONTH: 30,
+    AvailabilityBucket.FLEXIBLE: None,
+}
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +203,309 @@ class CandidateService:
         """Return all candidate profiles (admin use only)."""
         profiles = await self._repo.list_all()
         return [ProfileResponse.model_validate(p) for p in profiles]
+
+    async def search_candidates(
+        self, filters: CandidateSearchFilters, current_user: User
+    ) -> CandidateSearchResponse:
+        """Employer-facing structured search over the talent pool.
+
+        Queries ``TalentPoolProfiles`` — the same table and the same
+        visibility/ownership rule ``talent_pool`` uses for job-to-candidate
+        matching (see ``find_matches_for_job`` /
+        ``TalentPoolRepository.find_candidates_for_search``), entered from a
+        free-text/filter search instead of a job. This covers BOTH
+        self-registered candidates (with a linked CandidateProfile) and
+        employer-sourced CVs (no login, no CandidateProfile row) — searching
+        CandidateProfile alone would have silently excluded every sourced
+        candidate. If ``filters.query`` is set, it's embedded and results are
+        ranked by pgvector cosine distance; otherwise filters/scoring run in
+        Python over resolved display fields, mirroring
+        ``get_top_matches_for_job``'s overfetch-then-filter pattern (skills
+        and current title live in different places for sourced vs
+        self-registered profiles, so there's no single SQL predicate for
+        them). Every result carries a human-readable ``explanation`` so
+        ranking is never a black box.
+        """
+        from app.modules.talent_pool.repository import TalentPoolRepository
+        from app.modules.talent_pool.service import resolve_match_display_fields
+
+        min_experience = filters.min_experience
+        max_experience = filters.max_experience
+        if filters.seniority:
+            # Intersect the requested seniority bands with any explicit
+            # experience range the recruiter also set.
+            band_min = min(
+                _SENIORITY_EXPERIENCE_RANGES[s][0] for s in filters.seniority
+            )
+            band_maxes = [_SENIORITY_EXPERIENCE_RANGES[s][1] for s in filters.seniority]
+            band_max = None if any(m is None for m in band_maxes) else max(band_maxes)
+            min_experience = (
+                band_min if min_experience is None else max(min_experience, band_min)
+            )
+            if band_max is not None:
+                max_experience = (
+                    band_max
+                    if max_experience is None
+                    else min(max_experience, band_max)
+                )
+
+        max_notice_period_days = None
+        if filters.availability:
+            notice_caps = [
+                _AVAILABILITY_MAX_NOTICE_DAYS[a] for a in filters.availability
+            ]
+            if not any(cap is None for cap in notice_caps):
+                max_notice_period_days = max(notice_caps)
+            # If FLEXIBLE is among the requested buckets, no cap is applied —
+            # FLEXIBLE means "any availability is fine".
+
+        query_embedding = None
+        if filters.query:
+            from app.modules.ai.service import get_ai_service
+
+            ai_service = get_ai_service()
+            query_embedding = await ai_service.generate_embedding(filters.query)
+
+        talent_pool_repo = TalentPoolRepository(self._db)
+        # Overfetch — filtering happens in Python after resolving display
+        # fields, same reason get_top_matches_for_job overfetches: a
+        # skill/title match can promote a profile that wasn't in the top-N
+        # by raw embedding distance (or wasn't ranked at all, filter-only).
+        fetch_limit = min(50 * 4, 200)
+        rows = await talent_pool_repo.find_candidates_for_search(
+            employer_id=current_user.id,
+            query_embedding=query_embedding,
+            limit=fetch_limit,
+        )
+
+        results = []
+        for profile, distance in rows:
+            fields = await resolve_match_display_fields(
+                self._db, profile, current_user.id
+            )
+
+            # Current title, for self-registered candidates without a parsed
+            # CV: fall back to their most recent work experience entry.
+            current_title = fields["current_title"]
+            if not current_title and profile.candidate_profile:
+                current = next(
+                    (
+                        we
+                        for we in (profile.candidate_profile.work_experiences or [])
+                        if we.is_current
+                    ),
+                    None,
+                )
+                if current:
+                    current_title = current.job_title
+
+            notice_period_days = (
+                profile.candidate_profile.notice_period_days
+                if profile.candidate_profile
+                else None
+            )
+
+            if profile.candidate_profile_id:
+                ownership = "self_registered"
+            elif profile.added_by == current_user.id:
+                ownership = "own_sourced"
+            else:
+                ownership = "admin_sourced"
+
+            # self_registered's CV/profile access is governed by the
+            # candidate's own visibility setting (CandidateProfilePanel's
+            # endpoint already enforces this); own_sourced already has full
+            # access to their own upload. Only admin_sourced needs a real
+            # check — an employer only has access once a candidate has
+            # accepted an introduction to them, from any job.
+            if ownership == "admin_sourced":
+                has_cv_access = await self._has_accepted_introduction(
+                    employer_id=current_user.id, talent_pool_profile_id=profile.id
+                )
+            else:
+                has_cv_access = True
+
+            result = self._to_search_result(
+                profile=profile,
+                distance=distance,
+                fields=fields,
+                current_title=current_title,
+                notice_period_days=notice_period_days,
+                ownership=ownership,
+                has_cv_access=has_cv_access,
+                filters=filters,
+                min_experience=min_experience,
+                max_experience=max_experience,
+                max_notice_period_days=max_notice_period_days,
+            )
+            if result is not None:
+                results.append(result)
+
+        results.sort(key=lambda r: r.match_score, reverse=True)
+        results = results[:50]
+
+        return CandidateSearchResponse(
+            results=results, total=len(results), filters_applied=filters
+        )
+
+    async def _has_accepted_introduction(
+        self, *, employer_id: uuid.UUID, talent_pool_profile_id: uuid.UUID
+    ) -> bool:
+        """Has this candidate ever accepted an introduction to this employer, from any job."""
+        from sqlalchemy import select
+
+        from app.modules.introductions.enums import IntroductionStatus
+        from app.modules.introductions.models import IntroductionRequest
+
+        result = await self._db.execute(
+            select(IntroductionRequest.id)
+            .where(
+                IntroductionRequest.employer_id == employer_id,
+                IntroductionRequest.talent_pool_profile_id == talent_pool_profile_id,
+                IntroductionRequest.status == IntroductionStatus.ACCEPTED.value,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    def _to_search_result(
+        *,
+        profile,
+        distance: float | None,
+        fields: dict,
+        current_title: str | None,
+        notice_period_days: int | None,
+        ownership: str,
+        has_cv_access: bool,
+        filters: CandidateSearchFilters,
+        min_experience: int | None,
+        max_experience: int | None,
+        max_notice_period_days: int | None,
+    ) -> CandidateSearchResultItem | None:
+        """Apply remaining (non-SQL) filters and build one ranked, explainable result.
+
+        Returns ``None`` if the profile doesn't actually satisfy the
+        filters — skills/experience/location/availability are checked here
+        rather than in SQL because sourced profiles resolve them from
+        parsed-CV JSON, not columns (see ``resolve_match_display_fields``).
+        """
+        explanation: list[str] = []
+        matched_skills: list[str] = []
+
+        years = fields["years_of_experience"]
+        if min_experience is not None and (years is None or years < min_experience):
+            return None
+        if max_experience is not None and (years is None or years > max_experience):
+            return None
+
+        if filters.location:
+            if (
+                not fields["location"]
+                or filters.location.lower() not in fields["location"].lower()
+            ):
+                return None
+
+        if max_notice_period_days is not None:
+            # Unknown notice period can't satisfy a specific availability ask.
+            if (
+                notice_period_days is None
+                or notice_period_days > max_notice_period_days
+            ):
+                return None
+
+        semantic_score = None
+        if distance is not None:
+            semantic_score = max(0.0, (1 - distance) * 100)
+            explanation.append(
+                f"Semantic match to your search query ({semantic_score:.0f}% similarity)"
+            )
+
+        skill_score = None
+        if filters.skills:
+            profile_skills = {s.lower() for s in (fields["skills"] or [])}
+            requested = {s.lower() for s in filters.skills}
+            matched = profile_skills & requested
+            matched_skills = [
+                s for s in (fields["skills"] or []) if s.lower() in matched
+            ]
+            skill_score = (len(matched) / len(requested)) * 100 if requested else 0.0
+            if matched:
+                explanation.append(
+                    f"Matches {len(matched)} of {len(requested)} requested skills: "
+                    + ", ".join(matched_skills)
+                )
+            else:
+                return None  # skills were requested and none matched — not a result
+
+        title_score = None
+        if filters.job_title:
+            # Token-based, ILIKE-style partial match rather than a whole-phrase
+            # substring: with the talent pool still small, requiring the full
+            # query ("python developer") to appear verbatim in a title would
+            # miss "Python Engineer" or "Senior Python Developer" entirely.
+            # Matching on any token instead trades some precision for recall,
+            # which is the right side to err on until there's enough volume
+            # for exact-phrase matching to reliably return anything.
+            haystack = f"{current_title or ''} {fields.get('profession') or ''}".lower()
+            query_tokens = {
+                t for t in re.split(r"[^a-z0-9]+", filters.job_title.lower()) if t
+            }
+            matched_tokens = {t for t in query_tokens if t in haystack}
+            if matched_tokens:
+                title_score = (
+                    (len(matched_tokens) / len(query_tokens)) * 100
+                    if query_tokens
+                    else 0.0
+                )
+                explanation.append(
+                    f"Title ({current_title or fields.get('profession') or 'unknown'}) "
+                    f"matches \"{'/'.join(sorted(matched_tokens))}\" from your job title search"
+                )
+            else:
+                return None  # job title requested and no token matched — not a result
+
+        if min_experience is not None or max_experience is not None:
+            explanation.append(
+                f"{years if years is not None else 'Unknown'} years of experience"
+            )
+
+        if filters.location and fields["location"]:
+            explanation.append(f"Located in {fields['location']}")
+
+        if filters.availability:
+            explanation.append(
+                f"Notice period: {notice_period_days} days"
+                if notice_period_days is not None
+                else "Notice period not specified"
+            )
+
+        # Blend whatever scoring signals are available; fall back to a flat
+        # baseline so filter-only searches (no skills/query/title) still
+        # rank results instead of returning an arbitrary DB order.
+        signals = [
+            s for s in (semantic_score, skill_score, title_score) if s is not None
+        ]
+        match_score = sum(signals) / len(signals) if signals else 60.0
+
+        return CandidateSearchResultItem(
+            profile=CandidateSearchProfile(
+                id=profile.id,
+                candidate_profile_id=profile.candidate_profile_id,
+                ownership=ownership,
+                has_cv_access=has_cv_access,
+                candidate_name=fields["name"],
+                current_title=current_title,
+                profession=fields.get("profession"),
+                years_of_experience=years,
+                notice_period_days=notice_period_days,
+                location=fields["location"],
+                skills=fields["skills"] or [],
+            ),
+            match_score=round(match_score, 1),
+            matched_skills=matched_skills,
+            explanation=explanation,
+        )
 
     async def get_profile_views(
         self, user_id: uuid.UUID, cursor: str | None = None, limit: int = 20

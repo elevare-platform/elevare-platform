@@ -47,7 +47,7 @@ const COMPANY_SIZES = [
 // ─── OnboardingPage ───────────────────────────────────────────────────────────
 
 /**
- * Employer company profile onboarding — /employer/onboarding
+ * Employer company profile onboarding-  /employer/onboarding
  * Shown after employer registration when is_profile_complete is false.
  * Calls PATCH /api/v1/employer/profile (backend endpoint to be added).
  */

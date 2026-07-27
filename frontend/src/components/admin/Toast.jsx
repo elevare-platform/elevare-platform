@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { CheckCircle, XCircle, X } from 'lucide-react'
 
 export function Toast({ message, type = 'success', onDone }) {
@@ -31,20 +31,35 @@ export function Toast({ message, type = 'success', onDone }) {
 export function useToast() {
   const [toasts, setToasts] = useState([])
 
-  const show = (message, type = 'success') => {
+  const show = useCallback((message, type = 'success') => {
     const id = Date.now()
     setToasts((prev) => [...prev, { id, message, type }])
-  }
+  }, [])
 
-  const remove = (id) => setToasts((prev) => prev.filter((t) => t.id !== id))
+  const remove = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
 
-  const ToastContainer = () => (
-    <>
-      {toasts.map((t) => (
-        <Toast key={t.id} message={t.message} type={t.type} onDone={() => remove(t.id)} />
-      ))}
-    </>
+  // `ToastContainer` is defined at module scope (not inside the hook) and
+  // wired via a stable useCallback below — a function *component* redefined
+  // inside a hook/render body gets a new identity every call, which makes
+  // React treat it as a different component type and remount it (and every
+  // Toast inside it, losing their dismiss timers) on every single re-render
+  // of whatever called useToast().
+  const ToastContainer = useCallback(
+    () => <ToastList toasts={toasts} onRemove={remove} />,
+    [toasts, remove]
   )
 
   return { show, ToastContainer }
+}
+
+function ToastList({ toasts, onRemove }) {
+  return (
+    <>
+      {toasts.map((t) => (
+        <Toast key={t.id} message={t.message} type={t.type} onDone={() => onRemove(t.id)} />
+      ))}
+    </>
+  )
 }

@@ -147,7 +147,7 @@ export default function WorkforceToolsPage() {
                 >
                   {/* Coming Soon absolute badge */}
                   <span className="absolute top-4 right-4 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-amber-dark/10 text-brand-amber-dark text-[10px] font-bold uppercase tracking-wider">
-                    {tool.badge} — Coming Soon
+                    {tool.badge}-  Coming Soon
                   </span>
 
                   <div>

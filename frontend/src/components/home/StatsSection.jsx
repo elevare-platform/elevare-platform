@@ -113,7 +113,7 @@ function StatCard({ stat, isActive }) {
 // ─── StatsSection ─────────────────────────────────────────────────────────────
 
 export default function StatsSection() {
-  // Requirements 5.4 — single observer on the section wrapper, triggerOnce: true
+  // Requirements 5.4-  single observer on the section wrapper, triggerOnce: true
   const [sectionRef, isVisible] = useIntersectionObserver({ threshold: 0.2, triggerOnce: true })
 
   return (

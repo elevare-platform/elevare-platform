@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from app.modules.ingestion.models import MailIntegration
     from app.modules.introductions.models import IntroductionRequest
     from app.modules.jobs.models import Job, JobAccessTokens
+    from app.modules.notifications.models import Notification
     from app.modules.talent_pool.models import TalentPoolProfiles
 
 
@@ -153,6 +154,11 @@ class User(BaseModel):
         back_populates="employer",
         uselist=False,
     )
+    notifications: Mapped[list[Notification]] = relationship(
+        "Notification",
+        back_populates="recipient",
+        foreign_keys="Notification.recipient_id",
+    )
 
 
 class UserProfile(BaseModel):
@@ -213,21 +219,15 @@ class EmployerProfile(BaseModel):
         String(20),
         nullable=True,
         default=KYCStatus.NOT_SUBMITTED.value,
-        server_default=KYCStatus.NOT_SUBMITTED.value
+        server_default=KYCStatus.NOT_SUBMITTED.value,
     )
-    kyc_rejection_reason: Mapped[str] = mapped_column(
-        Text,
-        nullable=True
-    )
+    kyc_rejection_reason: Mapped[str] = mapped_column(Text, nullable=True)
     kyc_submitted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
+        DateTime(timezone=True), nullable=True
     )
     kyc_reviewed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
+        DateTime(timezone=True), nullable=True
     )
-
 
     # relationships
     user: Mapped[User] = relationship(
@@ -238,4 +238,3 @@ class EmployerProfile(BaseModel):
         "KYCDocument",
         back_populates="employer_profile",
     )
-

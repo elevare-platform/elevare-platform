@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 
 // A simple styled input. Spreads all native input props through.
-// The `ref` forwarding is important — React Hook Form needs direct DOM access.
+// The `ref` forwarding is important - React Hook Form needs direct DOM access.
 import { forwardRef } from 'react'
 
 export const Input = forwardRef(({ className, type = 'text', ...props }, ref) => {

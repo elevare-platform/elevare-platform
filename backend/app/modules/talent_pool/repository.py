@@ -66,6 +66,24 @@ class TalentPoolRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_candidate_profile_id(
+        self,
+        candidate_profile_id: uuid.UUID,
+    ) -> TalentPoolProfiles | None:
+        """Fetch the (unique) talent pool profile linked to a self-registered candidate.
+
+        Every self-registered candidate gets exactly one row here at
+        registration — this is the bridge from a `candidate_profile_id`
+        (e.g. on an Application) to the id everything else in the talent
+        pool / introductions / saved-candidates system actually keys on.
+        """
+        result = await self._db.execute(
+            select(TalentPoolProfiles).where(
+                TalentPoolProfiles.candidate_profile_id == candidate_profile_id
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_id_joined_with_other_data(
         self,
         profile_id: uuid.UUID,
@@ -266,3 +284,98 @@ class TalentPoolRepository:
 
         result = await self._db.execute(stmt)
         return [(row[0], row[1]) for row in result.all()]
+
+    async def find_candidates_for_search(
+        self,
+        employer_id: uuid.UUID,
+        query_embedding: list[float] | None = None,
+        limit: int = 50,
+    ) -> list[tuple[TalentPoolProfiles, float | None]]:
+        """Return talent pool profiles for employer-facing candidate search.
+
+        This is the same table and the same visibility/ownership rule as
+        ``find_matches_for_job`` — covers both self-registered candidates and
+        employer-sourced CVs — just entered from a free-text/filter search
+        instead of a specific job. Unlike job matching, ``query_embedding``
+        is optional: with no free-text query there's nothing to rank by
+        distance, so results come back in recency order instead and the
+        caller applies filters/scoring in Python (mirroring
+        ``get_top_matches_for_job``'s overfetch-then-filter approach).
+        """
+        from sqlalchemy.orm import selectinload
+
+        from app.modules.ai.enums import CVParsingStatus
+        from app.modules.ai.models import ParsedCVSubmission
+        from app.modules.candidates.models import CandidateProfile
+        from app.modules.users.models import User as UserModel
+
+        distance = None
+        select_cols = [TalentPoolProfiles]
+        if query_embedding is not None:
+            await self._db.execute(text("SET ivfflat.probes = 10"))
+            distance = TalentPoolProfiles.profile_embedding.cosine_distance(
+                query_embedding
+            )
+            select_cols.append(distance.label("distance"))
+
+        admin_subq = (
+            select(UserModel.id)
+            .where(UserModel.id == TalentPoolProfiles.added_by)
+            .where(UserModel.role == UserRole.ADMIN.value)
+            .correlate(TalentPoolProfiles)
+            .exists()
+        )
+
+        stmt = (
+            select(*select_cols)
+            .outerjoin(
+                CandidateProfile,
+                TalentPoolProfiles.candidate_profile_id == CandidateProfile.id,
+            )
+            .outerjoin(
+                ParsedCVSubmission,
+                TalentPoolProfiles.parsed_submission_id == ParsedCVSubmission.id,
+            )
+            # Same visibility + ownership rule as find_matches_for_job:
+            # - Self-registered: require cv_sharing_consent
+            # - Sourced: only added-by-this-employer or an admin, and parsed cleanly
+            .where(
+                sa.or_(
+                    sa.and_(
+                        TalentPoolProfiles.candidate_profile_id.is_not(None),
+                        CandidateProfile.cv_sharing_consent.is_(True),
+                    ),
+                    sa.and_(
+                        TalentPoolProfiles.candidate_profile_id.is_(None),
+                        sa.or_(
+                            TalentPoolProfiles.added_by == employer_id,
+                            admin_subq,
+                        ),
+                        ParsedCVSubmission.parse_status
+                        == CVParsingStatus.COMPLETED.value,
+                    ),
+                )
+            )
+            .options(
+                selectinload(TalentPoolProfiles.parsed_submission),
+                selectinload(TalentPoolProfiles.candidate_profile).selectinload(
+                    CandidateProfile.user
+                ),
+                selectinload(TalentPoolProfiles.candidate_profile).selectinload(
+                    CandidateProfile.work_experiences
+                ),
+            )
+        )
+
+        if query_embedding is not None:
+            stmt = stmt.where(TalentPoolProfiles.profile_embedding.is_not(None))
+            stmt = stmt.order_by(distance.asc())
+        else:
+            stmt = stmt.order_by(TalentPoolProfiles.created_at.desc())
+
+        stmt = stmt.limit(limit)
+        result = await self._db.execute(stmt)
+
+        if query_embedding is not None:
+            return [(row[0], row[1]) for row in result.all()]
+        return [(row, None) for row in result.scalars().all()]

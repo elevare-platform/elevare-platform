@@ -75,7 +75,7 @@ function ArticleCard({ article }) {
         e.currentTarget.style.transform = 'translateY(0)'
       }}
     >
-      {/* Category tag — Requirements 10.1 */}
+      {/* Category tag - Requirements 10.1 */}
       <span
         style={{
           display: 'inline-block',
@@ -93,7 +93,7 @@ function ArticleCard({ article }) {
         {article.category}
       </span>
 
-      {/* Title — Requirements 10.1 */}
+      {/* Title - Requirements 10.1 */}
       <h3
         style={{
           margin: 0,
@@ -107,7 +107,7 @@ function ArticleCard({ article }) {
         {article.title}
       </h3>
 
-      {/* Publication date — Requirements 10.1 */}
+      {/* Publication date - Requirements 10.1 */}
       <time
         dateTime={article.date}
         style={{
@@ -119,7 +119,7 @@ function ArticleCard({ article }) {
         {formatDate(article.date)}
       </time>
 
-      {/* Read More link — Requirements 10.2 */}
+      {/* Read More link - Requirements 10.2 */}
       <a
         href={article.href}
         aria-label={`Read more about: ${article.title}`}
@@ -194,7 +194,7 @@ export default function InsightsStrip() {
           </p>
         </div>
 
-        {/* Articles grid — Requirements 10.3 (mobile: 1 col), 10.4 (desktop: 3 col) */}
+        {/* Articles grid - Requirements 10.3 (mobile: 1 col), 10.4 (desktop: 3 col) */}
         <div className="insights-grid">
           {ARTICLES.map((article) => (
             <ArticleCard key={article.id} article={article} />

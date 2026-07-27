@@ -59,7 +59,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left — brand panel */}
+      {/* Left - brand panel */}
       <div className="hidden lg:flex lg:w-1/2 bg-brand-blue flex-col justify-between p-12 relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full border border-white/10" />
@@ -69,7 +69,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10">
-        <img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" />
+          <Link to="/"><img src={ehsLogo} alt="Elevare Human Solutions" width={116} height={40} className="h-10 w-auto brightness-0 invert" /></Link>
         </div>
 
         <div className="relative z-10 space-y-6">
@@ -77,7 +77,7 @@ export default function LoginPage() {
             Welcome back.<br />Let's get to work.
           </h1>
           <p className="text-white/70 text-lg leading-relaxed">
-            Your next hire — or your next role — is waiting on the other side.
+            Your next hire - or your next role - is waiting on the other side.
           </p>
         </div>
 
@@ -86,11 +86,11 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* Right — form panel */}
+      {/* Right - form panel */}
       <div className="flex-1 flex items-center justify-center p-6 bg-surface-muted">
         <div className="w-full max-w-md space-y-8">
           <div className="flex items-center gap-3 lg:hidden">
-            <img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" />
+            <Link to="/"><img src={ehsLogo} alt="Elevare Human Solutions" width={104} height={36} className="h-9 w-auto" /></Link>
           </div>
 
           <div className="space-y-2">

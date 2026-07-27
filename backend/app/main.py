@@ -47,16 +47,20 @@ from app.modules.ai.cv_parsing_router import router as cv_parsing_router
 from app.modules.ai.router import router as ai_router
 from app.modules.applications.router import router as app_router
 from app.modules.auth.router import router as auth_router
+from app.modules.candidates.matches_router import router as candidate_matches_router
 from app.modules.candidates.router import router as candidates_router
 from app.modules.contact.router import router as contact_router
 from app.modules.credits.router import router as credits_router
 from app.modules.employer.router import router as employer_router
 from app.modules.ingestion.router import router as ingestion_router
+from app.modules.interview_list.router import router as interview_list_router
 from app.modules.introductions.router import admin_router as intro_admin_router
 from app.modules.introductions.router import mine_router as intro_mine_router
 from app.modules.introductions.router import public_router as intro_public_router
 from app.modules.jobs.access_token_router import router as access_token_router
 from app.modules.jobs.router import router as jobs_router
+from app.modules.notifications.router import router as notifications_router
+from app.modules.saved_candidates.router import router as saved_candidates_router
 from app.modules.sitemaps.router import router as sitemap_router
 from app.modules.talent_pool.router import router as talent_pool_router
 from app.modules.testimonials.router import router as testimonials_router
@@ -190,3 +194,19 @@ app.include_router(
     intro_mine_router, prefix="/api/v1/introductions", tags=["introductions"]
 )
 app.include_router(intro_admin_router, prefix="/api/v1/admin", tags=["introductions"])
+app.include_router(
+    notifications_router, prefix="/api/v1/notifications", tags=["notifications"]
+)
+app.include_router(
+    saved_candidates_router,
+    prefix="/api/v1/saved-candidates",
+    tags=["saved-candidates"],
+)
+app.include_router(
+    interview_list_router,
+    prefix="/api/v1/interview-list",
+    tags=["interview-list"],
+)
+app.include_router(
+    candidate_matches_router, prefix="/api/v1/candidates", tags=["candidates"]
+)

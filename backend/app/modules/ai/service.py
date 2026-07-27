@@ -322,10 +322,7 @@ class AnthropicCVExtractionService(AIService):
                 field_confidence=data.get("field_confidence", {}),
             )
         except (KeyError, TypeError, Exception) as e:
-            logger.error(
-                "LLM CV extraction failed",
-                extra={"error": str(e), "raw": raw[:500]},
-            )
+            logger.error("LLM CV extraction failed: %s", e, extra={"raw": raw[:500]})
             return LLMExtractionResult()
 
     @staticmethod

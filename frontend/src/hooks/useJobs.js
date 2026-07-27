@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import api from '@/lib/api'
 
 /**
- * useJobs — cursor-paginated job fetching hook.
+ * useJobs - cursor-paginated job fetching hook.
  *
  * Separates initial-fetch loading from load-more loading so the existing
  * job list is never replaced with skeletons when appending a new page.
@@ -12,10 +12,10 @@ import api from '@/lib/api'
  * @param {Object} [options.params={}]
  * @returns {{
  *   jobs: Array,
- *   loading: boolean,       — true only during the initial/reset fetch
- *   loadingMore: boolean,   — true only while appending the next page
- *   error: string|null,     — initial fetch error
- *   loadMoreError: string|null, — load-more error (preserved after append fails)
+ *   loading: boolean,      - true only during the initial/reset fetch
+ *   loadingMore: boolean,  - true only while appending the next page
+ *   error: string|null,    - initial fetch error
+ *   loadMoreError: string|null,-  load-more error (preserved after append fails)
  *   hasMore: boolean,
  *   loadMore: () => void,
  * }}
@@ -88,7 +88,7 @@ export function useJobs({ endpoint = '/api/v1/jobs', params = {} } = {}) {
       cursorRef.current = data.next_cursor ?? null
       setHasMore(typeof data.next_cursor === 'string' && data.next_cursor.length > 0)
     } catch (err) {
-      // Preserve existing jobs on error — Property 10
+      // Preserve existing jobs on error - Property 10
       setLoadMoreError(err?.response?.data?.detail ?? err.message ?? 'Failed to load more jobs')
     } finally {
       setLoadingMore(false)

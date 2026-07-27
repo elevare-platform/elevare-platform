@@ -311,6 +311,7 @@ class AdminService:
             await email_service.send_kyc_approved(employer_email, company_name)
 
         return AdminKYCEmployerResponse.from_profile(profile)
+
     # -----------------------------------------------------------------------
     # Applications
     # -----------------------------------------------------------------------

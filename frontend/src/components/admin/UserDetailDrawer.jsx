@@ -96,7 +96,7 @@ export default function UserDetailDrawer({ userId, onClose, onStatusChange }) {
             {user.employer_profile && (
               <div className="rounded-xl border border-border p-4 space-y-2">
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Company</p>
-                <p className="font-medium text-text">{user.employer_profile.company_name ?? '—'}</p>
+                <p className="font-medium text-text">{user.employer_profile.company_name ?? ' - '}</p>
                 <div className="flex gap-3 text-xs text-text-muted">
                   {user.employer_profile.industry && <span>{user.employer_profile.industry}</span>}
                   {user.employer_profile.company_size && <span>{user.employer_profile.company_size} employees</span>}
@@ -121,7 +121,7 @@ export default function UserDetailDrawer({ userId, onClose, onStatusChange }) {
               </div>
             )}
 
-            {/* Status control — not shown for admins */}
+            {/* Status control - not shown for admins */}
             {user.role !== 'ADMIN' && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Change Status</p>

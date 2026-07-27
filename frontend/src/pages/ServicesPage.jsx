@@ -77,7 +77,7 @@ const SERVICES_DATA = [
     category: 'advisory',
     icon: ShieldCheck,
     name: 'HR Operations & Compliance',
-    description: 'Mitigating legal risks and auditing operations to ensure strict adherence to local labor laws.',
+    description: 'Mitigating legal risks and auditing operations for strict adherence to local labour laws.',
     features: ['Labor law audits', 'Disciplinary process management', 'Regulatory filings & reporting'],
   },
   {
@@ -127,7 +127,7 @@ const SERVICES_DATA = [
     category: 'technology',
     icon: Clock,
     name: 'Attendance & Leave Management',
-    description: 'Seamless digital tracking systems for leave scheduling, absenteeism logs, and shift coordination.',
+    description: 'Digital tracking systems for leave scheduling, absenteeism logs, and shift coordination.',
     features: ['Geo-fenced attendance check-ins', 'Leave accrual calculations', 'Automated workflow approvals'],
   },
 
@@ -153,7 +153,7 @@ const SERVICES_DATA = [
     category: 'operations',
     icon: GraduationCap,
     name: 'Corporate Training Programs',
-    description: 'Bespoke upskilling and professional development programs that elevate team capabilities.',
+    description: 'Bespoke upskilling and professional development programs that strengthen team capabilities.',
     features: ['Soft skills coaching', 'Leadership incubator courses', 'Role-specific competency classes'],
   },
   {
@@ -161,7 +161,7 @@ const SERVICES_DATA = [
     category: 'operations',
     icon: BarChart3,
     name: 'Workforce Analytics & Reporting',
-    description: 'Leveraging data models to provide business leaders with actionable talent insights and workforce trends.',
+    description: 'Using data models to give business leaders actionable talent insights and workforce trends.',
     features: ['Attrition root-cause metrics', 'Cost-to-hire calculation logs', 'Demographics & staffing plans'],
   },
 ]
@@ -174,7 +174,7 @@ const FAQS = [
   },
   {
     question: 'Can you integrate your workforce automation systems with our existing ERP tools?',
-    answer: 'Yes. Our workforce automation systems are fully compatible with industry-leading ERPs, accounting tools, and database suites. We handle the custom configurations and API setups for a completely seamless data flow.',
+    answer: 'Yes. Our workforce automation systems are fully compatible with industry-leading ERPs, accounting tools, and database suites. We handle the custom configurations and API setups for smooth, reliable data flow.',
   },
   {
     question: 'What is the standard onboarding time for staff outsourcing services?',
@@ -182,7 +182,7 @@ const FAQS = [
   },
   {
     question: 'How do you ensure payroll compliance with Nigerian tax and pension laws?',
-    answer: 'Our dedicated payroll compliance team monitors regulatory updates closely. We automate PAYE, pension scheme calculations, NSITF, ITF, and NHF statutory deductions to ensure 100% compliance with zero penalties.',
+    answer: 'Our dedicated payroll compliance team monitors regulatory updates closely. We automate PAYE, pension scheme calculations, NSITF, ITF, and NHF statutory deductions for 100% compliance with zero penalties.',
   },
 ]
 
@@ -225,7 +225,7 @@ export default function ServicesPage() {
                 Workforce Transformation &amp; Consulting Services
               </h1>
               <p className="text-lg lg:text-xl text-blue-100/90 leading-relaxed max-w-2xl">
-                Elevating talent strategy, automating administrative pipelines, and designing robust organizational frameworks that scale.
+                Building talent strategy, automating administrative pipelines, and designing strong organisational frameworks that scale.
               </p>
 
               {/* Trusted Stats banner */}
@@ -336,7 +336,7 @@ export default function ServicesPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
               <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-2">Our Execution Roadmap</p>
-              <h2 className="text-3xl font-extrabold text-text tracking-tight">Structured Strategy, Seamless Delivery</h2>
+              <h2 className="text-3xl font-extrabold text-text tracking-tight">Structured Strategy, Reliable Delivery</h2>
               <p className="text-text-muted text-sm max-w-lg mx-auto mt-2">
                 We believe in rigorous diagnostics, careful system deployment, and sustained tracking to scale organizations.
               </p>

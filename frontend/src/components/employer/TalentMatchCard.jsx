@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   MapPin, Briefcase, Sparkles, User, Bookmark, BookmarkCheck,
   Send, Coins, Loader2, Clock, CheckCircle2, XCircle, Eye, FileText, Bell,
@@ -7,6 +8,8 @@ import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
+import SaveHeartButton from '@/components/employer/SaveHeartButton'
+import InterviewListButton from '@/components/employer/InterviewListButton'
 
 function scoreTier(score) {
   if (score == null) return 'grey'
@@ -22,8 +25,8 @@ const SCORE_STYLES = {
 }
 
 // 'pending' gets a static badge. 'accepted' gets its own button (view
-// profile / download CV) below, not a badge — see the render logic.
-// declined/expired deliberately excluded — the credit was refunded, so the
+// profile / download CV) below, not a badge - see the render logic.
+// declined/expired deliberately excluded - the credit was refunded, so the
 // employer can freely send a fresh request for either of those.
 const INTRO_BADGES = {
   pending: { icon: Clock, label: 'Introduction pending', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -34,7 +37,7 @@ const PAST_ATTEMPT_LABEL = {
   expired: { icon: Clock, label: 'Previous request expired' },
 }
 
-export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpent, onError }) {
+export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpent, onError, savedCandidates, interviewList }) {
   const tier = scoreTier(match.similarity_score)
   const styles = SCORE_STYLES[tier]
   const displayName = match.candidate_name ?? 'Private profile'
@@ -47,9 +50,9 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
   const [showCvModal, setShowCvModal] = useState(false)
   const [notifyState, setNotifyState] = useState('idle') // idle | sending | sent
 
-  // 'own_sourced' — an employer's own imported candidate. They already have
+  // 'own_sourced'-  an employer's own imported candidate. They already have
   // full access to this profile (Talent Pipeline), so no credit/consent
-  // flow is needed — just a free, one-way heads-up that this job might fit.
+  // flow is needed - just a free, one-way heads-up that this job might fit.
   // Falls back to the existing Request Introduction flow if `ownership` is
   // absent (older API responses, before this field shipped).
   const isOwnSourced = match.ownership === 'own_sourced'
@@ -70,7 +73,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
     return () => { cancelled = true }
   }, [jobId, match.profile_id, isOwnSourced])
 
-  // Same idea for own_sourced — restore the 'Notified' state on reload
+  // Same idea for own_sourced - restore the 'Notified' state on reload
   // instead of always showing 'Notify for this role'.
   useEffect(() => {
     if (!isOwnSourced) return
@@ -120,7 +123,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       const code = err?.response?.data?.code
       const msg = err?.response?.data?.message ?? ''
       if (code === 'VALIDATION_FAILED' && msg.toLowerCase().includes('already pending')) {
-        // Already requested (e.g. duplicate click / stale UI) — reflect the real state
+        // Already requested (e.g. duplicate click / stale UI) - reflect the real state
         setIntroState('pending')
       } else {
         setIntroState('idle')
@@ -131,7 +134,13 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
 
   return (
     <div className="group relative rounded-2xl border border-border bg-white p-5 overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5">
-      {/* Soft gradient accent — stronger for higher-similarity matches */}
+      {/* New match badge */}
+      {match.is_new && (
+        <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue text-white text-[10px] font-bold z-10">
+          <Sparkles size={9} /> New
+        </span>
+      )}
+      {/* Soft gradient accent - stronger for higher-similarity matches */}
       <div
         className={cn(
           'pointer-events-none absolute -top-12 -right-12 w-36 h-36 rounded-full bg-gradient-to-br to-transparent blur-2xl opacity-70 transition-opacity group-hover:opacity-100',
@@ -168,6 +177,19 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
           </div>
         </div>
 
+        {savedCandidates && (
+          <SaveHeartButton
+            saved={savedCandidates.isSaved({
+              talentPoolProfileId: match.profile_id,
+              candidateProfileId: match.candidate_profile_id,
+            })}
+            onToggle={() => savedCandidates.toggle({
+              talentPoolProfileId: match.profile_id,
+              candidateProfileId: match.candidate_profile_id,
+            })}
+          />
+        )}
+
         <div
           className={cn(
             'flex items-center justify-center w-14 h-14 rounded-full border-2 flex-shrink-0 bg-white',
@@ -181,9 +203,19 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
         </div>
       </div>
 
-      {match.top_skills?.length > 0 && (
+      {/* Skills - matched (green) first, then remaining top skills */}
+      {(match.matched_skills?.length > 0 || match.top_skills?.length > 0) && (
         <div className="relative flex flex-wrap gap-1.5 mt-4">
-          {match.top_skills.map((skill) => (
+          {match.matched_skills?.map((skill) => (
+            <span
+              key={skill}
+              className="px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-[11px] font-medium border border-green-200"
+              title="Matches job requirement"
+            >
+              {skill}
+            </span>
+          ))}
+          {match.top_skills?.map((skill) => (
             <span
               key={skill}
               className="px-2.5 py-1 rounded-full bg-surface-muted text-text text-[11px] font-medium border border-border"
@@ -194,11 +226,11 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
         </div>
       )}
 
-      {tier === 'green' && (
-        <div className="relative flex items-center gap-1 mt-3 text-[11px] font-semibold text-green-600">
-          <Sparkles size={11} />
-          Strong match
-        </div>
+      {/* AI fit summary - shown once LLM scoring has run */}
+      {match.ai_fit_summary && (
+        <p className="relative mt-3 text-[11px] text-text-muted leading-relaxed italic border-l-2 border-brand-blue/30 pl-2">
+          {match.ai_fit_summary}
+        </p>
       )}
 
       {/* Actions */}
@@ -224,7 +256,20 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
           {shortlistState === 'done' ? 'Shortlisted' : 'Shortlist'}
         </button>
 
-        {showShortlistConfirm && (
+        {interviewList && (
+          <InterviewListButton
+            onList={interviewList.isOnList({
+              talentPoolProfileId: match.profile_id,
+              candidateProfileId: match.candidate_profile_id,
+            })}
+            onToggle={() => interviewList.toggle({
+              talentPoolProfileId: match.profile_id,
+              candidateProfileId: match.candidate_profile_id,
+            })}
+          />
+        )}
+
+        {showShortlistConfirm && createPortal(
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             onClick={() => setShowShortlistConfirm(false)}
@@ -263,7 +308,8 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {isOwnSourced ? (
@@ -316,7 +362,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
               <Coins size={13} />
               Request Introduction
             </button>
-            {showNoCreditsModal && (
+            {showNoCreditsModal && createPortal(
               <div
                 className="fixed inset-0 z-50 flex items-center justify-center p-4"
                 onClick={() => setShowNoCreditsModal(false)}
@@ -358,7 +404,8 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
                     </a>
                   </div>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </>
         ) : (
@@ -386,7 +433,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       {isOwnSourced && notifyState === 'sent' && (
         <p className="relative text-[11px] text-text-muted mt-2 flex items-center gap-1">
           <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
-          They've been let know about this role — you already have their full profile in your Talent Pipeline.
+          They've been let know about this role - you already have their full profile in your Talent Pipeline.
         </p>
       )}
 
@@ -400,7 +447,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       {PAST_ATTEMPT_LABEL[introState] && (
         <p className="relative text-[11px] text-text-muted mt-2 flex items-center gap-1">
           {(() => { const Icon = PAST_ATTEMPT_LABEL[introState].icon; return <Icon size={11} className="flex-shrink-0" /> })()}
-          {PAST_ATTEMPT_LABEL[introState].label} — the credit was refunded, you can request again.
+          {PAST_ATTEMPT_LABEL[introState].label}-  the credit was refunded, you can request again.
         </p>
       )}
 
@@ -415,6 +462,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       {showCvModal && (
         <SourcedCvModal
           profileId={match.profile_id}
+          jobId={jobId}
           onClose={() => setShowCvModal(false)}
         />
       )}

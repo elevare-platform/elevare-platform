@@ -37,6 +37,7 @@ from .enums import (
 if TYPE_CHECKING:
     from app.modules.applications.models import Application
     from app.modules.introductions.models import IntroductionRequest
+    from app.modules.notifications.models import MatchNotification
     from app.modules.talent_pool.models import TalentPoolProfiles
     from app.modules.users.models import User
 
@@ -76,6 +77,14 @@ class Job(BaseModel):
     )
     status: Mapped[JobStatus] = mapped_column(
         String(20), default=JobStatus.DRAFT, nullable=False
+    )
+    # A standing, hidden placeholder job auto-created per employer so
+    # Candidate Search can anchor an introduction request even when the
+    # employer has posted no real jobs yet. Never published, never shown in
+    # "Manage Jobs" or dashboard counts — see JobRepository.list_by_employer
+    # and EmployerRepository.get_stats, which both exclude it explicitly.
+    is_general_interest: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
     )
     work_model: Mapped[WorkModel] = mapped_column(String(20), nullable=True)
     contract_type: Mapped[ContractType] = mapped_column(String(20), nullable=False)
@@ -137,6 +146,10 @@ class Job(BaseModel):
     )
     introduction_requests: Mapped[list[IntroductionRequest]] = relationship(
         "IntroductionRequest",
+        back_populates="job",
+    )
+    match_notifications: Mapped[list[MatchNotification]] = relationship(
+        "MatchNotification",
         back_populates="job",
     )
 

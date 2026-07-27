@@ -7,4 +7,3 @@ Employer-specific endpoints live in app.modules.employer.router.
 from fastapi import APIRouter
 
 router = APIRouter()
-

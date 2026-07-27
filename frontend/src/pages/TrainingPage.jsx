@@ -79,14 +79,14 @@ export default function TrainingPage() {
           
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl space-y-6">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35 animate-pulse">
-                <Sparkles size={14} className="animate-spin" /> Learning Ecosystem Coming Soon
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35">
+                <Sparkles size={14} /> Coming Soon
               </span>
               <h1 className="font-sans text-4xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight leading-tight">
                 Professional Training &amp; Career Development
               </h1>
               <p className="text-lg lg:text-xl text-blue-100/90 leading-relaxed max-w-2xl">
-                We are building the next generation of workforce upskilling platforms to help professionals bridge industry skills gaps and land high-impact opportunities.
+                We are building a workforce upskilling platform to help professionals bridge industry skills gaps and land high-impact opportunities.
               </p>
 
               {/* Inline Email Waitlist */}

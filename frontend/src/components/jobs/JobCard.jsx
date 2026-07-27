@@ -40,7 +40,7 @@ const LABELS = {
 }
 
 /**
- * Badge — pill with overflow protection and consistent height.
+ * Badge - pill with overflow protection and consistent height.
  * max-w ensures long values like "INTERNATIONAL" never break layout.
  */
 function Badge({ value, className }) {
@@ -53,7 +53,7 @@ function Badge({ value, className }) {
         // Fixed height + padding for consistent sizing across all badges
         'inline-flex items-center h-[22px] px-2.5 rounded-full',
         'text-[11px] font-semibold leading-none whitespace-nowrap',
-        // Overflow protection — truncate if somehow too long
+        // Overflow protection - truncate if somehow too long
         'max-w-[140px] overflow-hidden text-ellipsis',
         BADGE_CLASSES[value] ?? 'bg-gray-100 text-gray-600',
         className
@@ -84,7 +84,7 @@ function CompanyLogo({ url, name }) {
     )
   }
 
-  // Initials-based placeholder — more informative than a generic icon
+  // Initials-based placeholder - more informative than a generic icon
   const initials = name
     ? name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
     : null
@@ -156,7 +156,7 @@ function EmployerActions({ job, onPublish, onClose }) {
             title="This listing was rejected. Edit it and save to resubmit for review."
             className="inline-flex items-center h-8 px-3 rounded-md text-xs font-medium bg-red-50 text-red-600 border border-red-200 cursor-not-allowed"
           >
-            Rejected — edit to resubmit
+            Rejected - edit to resubmit
           </span>
         ) : (
           <Button
@@ -250,7 +250,7 @@ function DeadlineBadge({ deadline }) {
   const diff = date.getTime() - now
   const daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24))
 
-  if (diff < 0) return null // already passed — don't show
+  if (diff < 0) return null // already passed - don't show
 
   const label = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   const urgent = daysLeft <= 3
@@ -465,7 +465,7 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
 // ─── JobCard ──────────────────────────────────────────────────────────────────
 
 /**
- * JobCard — premium job listing card.
+ * JobCard - premium job listing card.
  *
  * @param {Object}   props
  * @param {Object}   props.job
@@ -476,7 +476,7 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
 export function JobCard({ job, variant = 'public', onPublish, onClose, initialApplied = null }) {
   const base = cn(
     'group rounded-2xl border border-slate-200 bg-white',
-    // Subtle shadow that lifts on hover — no oversized shadows
+    // Subtle shadow that lifts on hover - no oversized shadows
     'shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)]',
     'hover:shadow-[0_8px_24px_rgba(0,0,0,0.10),0_2px_6px_rgba(0,0,0,0.06)]',
     'hover:-translate-y-1',

@@ -16,10 +16,10 @@ function formatBytes(bytes) {
 }
 
 /**
- * CvUpload — drag-and-drop CV upload component.
+ * CvUpload - drag-and-drop CV upload component.
  *
  * Props:
- *   onUploadSuccess — (newCv: CandidateCvsResponse) => void   called after 201
+ *   onUploadSuccess - (newCv: CandidateCvsResponse) => void   called after 201
  *
  * Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6
  */
@@ -112,7 +112,7 @@ export function CvUpload({ onUploadSuccess }) {
 
   return (
     <div className="space-y-3">
-      {/* Requirement 6.1 — drag-and-drop zone */}
+      {/* Requirement 6.1-  drag-and-drop zone */}
       <div
         role="button"
         tabIndex={0}
@@ -138,11 +138,11 @@ export function CvUpload({ onUploadSuccess }) {
           Drag your CV here, or{' '}
           <span className="text-brand-blue underline underline-offset-2">click to browse</span>
         </p>
-        {/* Requirement 6.1 — subtext */}
+        {/* Requirement 6.1-  subtext */}
         <p className="text-xs text-text-muted">PDF only · Max 5MB</p>
       </div>
 
-      {/* Hidden file input — click-to-browse (Requirement 6.1) */}
+      {/* Hidden file input - click-to-browse (Requirement 6.1) */}
       <input
         ref={inputRef}
         type="file"
@@ -153,14 +153,14 @@ export function CvUpload({ onUploadSuccess }) {
         onChange={onInputChange}
       />
 
-      {/* Requirement 6.2 / 6.3 — inline validation error */}
+      {/* Requirement 6.2 / 6.3-  inline validation error */}
       {validationError && (
         <p role="alert" className="text-sm text-red-600">
           {validationError}
         </p>
       )}
 
-      {/* Requirement 6.4 — filename + size preview */}
+      {/* Requirement 6.4-  filename + size preview */}
       {selectedFile && !validationError && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -181,14 +181,14 @@ export function CvUpload({ onUploadSuccess }) {
         </div>
       )}
 
-      {/* Requirement 6.6 — upload error */}
+      {/* Requirement 6.6-  upload error */}
       {uploadError && (
         <p role="alert" className="text-sm text-red-600">
           {uploadError}
         </p>
       )}
 
-      {/* Requirement 6.5 — confirm upload button */}
+      {/* Requirement 6.5-  confirm upload button */}
       {selectedFile && !validationError && (
         <Button
           onClick={handleUpload}

@@ -48,7 +48,7 @@ export default function VerifyEmailPage() {
           setAccessToken(refreshData.access_token)
           const { data: me } = await api.get('/api/v1/auth/me')
           updateUser(me)
-        } catch { /* silent — they can re-login */ }
+        } catch { /* silent - they can re-login */ }
 
         // Redirect after 2 seconds
         const destination = nextFromUrl || consumePostVerifyNext() || '/candidate/dashboard'
@@ -74,7 +74,7 @@ export default function VerifyEmailPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-surface-muted px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 flex justify-center">
-          <img src={ehsLogo} alt="Elevare" className="h-9 w-auto" />
+          <Link to="/"><img src={ehsLogo} alt="Elevare" className="h-9 w-auto" /></Link>
         </div>
 
         <div className="bg-white rounded-2xl border border-border p-8 shadow-sm text-center space-y-4">

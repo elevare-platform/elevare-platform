@@ -13,7 +13,7 @@ export function ProtectedRoute({ allowedRoles }) {
     )
   }
 
-  // Truly unauthenticated — no session at all
+  // Truly unauthenticated - no session at all
   if (!user) return <Navigate to="/login" replace />
 
   // Authenticated but restricted (pending verification, suspended, etc.)
@@ -30,7 +30,7 @@ export function ProtectedRoute({ allowedRoles }) {
     )
   }
 
-  // Role check — active user but wrong role
+  // Role check - active user but wrong role
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/unauthorised" replace />
   }

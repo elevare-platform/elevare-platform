@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Download, Star, Info } from 'lucide-react'
+import { Download, Star, Info, ChevronDown, ChevronUp } from 'lucide-react'
 import AdminLayout from '@/components/admin/AdminLayout'
 import { AdminTable, Th, Td, Pagination } from '@/components/admin/AdminTable'
 import StatusBadge from '@/components/admin/StatusBadge'
@@ -17,19 +17,22 @@ function scoreColour(score) {
   return 'bg-green-100 text-[#16A34A]'
 }
 
-function MatchScoreBadge({ score }) {
+function ScoreBadge({ score, label }) {
   const hasScore = score !== null && score !== undefined
   return (
-    <span className={cn(
-      'inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold',
-      scoreColour(score)
-    )}>
-      {hasScore ? `${score}%` : '—'}
-    </span>
+    <div className="flex flex-col items-center gap-0.5">
+      <span className={cn(
+        'inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold',
+        scoreColour(score)
+      )}>
+        {hasScore ? `${score}` : ' - '}
+      </span>
+      {label && <span className="text-[10px] text-text-muted">{label}</span>}
+    </div>
   )
 }
 
-function ScoreInfoTooltip() {
+function ScoreInfoTooltip({ text }) {
   const [visible, setVisible] = useState(false)
   return (
     <span className="relative inline-flex items-center ml-1">
@@ -39,7 +42,7 @@ function ScoreInfoTooltip() {
         onMouseLeave={() => setVisible(false)}
         onFocus={() => setVisible(true)}
         onBlur={() => setVisible(false)}
-        aria-label="Match score explanation"
+        aria-label="Score explanation"
         className="text-text-muted hover:text-text-secondary transition-colors"
       >
         <Info size={13} />
@@ -47,13 +50,64 @@ function ScoreInfoTooltip() {
       {visible && (
         <div
           role="tooltip"
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 w-56 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg pointer-events-none"
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg pointer-events-none"
         >
-          Score based on candidate skills vs job description keywords. Higher is better.
+          {text}
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
         </div>
       )}
     </span>
+  )
+}
+
+// Expandable AI detail panel shown when a row is clicked
+function AIDetailPanel({ app }) {
+  if (!app.ai_fit_summary && !app.ai_strengths?.length && !app.ai_weaknesses?.length && !app.cover_letter) {
+    return (
+      <p className="text-xs text-text-muted italic py-2">No AI analysis available yet.</p>
+    )
+  }
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      {app.ai_fit_summary && (
+        <div className="md:col-span-2">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">AI Summary</p>
+          <p className="text-text leading-relaxed">{app.ai_fit_summary}</p>
+        </div>
+      )}
+      {app.ai_strengths?.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">Strengths</p>
+          <ul className="space-y-1">
+            {app.ai_strengths.map((s, i) => (
+              <li key={i} className="flex gap-2 text-text-muted">
+                <span className="text-green-500 mt-0.5 flex-shrink-0">✓</span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {app.ai_weaknesses?.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-1">Gaps</p>
+          <ul className="space-y-1">
+            {app.ai_weaknesses.map((w, i) => (
+              <li key={i} className="flex gap-2 text-text-muted">
+                <span className="text-red-400 mt-0.5 flex-shrink-0">✗</span>
+                <span>{w}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {app.cover_letter && (
+        <div className="md:col-span-2 border-t border-border pt-3">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Cover Letter</p>
+          <p className="text-text-muted leading-relaxed whitespace-pre-wrap">{app.cover_letter}</p>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -64,6 +118,7 @@ export default function AdminApplicationsPage() {
   const [cursor, setCursor] = useState(null)
   const [status, setStatus] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [expandedId, setExpandedId] = useState(null)
 
   const load = useCallback(async (reset = true) => {
     try {
@@ -73,7 +128,7 @@ export default function AdminApplicationsPage() {
       const data = await listApplications(params)
       setApplications((prev) => reset ? (data.items ?? []) : [...prev, ...(data.items ?? [])])
       setCursor(data.next_cursor ?? null)
-    } catch { /* handled */ }
+    } catch { /* handled by useAdmin */ }
   }, [status, cursor])
 
   useEffect(() => { load(true) }, [status])
@@ -90,7 +145,7 @@ export default function AdminApplicationsPage() {
   const handleShortlist = async (appId, currentStatus) => {
     const newStatus = currentStatus === 'SHORTLISTED' ? 'REVIEWING' : 'SHORTLISTED'
     try {
-      await api.patch(`/api/v1/applications/${appId}/status`, { status: newStatus })
+      await api.patch(`/api/v1/applications/${appId}/status`, { new_status: newStatus })
       setApplications((prev) =>
         prev.map((a) => a.id === appId ? { ...a, status: newStatus } : a)
       )
@@ -118,6 +173,8 @@ export default function AdminApplicationsPage() {
     }
   }
 
+  const toggleExpand = (id) => setExpandedId((prev) => (prev === id ? null : id))
+
   return (
     <AdminLayout>
       <ToastContainer />
@@ -135,9 +192,12 @@ export default function AdminApplicationsPage() {
       </div>
 
       <div className="mb-4">
-        <select value={status} onChange={(e) => setStatus(e.target.value)}
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
           className="text-sm rounded-lg border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-blue"
-          aria-label="Filter by status">
+          aria-label="Filter by status"
+        >
           {STATUSES.map((s) => <option key={s} value={s}>{s || 'All statuses'}</option>)}
         </select>
       </div>
@@ -147,80 +207,94 @@ export default function AdminApplicationsPage() {
           <tr>
             <Th>Candidate</Th>
             <Th>Job</Th>
-            <Th>Company</Th>
             <Th>Status</Th>
             <Th>Applied</Th>
             <Th>
               <span className="inline-flex items-center gap-0.5">
-                Match Score
-                <ScoreInfoTooltip />
+                Match
+                <ScoreInfoTooltip text="Keyword-based match score: candidate skills vs job description." />
+              </span>
+            </Th>
+            <Th>
+              <span className="inline-flex items-center gap-0.5">
+                AI Score
+                <ScoreInfoTooltip text="Composite AI score combining skills analysis and LLM reasoning. Click a row to see the full breakdown." />
               </span>
             </Th>
             <Th>Shortlist</Th>
             <Th>CV</Th>
+            <Th></Th>
           </tr>
         </thead>
         <tbody>
           {applications.map((a) => (
-            <tr key={a.id} className="hover:bg-surface-muted/50">
-              <Td>
-                <div>
-                  <p className="font-medium">{a.candidate?.first_name} {a.candidate?.last_name}</p>
-                  <p className="text-xs text-text-muted">{a.candidate?.email}</p>
-                  {/* Matched keyword chips */}
-                  {a.matched_keywords?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {a.matched_keywords.map((kw) => (
-                        <span
-                          key={kw}
-                          className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-blue/10 text-brand-blue"
-                        >
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </Td>
-              <Td className="text-text-muted">{a.job?.title ?? a.job_title ?? '—'}</Td>
-              <Td className="text-text-muted">
-                {a.job?.employer?.employer_profile?.company_name ?? a.company_name ?? '—'}
-              </Td>
-              <Td><StatusBadge value={a.status} /></Td>
-              <Td className="text-text-muted text-xs">
-                {new Date(a.status_updated_at ?? a.created_at).toLocaleDateString()}
-              </Td>
-              <Td>
-                <MatchScoreBadge score={a.match_score} />
-              </Td>
-              <Td>
-                <button
-                  onClick={() => handleShortlist(a.id, a.status)}
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    a.status === 'SHORTLISTED'
-                      ? 'text-yellow-500 hover:text-yellow-600'
-                      : 'text-text-muted hover:text-yellow-500'
-                  }`}
-                  aria-label={a.status === 'SHORTLISTED' ? 'Remove from shortlist' : 'Shortlist candidate'}
-                  title={a.status === 'SHORTLISTED' ? 'Remove from shortlist' : 'Add to shortlist'}
-                >
-                  <Star size={15} fill={a.status === 'SHORTLISTED' ? 'currentColor' : 'none'} />
-                </button>
-              </Td>
-              <Td>
-                {a.cv_id ? (
+            <>
+              <tr
+                key={a.id}
+                className="hover:bg-surface-muted/50 cursor-pointer"
+                onClick={() => toggleExpand(a.id)}
+              >
+                <Td>
+                  <div>
+                    <p className="font-medium text-text">{a.candidate_name ?? ' - '}</p>
+                    <p className="text-xs text-text-muted">{a.candidate_email ?? ''}</p>
+                  </div>
+                </Td>
+                <Td className="text-text-muted">{a.job_title ?? ' - '}</Td>
+                <Td><StatusBadge value={a.status} /></Td>
+                <Td className="text-text-muted text-xs whitespace-nowrap">
+                  {new Date(a.created_at ?? a.status_updated_at).toLocaleDateString()}
+                </Td>
+                <Td>
+                  <ScoreBadge score={a.match_score} />
+                </Td>
+                <Td>
+                  <ScoreBadge score={a.ai_score} />
+                </Td>
+                <Td>
                   <button
-                    onClick={() => handleCvDownload(a.cv_id)}
-                    className="text-xs text-brand-blue hover:underline flex items-center gap-1"
+                    onClick={(e) => { e.stopPropagation(); handleShortlist(a.id, a.status) }}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      a.status === 'SHORTLISTED'
+                        ? 'text-yellow-500 hover:text-yellow-600'
+                        : 'text-text-muted hover:text-yellow-500'
+                    }`}
+                    aria-label={a.status === 'SHORTLISTED' ? 'Remove from shortlist' : 'Shortlist candidate'}
+                    title={a.status === 'SHORTLISTED' ? 'Remove from shortlist' : 'Add to shortlist'}
                   >
-                    <Download size={12} aria-hidden="true" />
-                    Download
+                    <Star size={15} fill={a.status === 'SHORTLISTED' ? 'currentColor' : 'none'} />
                   </button>
-                ) : (
-                  <span className="text-xs text-text-muted">—</span>
-                )}
-              </Td>
-            </tr>
+                </Td>
+                <Td>
+                  {a.cv_id ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleCvDownload(a.cv_id) }}
+                      className="text-xs text-brand-blue hover:underline flex items-center gap-1"
+                    >
+                      <Download size={12} aria-hidden="true" />
+                      Download
+                    </button>
+                  ) : (
+                    <span className="text-xs text-text-muted"> - </span>
+                  )}
+                </Td>
+                <Td>
+                  {expandedId === a.id
+                    ? <ChevronUp size={14} className="text-text-muted" />
+                    : <ChevronDown size={14} className="text-text-muted" />
+                  }
+                </Td>
+              </tr>
+
+              {/* Expanded AI detail row */}
+              {expandedId === a.id && (
+                <tr key={`${a.id}-detail`}>
+                  <td colSpan={9} className="bg-surface-muted/30 px-6 py-4 border-b border-border">
+                    <AIDetailPanel app={a} />
+                  </td>
+                </tr>
+              )}
+            </>
           ))}
         </tbody>
       </AdminTable>

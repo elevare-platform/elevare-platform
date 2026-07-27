@@ -69,7 +69,7 @@ export function useAdmin() {
         .then((r) => r.data)
     )
 
-  // Introduction ops queue — admin-sourced profiles routed to this admin
+  // Introduction ops queue - admin-sourced profiles routed to this admin
   // for manual candidate outreach (see docs/talent-pool-isolation-and-introduction-routing.md)
   const listAssignedIntroductions = (params) =>
     request(() => api.get('/api/v1/admin/introductions', { params }).then((r) => r.data))

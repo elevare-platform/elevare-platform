@@ -16,7 +16,7 @@ export default function PartnersSection() {
             Trusted By Our Partners
           </h2>
           <p className="text-text-muted text-sm max-w-md mx-auto mt-2">
-            We partner with forward-thinking enterprises, logistics hubs, and retail groups to co-develop modern HR ecosystems.
+            We partner with forward-thinking enterprises, logistics hubs, and retail groups to build modern HR operations.
           </p>
         </div>
 

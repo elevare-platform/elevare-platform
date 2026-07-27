@@ -92,10 +92,10 @@ export default function CandidateDashboardPage() {
       .finally(() => setAppsLoading(false))
   }, [])
 
-  // Fetch recommended jobs (recent active jobs)
+  // Fetch matched jobs for this candidate
   useEffect(() => {
-    api.get('/api/v1/jobs', { params: { limit: 3, status: 'ACTIVE' } })
-      .then(({ data }) => setRecentJobs(data.items ?? data ?? []))
+    api.get('/api/v1/candidates/me/matches', { params: { limit: 3 } })
+      .then(({ data }) => setRecentJobs(data ?? []))
       .catch(() => setRecentJobs([]))
       .finally(() => setJobsLoading(false))
   }, [])
@@ -163,7 +163,7 @@ export default function CandidateDashboardPage() {
           {/* ── Main grid ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-            {/* Left col — applications + recommended jobs */}
+            {/* Left col - applications + recommended jobs */}
             <div className="lg:col-span-2 space-y-6">
 
               {/* Recent Applications */}
@@ -233,12 +233,12 @@ export default function CandidateDashboardPage() {
                 )}
               </section>
 
-              {/* Recommended Jobs */}
+              {/* Matched Jobs */}
               <section className="bg-white rounded-xl border border-border overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-                  <h2 className="font-semibold text-text text-sm">Recommended Jobs</h2>
-                  <Link to="/jobs" className="text-brand-blue text-xs font-medium hover:underline flex items-center gap-1">
-                    Browse all <ChevronRight size={12} />
+                  <h2 className="font-semibold text-text text-sm">Matched Jobs</h2>
+                  <Link to="/candidate/matches" className="text-brand-blue text-xs font-medium hover:underline flex items-center gap-1">
+                    View all <ChevronRight size={12} />
                   </Link>
                 </div>
 
@@ -257,12 +257,12 @@ export default function CandidateDashboardPage() {
                 )}
 
                 {!jobsLoading && recentJobs.length === 0 && (
-                  <p className="text-sm text-text-muted px-5 py-6">No jobs available right now.</p>
+                  <p className="text-sm text-text-muted px-5 py-6">No matches yet - complete your profile to get matched.</p>
                 )}
 
                 {!jobsLoading && recentJobs.length > 0 && (
                   <ul>
-                    {recentJobs.map((job) => (
+                    {recentJobs.map(({ job, similarity_score }) => (
                       <li key={job.id} className="flex items-center gap-3 px-5 py-3 border-b border-border last:border-0 hover:bg-surface-muted transition-colors">
                         <span className="w-9 h-9 rounded-lg border border-border bg-background flex items-center justify-center flex-shrink-0">
                           <Building2 size={14} className="text-text-muted" />
@@ -271,6 +271,7 @@ export default function CandidateDashboardPage() {
                           <p className="text-sm font-medium text-text truncate">{job.title}</p>
                           <p className="text-xs text-text-muted truncate">{job.company_name ?? job.location}</p>
                         </div>
+                        <span className="text-xs font-semibold text-brand-blue flex-shrink-0">{similarity_score}%</span>
                         <Link to={`/jobs/${job.id}`} className="text-xs text-brand-blue hover:underline flex-shrink-0">
                           View
                         </Link>
@@ -281,7 +282,7 @@ export default function CandidateDashboardPage() {
               </section>
             </div>
 
-            {/* Right col — profile + CV widget */}
+            {/* Right col - profile + CV widget */}
             <div className="space-y-5">
 
               {/* Profile strength */}
@@ -347,6 +348,7 @@ export default function CandidateDashboardPage() {
               <div className="bg-white rounded-xl border border-border p-5 space-y-2">
                 <h2 className="font-semibold text-text text-sm mb-3">Quick Links</h2>
                 {[
+                  { label: 'My Matches', to: '/candidate/matches' },
                   { label: 'My Applications', to: '/candidate/applications' },
                   { label: 'Introduction Requests', to: '/candidate/introductions' },
                   { label: 'Edit Profile', to: '/candidate/profile' },

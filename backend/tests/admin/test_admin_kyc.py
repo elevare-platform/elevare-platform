@@ -68,7 +68,9 @@ async def test_list_kyc_submissions_filters_by_status(db_session):
     result = await service.list_kyc_submissions(status="PENDING", limit=100)
 
     # Filter by the dev DB may hold other PENDING rows — isolate on our own profile.
-    matches = [item for item in result["items"] if item.employer_profile_id == profile.id]
+    matches = [
+        item for item in result["items"] if item.employer_profile_id == profile.id
+    ]
     assert len(matches) == 1
     assert matches[0].kyc_status == "PENDING"
     assert matches[0].company_name == "Test Corp"

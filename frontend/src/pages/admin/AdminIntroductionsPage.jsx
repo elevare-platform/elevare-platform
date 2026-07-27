@@ -7,7 +7,7 @@ import { useAdmin } from '@/hooks/useAdmin'
 import { cn } from '@/lib/utils'
 
 /**
- * AdminIntroductionsPage — ops queue for admin-sourced talent profiles.
+ * AdminIntroductionsPage - ops queue for admin-sourced talent profiles.
  *
  * When an employer requests an introduction to a profile an admin sourced
  * (talent_pool_profiles.added_by == an admin), the request routes here
@@ -31,7 +31,7 @@ const STATUS_STYLES = {
 const FILTER_TABS = ['all', 'PENDING', 'ACCEPTED', 'DECLINED', 'EXPIRED']
 
 function formatDate(isoString) {
-  if (!isoString) return '—'
+  if (!isoString) return ' - '
   return new Date(isoString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
@@ -71,7 +71,7 @@ export default function AdminIntroductionsPage() {
     try {
       await acceptIntroduction(id)
       setItems((prev) => prev.map((i) => i.id === id ? { ...i, status: 'ACCEPTED' } : i))
-      show('Marked as accepted — the employer can now view this profile.')
+      show('Marked as accepted - the employer can now view this profile.')
     } catch {
       show('Failed to accept. Please try again.', 'error')
     } finally {
@@ -84,7 +84,7 @@ export default function AdminIntroductionsPage() {
     try {
       await declineIntroduction(id)
       setItems((prev) => prev.map((i) => i.id === id ? { ...i, status: 'DECLINED' } : i))
-      show('Marked as declined — the employer\'s credit was refunded.')
+      show('Marked as declined - the employer\'s credit was refunded.')
     } catch {
       show('Failed to decline. Please try again.', 'error')
     } finally {
@@ -143,7 +143,7 @@ export default function AdminIntroductionsPage() {
                 {i.candidate_current_title && <p className="text-xs text-text-muted">{i.candidate_current_title}</p>}
               </Td>
               <Td className="text-text-muted">
-                <p>{i.employer_name ?? '—'}</p>
+                <p>{i.employer_name ?? ' - '}</p>
                 {i.employer_email && <p className="text-xs">{i.employer_email}</p>}
               </Td>
               <Td className="text-text-muted">{i.job_title}</Td>
@@ -169,7 +169,7 @@ export default function AdminIntroductionsPage() {
                   </div>
                 ) : (
                   <span className="text-xs text-text-muted">
-                    {i.responded_at ? `Resolved ${formatDate(i.responded_at)}` : '—'}
+                    {i.responded_at ? `Resolved ${formatDate(i.responded_at)}` : ' - '}
                   </span>
                 )}
               </Td>

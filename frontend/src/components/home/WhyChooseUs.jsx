@@ -8,7 +8,7 @@ const FEATURES = [
   {
     icon: Award,
     title: 'Professional Recruitment Process',
-    description: 'A structured, expert-led process that ensures every hire meets your standards.',
+    description: 'A structured, expert-led process so every hire meets your standards.',
   },
   {
     icon: Users,
@@ -18,7 +18,7 @@ const FEATURES = [
   {
     icon: Filter,
     title: 'Efficient Candidate Screening',
-    description: 'We handle the heavy lifting — only the best-fit candidates reach your desk.',
+    description: 'We handle the heavy lifting - only the best-fit candidates reach your desk.',
   },
   {
     icon: MessageSquare,
@@ -39,7 +39,7 @@ const FEATURES = [
 
 // ─── Framer Motion variants ───────────────────────────────────────────────────
 
-/** Eyebrow and heading — fade-up slightly ahead of cards */
+/** Eyebrow and heading - fade-up slightly ahead of cards */
 const headingVariants = {
   hidden:  { opacity: 0, y: 20 },
   visible: (i = 0) => ({
@@ -49,7 +49,7 @@ const headingVariants = {
   }),
 }
 
-/** Feature cards — spring entrance with subtle scale */
+/** Feature cards - spring entrance with subtle scale */
 const cardVariants = {
   hidden:  { opacity: 0, y: 24, scale: 0.97 },
   visible: (i) => ({
@@ -63,7 +63,7 @@ const cardVariants = {
 // ─── WhyChooseUs ─────────────────────────────────────────────────────────────
 
 export default function WhyChooseUs() {
-  // Requirements 6.4 — observe section to trigger staggered card animations
+  // Requirements 6.4-  observe section to trigger staggered card animations
   const [sectionRef, isVisible] = useIntersectionObserver({ threshold: 0.15, triggerOnce: true })
 
   return (

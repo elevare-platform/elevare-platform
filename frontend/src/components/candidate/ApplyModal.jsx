@@ -7,14 +7,14 @@ import { validateCvFile } from '@/lib/uploadValidation'
 import api from '@/lib/api'
 
 /**
- * ApplyModal — lets a candidate apply to a job.
+ * ApplyModal - lets a candidate apply to a job.
  * Rendered via React Portal so it sits outside any parent <Link> or card
  * element, preventing accidental navigation when interacting with the modal.
  *
  * Props:
- *   jobId      — string, the job being applied to
- *   onClose    — () => void
- *   onSuccess  — () => void, called after a successful application
+ *   jobId     - string, the job being applied to
+ *   onClose   - () => void
+ *   onSuccess - () => void, called after a successful application
  */
 export default function ApplyModal({ jobId, onClose, onSuccess }) {
   const [cvs, setCvs] = useState([])
@@ -199,7 +199,7 @@ export default function ApplyModal({ jobId, onClose, onSuccess }) {
               </p>
             )}
 
-            {/* Upload toggle — always available */}
+            {/* Upload toggle - always available */}
             {!noCvs && (
               <button
                 type="button"

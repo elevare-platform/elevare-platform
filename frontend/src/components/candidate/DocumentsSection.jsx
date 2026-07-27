@@ -2,8 +2,8 @@ import { Download, FileText, Trash2 } from 'lucide-react'
 
 /**
  * Known document_type values and their human-readable labels.
- * Requirement 5.4 — display known types as styled badges.
- * Requirement 5.5 — fall back to "Document" for null / unrecognised values.
+ * Requirement 5.4-  display known types as styled badges.
+ * Requirement 5.5-  fall back to "Document" for null / unrecognised values.
  */
 const DOCUMENT_TYPE_LABELS = {
   Certificate: 'Certificate',
@@ -36,13 +36,13 @@ function formatAddedDate(isoString) {
 }
 
 /**
- * DocumentsSection — renders the candidate's career documents list with
+ * DocumentsSection - renders the candidate's career documents list with
  * download and delete actions.
  *
  * Props:
- *   documents  — CandidateDocumentsResponse[]
- *   onDownload — (id: string) => void   (Requirement 5.2)
- *   onDelete   — (id: string) => void   (Requirement 5.3)
+ *   documents - CandidateDocumentsResponse[]
+ *   onDownload - (id: string) => void   (Requirement 5.2)
+ *   onDelete  - (id: string) => void   (Requirement 5.3)
  *
  * Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
  */
@@ -57,7 +57,7 @@ export function DocumentsSection({ documents = [], onDownload, onDelete }) {
         Career Documents
       </h2>
 
-      {/* Document list — Requirement 5.1 */}
+      {/* Document list - Requirement 5.1 */}
       {documents.length === 0 ? (
         <p className="text-sm text-text-muted py-4">
           No documents uploaded yet.
@@ -83,13 +83,13 @@ export function DocumentsSection({ documents = [], onDownload, onDelete }) {
                       {doc.filename}
                     </span>
 
-                    {/* Requirement 5.4 / 5.5 — document_type badge */}
+                    {/* Requirement 5.4 / 5.5-  document_type badge */}
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-surface-alt text-text-muted border border-border">
                       {getDocumentTypeLabel(doc.document_type)}
                     </span>
                   </div>
 
-                  {/* Requirement 5.1 — formatted created_at date */}
+                  {/* Requirement 5.1-  formatted created_at date */}
                   <p className="text-xs text-text-muted mt-0.5">
                     {formatAddedDate(doc.created_at)}
                   </p>
@@ -98,7 +98,7 @@ export function DocumentsSection({ documents = [], onDownload, onDelete }) {
 
               {/* Right: action buttons */}
               <div className="flex items-center gap-2 flex-shrink-0">
-                {/* Requirement 5.2 — Download */}
+                {/* Requirement 5.2-  Download */}
                 <button
                   type="button"
                   onClick={() => onDownload?.(doc.id)}
@@ -108,7 +108,7 @@ export function DocumentsSection({ documents = [], onDownload, onDelete }) {
                   <Download size={15} aria-hidden="true" />
                 </button>
 
-                {/* Requirement 5.3 — Delete */}
+                {/* Requirement 5.3-  Delete */}
                 <button
                   type="button"
                   onClick={() => onDelete?.(doc.id)}

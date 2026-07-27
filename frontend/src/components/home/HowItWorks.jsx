@@ -1,4 +1,4 @@
-// HowItWorks — three-step hiring process section (Requirements 7.1–7.5)
+// HowItWorks - three-step hiring process section (Requirements 7.1–7.5)
 
 // ─── Steps data (Requirements 7.3) ───────────────────────────────────────────
 
@@ -27,13 +27,13 @@ const STEPS = [
 
 export default function HowItWorks() {
   return (
-    // Requirements 7.1 — white background
+    // Requirements 7.1-  white background
     <section
       aria-label="How it works"
       style={{ background: '#ffffff', padding: '5rem 1rem' }}
     >
       <div style={{ maxWidth: '64rem', margin: '0 auto' }}>
-        {/* Heading — Requirements 7.1 */}
+        {/* Heading - Requirements 7.1 */}
         <h2
           style={{
             textAlign: 'center',
@@ -48,14 +48,14 @@ export default function HowItWorks() {
           Hiring Has Never Been This Simple
         </h2>
 
-        {/* Steps row — Requirements 7.2: flex-col on mobile, flex-row on md+ */}
+        {/* Steps row - Requirements 7.2: flex-col on mobile, flex-row on md+ */}
         {/* Using a wrapper div with CSS class for responsive flex direction */}
         <div className="how-it-works-steps">
           {STEPS.map((step, index) => (
             <div key={step.number} style={{ display: 'contents' }}>
               {/* Step item */}
               <div className="how-it-works-step">
-                {/* Large Amber step number — Requirements 7.2 */}
+                {/* Large Amber step number - Requirements 7.2 */}
                 <p
                   style={{
                     margin: '0 0 1rem',
@@ -95,7 +95,7 @@ export default function HowItWorks() {
                 </p>
               </div>
 
-              {/* Connector line between steps — Requirements 7.4: visible on md+ only */}
+              {/* Connector line between steps - Requirements 7.4: visible on md+ only */}
               {index < STEPS.length - 1 && (
                 <div
                   aria-hidden="true"
@@ -106,7 +106,7 @@ export default function HowItWorks() {
           ))}
         </div>
 
-        {/* CTA button — Requirements 7.5: centred Amber filled */}
+        {/* CTA button - Requirements 7.5: centred Amber filled */}
         <div style={{ textAlign: 'center', marginTop: '3.5rem' }}>
           <a
             href="/register"

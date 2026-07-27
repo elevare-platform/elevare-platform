@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-// api instance from src/lib/api.js — the request interceptor attaches a Bearer
+// api instance from src/lib/api.js - the request interceptor attaches a Bearer
 // token only when one is in memory, so this public call goes out without auth.
 import api from '@/lib/api'
 
@@ -182,7 +182,7 @@ export default function JobBoardPreview() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Requirements 9.2 — call the public jobs endpoint on mount.
+    // Requirements 9.2-  call the public jobs endpoint on mount.
     // The api instance's request interceptor only attaches Authorization when
     // an access token is in memory; for this public endpoint no token is needed.
     api
@@ -208,7 +208,7 @@ export default function JobBoardPreview() {
     <section
       aria-label="Job board preview"
       style={{
-        // Requirements 9.1 — white background
+        // Requirements 9.1-  white background
         background: '#ffffff',
         padding: '5rem 1rem',
       }}
@@ -254,7 +254,7 @@ export default function JobBoardPreview() {
               maxWidth: '28rem',
             }}
           >
-            Browse live opportunities from Nigeria's top companies. New roles added daily — find your next move today.
+            Browse live opportunities from Nigeria's top companies. New roles added daily - find your next move today.
           </p>
           <div>
             <Link to="/jobs">
@@ -281,7 +281,7 @@ export default function JobBoardPreview() {
           }}
         >
           {loading ? (
-            // Requirements 9.3 — skeleton loader while fetching
+            // Requirements 9.3-  skeleton loader while fetching
             <div style={{ padding: '0.5rem' }}>
               <SkeletonCard />
               <SkeletonCard />
@@ -289,7 +289,7 @@ export default function JobBoardPreview() {
             </div>
           ) : (
             /*
-             * Requirements 9.5 — CSS-only continuous upward scroll.
+             * Requirements 9.5-  CSS-only continuous upward scroll.
              * The `animate-scroll-y` class (defined in index.css) applies the
              * `scroll-y` keyframe at 20s linear infinite, translating from 0 to
              * -50%. The cards are rendered twice so the second copy fills in
@@ -301,7 +301,7 @@ export default function JobBoardPreview() {
               {jobs.map((job) => (
                 <JobCard key={`a-${job.id}`} job={job} />
               ))}
-              {/* Second copy — required for the seamless -50% loop */}
+              {/* Second copy - required for the seamless -50% loop */}
               {jobs.map((job) => (
                 <JobCard key={`b-${job.id}`} job={job} />
               ))}

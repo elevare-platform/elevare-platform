@@ -28,13 +28,18 @@ class EmployerRepository:
             func.count(Job.id).filter(Job.status == "ACTIVE").label("active"),
             func.count(Job.id).filter(Job.status == "DRAFT").label("draft"),
             func.count(Job.id).filter(Job.status == "CLOSED").label("closed"),
-        ).where(Job.employer_id == employer_id)
+        ).where(
+            Job.employer_id == employer_id,
+            Job.is_general_interest.is_(False),
+        )
 
         result = await self._db.execute(stmt)
         row = result.mappings().one_or_none()
 
         if not row:
-            return EmployerStats(total_jobs=0, active_jobs=0, draft_jobs=0, closed_jobs=0)
+            return EmployerStats(
+                total_jobs=0, active_jobs=0, draft_jobs=0, closed_jobs=0
+            )
 
         return EmployerStats(
             total_jobs=row["total"],
@@ -78,9 +83,7 @@ class EmployerRepository:
         await self._db.flush()
         return doc
 
-    async def get_kyc_document(
-        self, document_id: uuid.UUID
-    ) -> KYCDocument | None:
+    async def get_kyc_document(self, document_id: uuid.UUID) -> KYCDocument | None:
         """Return a KYC document by its primary key."""
         return await self._db.get(KYCDocument, document_id)
 
