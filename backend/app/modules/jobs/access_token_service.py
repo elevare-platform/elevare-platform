@@ -12,6 +12,7 @@ from app.core.exceptions import (
     PermissionDeniedException,
     TokenNotFoundError,
 )
+from app.core.storage import get_storage_service
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.applications.schema import ApplicationFilters
 from app.modules.jobs.access_token_repository import AccessTokenRepository
@@ -68,6 +69,7 @@ class AccessTokenService:
                 "job_id": job_id,
                 "created_by_id": current_user.id,
                 "disclose_names": data.disclose_names,
+                "show_cv": data.show_cv,
                 "expires_at": datetime.now(UTC) + timedelta(days=data.expires_in_days),
             }
         )
@@ -205,9 +207,24 @@ class AccessTokenService:
 
             cv_snippet = None
             cv = getattr(application, "cv", None)
-            if cv and hasattr(cv, "submission") and cv.submission:
-                summary = (cv.submission.parsed_data or {}).get("summary") or ""
+            if cv and cv.submission and cv.submission.parsed_data:
+                summary = cv.submission.parsed_data.get("summary") or ""
                 cv_snippet = summary[:200] if summary else None
+
+            # CV file gate: token-level show_cv AND per-candidate consent.
+            # cv_sharing_consent is the candidate's own choice about their data —
+            # show_cv alone (an employer-side flag) must not override it.
+            cv_download_url = None
+            if (
+                token.show_cv
+                and cv
+                and candidate_profile
+                and candidate_profile.cv_sharing_consent
+            ):
+                storage_service = get_storage_service()
+                cv_download_url = await storage_service.generate_presigned_url(
+                    cv.key, expires_seconds=900
+                )
 
             combined.append(
                 PublicApplicantsItem(
@@ -218,6 +235,7 @@ class AccessTokenService:
                     ai_strengths=application.ai_strengths,
                     ai_weaknesses=application.ai_weaknesses,
                     cv_snippet=cv_snippet,
+                    cv_download_url=cv_download_url,
                     source="applicant",
                 )
             )
@@ -238,6 +256,7 @@ class AccessTokenService:
 
         for profile in pool_profiles:
             parsed_data = {}
+            submission = None
             if profile.parsed_submission_id:
                 submission = await ai_repo.get_submission_by_id(
                     profile.parsed_submission_id
@@ -262,6 +281,16 @@ class AccessTokenService:
             summary = parsed_data.get("summary") or ""
             cv_snippet = summary[:200] if summary else None
 
+            # External profiles have no consent relationship with Elevare, so
+            # unlike platform applicants there is no per-candidate gate here —
+            # only the employer's token-level show_cv flag applies.
+            cv_download_url = None
+            if token.show_cv and submission and submission.r2_key:
+                storage_service = get_storage_service()
+                cv_download_url = await storage_service.generate_presigned_url(
+                    submission.r2_key, expires_seconds=900
+                )
+
             combined.append(
                 PublicApplicantsItem(
                     initials=initials,
@@ -271,6 +300,7 @@ class AccessTokenService:
                     ai_strengths=profile.ai_strengths,
                     ai_weaknesses=profile.ai_weaknesses,
                     cv_snippet=cv_snippet,
+                    cv_download_url=cv_download_url,
                     source="external",
                 )
             )

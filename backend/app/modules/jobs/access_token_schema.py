@@ -13,6 +13,7 @@ class AccessTokenResponse(BaseModel):
     token: str
     job_id: uuid.UUID
     disclose_names: bool
+    show_cv: bool
     expires_at: datetime
     is_active: bool
     revoked_at: datetime | None = None
@@ -26,6 +27,7 @@ class CreateAccessTokenRequest(BaseModel):
 
     expires_in_days: int = Field(..., ge=1, le=30)
     disclose_names: bool = Field(default=False)
+    show_cv: bool = Field(default=False)
 
 
 class PublicApplicantsItem(BaseModel):
@@ -38,6 +40,7 @@ class PublicApplicantsItem(BaseModel):
     ai_strengths: list[str] | None = None
     ai_weaknesses: list[str] | None = None
     cv_snippet: str | None = None
+    cv_download_url: str | None = None
     source: str = "applicant"  # "applicant" (registered) | "external" (uploaded CV)
 
 

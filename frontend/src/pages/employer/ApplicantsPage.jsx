@@ -225,6 +225,7 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
 function ShareModal({ jobId, onClose }) {
   const [expiryDays, setExpiryDays] = useState(30)
   const [discloseNames, setDiscloseNames] = useState(false)
+  const [showCv, setShowCv] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generatedUrl, setGeneratedUrl] = useState(null)
   const [copied, setCopied] = useState(false)
@@ -247,6 +248,7 @@ function ShareModal({ jobId, onClose }) {
       const { data } = await api.post(`/api/v1/jobs/${jobId}/access-tokens`, {
         expires_in_days: expiryDays,
         disclose_names: discloseNames,
+        show_cv: showCv,
       })
       const url = `${baseUrl}/shared/jobs/${data.token}`
       setGeneratedUrl(url)
@@ -327,6 +329,24 @@ function ShareModal({ jobId, onClose }) {
             </div>
           </div>
 
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="show-cv"
+              checked={showCv}
+              onChange={(e) => setShowCv(e.target.checked)}
+              className="mt-0.5 accent-brand-blue"
+            />
+            <div>
+              <label htmlFor="show-cv" className="text-sm font-medium text-text cursor-pointer">
+                Include CV downloads
+              </label>
+              <p className="text-xs text-text-muted mt-0.5">
+                Lets the client download CVs. For registered candidates this still requires their sharing consent — sourced/external CVs are always included.
+              </p>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={handleGenerate}
@@ -370,6 +390,7 @@ function ShareModal({ jobId, onClose }) {
                   <span className="text-text-muted truncate">
                     Expires {new Date(t.expires_at).toLocaleDateString()}
                     {t.disclose_names && ' · Names on'}
+                    {t.show_cv && ' · CVs on'}
                   </span>
                   {!t.is_active && (
                     <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px]">Revoked</span>

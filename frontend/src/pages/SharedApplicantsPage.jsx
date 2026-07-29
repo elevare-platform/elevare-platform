@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, User } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 
@@ -51,6 +51,20 @@ function ApplicantCard({ applicant, rank }) {
         )}>
           {applicant.ai_score != null ? `${applicant.ai_score}` : ' - '}
         </span>
+
+        {/* CV download */}
+        {applicant.cv_download_url && (
+          <a
+            href={applicant.cv_download_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Download CV"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text hover:bg-surface-muted transition-colors flex-shrink-0"
+          >
+            <Download size={12} />
+            CV
+          </a>
+        )}
 
         {/* Expand toggle */}
         {(applicant.ai_fit_summary || applicant.ai_strengths?.length > 0) && (
