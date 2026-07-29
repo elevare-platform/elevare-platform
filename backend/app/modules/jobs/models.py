@@ -179,6 +179,9 @@ class JobAccessTokens(BaseModel):
     disclose_names: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa.false()
     )
+    show_cv: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa.false()
+    )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

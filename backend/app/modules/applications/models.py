@@ -26,6 +26,7 @@ from .enums import ApplicationStatus
 
 if TYPE_CHECKING:
     from app.modules.applications.models import Application
+    from app.modules.candidates.models import CandidateCvs
     from app.modules.jobs.models import Job
     from app.modules.talent_pool.models import TalentPoolProfiles
     from app.modules.users.models import User
@@ -114,6 +115,7 @@ class Application(BaseModel):
     candidate: Mapped[User] = relationship(
         "User", foreign_keys=[candidate_id], back_populates="applications"
     )
+    cv: Mapped[CandidateCvs | None] = relationship("CandidateCvs", foreign_keys=[cv_id])
     who_updated_status: Mapped[User] = relationship(
         "User",
         foreign_keys=[status_updated_by],

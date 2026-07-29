@@ -30,6 +30,7 @@ from app.modules.candidates.enums import VisibilityStatus
 from app.modules.jobs.enums import WorkModel
 
 if TYPE_CHECKING:
+    from app.modules.ai.models import ParsedCVSubmission
     from app.modules.jobs.models import Job
     from app.modules.notifications.models import MatchNotification
     from app.modules.talent_pool.models import TalentPoolProfiles
@@ -194,6 +195,9 @@ class CandidateCvs(BaseModel):
 
     # Relationships
     candidate_profile: Mapped[CandidateProfile] = relationship(back_populates="cvs")
+    submission: Mapped[ParsedCVSubmission | None] = relationship(
+        "ParsedCVSubmission", foreign_keys=[submission_id]
+    )
 
 
 class CandidateDocuments(BaseModel):

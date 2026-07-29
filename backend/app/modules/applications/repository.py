@@ -10,6 +10,7 @@ from app.core.pagination import paginate_cursor
 from app.modules.applications.enums import ApplicationStatus
 from app.modules.applications.models import Application
 from app.modules.applications.schema import ApplicationFilters
+from app.modules.candidates.models import CandidateCvs
 from app.modules.jobs.models import Job
 from app.modules.users.models import User
 
@@ -156,6 +157,7 @@ class ApplicationRepository:
                 selectinload(Application.candidate).selectinload(
                     User.candidate_profile
                 ),
+                selectinload(Application.cv).selectinload(CandidateCvs.submission),
             )
             .order_by(order_by)
         )
