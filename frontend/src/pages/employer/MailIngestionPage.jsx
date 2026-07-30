@@ -132,7 +132,10 @@ function ImportRunCard({ integrationId, initialRunId, onComplete }) {
         {isRunning && <RefreshCw size={14} className="text-brand-blue animate-spin" />}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      {/* processed + deduplicated + skipped + failed always sums to found —
+          Failed used to be tracked but never shown, so the four visible
+          tiles silently fell short of the found total. */}
+      <div className="grid grid-cols-3 gap-2">
         <div className="rounded border border-border bg-surface-muted p-2 text-center">
           <p className="text-xl font-bold text-text leading-none">{run.total_emails_found}</p>
           <p className="text-[10px] text-text-muted uppercase font-semibold mt-1">Found</p>
@@ -148,6 +151,10 @@ function ImportRunCard({ integrationId, initialRunId, onComplete }) {
         <div className="rounded border border-border bg-surface-muted p-2 text-center">
           <p className="text-xl font-bold text-gray-500 leading-none">{run.emails_skipped}</p>
           <p className="text-[10px] text-text-muted uppercase font-semibold mt-1">Skipped</p>
+        </div>
+        <div className="rounded border border-border bg-surface-muted p-2 text-center">
+          <p className="text-xl font-bold text-red-500 leading-none">{run.emails_failed}</p>
+          <p className="text-[10px] text-text-muted uppercase font-semibold mt-1">Failed</p>
         </div>
       </div>
 
