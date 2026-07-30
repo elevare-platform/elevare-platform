@@ -606,6 +606,7 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
 
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    ai_service = None
 
     async with SessionLocal() as db:
         try:
@@ -774,6 +775,16 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
             )
             raise
         finally:
+            if ai_service is not None:
+                # AsyncOpenAI owns an httpx.AsyncClient that's never closed
+                # otherwise — left to garbage collection, its cleanup runs
+                # after asyncio.run() has already torn down this task's event
+                # loop, producing a noisy "Event loop is closed" error for
+                # every embedding task run.
+                try:
+                    await ai_service.close()
+                except Exception:
+                    pass
             await engine.dispose()
 
 
@@ -797,6 +808,7 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
 
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    ai_service = None
 
     async with SessionLocal() as db:
         try:
@@ -869,6 +881,11 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
             logger.exception("generate_job_embedding: failed for job %s", job_id)
             raise
         finally:
+            if ai_service is not None:
+                try:
+                    await ai_service.close()
+                except Exception:
+                    pass
             await engine.dispose()
 
 
@@ -947,6 +964,7 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
 
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    ai_service = None
 
     async with SessionLocal() as db:
         try:
@@ -1062,6 +1080,11 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
             )
             raise
         finally:
+            if ai_service is not None:
+                try:
+                    await ai_service.close()
+                except Exception:
+                    pass
             await engine.dispose()
 
 

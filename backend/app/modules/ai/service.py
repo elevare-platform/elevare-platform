@@ -506,6 +506,17 @@ class EmbeddingAIService(AIService):
         """Initialise the OpenAI async client using the configured API key."""
         self._client = AsyncOpenAI(api_key=settings.openai_api_key)
 
+    async def close(self) -> None:
+        """Close the underlying httpx client.
+
+        Callers (Celery tasks run via asyncio.run()) must call this before
+        their event loop is torn down — otherwise the client's connections
+        are only closed later by garbage collection, on a loop that no
+        longer exists, which surfaces as a noisy but real resource leak
+        ("Event loop is closed") on every embedding task run.
+        """
+        await self._client.close()
+
     async def generate_embedding(self, text: str) -> list[float]:
         """Call OpenAI text-embedding-3-small and return the 1536-dim vector."""
         response = await self._client.embeddings.create(
