@@ -150,7 +150,7 @@ export default function HeroSection({ onBookConsultation }) {
               >
                 <span className="hero-eyebrow-dot" aria-hidden="true" />
                 <span className="font-bold text-sm tracking-widest uppercase" style={{ color: '#FCD34D' }}>
-                  HR Strategy &amp; Workforce Solutions
+                  Elevare Human Solutions — HR Strategy &amp; Workforce Solutions
                 </span>
               </div>
             </div>
@@ -179,8 +179,10 @@ export default function HeroSection({ onBookConsultation }) {
                 style={{ color: 'rgba(255,255,255,0.78)', animationDelay: '1250ms' }}
               >
                 <b>
-                  Where Talent Meets Opportunity. Elevating People, Growing Businesses.
-                  We connect organisations with the right professionals through structured, data-driven recruitment.
+                  Elevare Human Solutions is a recruitment and workforce transformation platform
+                  connecting employers across Africa with qualified candidates. Employers can post
+                  jobs, review applicants, and manage hiring pipelines; candidates can build a
+                  profile, apply to roles, and track applications.
                 </b>
               </p>
             </div>
