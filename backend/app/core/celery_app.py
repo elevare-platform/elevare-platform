@@ -45,6 +45,7 @@ celery = Celery(
         "core.tasks",  # health check task
         "app.modules.ai.tasks",  # CV parsing pipeline
         "app.modules.applications.tasks",
+        "app.modules.contact.tasks",  # contact form notification emails
         "app.modules.ingestion.tasks",  # candidate ingestion
         "app.modules.introductions.tasks",  # introduction request emails
     ],
