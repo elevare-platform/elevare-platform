@@ -69,7 +69,12 @@ celery.conf.update(
     task_soft_time_limit=240,  # Warn after 4 minutes
     # Worker
     worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=1000,
+    # Recycle a forked child after 100 tasks (was 1000) — a fresh process
+    # sheds any accumulated memory, including from leaks we haven't found
+    # yet, before it can build up enough to get OOM-killed. See
+    # docker-compose.prod.yml's celery_worker service for the 2G ceiling
+    # this is meant to stay well under.
+    worker_max_tasks_per_child=100,
     # Beat schedule — nightly off-peak jobs
     beat_schedule={
         "recompute-stale-scores-nightly": {

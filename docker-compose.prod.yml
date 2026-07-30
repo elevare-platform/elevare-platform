@@ -102,7 +102,12 @@ services:
     dns:
       - 8.8.8.8
       - 8.8.4.4
-    command: celery -A app.core.celery_app worker --loglevel=info
+    # --concurrency=2: without it, Celery defaults to one forked child per
+    # CPU core as reported by the container (cgroup CPU quotas below don't
+    # change what os.cpu_count() returns), which on a multi-core host can
+    # mean several memory-heavy children (CV parsing/OCR, embedding calls)
+    # all competing for this service's 2G memory limit below.
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
     logging:
       driver: "json-file"
       options:
