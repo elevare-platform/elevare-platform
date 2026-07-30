@@ -33,15 +33,15 @@ async def _make_connected_integration(db_session, **overrides) -> MailIntegratio
     db_session.add(user)
     await db_session.flush()
 
-    defaults = dict(
-        user_id=user.id,
-        provider=MailProvider.ZOHO.value,
-        status=IntegrationStatus.CONNECTED.value,
-        email_address="careershub@elevare.com.ng|123",
-        encrypted_access_token="stub",
-        encrypted_refresh_token="stub",
-        token_expires_at=datetime.now(UTC) + timedelta(hours=1),
-    )
+    defaults = {
+        "user_id": user.id,
+        "provider": MailProvider.ZOHO.value,
+        "status": IntegrationStatus.CONNECTED.value,
+        "email_address": "careershub@elevare.com.ng|123",
+        "encrypted_access_token": "stub",
+        "encrypted_refresh_token": "stub",
+        "token_expires_at": datetime.now(UTC) + timedelta(hours=1),
+    }
     defaults.update(overrides)
     integration = MailIntegration(**defaults)
     db_session.add(integration)
