@@ -8,7 +8,7 @@ const SECTIONS = [
   {
     title: 'Data We Collect',
     content:
-      'We collect information you provide directly - such as your name, email address, CV, and professional experience - as well as usage data collected automatically when you interact with our platform.',
+      'We collect information you provide directly (such as your name, email address, CV, and professional experience) as well as usage data collected automatically when you interact with our platform.',
   },
   {
     title: 'How We Use Your Data',
@@ -46,7 +46,7 @@ export default function PrivacyPage() {
     <>
       <Helmet>
         <title>Privacy Policy | Elevare Human Solutions</title>
-        <meta name="description" content="Read Elevare's privacy policy - how we collect, use, and protect your personal data in compliance with GDPR and Nigeria's NDPR." />
+        <meta name="description" content="Read Elevare's privacy policy on how we collect, use, and protect your personal data in compliance with GDPR and Nigeria's NDPR." />
         <link rel="canonical" href="https://elevare.com.ng/privacy" />
       </Helmet>
       <Navbar />

@@ -4,7 +4,7 @@ import api from '@/lib/api'
 /**
  * useInterviewList - tracks which candidates are on a specific job's
  * interview list. Job-scoped (unlike useSavedCandidates, which is global)
- * — the same candidate can independently be on the interview list for
+ *  -  the same candidate can independently be on the interview list for
  * different jobs.
  */
 export function useInterviewList(jobId) {

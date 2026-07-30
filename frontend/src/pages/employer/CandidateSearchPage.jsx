@@ -108,7 +108,7 @@ export default function CandidateSearchPage() {
           </p>
         </div>
 
-        {/* Filters — structured fields for precise attributes, plus a free-text
+        {/* Filters  -  structured fields for precise attributes, plus a free-text
             field for anything better matched by meaning than by an exact filter.
             Both are submitted together in one search; no LLM step in between. */}
         <div className="rounded-xl border border-border bg-white p-5 space-y-4">
@@ -189,7 +189,7 @@ export default function CandidateSearchPage() {
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
                 Describe the ideal candidate (optional)
-                <InfoTooltip text="Goes beyond the filters above - this matches candidates whose overall profile reads as similar in meaning, even if they don't use these exact words. Use it for things that are hard to turn into a filter, like 'fintech experience' or 'scaled a system under heavy traffic'." />
+                <InfoTooltip text="Goes beyond the filters above. Matches candidates whose overall profile reads as similar in meaning, even if they don't use these exact words. Use it for things that are hard to turn into a filter, like 'fintech experience' or 'scaled a system under heavy traffic'." />
               </label>
               <input
                 type="text"

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 /**
  * SaveHeartButton - the global "save candidate" bookmark toggle, reused
  * across candidate search results, AI talent matches, and applicants.
- * Instant toggle, no confirmation — this is a lightweight, reversible
+ * Instant toggle, no confirmation  -  this is a lightweight, reversible
  * bookmark, not a credit-costing or candidate-facing action.
  */
 export default function SaveHeartButton({ saved, onToggle, className }) {

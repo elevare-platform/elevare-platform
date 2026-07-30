@@ -38,7 +38,7 @@ export default function SourcedCvModal({ profileId, jobId, onClose }) {
   // CSS transforms (e.g. TalentMatchCard's hover:-translate-y-0.5) and/or
   // overflow-hidden. A `position: fixed` descendant of a transformed
   // ancestor stops being fixed to the viewport and is clipped/repositioned
-  // relative to that ancestor instead — which is what caused the reported
+  // relative to that ancestor instead  -  which is what caused the reported
   // flicker (the modal fighting the card's hover transform for its
   // containing block). Rendering into `document.body` sidesteps that
   // entirely, regardless of what card this is opened from.
@@ -108,7 +108,7 @@ export default function SourcedCvModal({ profileId, jobId, onClose }) {
                 </a>
               ) : (
                 // Access is fine (we got here) but no file is stored for
-                // this submission — say so explicitly rather than silently
+                // this submission  -  say so explicitly rather than silently
                 // omitting the button, which reads as broken rather than
                 // "there's genuinely no file on record."
                 <p className="text-xs text-text-muted text-center py-2 border border-dashed border-border rounded-lg">

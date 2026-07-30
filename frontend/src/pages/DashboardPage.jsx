@@ -139,8 +139,8 @@ function SavedCandidatesTab() {
         </div>
         <h2 className="text-xl font-bold text-text">No saved candidates yet</h2>
         <p className="text-text-muted text-sm leading-relaxed">
-          Click the heart on any candidate — in Candidate Search, AI Talent Matches, or your
-          applicants list — to bookmark them here.
+          Click the heart icon on any candidate in Candidate Search, AI Talent Matches, or your
+          applicants list to bookmark them here.
         </p>
       </div>
     )
@@ -403,8 +403,8 @@ function EmployerDashboard({ user }) {
               </div>
               <h2 className="text-xl font-bold text-text">Candidate Search</h2>
               <p className="text-text-muted text-sm leading-relaxed">
-                Search your talent pool in natural language or by filter — skills, experience,
-                location, seniority, and availability — with ranked, explainable results.
+                Search your talent pool in natural language or filter by skills, experience,
+                location, seniority, and availability with ranked, explainable results.
               </p>
               <Link to="/employer/candidate-search">
                 <Button className="flex items-center gap-2 mx-auto">

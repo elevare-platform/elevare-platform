@@ -113,7 +113,7 @@ export default function ContactPage() {
     <>
       <Helmet>
         <title>Contact Us | Elevare Human Solutions</title>
-        <meta name="description" content="Get in touch with the Elevare team. Employer sales enquiries, general questions, or just say hello - we respond within 24 hours." />
+        <meta name="description" content="Get in touch with the Elevare team for employer sales enquiries or general questions. We respond within 24 hours." />
         <meta property="og:title" content="Contact Us | Elevare Human Solutions" />
         <meta property="og:description" content="Get in touch with the Elevare team. We respond within 24 hours on business days." />
         <meta property="og:url" content="https://elevare.com.ng/contact" />
@@ -163,7 +163,7 @@ export default function ContactPage() {
                   <CheckCircle2 size={48} className="text-green-500" />
                   <h2 className="text-2xl font-extrabold text-text">Message Sent</h2>
                   <p className="text-text-muted text-sm max-w-sm">
-                    Thank you - we'll be in touch within 24 hours.
+                    Thank you, we'll be in touch within 24 hours.
                   </p>
                   <button
                     className="mt-4 text-sm text-brand-blue font-semibold hover:underline"

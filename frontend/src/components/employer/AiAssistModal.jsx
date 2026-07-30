@@ -123,7 +123,7 @@ export function AiAssistModal({ isOpen, onClose, fieldLabel, fieldKey, currentTe
           {suggestion && !loading && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-text-muted">
-                Preview {hasText && <span className="text-text-muted/70"> - additions in green, removals struck through</span>}
+                Preview {hasText && <span className="text-text-muted/70">(additions in green, removals struck through)</span>}
               </p>
               <div className="rounded-md border border-border bg-background px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">
                 {hasText ? (

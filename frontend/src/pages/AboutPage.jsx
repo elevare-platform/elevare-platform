@@ -122,9 +122,10 @@ export default function AboutPage() {
     <>
       <Helmet>
         <title>About Us | Elevare Human Solutions</title>
-        <meta name="description" content="Learn about Elevare Human Solutions - our mission, values, and the team behind Africa's leading recruitment platform." />
+        <meta name="description" content="Learn about Elevare Human Solutions, including our mission, values, and the team behind Africa's leading recruitment platform." />
+        <link rel="canonical" href="https://elevare.com.ng/about" />
         <meta property="og:title" content="About Us | Elevare Human Solutions" />
-        <meta property="og:description" content="Learn about Elevare Human Solutions - our mission, values, and the team behind Africa's leading recruitment platform." />
+        <meta property="og:description" content="Learn about Elevare Human Solutions, including our mission, values, and the team behind Africa's leading recruitment platform." />
         <meta property="og:url" content="https://elevare.com.ng/about" />
         <meta property="og:type" content="website" />
         <link rel="canonical" href="https://elevare.com.ng/about" />

@@ -97,7 +97,7 @@ export default function PostJobPage() {
                   <h2 className="font-semibold text-green-900 text-base">Job submitted for review</h2>
                   <p className="text-sm text-green-800 mt-1 leading-relaxed">
                     Your listing has been created and is now pending admin approval.
-                    You'll receive an email once it's approved - the email will include
+                    You'll receive an email once it's approved. The email will include
                     a direct link to publish it and start receiving applications.
                   </p>
                 </div>
