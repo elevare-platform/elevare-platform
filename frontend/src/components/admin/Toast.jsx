@@ -41,7 +41,7 @@ export function useToast() {
   }, [])
 
   // `ToastContainer` is defined at module scope (not inside the hook) and
-  // wired via a stable useCallback below — a function *component* redefined
+  // wired via a stable useCallback below  -  a function *component* redefined
   // inside a hook/render body gets a new identity every call, which makes
   // React treat it as a different component type and remount it (and every
   // Toast inside it, losing their dismiss timers) on every single re-render

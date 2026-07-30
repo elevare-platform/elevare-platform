@@ -342,7 +342,7 @@ function ShareModal({ jobId, onClose }) {
                 Include CV downloads
               </label>
               <p className="text-xs text-text-muted mt-0.5">
-                Lets the client download CVs. For registered candidates this still requires their sharing consent — sourced/external CVs are always included.
+                Lets the client download CVs. Registered candidates require sharing consent, while sourced and external CVs are always included.
               </p>
             </div>
           </div>

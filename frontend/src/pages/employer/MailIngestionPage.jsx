@@ -264,7 +264,7 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
                 <div className="relative">
                   <select value={jobId} onChange={e => setJobId(e.target.value)}
                     className="w-full text-sm rounded-lg border border-border px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-blue bg-white">
-                    <option value="">No job - add to pipeline only</option>
+                    <option value="">No job (add to pipeline only)</option>
                     {(jobs ?? []).map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
                   </select>
                   <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -289,7 +289,7 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
                 />
                 <p className="text-xs text-text-muted mt-1.5">
                   {jobId
-                    ? 'Set automatically - only emails with attachments mentioning this job title are imported.'
+                    ? 'Set automatically. Only emails with attachments mentioning this job title are imported.'
                     : 'All emails with attachments are imported. Pick a job above to narrow this down.'}
                 </p>
               </div>
@@ -335,7 +335,7 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
             </Button>
           ) : (
             <Button onClick={() => { reset(); onClose() }} variant="outline" className="w-full" size="lg">
-              Run in background - close
+              Run in background
             </Button>
           )}
         </div>
@@ -570,7 +570,7 @@ export default function MailIngestionPage() {
       loadIntegrations()
       setConnecting(null)
     } else if (connected === 'error') {
-      show('Failed to connect mailbox - please try again', 'error')
+      show('Failed to connect mailbox. Please try again', 'error')
       setConnecting(null)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps - intentionally run once on mount

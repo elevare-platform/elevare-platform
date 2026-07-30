@@ -55,8 +55,8 @@ export default function AIRecruiterPage() {
             </h1>
 
             <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal">
-              Search your talent pool in plain English and get ranked, explainable matches —
-              available inside your employer dashboard once you register.
+              Search your talent pool in plain English and get ranked, explainable matches.
+              Available inside your employer dashboard once you register.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -93,7 +93,7 @@ export default function AIRecruiterPage() {
           </div>
         </section>
 
-        {/* What it does — informational, no interactive search here */}
+        {/* What it does */}
         <section className="relative z-10 py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
           <div className="text-center max-w-xl mx-auto space-y-1.5 mb-10">
             <span className="text-xs font-bold uppercase tracking-wider text-brand-amber">
@@ -103,10 +103,9 @@ export default function AIRecruiterPage() {
               Natural Language Talent Search
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Describe who you're hiring for — "Senior backend engineer in Lagos with fintech
-              experience" — and get ranked candidates with a plain-language explanation of why
-              each one matched. It's part of your employer dashboard, not a public tool, since it
-              searches real candidate profiles.
+              Describe who you are hiring for (for example, "Senior backend engineer in Lagos with fintech
+              experience") to get ranked candidates with a plain-language explanation of why
+              each one matched. It is part of your employer dashboard, built for internal team search on verified profiles.
             </p>
           </div>
 
@@ -117,8 +116,8 @@ export default function AIRecruiterPage() {
               </div>
               <h3 className="font-bold text-white text-sm">Understands your query</h3>
               <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                Type it the way you'd say it — skills, seniority, location, and industry context
-                are parsed automatically, and you can always review and edit before searching.
+                Type your requirements naturally. Skills, seniority, location, and industry context
+                are parsed automatically, and you can review or edit filters before running a search.
               </p>
             </div>
             <div className="rounded-xl bg-slate-900/90 border border-white/10 p-5">
@@ -127,8 +126,8 @@ export default function AIRecruiterPage() {
               </div>
               <h3 className="font-bold text-white text-sm">Explains every match</h3>
               <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                Every result shows why it ranked where it did — matched skills, experience fit,
-                and semantic relevance — never a black-box score.
+                Every result shows clear match breakdown: skill overlap, experience fit,
+                and domain alignment, with no hidden black-box scores.
               </p>
             </div>
             <div className="rounded-xl bg-slate-900/90 border border-white/10 p-5">
@@ -137,8 +136,7 @@ export default function AIRecruiterPage() {
               </div>
               <h3 className="font-bold text-white text-sm">Spans your whole pipeline</h3>
               <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                Searches both candidates who registered directly and CVs your team sourced
-                yourself — one search, your whole talent pool.
+                Searches across directly registered candidates and your imported CV database in a single unified view.
               </p>
             </div>
           </div>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, useInView } from 'framer-motion'
 import { Users, ArrowUpRight } from 'lucide-react'
 
-// Illustrative only — spans multiple industries deliberately, so a visitor
+// Illustrative only  -  spans multiple industries deliberately, so a visitor
 // hiring for oil & gas or retail sees relevance, not just tech roles.
 // TODO: once real talent-pool volume exists per industry, replace with a
 // live aggregate query instead of this static list.

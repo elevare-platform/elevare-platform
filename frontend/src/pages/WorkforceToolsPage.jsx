@@ -85,8 +85,8 @@ export default function WorkforceToolsPage() {
           
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl space-y-6">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35 animate-pulse">
-                <Sparkles size={14} className="animate-spin" /> SaaS Tools Platform Coming Soon
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35">
+                <Sparkles size={14} /> SaaS Tools (Coming Soon)
               </span>
               <h1 className="font-sans text-4xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight leading-tight">
                 Workforce Management Tools
@@ -133,7 +133,7 @@ export default function WorkforceToolsPage() {
           <div className="text-center mb-16">
             <h2 className="text-3xl font-extrabold text-text tracking-tight">Interactive Workforce Suite</h2>
             <p className="text-text-muted text-sm max-w-xl mx-auto mt-2">
-              SaaS dashboard modules designed to streamline operations and ensure complete statutory regulatory compliance.
+              SaaS dashboard modules designed to streamline operations and maintain complete statutory regulatory compliance.
             </p>
           </div>
 
@@ -147,7 +147,7 @@ export default function WorkforceToolsPage() {
                 >
                   {/* Coming Soon absolute badge */}
                   <span className="absolute top-4 right-4 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-amber-dark/10 text-brand-amber-dark text-[10px] font-bold uppercase tracking-wider">
-                    {tool.badge}-  Coming Soon
+                    {tool.badge} (Coming Soon)
                   </span>
 
                   <div>
@@ -173,7 +173,7 @@ export default function WorkforceToolsPage() {
                       <Lock size={12} /> Closed Beta
                     </span>
                     <button disabled className="text-slate-400 font-semibold cursor-not-allowed">
-                      Unlock Module →
+                      View Module →
                     </button>
                   </div>
                 </article>

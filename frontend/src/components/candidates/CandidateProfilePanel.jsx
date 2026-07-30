@@ -35,7 +35,7 @@ export default function CandidateProfilePanel({ profileId, jobId, onClose }) {
       .finally(() => setLoading(false))
   }, [profileId, jobId])
 
-  // Portalled to <body> — opened from cards that apply a CSS transform on
+  // Portalled to <body>  -  opened from cards that apply a CSS transform on
   // hover (e.g. TalentMatchCard) and/or overflow-hidden; a `position: fixed`
   // descendant of a transformed ancestor is no longer fixed to the
   // viewport, causing the panel to flicker/clip against the card instead

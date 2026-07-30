@@ -57,7 +57,7 @@ function IntroductionRow({ intro }) {
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
           {intro.candidate_current_title && <span>{intro.candidate_current_title}</span>}
           {intro.is_general_interest ? (
-            // No real job to link to — a General Interest introduction
+            // No real job to link to  -  a General Interest introduction
             // isn't anchored to an actual posting (see CandidateActionModal).
             <span className="flex items-center gap-1">
               <Briefcase size={11} />

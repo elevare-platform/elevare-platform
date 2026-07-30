@@ -317,7 +317,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
         <textarea
           id="preferred_certifications"
           rows={2}
-          placeholder="e.g. PMP, AWS Certified, CPA - nice-to-haves only…"
+          placeholder="e.g. PMP, AWS Certified, CPA (nice to have)"
           className={textareaClass}
           {...register('preferred_certifications')}
         />

@@ -20,14 +20,14 @@ const SCORE_STYLES = {
 }
 
 /**
- * CandidateSearchResultCard — one ranked, explainable result from the
+ * CandidateSearchResultCard  -  one ranked, explainable result from the
  * structured candidate search. Access to a candidate's full profile/CV
  * mirrors TalentMatchCard's workflow on the job-matching page exactly,
  * rather than exposing it unconditionally:
  *
- * - self_registered: CandidateProfilePanel — the candidate's own visibility
+ * - self_registered: CandidateProfilePanel  -  the candidate's own visibility
  *   setting is enforced server-side at GET /candidates/{id}.
- * - own_sourced: SourcedCvModal directly — the employer already owns this
+ * - own_sourced: SourcedCvModal directly  -  the employer already owns this
  *   upload, no request needed.
  * - admin_sourced: gated behind `has_cv_access` (an accepted introduction).
  *   Until then, the action is "Request Introduction" via CandidateActionModal,

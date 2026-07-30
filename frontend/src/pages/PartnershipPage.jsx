@@ -102,7 +102,7 @@ export default function PartnershipPage() {
                 Aligning Corporate Vision with Strategic Hiring Solutions
               </h2>
               <p className="text-text-muted text-base leading-relaxed">
-                Elevare Human Solutions Ltd provides robust, scalable talent models. From full-lifecycle contract outsourcing to high-caliber executive recruiting partnerships, we co-manage recruitment structures so you can focus on core growth.
+                Elevare Human Solutions Ltd provides flexible, scalable talent models. From full-lifecycle contract outsourcing to high-calibre executive recruiting partnerships, we co-manage recruitment structures so you can focus on core growth.
               </p>
 
               <div className="space-y-4">

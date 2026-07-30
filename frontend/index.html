@@ -14,7 +14,25 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!--
+        Static fallback content, visible only until React mounts and
+        replaces it (createRoot().render() overwrites this div's
+        innerHTML). Exists so a crawler or reviewer that doesn't execute
+        JavaScript still sees real content describing what this app is,
+        instead of an empty shell.
+      -->
+      <main>
+        <h1>Elevare Human Solutions</h1>
+        <p>
+          Elevare Human Solutions is a recruitment and workforce
+          transformation platform connecting employers across Africa with
+          qualified candidates. Employers can post jobs, review
+          applicants, and manage hiring pipelines; candidates can build a
+          profile, apply to roles, and track applications.
+        </p>
+      </main>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

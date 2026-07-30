@@ -77,7 +77,7 @@ export default function LoginPage() {
             Welcome back.<br />Let's get to work.
           </h1>
           <p className="text-white/70 text-lg leading-relaxed">
-            Your next hire - or your next role - is waiting on the other side.
+            Your next hire or your next role is waiting on the other side.
           </p>
         </div>
 

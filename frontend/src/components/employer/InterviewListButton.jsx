@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * InterviewListButton - "add to this job's interview list" toggle.
- * Distinct from SaveHeartButton (global bookmark, no job) — this is
+ * Distinct from SaveHeartButton (global bookmark, no job)  -  this is
  * per-job, the queue-for-interview stage ahead of Shortlist.
  */
 export default function InterviewListButton({ onList, onToggle, className }) {

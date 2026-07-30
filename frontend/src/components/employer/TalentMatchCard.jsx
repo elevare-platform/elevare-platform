@@ -50,7 +50,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
   const [showCvModal, setShowCvModal] = useState(false)
   const [notifyState, setNotifyState] = useState('idle') // idle | sending | sent
 
-  // 'own_sourced'-  an employer's own imported candidate. They already have
+  // 'own_sourced' - an employer's own imported candidate. They already have
   // full access to this profile (Talent Pipeline), so no credit/consent
   // flow is needed - just a free, one-way heads-up that this job might fit.
   // Falls back to the existing Request Introduction flow if `ownership` is
@@ -433,7 +433,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       {isOwnSourced && notifyState === 'sent' && (
         <p className="relative text-[11px] text-text-muted mt-2 flex items-center gap-1">
           <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
-          They've been let know about this role - you already have their full profile in your Talent Pipeline.
+          They've been notified about this role. You already have their full profile in your Talent Pipeline.
         </p>
       )}
 

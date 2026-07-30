@@ -45,7 +45,7 @@ const EMPLOYER_STEPS = [
     number: '04',
     icon: Handshake,
     title: 'Hire',
-    desc: 'Select your hire and let us handle the offer coordination. We stay engaged post-placement to ensure a smooth transition.',
+    desc: 'Select your hire and let us handle the offer coordination. We stay engaged post-placement for a smooth transition.',
   },
 ]
 
@@ -83,7 +83,7 @@ const EMPLOYER_FAQS = [
   },
   {
     q: 'Do I need to pay to post a job?',
-    a: 'The Starter plan allows a limited number of free postings. Professional and Enterprise plans unlock unlimited postings and priority support. See our Pricing page for details.',
+    a: 'The Starter plan allows a limited number of free postings. Professional and Enterprise plans include unlimited postings and priority support. See our Pricing page for details.',
   },
   {
     q: 'Can I search for candidates directly without posting a job?',

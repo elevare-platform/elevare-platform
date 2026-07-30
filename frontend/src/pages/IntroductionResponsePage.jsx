@@ -15,7 +15,7 @@ const STATUS_CONTENT = {
     icon: XCircle,
     iconClass: 'text-text-muted',
     title: 'Introduction declined',
-    body: "No problem - the employer won't see your details for this role. Nothing further is needed from you.",
+    body: "No problem. The employer won't see your details for this role. Nothing further is needed from you.",
   },
   EXPIRED: {
     icon: Clock,
