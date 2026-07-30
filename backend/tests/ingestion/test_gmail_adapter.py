@@ -236,6 +236,62 @@ async def test_get_message_fetches_large_attachment_by_id():
     assert message.attachments[0].data == large_pdf
 
 
+@pytest.mark.asyncio
+async def test_get_message_skips_download_for_oversized_or_wrong_type_attachment():
+    """Attachments that filter_message() would reject anyway (wrong
+    extension, over the size cap) must never reach the download call —
+    downloading them first and discarding them afterwards is what let a
+    mailbox with a few large non-CV attachments spike worker memory."""
+    adapter = GmailAdapter(access_token="tok", user_email="me")
+
+    raw_message = {
+        "id": "msg_mixed",
+        "snippet": "Photos + CV",
+        "internalDate": "1720000000000",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "Application"},
+                {"name": "From", "value": "bob@example.com"},
+            ],
+            "parts": [
+                {
+                    "mimeType": "video/mp4",
+                    "filename": "vacation.mp4",
+                    "body": {
+                        "attachmentId": "att_huge",
+                        "data": None,
+                        "size": 20 * 1024 * 1024,  # over the cap
+                    },
+                },
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "cv.pdf",
+                    "body": {
+                        "attachmentId": "att_cv",
+                        "data": None,
+                        "size": 1000,
+                    },
+                },
+            ],
+        },
+    }
+
+    downloaded_ids: list[str] = []
+
+    async def mock_get(url, **kwargs):
+        if "attachments/" in str(url):
+            att_id = str(url).rsplit("/", 1)[-1]
+            downloaded_ids.append(att_id)
+            return _make_mock_response({"data": _b64url(b"%PDF-1.4")})
+        return _make_mock_response(raw_message)
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
+        message = await adapter.get_message("msg_mixed")
+
+    assert downloaded_ids == ["att_cv"]
+    assert [a.filename for a in message.attachments] == ["cv.pdf"]
+
+
 # ─── GmailAdapter.get_history_since ───────────────────────────────────────────
 
 

@@ -299,6 +299,61 @@ async def test_get_message_with_attachment():
 
 
 @pytest.mark.asyncio
+async def test_get_message_skips_download_for_oversized_or_wrong_type_attachment():
+    """Attachments that filter_message() would reject anyway (wrong
+    extension, over the size cap) must never reach the download call —
+    downloading them first and discarding them afterwards is what let a
+    mailbox with a few large non-CV attachments spike worker memory."""
+    adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")
+
+    details_json = {
+        "data": {
+            "messageId": "zm_mixed",
+            "subject": "Photos + CV",
+            "fromAddress": "candidate@example.com",
+            "receivedTime": "1720000000000",
+            "summary": "",
+            "hasAttachment": "1",
+        }
+    }
+    attachment_info_json = {
+        "data": {
+            "attachments": [
+                {
+                    "attachmentId": "att_huge",
+                    "attachmentName": "vacation.mp4",
+                    "attachmentSize": str(20 * 1024 * 1024),  # over the cap
+                },
+                {
+                    "attachmentId": "att_cv",
+                    "attachmentName": "cv.pdf",
+                    "attachmentSize": "1000",
+                },
+            ]
+        }
+    }
+
+    downloaded_ids: list[str] = []
+
+    async def mock_get(url, **kwargs):
+        if "attachmentinfo" in str(url):
+            return _make_mock_response(attachment_info_json)
+        if "attachments/" in str(url):
+            att_id = str(url).rsplit("/", 1)[-1]
+            downloaded_ids.append(att_id)
+            return httpx.Response(
+                200, content=b"%PDF-1.4", request=httpx.Request("GET", url)
+            )
+        return _make_mock_response(details_json)
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=mock_get):
+        message = await adapter.get_message("f42|zm_mixed")
+
+    assert downloaded_ids == ["att_cv"]
+    assert [a.filename for a in message.attachments] == ["cv.pdf"]
+
+
+@pytest.mark.asyncio
 async def test_get_message_attachment_download_failure_skipped():
     """A failed attachment download is logged and skipped — message still returned."""
     adapter = ZohoAdapter(access_token="ztok", account_id="acct_123")

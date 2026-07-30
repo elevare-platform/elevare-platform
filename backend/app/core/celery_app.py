@@ -81,5 +81,10 @@ celery.conf.update(
             "schedule": 60 * 15,  # every 15 minutes
             "options": {"expires": 60 * 14},  # discard if not picked up before next run
         },
+        "reap-stale-import-runs": {
+            "task": "app.modules.ingestion.tasks.reap_stale_import_runs_task",
+            "schedule": 60 * 30,  # every 30 minutes
+            "options": {"expires": 60 * 29},
+        },
     },
 )

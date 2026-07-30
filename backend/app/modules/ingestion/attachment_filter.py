@@ -64,6 +64,20 @@ def _extension(filename: str) -> str:
     return filename[idx:].lower() if idx != -1 else ""
 
 
+def attachment_would_pass(filename: str, size: int) -> bool:
+    """Extension + size check only, using metadata a provider's listing
+    endpoint already returns — before downloading any attachment bytes.
+
+    Adapters call this to skip fetching attachments that filter_message()
+    would reject anyway (wrong extension, over the size cap). Without it,
+    every attachment on every message gets fully downloaded into memory
+    regardless of type or size, and only discarded afterwards — a mailbox
+    with a handful of messages carrying large non-CV attachments (video,
+    zip, high-res images) can spike worker memory for no benefit.
+    """
+    return _extension(filename) in ALLOWED_EXTENSIONS and size <= MAX_ATTACHMENT_BYTES
+
+
 def _looks_like_cv_email(message: MailMessage) -> bool:
     """Soft check — does the subject or body snippet contain CV keywords."""
     text = (message.subject + " " + message.body_snippet).lower()
