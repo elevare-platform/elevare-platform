@@ -150,7 +150,7 @@ export default function HeroSection({ onBookConsultation }) {
               >
                 <span className="hero-eyebrow-dot" aria-hidden="true" />
                 <span className="font-bold text-sm tracking-widest uppercase" style={{ color: '#FCD34D' }}>
-                  Elevare Human Solutions — HR Strategy &amp; Workforce Solutions
+                  Elevare Human Solutions: HR Strategy &amp; Workforce Solutions
                 </span>
               </div>
             </div>
