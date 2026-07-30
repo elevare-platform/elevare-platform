@@ -52,7 +52,13 @@ function progressPercent(run) {
   if (!run) return 0
   if (run.status === 'COMPLETED') return 100
   if (!run.total_emails_found) return 0
-  return Math.round(((run.emails_processed + run.emails_skipped) / run.total_emails_found) * 100)
+  // Every outcome counts toward "scanned" — processed, skipped, deduplicated,
+  // AND failed. Omitting failed/deduplicated understated progress on any run
+  // with real-world failures or repeat CVs (i.e. most runs), on top of never
+  // being able to reach 100% before COMPLETED if either was ever non-zero.
+  const scanned =
+    run.emails_processed + run.emails_skipped + run.emails_failed + run.emails_deduplicated
+  return Math.min(100, Math.round((scanned / run.total_emails_found) * 100))
 }
 
 function relativeTime(isoString) {
@@ -126,7 +132,10 @@ function ImportRunCard({ integrationId, initialRunId, onComplete }) {
         {isRunning && <RefreshCw size={14} className="text-brand-blue animate-spin" />}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      {/* processed + deduplicated + skipped + failed always sums to found —
+          Failed used to be tracked but never shown, so the four visible
+          tiles silently fell short of the found total. */}
+      <div className="grid grid-cols-3 gap-2">
         <div className="rounded border border-border bg-surface-muted p-2 text-center">
           <p className="text-xl font-bold text-text leading-none">{run.total_emails_found}</p>
           <p className="text-[10px] text-text-muted uppercase font-semibold mt-1">Found</p>
@@ -142,6 +151,10 @@ function ImportRunCard({ integrationId, initialRunId, onComplete }) {
         <div className="rounded border border-border bg-surface-muted p-2 text-center">
           <p className="text-xl font-bold text-gray-500 leading-none">{run.emails_skipped}</p>
           <p className="text-[10px] text-text-muted uppercase font-semibold mt-1">Skipped</p>
+        </div>
+        <div className="rounded border border-border bg-surface-muted p-2 text-center">
+          <p className="text-xl font-bold text-red-500 leading-none">{run.emails_failed}</p>
+          <p className="text-[10px] text-text-muted uppercase font-semibold mt-1">Failed</p>
         </div>
       </div>
 
@@ -455,7 +468,11 @@ function IntegrationCard({ integration, onImportClick, onDisconnectClick }) {
             <span className="font-semibold text-blue-700 flex items-center gap-1">
               <RefreshCw size={11} className="animate-spin" /> Import running
             </span>
-            <span className="text-blue-600">{run.emails_processed}/{run.total_emails_found}</span>
+            <span className="text-blue-600">
+              {run.total_emails_found
+                ? `${run.emails_processed} of ${run.total_emails_found} processed`
+                : 'Scanning mailbox…'}
+            </span>
           </div>
           <div className="w-full h-1 rounded-full bg-blue-100 overflow-hidden">
             <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${pct}%` }} />
@@ -558,6 +575,19 @@ export default function MailIngestionPage() {
     loadIntegrations()
     loadJobs()
   }, [loadIntegrations, loadJobs])
+
+  // Keep the grid cards' progress numbers live while an import is running —
+  // loadIntegrations() otherwise only ever runs once on mount, so a card's
+  // "X processed" figure would sit frozen at whatever it read on page load
+  // even as the run keeps making real progress server-side.
+  const hasActiveRun = integrations.some(i =>
+    ['RUNNING', 'PENDING'].includes(i.latest_run?.status)
+  )
+  useEffect(() => {
+    if (!hasActiveRun) return
+    const id = setInterval(loadIntegrations, 3000)
+    return () => clearInterval(id)
+  }, [hasActiveRun, loadIntegrations])
 
   // Handle redirect back from Google OAuth
   useEffect(() => {
