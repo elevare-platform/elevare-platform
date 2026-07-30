@@ -455,7 +455,11 @@ function IntegrationCard({ integration, onImportClick, onDisconnectClick }) {
             <span className="font-semibold text-blue-700 flex items-center gap-1">
               <RefreshCw size={11} className="animate-spin" /> Import running
             </span>
-            <span className="text-blue-600">{run.emails_processed}/{run.total_emails_found}</span>
+            <span className="text-blue-600">
+              {run.total_emails_found
+                ? `${run.emails_processed} of ${run.total_emails_found} processed`
+                : 'Scanning mailbox…'}
+            </span>
           </div>
           <div className="w-full h-1 rounded-full bg-blue-100 overflow-hidden">
             <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${pct}%` }} />
@@ -558,6 +562,19 @@ export default function MailIngestionPage() {
     loadIntegrations()
     loadJobs()
   }, [loadIntegrations, loadJobs])
+
+  // Keep the grid cards' progress numbers live while an import is running —
+  // loadIntegrations() otherwise only ever runs once on mount, so a card's
+  // "X processed" figure would sit frozen at whatever it read on page load
+  // even as the run keeps making real progress server-side.
+  const hasActiveRun = integrations.some(i =>
+    ['RUNNING', 'PENDING'].includes(i.latest_run?.status)
+  )
+  useEffect(() => {
+    if (!hasActiveRun) return
+    const id = setInterval(loadIntegrations, 3000)
+    return () => clearInterval(id)
+  }, [hasActiveRun, loadIntegrations])
 
   // Handle redirect back from Google OAuth
   useEffect(() => {
