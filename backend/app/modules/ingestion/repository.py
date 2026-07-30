@@ -197,6 +197,21 @@ class IngestionRepository:
         runs = result.scalars().all()
         return {run.integration_id: run for run in runs}
 
+    async def get_stale_running_runs(
+        self, cutoff: datetime
+    ) -> list[IngestionImportRun]:
+        """RUNNING/PENDING runs not updated since `cutoff` — orphaned by a
+        worker that died mid-task without reaching its own cleanup code."""
+        result = await self._db.execute(
+            select(IngestionImportRun).where(
+                IngestionImportRun.status.in_(
+                    [ImportStatus.RUNNING.value, ImportStatus.PENDING.value]
+                ),
+                IngestionImportRun.updated_at < cutoff,
+            )
+        )
+        return list(result.scalars().all())
+
     async def update_import_run(
         self,
         run_id: uuid.UUID,

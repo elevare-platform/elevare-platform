@@ -16,7 +16,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.celery_app import celery
 from app.core.config import settings
-from app.modules.ingestion.enums import ImportStatus, IntegrationStatus, MailProvider
+from app.modules.ingestion.enums import (
+    STALE_RUN_TIMEOUT,
+    ImportStatus,
+    IntegrationStatus,
+    MailProvider,
+)
 from app.modules.talent_pool.enums import SourceType
 
 logger = logging.getLogger(__name__)
@@ -283,6 +288,53 @@ async def _run_import_async(
             raise
         finally:
             await engine.dispose()
+
+
+@celery.task(time_limit=60 * 5, soft_time_limit=60 * 4)
+def reap_stale_import_runs_task():
+    """Celery Beat task — periodically marks orphaned import runs as failed.
+
+    A run stays RUNNING/PENDING forever if the worker process running it
+    dies mid-task (OOM kill, the task's own hard time_limit, a container
+    restart) — those bypass the task's except-block cleanup entirely, so
+    nothing else ever moves the row out of RUNNING. Left alone, that
+    permanently blocks new imports and incremental sync for the affected
+    integration. See STALE_RUN_TIMEOUT for the staleness threshold.
+    """
+    asyncio.run(_reap_stale_runs_async())
+
+
+async def _reap_stale_runs_async():
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    try:
+        async with SessionLocal() as db:
+            from app.modules.ingestion.repository import IngestionRepository
+
+            repo = IngestionRepository(db)
+            cutoff = datetime.now(UTC) - STALE_RUN_TIMEOUT
+            stale_runs = await repo.get_stale_running_runs(cutoff)
+            if not stale_runs:
+                return
+
+            for run in stale_runs:
+                await repo.update_import_run(
+                    run.id,
+                    {
+                        "status": ImportStatus.FAILED.value,
+                        "error_message": "Import timed out — the worker likely "
+                        "crashed mid-run. Marked failed automatically.",
+                        "completed_at": datetime.now(UTC),
+                    },
+                )
+            await db.commit()
+            logger.warning(
+                "reap_stale_import_runs: marked %d orphaned run(s) failed",
+                len(stale_runs),
+            )
+    finally:
+        await engine.dispose()
 
 
 @celery.task(time_limit=60 * 12, soft_time_limit=60 * 11)

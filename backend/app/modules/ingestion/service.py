@@ -34,7 +34,12 @@ from app.modules.ingestion.adapters.zoho import (
 from app.modules.ingestion.adapters.zoho import (
     refresh_access_token as zoho_refresh_token,
 )
-from app.modules.ingestion.enums import ImportStatus, IntegrationStatus, MailProvider
+from app.modules.ingestion.enums import (
+    STALE_RUN_TIMEOUT,
+    ImportStatus,
+    IntegrationStatus,
+    MailProvider,
+)
 from app.modules.ingestion.models import IngestionImportRun, MailIntegration
 from app.modules.ingestion.repository import IngestionRepository
 
@@ -478,14 +483,30 @@ class IngestionService:
             ImportStatus.RUNNING.value,
             ImportStatus.PENDING.value,
         ):
-            from app.core.exceptions import PlatformError
+            reference = latest.updated_at or latest.created_at
+            if datetime.now(UTC) - reference > STALE_RUN_TIMEOUT:
+                # Orphaned by a worker that died mid-run — see STALE_RUN_TIMEOUT.
+                # Mark it failed instead of leaving the user permanently
+                # blocked from starting a new import.
+                await self._repo.update_import_run(
+                    latest.id,
+                    {
+                        "status": ImportStatus.FAILED.value,
+                        "error_message": "Import timed out — the worker likely "
+                        "crashed mid-run. Marked failed automatically.",
+                        "completed_at": datetime.now(UTC),
+                    },
+                )
+                await self._db.commit()
+            else:
+                from app.core.exceptions import PlatformError
 
-            raise PlatformError(
-                "An import is already running for this integration. "
-                "Wait for it to complete before starting a new one.",
-                code="INTEGRATION_ALREADY_RUNNING",
-                status_code=409,
-            )
+                raise PlatformError(
+                    "An import is already running for this integration. "
+                    "Wait for it to complete before starting a new one.",
+                    code="INTEGRATION_ALREADY_RUNNING",
+                    status_code=409,
+                )
 
         default_query = query_filter or "has:attachment"
         run = await self._repo.create_import_run(
