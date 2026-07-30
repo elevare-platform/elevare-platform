@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.modules.ingestion.adapters.base import MailAdapter, MailAttachment, MailMessage
+from app.modules.ingestion.attachment_filter import attachment_would_pass
 
 logger = logging.getLogger(__name__)
 
@@ -217,10 +218,22 @@ class GmailAdapter(MailAdapter):
 
         body_snippet, raw_attachments = _parse_gmail_message(raw)
 
-        # Fetch attachment bytes — download each one individually
+        # Fetch attachment bytes — download each one individually. Skip
+        # anything filter_message() would reject anyway (wrong extension or
+        # over the size cap) before spending a request/memory on it — Gmail
+        # already gives us filename + size in the MIME walk above.
         attachments: list[MailAttachment] = []
         async with httpx.AsyncClient(timeout=60) as client:
             for att in raw_attachments:
+                if not attachment_would_pass(att["filename"], att["size"]):
+                    logger.debug(
+                        "GmailAdapter: skipping download of %s (%d bytes) — "
+                        "would fail the CV attachment filter",
+                        att["filename"],
+                        att["size"],
+                    )
+                    continue
+
                 if att["data"]:
                     # Inline data (small attachments)
                     data = _decode_body(att["data"])

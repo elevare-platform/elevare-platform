@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.modules.ingestion.adapters.base import MailAdapter, MailAttachment, MailMessage
+from app.modules.ingestion.attachment_filter import attachment_would_pass
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +325,19 @@ class ZohoAdapter(MailAdapter):
                 size = int(att.get("attachmentSize", 0))
 
                 if not att_id:
+                    continue
+
+                # Skip the download entirely for anything filter_message()
+                # would reject anyway — wrong extension or over the size cap.
+                # attachmentName/attachmentSize come from the listing above,
+                # no network call needed to know this.
+                if not attachment_would_pass(filename, size):
+                    logger.debug(
+                        "ZohoAdapter: skipping download of %s (%d bytes) — "
+                        "would fail the CV attachment filter",
+                        filename,
+                        size,
+                    )
                     continue
 
                 try:
