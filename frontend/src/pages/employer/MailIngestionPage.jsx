@@ -52,7 +52,13 @@ function progressPercent(run) {
   if (!run) return 0
   if (run.status === 'COMPLETED') return 100
   if (!run.total_emails_found) return 0
-  return Math.round(((run.emails_processed + run.emails_skipped) / run.total_emails_found) * 100)
+  // Every outcome counts toward "scanned" — processed, skipped, deduplicated,
+  // AND failed. Omitting failed/deduplicated understated progress on any run
+  // with real-world failures or repeat CVs (i.e. most runs), on top of never
+  // being able to reach 100% before COMPLETED if either was ever non-zero.
+  const scanned =
+    run.emails_processed + run.emails_skipped + run.emails_failed + run.emails_deduplicated
+  return Math.min(100, Math.round((scanned / run.total_emails_found) * 100))
 }
 
 function relativeTime(isoString) {

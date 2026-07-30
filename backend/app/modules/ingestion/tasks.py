@@ -168,10 +168,6 @@ async def _run_import_async(
 
                 total_found += len(message_ids)
                 pages_fetched += 1
-                await repo.update_import_run(
-                    run_id, {"total_emails_found": total_found}
-                )
-                await db.commit()
 
                 for message_id in message_ids:
                     await asyncio.sleep(_RATE_LIMIT_DELAY)
@@ -219,10 +215,17 @@ async def _run_import_async(
                 # Persist progress after every page, not just at the very end —
                 # otherwise a large mailbox leaves the UI showing 0 processed/
                 # skipped/failed for the entire run (it only reads what's in
-                # the DB), even though real work is happening.
+                # the DB), even though real work is happening. total_emails_found
+                # is written in this same update, together with the counts for
+                # the page it belongs to — writing it earlier (right after the
+                # page was fetched, before it was processed) made the progress
+                # bar's denominator jump ahead of its numerator for the entire
+                # time that page took to process, which reads as progress going
+                # backwards rather than forwards.
                 await repo.update_import_run(
                     run_id,
                     {
+                        "total_emails_found": total_found,
                         "emails_processed": processed,
                         "emails_skipped": skipped,
                         "emails_failed": failed,
