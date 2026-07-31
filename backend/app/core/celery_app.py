@@ -75,6 +75,24 @@ celery.conf.update(
     # docker-compose.prod.yml's celery_worker service for the 2G ceiling
     # this is meant to stay well under.
     worker_max_tasks_per_child=100,
+    # Route mail ingestion work to its own queue, consumed by a separate
+    # worker (see docker-compose.prod.yml's celery_worker_ingestion). Import
+    # tasks are long-running (now checkpointed, but still minutes-to-hours
+    # per execution) and I/O-bound, not memory/CPU-heavy like CV parsing/
+    # OCR/embeddings — without this, one employer's import occupies a
+    # worker slot shared with everyone else's CV parsing, scoring, and
+    # notification emails for the duration of the run. At 50 employers,
+    # even a couple of concurrent imports would stall unrelated work
+    # system-wide. Keeping them on a separate queue/worker means a burst of
+    # imports can never block anything outside mail ingestion itself.
+    task_routes={
+        "app.modules.ingestion.tasks.run_historical_import_task": {
+            "queue": "ingestion"
+        },
+        "app.modules.ingestion.tasks.sync_all_mailboxes_task": {
+            "queue": "ingestion"
+        },
+    },
     # Beat schedule — nightly off-peak jobs
     beat_schedule={
         "recompute-stale-scores-nightly": {

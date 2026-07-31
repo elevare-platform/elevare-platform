@@ -8,6 +8,7 @@ import hmac
 import logging
 import os
 import re
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -35,6 +36,12 @@ _MAX_PAGES = 200
 # CELERY_WORKER_CONCURRENCY since it's a per-task fan-out of HTTP calls, not
 # additional worker processes.
 _FETCH_CONCURRENCY = 8
+# A run checkpoints and hands off to a fresh task execution once it's been
+# going this long, rather than risking the task's own 2-hour hard time_limit
+# SIGKILL-ing it mid-page — a hard kill bypasses all cleanup, which is what
+# left runs stuck in RUNNING before the stale-run recovery fix. Comfortably
+# under the hard limit to leave room for whatever page is in flight.
+_TASK_DEADLINE_SECONDS = 90 * 60
 
 
 def _compute_cv_hash(content: bytes | str) -> str:
@@ -187,16 +194,32 @@ async def _run_import_async(
 
         await repo.update_import_run(
             run_id,
-            {"status": ImportStatus.RUNNING.value, "started_at": datetime.now(UTC)},
+            {
+                "status": ImportStatus.RUNNING.value,
+                # Only set on the true first start — a resumed run's
+                # started_at should reflect when the whole import began,
+                # not when this particular checkpointed execution picked
+                # it back up.
+                **({"started_at": datetime.now(UTC)} if run.started_at is None else {}),
+            },
         )
         await db.commit()
 
-        total_found = processed = skipped = failed = deduplicated = 0
+        # Resume from where a previous execution of this same run left off,
+        # if it checkpointed — both the counts and the pagination cursor —
+        # instead of restarting the whole mailbox from page one.
+        total_found = run.total_emails_found or 0
+        processed = run.emails_processed or 0
+        skipped = run.emails_skipped or 0
+        failed = run.emails_failed or 0
+        deduplicated = run.emails_deduplicated or 0
+
+        task_start_monotonic = time.monotonic()
 
         try:
             adapter = await service.get_valid_adapter(integration)
             query = run.query_filter or "has:attachment"
-            page_token = None
+            page_token = run.resume_page_token
             pages_fetched = 0
 
             while pages_fetched < _MAX_PAGES:
@@ -284,6 +307,29 @@ async def _run_import_async(
                 if not page_token:
                     break
 
+                # Checkpoint and hand off to a fresh task execution rather
+                # than risk running past the hard time_limit — that would
+                # get SIGKILLed, which skips all cleanup below (including
+                # the except block) and is exactly what left runs stuck in
+                # RUNNING before the stale-run recovery fix. The handoff
+                # task resumes from resume_page_token with today's counts
+                # already persisted above, so nothing is lost or redone.
+                if time.monotonic() - task_start_monotonic > _TASK_DEADLINE_SECONDS:
+                    await repo.update_import_run(
+                        run_id, {"resume_page_token": page_token}
+                    )
+                    await db.commit()
+                    run_historical_import_task.delay(
+                        run_id_str, integration_id_str, sourced_for_job_id_str
+                    )
+                    logger.info(
+                        "Import run %s checkpointed after %d page(s) — "
+                        "handed off to a new task execution",
+                        run_id,
+                        pages_fetched,
+                    )
+                    return
+
             try:
                 new_cursor = await adapter.get_current_history_id()
                 await repo.update_integration(
@@ -302,6 +348,7 @@ async def _run_import_async(
                     "emails_skipped": skipped,
                     "emails_failed": failed,
                     "emails_deduplicated": deduplicated,
+                    "resume_page_token": None,
                     "completed_at": datetime.now(UTC),
                 },
             )
