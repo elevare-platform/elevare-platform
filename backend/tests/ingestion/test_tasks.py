@@ -8,12 +8,15 @@ used to correctly label Gmail vs Zoho imports in the talent pool.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
 from app.modules.ingestion.tasks import (
+    _fetch_messages_concurrently,
     _get_message_with_refresh,
     _list_messages_with_refresh,
     _source_for_provider,
@@ -122,3 +125,79 @@ async def test_list_messages_with_refresh_reraises_non_401():
         )
 
     service.ensure_fresh_token.assert_not_awaited()
+
+
+# ─── _fetch_messages_concurrently ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fetch_messages_concurrently_returns_results_in_order():
+    """A single import's speed comes from fetching messages concurrently,
+    not from how many other imports are running — results must still come
+    back mapped to the right message_id, in the original order, regardless
+    of which coroutine happened to finish first."""
+    adapter = AsyncMock()
+
+    async def get_message(message_id):
+        # Reverse-ish completion order to prove ordering isn't accidental
+        await asyncio.sleep({"a": 0.03, "b": 0.01, "c": 0.02}[message_id])
+        return f"message-{message_id}"
+
+    adapter.get_message.side_effect = get_message
+    service = AsyncMock()
+
+    results = await _fetch_messages_concurrently(
+        service, "integration-1", adapter, ["a", "b", "c"]
+    )
+
+    assert [r[0] for r in results] == ["a", "b", "c"]
+    assert [r[1] for r in results] == ["message-a", "message-b", "message-c"]
+    assert all(r[2] is None for r in results)
+
+
+@pytest.mark.asyncio
+async def test_fetch_messages_concurrently_isolates_per_message_failures():
+    """One message failing to fetch (deleted, corrupt, transient error)
+    must not affect the others — it's reported back as that message's
+    exception, not raised and lost."""
+    adapter = AsyncMock()
+    adapter.get_message.side_effect = [
+        "message-a",
+        _http_error(500),
+        "message-c",
+    ]
+    service = AsyncMock()
+
+    results = await _fetch_messages_concurrently(
+        service, "integration-1", adapter, ["a", "b", "c"]
+    )
+
+    assert results[0] == ("a", "message-a", None)
+    assert results[1][0] == "b"
+    assert results[1][1] is None
+    assert isinstance(results[1][2], httpx.HTTPStatusError)
+    assert results[2] == ("c", "message-c", None)
+
+
+@pytest.mark.asyncio
+async def test_fetch_messages_concurrently_runs_in_parallel_not_sequentially():
+    """The whole point of this helper — wall-clock time for N messages
+    should be roughly N/concurrency, not N times a single message's
+    latency, or the "fix" is a no-op."""
+    adapter = AsyncMock()
+
+    async def get_message(message_id):
+        await asyncio.sleep(0.05)
+        return message_id
+
+    adapter.get_message.side_effect = get_message
+    service = AsyncMock()
+
+    message_ids = [str(i) for i in range(8)]  # fits in one concurrency batch
+    start = time.monotonic()
+    await _fetch_messages_concurrently(service, "integration-1", adapter, message_ids)
+    elapsed = time.monotonic() - start
+
+    # Sequential would take ~8 * 0.05s = 0.4s; concurrent should be close to
+    # one message's latency. Generous bound to avoid CI flakiness.
+    assert elapsed < 0.3
