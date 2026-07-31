@@ -25,6 +25,23 @@ from app.modules.talent_pool.repository import TalentPoolRepository
 
 logger = logging.getLogger(__name__)
 
+_nlp = None
+
+
+def _get_nlp():
+    """Return the shared spaCy model, loading it at most once per worker
+    process instead of once per CV. spacy.load() re-reads and
+    re-deserialises the model from disk every time it's called — doing
+    that on every single pipeline task adds real memory churn under a
+    burst of concurrent CV processing (e.g. a large mailbox import),
+    on top of an already-tight worker memory budget."""
+    global _nlp
+    if _nlp is None:
+        import spacy
+
+        _nlp = spacy.load("en_core_web_sm")
+    return _nlp
+
 
 def _json_serialise(obj):
     """Custom JSON serialiser for types not handled by stdlib json."""
@@ -84,9 +101,7 @@ async def _run_pipeline_async(
 
         repo = CVParsingRepo(db, get_storage_service())
 
-        import spacy
-
-        nlp = spacy.load("en_core_web_sm")
+        nlp = _get_nlp()
 
         ai_service = AnthropicCVExtractionService()
         redis = aioredis.from_url(settings.redis_url)
