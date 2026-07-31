@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 _RATE_LIMIT_DELAY = 0.15
 _MAX_PAGES = 200
+# Bounds how many messages are fetched from the provider concurrently within
+# a single import — the actual per-run bottleneck was never worker
+# concurrency (only one import task runs per run), it was fetching messages
+# one at a time inside that one task. Kept modest and independent of
+# CELERY_WORKER_CONCURRENCY since it's a per-task fan-out of HTTP calls, not
+# additional worker processes.
+_FETCH_CONCURRENCY = 8
 
 
 def _compute_cv_hash(content: bytes | str) -> str:
@@ -90,6 +97,40 @@ async def _get_message_with_refresh(service, integration_id, adapter, message_id
             raise
         await service.ensure_fresh_token(integration_id, adapter)
         return await adapter.get_message(message_id)
+
+
+async def _fetch_messages_concurrently(
+    service, integration_id, adapter, message_ids
+):
+    """Fetch a page's messages with bounded concurrency instead of one at a
+    time — the actual driver of a slow import wasn't how many *other*
+    imports were running (only one worker slot is used per import either
+    way), it was this loop awaiting each message's full round trip
+    (details + attachment list + every attachment file) strictly in order
+    before starting the next one.
+
+    Deliberately fetch-only — no DB access happens here, so it's safe to
+    run concurrently. Callers must still process the returned messages
+    (filtering, DB writes) sequentially: AsyncSession isn't safe for
+    concurrent use from multiple coroutines.
+
+    Returns a list of (message_id, message_or_None, exception_or_None)
+    in the same order as message_ids.
+    """
+    semaphore = asyncio.Semaphore(_FETCH_CONCURRENCY)
+
+    async def _fetch_one(message_id):
+        async with semaphore:
+            await asyncio.sleep(_RATE_LIMIT_DELAY)
+            try:
+                message = await _get_message_with_refresh(
+                    service, integration_id, adapter, message_id
+                )
+                return message_id, message, None
+            except Exception as exc:
+                return message_id, None, exc
+
+    return await asyncio.gather(*[_fetch_one(mid) for mid in message_ids])
 
 
 @celery.task(
@@ -169,20 +210,26 @@ async def _run_import_async(
                 total_found += len(message_ids)
                 pages_fetched += 1
 
-                for message_id in message_ids:
-                    await asyncio.sleep(_RATE_LIMIT_DELAY)
-                    try:
-                        message = await _get_message_with_refresh(
-                            service, integration_id, adapter, message_id
-                        )
-                    except Exception:
+                # Fetch this page's messages concurrently (network I/O only,
+                # no DB access) — this is the actual bottleneck a single
+                # import hits, independent of how many other imports are
+                # running. Processing each result below stays sequential
+                # since it writes to the shared DB session.
+                fetch_results = await _fetch_messages_concurrently(
+                    service, integration_id, adapter, message_ids
+                )
+
+                from app.modules.ingestion.attachment_filter import filter_message
+
+                for message_id, message, fetch_exc in fetch_results:
+                    if fetch_exc is not None:
                         logger.warning(
-                            "Failed to fetch message %s", message_id, exc_info=True
+                            "Failed to fetch message %s",
+                            message_id,
+                            exc_info=fetch_exc,
                         )
                         failed += 1
                         continue
-
-                    from app.modules.ingestion.attachment_filter import filter_message
 
                     result = filter_message(message)
                     if not result.passed:
