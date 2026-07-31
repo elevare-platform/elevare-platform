@@ -97,8 +97,13 @@ services:
     deploy:
       resources:
         limits:
+          # 2G was too tight: idle baseline (NLP libs loaded at worker
+          # startup) alone measured ~920MiB, leaving barely enough headroom
+          # for 2 concurrent CV-parsing/OCR tasks before hitting the
+          # ceiling and getting SIGKILLed. Host has room (7.8G total, other
+          # services running well under their own limits).
           cpus: '1.0'
-          memory: 2G
+          memory: 3G
     dns:
       - 8.8.8.8
       - 8.8.4.4
