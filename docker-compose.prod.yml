@@ -112,7 +112,46 @@ services:
     # change what os.cpu_count() returns), which on a multi-core host can
     # mean several memory-heavy children (CV parsing/OCR, embedding calls)
     # all competing for this service's 2G memory limit below.
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+    # -Q celery: this worker handles only the default queue (CV parsing,
+    # scoring, embeddings, notifications) — mail ingestion is routed to
+    # celery_worker_ingestion below so a burst of imports can never stall
+    # everything else.
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q celery
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  celery_worker_ingestion:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: elevare-worker-ingestion
+    env_file:
+      - ./backend/.env.production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Mail ingestion is I/O-bound (network calls to Zoho/Gmail,
+          # attachment downloads) — it dispatches CV parsing/OCR/embedding
+          # work to celery_worker via separate tasks rather than doing any
+          # of that heavy lifting itself, so it needs far less memory per
+          # process than celery_worker does. Higher concurrency is safe
+          # here for the same reason: these processes spend most of their
+          # time waiting on network I/O, not competing for CPU/memory.
+          cpus: '0.5'
+          memory: 512M
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4 -Q ingestion
     logging:
       driver: "json-file"
       options:

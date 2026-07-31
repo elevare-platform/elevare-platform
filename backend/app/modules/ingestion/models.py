@@ -151,6 +151,11 @@ class IngestionImportRun(BaseModel):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Optional: search query used to scope the import (e.g. "subject:CV OR subject:resume")
     query_filter: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Pagination cursor for resuming a long-running import as a fresh task
+    # execution instead of risking Celery's hard time_limit SIGKILL-ing it
+    # mid-run. Set when a run checkpoints before its deadline, cleared on
+    # completion. See run_historical_import_task.
+    resume_page_token: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationship
     integration: Mapped[MailIntegration] = relationship(

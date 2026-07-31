@@ -67,8 +67,26 @@ services:
     dns:
       - 8.8.8.8
       - 8.8.4.4
-    command: celery -A app.core.celery_app worker --loglevel=info
-  
+    command: celery -A app.core.celery_app worker --loglevel=info -Q celery
+
+  celery_worker_ingestion:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4 -Q ingestion
+
   celery_beat:
     build:
       context: ./backend
