@@ -297,7 +297,12 @@ class AnthropicCVExtractionService(AIService):
         try:
             response = await self._client.messages.create(
                 model=settings.anthropic_model,
-                max_tokens=2048,
+                # 2048 was too tight for a detailed CV (long work history,
+                # many skills/education entries) — the structured JSON
+                # response could hit the cap mid-string, producing a
+                # JSONDecodeError ("Unterminated string...") that fell back
+                # to an empty, low-confidence extraction for that CV.
+                max_tokens=4096,
                 system=CV_EXTRACTION_SYSTEM_PROMPT,
                 messages=[
                     {
