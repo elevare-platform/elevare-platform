@@ -29,6 +29,14 @@ export default function EditJobPage() {
   }, [id])
 
   const handleSubmit = async (data) => {
+    const isLiveApproved = job?.status === 'ACTIVE' && job?.moderation_status === 'APPROVED'
+    if (isLiveApproved && !window.confirm(
+      'This listing is live. Submitting will pull it offline and re-queue it for admin review — ' +
+      "it won't be visible to candidates again until an admin re-approves it. Continue?"
+    )) {
+      return
+    }
+
     setLoading(true)
     setSubmitError(null)
     try {
@@ -95,6 +103,26 @@ export default function EditJobPage() {
           {loadError && (
             <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-6">
               {loadError}
+            </div>
+          )}
+
+          {job && job.status === 'ACTIVE' && job.moderation_status === 'APPROVED' && (
+            <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 mb-6">
+              This listing is live. Saving changes will pull it offline and re-queue it for admin
+              review — it won't be visible to candidates again until an admin re-approves it.
+            </div>
+          )}
+
+          {job && job.status === 'DRAFT' && job.moderation_status === 'REJECTED' && (
+            <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-6">
+              <p className="font-semibold">This listing was rejected.</p>
+              <p className="mt-0.5">
+                {job.moderation_reason ?? 'No reason was given.'}
+              </p>
+              <p className="mt-1.5 text-red-600">
+                Saving here only updates the content — go back to My Jobs and use "Resubmit for
+                review" once you're ready for another admin review.
+              </p>
             </div>
           )}
 

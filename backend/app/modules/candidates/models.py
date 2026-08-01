@@ -113,6 +113,9 @@ class CandidateProfile(BaseModel):
     embedding_generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    embedding_source_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     user: Mapped[User] = relationship(back_populates="candidate_profile")

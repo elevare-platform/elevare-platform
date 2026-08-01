@@ -34,6 +34,9 @@ from app.modules.users.models import User
 logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(
+    tokenUrl="/api/v1/auth/login", auto_error=False
+)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -106,6 +109,32 @@ async def get_current_user_any_status(
         raise UserNotFoundException()
 
     return user
+
+
+async def get_optional_user(
+    token: str | None = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Return the authenticated user if a valid bearer token is present, else None.
+
+    For endpoints that are public but need to behave differently for an
+    authenticated caller (e.g. a job detail page that should only reveal an
+    unpublished job to its owning employer or an admin). Never raises —
+    a missing or invalid token just means an anonymous caller.
+    """
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        return None
+
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.employer_profile))
+        .where(User.id == payload.sub)
+    )
+    return result.scalar_one_or_none()
 
 
 def require_role(*roles: str):

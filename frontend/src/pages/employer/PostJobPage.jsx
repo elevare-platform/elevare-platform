@@ -9,7 +9,7 @@ import api from '@/lib/api'
 
 /**
  * PostJobPage-  /employer/jobs/new
- * Protected: EMPLOYER role only (enforced via ProtectedRoute in App.jsx)
+ * Protected: EMPLOYER or ADMIN role (enforced via ProtectedRoute in App.jsx)
  * Requirements: 5.1, 5.2, 5.3, 5.7, 5.8, 5.9
  */
 const DRAFT_KEY = 'elevare_job_draft'
@@ -21,6 +21,7 @@ export default function PostJobPage() {
   const [profileIncomplete, setProfileIncomplete] = useState(false)
   const [kycRequired, setKycRequired] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [submittedJob, setSubmittedJob] = useState(null)
 
   async function handleSubmit(data) {
     setLoading(true)
@@ -29,7 +30,8 @@ export default function PostJobPage() {
     setKycRequired(false)
 
     try {
-      await api.post('/api/v1/jobs', data)
+      const { data: created } = await api.post('/api/v1/jobs', data)
+      setSubmittedJob(created)
       setSubmitted(true)
     } catch (err) {
       const code = err.response?.data?.code
@@ -88,25 +90,36 @@ export default function PostJobPage() {
             </div>
           )}
 
-          {/* Success state - pending approval notice */}
+          {/* Success state - pending approval notice, or immediately live for admin */}
           {submitted ? (
             <div className="rounded-xl border border-green-200 bg-green-50 p-6 space-y-4">
               <div className="flex items-start gap-3">
                 <CheckCircle2 size={22} className="text-green-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h2 className="font-semibold text-green-900 text-base">Job submitted for review</h2>
-                  <p className="text-sm text-green-800 mt-1 leading-relaxed">
-                    Your listing has been created and is now pending admin approval.
-                    You'll receive an email once it's approved. The email will include
-                    a direct link to publish it and start receiving applications.
-                  </p>
+                  {submittedJob?.status === 'ACTIVE' ? (
+                    <>
+                      <h2 className="font-semibold text-green-900 text-base">Job is live</h2>
+                      <p className="text-sm text-green-800 mt-1 leading-relaxed">
+                        Your listing was published immediately and is now visible to candidates.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="font-semibold text-green-900 text-base">Job submitted for review</h2>
+                      <p className="text-sm text-green-800 mt-1 leading-relaxed">
+                        Your listing has been created and is now pending admin approval.
+                        You'll receive an email once it's approved. The email will include
+                        a direct link to publish it and start receiving applications.
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex gap-3 pt-1">
                 <Button onClick={() => navigate('/employer/jobs')} size="sm">
                   View my jobs
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setSubmitted(false)}>
+                <Button variant="outline" size="sm" onClick={() => { setSubmitted(false); setSubmittedJob(null) }}>
                   Post another job
                 </Button>
               </div>

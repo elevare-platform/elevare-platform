@@ -126,6 +126,9 @@ class TalentPoolProfiles(BaseModel):
     embedding_generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    embedding_source_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     parsed_submission: Mapped[ParsedCVSubmission | None] = relationship(

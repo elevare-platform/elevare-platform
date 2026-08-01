@@ -31,6 +31,21 @@ export function AuthProvider({ children }) {
           }
         }
 
+        // Same story for candidates — is_profile_complete lives on
+        // CandidateProfile, not User, so /me never populates it. Without
+        // this, ApplyButton's `user.is_profile_complete === false` check
+        // never fires (the field stays null forever), so candidates with
+        // incomplete profiles never see the "complete profile to apply"
+        // nudge and instead hit the backend's rejection with no warning.
+        if (userData.role === 'CANDIDATE') {
+          try {
+            const { data: profile } = await api.get('/api/v1/candidates/me')
+            userData.is_profile_complete = profile.is_profile_complete ?? false
+          } catch {
+            userData.is_profile_complete = false
+          }
+        }
+
         setUser(userData)
       } catch (err) {
         const code = err.response?.data?.code
@@ -61,6 +76,15 @@ export function AuthProvider({ children }) {
       } catch {
         userData.is_profile_complete = false
         userData.kyc_status = 'NOT_SUBMITTED'
+      }
+    }
+    // Same for candidates — see bootstrap effect above for why this is needed.
+    if (userData.role === 'CANDIDATE') {
+      try {
+        const { data: profile } = await api.get('/api/v1/candidates/me')
+        userData.is_profile_complete = profile.is_profile_complete ?? false
+      } catch {
+        userData.is_profile_complete = false
       }
     }
     setUser(userData)

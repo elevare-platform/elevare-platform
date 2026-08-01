@@ -672,6 +672,14 @@ class CandidateService:
         await self._db.flush()
 
         await self._db.commit()
+
+        # Fire after commit, not before — a Celery worker on a separate DB
+        # connection can't see this transaction's changes until it's committed.
+        if profile.is_profile_complete:
+            from app.modules.ai.tasks import generate_candidate_embedding_task
+
+            generate_candidate_embedding_task.delay(str(profile.id))
+
         return CandidateCvsResponse.model_validate(cv)
 
     async def delete_cv(self, cv_id: uuid.UUID, user_id: uuid.UUID) -> None:

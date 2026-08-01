@@ -188,6 +188,44 @@ async def test_moderate_job_updates_status_and_logs(db_session):
 
 
 @pytest.mark.asyncio
+async def test_moderate_job_rejection_persists_reason(db_session):
+    """Rejecting a job persists the reason on the job row for the employer to see."""
+    from app.modules.users.models import EmployerProfile
+
+    admin = make_user(role=UserRole.ADMIN.value)
+    employer = make_employer()
+    db_session.add_all([admin, employer])
+    await db_session.flush()
+
+    profile = EmployerProfile(
+        user_id=employer.id,
+        company_name="Test Corp",
+        industry="Tech",
+        company_size="11-50",
+        is_profile_complete=True,
+        kyc_status="APPROVED",
+    )
+    db_session.add(profile)
+    await db_session.flush()
+
+    job = make_job(employer.id, moderation_status=ModerationStatus.PENDING.value)
+    db_session.add(job)
+    await db_session.flush()
+
+    service = AdminService(db_session)
+    result = await service.moderate_job(
+        admin_id=admin.id,
+        job_id=job.id,
+        action=ModerationStatus.REJECTED.value,
+        reason="Missing salary information",
+    )
+
+    assert result.moderation_status == ModerationStatus.REJECTED.value
+    assert result.moderation_reason == "Missing salary information"
+    assert result.status == "DRAFT"
+
+
+@pytest.mark.asyncio
 async def test_job_cannot_publish_without_approval(db_session):
     """Job publish blocked if moderation_status != approved."""
     from app.modules.jobs.enums import JobStatus

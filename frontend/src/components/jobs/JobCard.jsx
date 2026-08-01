@@ -118,15 +118,17 @@ export function getJobActions(status) {
     publish: status === 'DRAFT',
     close:   status === 'ACTIVE',
     edit:    status === 'DRAFT' || status === 'ACTIVE',
+    delete:  status === 'DRAFT',
     view:    true,
   }
 }
 
-function EmployerActions({ job, onPublish, onClose }) {
+function EmployerActions({ job, onPublish, onClose, onDelete, onResubmit }) {
   const actions = getJobActions(job.status)
   const [copied, setCopied] = useState(false)
   const isPendingApproval = job.status === 'DRAFT' && job.moderation_status === 'PENDING'
   const isRejected = job.status === 'DRAFT' && job.moderation_status === 'REJECTED'
+  const wasPulledOffline = isPendingApproval && job.application_count > 0
 
   const handleShare = (e) => {
     e.preventDefault()
@@ -146,18 +148,30 @@ function EmployerActions({ job, onPublish, onClose }) {
       {actions.publish && (
         isPendingApproval ? (
           <span
-            title="Awaiting admin approval before you can publish"
+            title={wasPulledOffline
+              ? 'This listing was pulled offline after editing and needs admin re-approval before it goes live again'
+              : 'Awaiting admin approval before you can publish'}
             className="inline-flex items-center h-8 px-3 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 cursor-not-allowed"
           >
-            Pending approval
+            {wasPulledOffline ? 'Offline — pending re-review' : 'Pending approval'}
           </span>
         ) : isRejected ? (
-          <span
-            title="This listing was rejected. Edit it and save to resubmit for review."
-            className="inline-flex items-center h-8 px-3 rounded-md text-xs font-medium bg-red-50 text-red-600 border border-red-200 cursor-not-allowed"
+          <Button
+            size="sm"
+            variant="outline"
+            title={job.moderation_reason ? `Rejected: ${job.moderation_reason}` : 'Rejected by an admin'}
+            onClick={(e) => {
+              e.preventDefault()
+              if (window.confirm(
+                'Resubmit this listing for admin review? Make sure you\'ve addressed the rejection reason first.'
+              )) {
+                onResubmit?.(job)
+              }
+            }}
+            className="border-red-200 text-red-600 hover:bg-red-50 transition-colors"
           >
-            Rejected - edit to resubmit
-          </span>
+            Resubmit for review
+          </Button>
         ) : (
           <Button
             size="sm"
@@ -182,6 +196,21 @@ function EmployerActions({ job, onPublish, onClose }) {
         <Link to={`/employer/jobs/${job.id}/edit`}>
           <Button size="sm" variant="outline" className="transition-colors">Edit</Button>
         </Link>
+      )}
+      {actions.delete && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={(e) => {
+            e.preventDefault()
+            if (window.confirm(`Delete "${job.title}"? This can't be undone.`)) {
+              onDelete?.(job)
+            }
+          }}
+          className="text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+        >
+          Delete
+        </Button>
       )}
       {actions.view && (
         <Link to={`/jobs/${job.id}`}>
@@ -319,7 +348,7 @@ function extractSkills(description = '', max = 4) {
 
 // ─── Card body ────────────────────────────────────────────────────────────────
 
-function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
+function CardBody({ job, variant, onPublish, onClose, onDelete, onResubmit, initialApplied }) {
   const [saved, setSaved] = useState(false)
 
   const salaryText = (() => {
@@ -424,6 +453,15 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
         <DeadlineBadge deadline={job.application_deadline} />
       )}
 
+      {/* ── Rejection reason — a rejected listing is a terminal state until
+          the employer explicitly resubmits, so the reason stays visible ── */}
+      {variant === 'employer' && job.status === 'DRAFT' && job.moderation_status === 'REJECTED' && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+          <span className="font-semibold">Rejected</span>
+          {job.moderation_reason ? `: ${job.moderation_reason}` : ' — no reason given.'}
+        </div>
+      )}
+
       {/* ── Spacer pushes footer to bottom ──────────────────────────────── */}
       <div className="flex-1" />
 
@@ -456,7 +494,7 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
 
       {/* ── Employer actions ────────────────────────────────────────────── */}
       {variant === 'employer' && (
-        <EmployerActions job={job} onPublish={onPublish} onClose={onClose} />
+        <EmployerActions job={job} onPublish={onPublish} onClose={onClose} onDelete={onDelete} onResubmit={onResubmit} />
       )}
     </div>
   )
@@ -473,7 +511,7 @@ function CardBody({ job, variant, onPublish, onClose, initialApplied }) {
  * @param {Function} [props.onPublish]
  * @param {Function} [props.onClose]
  */
-export function JobCard({ job, variant = 'public', onPublish, onClose, initialApplied = null }) {
+export function JobCard({ job, variant = 'public', onPublish, onClose, onDelete, onResubmit, initialApplied = null }) {
   const base = cn(
     'group rounded-2xl border border-slate-200 bg-white',
     // Subtle shadow that lifts on hover - no oversized shadows
@@ -495,7 +533,7 @@ export function JobCard({ job, variant = 'public', onPublish, onClose, initialAp
 
   return (
     <div className={base} role="article">
-      <CardBody job={job} variant="employer" onPublish={onPublish} onClose={onClose} />
+      <CardBody job={job} variant="employer" onPublish={onPublish} onClose={onClose} onDelete={onDelete} onResubmit={onResubmit} />
     </div>
   )
 }

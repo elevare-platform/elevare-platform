@@ -5,6 +5,7 @@ import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { SkillsInput } from '@/components/candidate/SkillsInput'
 import { useCandidateProfile } from '@/hooks/useCandidateProfile'
+import { useAuth } from '@/context/AuthContext'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 
@@ -320,6 +321,7 @@ function CertificationForm({ onSave, onCancel }) {
 
 export default function CandidateProfilePage() {
   const { profile, loading, error, refetch } = useCandidateProfile()
+  const { updateUser } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const next = new URLSearchParams(location.search).get('next') || '/candidate/dashboard'
@@ -401,9 +403,13 @@ export default function CandidateProfilePage() {
     }
 
     try {
-      await api.put('/api/v1/candidates/me', changed)
+      const { data } = await api.put('/api/v1/candidates/me', changed)
       setInitialValues({ ...values })
       setSaveSuccess(true)
+      // Keep AuthContext's user.is_profile_complete in sync immediately —
+      // without this, ApplyButton and other gates keep using the stale
+      // value from login until the next full page refresh.
+      updateUser({ is_profile_complete: data.is_profile_complete })
       trackEvent('Profile', 'profile_complete')
       setTimeout(() => navigate(next, { replace: true }), 1200)
     } catch (err) {
@@ -416,7 +422,7 @@ export default function CandidateProfilePage() {
         setSaveError(typeof detail === 'string' ? detail : (err.message ?? 'Failed to save profile.'))
       }
     } finally { setSaving(false) }
-  }, [dirty, initialValues, values])
+  }, [dirty, initialValues, values, updateUser])
 
   // Delete handlers
   const handleDeleteWork = async (id) => {

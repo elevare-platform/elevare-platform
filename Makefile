@@ -9,6 +9,7 @@ help:
 	@echo "Logs:"
 	@echo "  make logs-api        - Tail API logs"
 	@echo "  make logs-worker     - Tail Celery worker logs"
+	@echo "  make logs-ingestion     - Tail Celery ingestion worker logs"
 	@echo "  make logs-beat       - Tail Celery beat logs"
 	@echo "  make logs-db         - Tail database logs"
 	@echo ""
@@ -31,6 +32,9 @@ logs-api:
 
 logs-worker:
 	@docker compose -f docker-compose.prod.yml logs -f celery_worker
+
+logs-ingestion:
+	@docker compose -f docker-compose.prod.yml logs -f celery_worker_ingestion
 
 logs-beat:
 	@docker compose -f docker-compose.prod.yml logs -f celery_beat
