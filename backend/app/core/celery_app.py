@@ -100,6 +100,11 @@ celery.conf.update(
             "schedule": 60 * 60 * 24,  # every 24 hours
             "options": {"expires": 60 * 60},
         },
+        "backfill-missing-candidate-embeddings": {
+            "task": "app.modules.ai.tasks.backfill_missing_candidate_embeddings_task",
+            "schedule": 60 * 60,  # every hour — backstop, not the primary trigger
+            "options": {"expires": 60 * 55},
+        },
         "sync-all-mailboxes": {
             "task": "app.modules.ingestion.tasks.sync_all_mailboxes_task",
             "schedule": 60 * 15,  # every 15 minutes

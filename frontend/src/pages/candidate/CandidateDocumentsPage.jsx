@@ -8,6 +8,7 @@ import { CvUpload } from '@/components/candidate/CvUpload'
 import { DocumentsSection } from '@/components/candidate/DocumentsSection'
 import { DocumentUpload } from '@/components/candidate/DocumentUpload'
 import { useCandidateProfile } from '@/hooks/useCandidateProfile'
+import { useAuth } from '@/context/AuthContext'
 import api from '@/lib/api'
 
 function ToastError({ message, onDismiss }) {
@@ -22,6 +23,7 @@ function ToastError({ message, onDismiss }) {
 
 export default function CandidateDocumentsPage() {
   const { profile, loading, error, refetch, setCvs, setDocuments } = useCandidateProfile()
+  const { updateUser } = useAuth()
   const cvUploadRef = useRef(null)
   const [actionError, setActionError] = useState(null)
 
@@ -46,7 +48,15 @@ export default function CandidateDocumentsPage() {
 
   const handleCvUploadSuccess = useCallback((newCv) => {
     setCvs((prev) => [...prev, newCv])
-  }, [setCvs])
+    // A first CV is usually what flips is_profile_complete from false to
+    // true (see compute_profile_completion on the backend) — the upload
+    // response itself doesn't carry that flag, so re-fetch the profile and
+    // push the fresh value into AuthContext, otherwise ApplyButton and
+    // other gates keep showing the stale "incomplete" state until reload.
+    api.get('/api/v1/candidates/me')
+      .then(({ data }) => updateUser({ is_profile_complete: data.is_profile_complete }))
+      .catch(() => {})
+  }, [setCvs, updateUser])
 
   const handleDocDownload = useCallback(async (id) => {
     try {

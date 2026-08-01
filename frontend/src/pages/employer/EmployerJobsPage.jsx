@@ -32,12 +32,21 @@ function SkeletonCard() {
 
 /**
  * Employer job management page-  /employer/jobs
- * Protected: EMPLOYER role only (enforced via ProtectedRoute in App.jsx)
+ * Protected: EMPLOYER or ADMIN role (enforced via ProtectedRoute in App.jsx)
  * Requirements: 4.1–4.11
  */
+const STATUS_FILTERS = [
+  { value: 'active',   label: 'Active' },
+  { value: 'pending',  label: 'Pending review' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'closed',   label: 'Closed' },
+  { value: 'all',      label: 'All' },
+]
+
 export default function EmployerJobsPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('active')
 
   // Debounce - avoid firing a request on every keystroke
   useEffect(() => {
@@ -47,7 +56,7 @@ export default function EmployerJobsPage() {
 
   const { jobs, setJobs, loading, error, hasMore, loadMore } = useJobs({
     endpoint: '/api/v1/jobs/mine',
-    params: { search: debouncedSearch },
+    params: { search: debouncedSearch, filter: statusFilter },
   })
 
   const [profile, setProfile] = useState(null)
@@ -86,6 +95,44 @@ export default function EmployerJobsPage() {
       )
     } catch {
       // Silently ignore - the button remains available for retry
+    }
+  }, [setJobs])
+
+  const [deleteError, setDeleteError] = useState(null)
+
+  // Delete a draft job and remove it from local state on success
+  const handleDelete = useCallback(async (job) => {
+    setDeleteError(null)
+    try {
+      await api.delete(`/api/v1/jobs/${job.id}`)
+      setJobs((prev) => prev.filter((j) => j.id !== job.id))
+    } catch (err) {
+      const body = err.response?.data
+      const msg = Array.isArray(body?.details)
+        ? body.details.map((e) => e.message).join(', ')
+        : body?.message ?? 'Failed to delete. Please try again.'
+      setDeleteError(msg)
+    }
+  }, [setJobs])
+
+  const [resubmitError, setResubmitError] = useState(null)
+
+  // Explicitly resubmit a REJECTED job for another admin review
+  const handleResubmit = useCallback(async (job) => {
+    setResubmitError(null)
+    try {
+      await api.post(`/api/v1/jobs/${job.id}/resubmit`)
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === job.id ? { ...j, moderation_status: 'PENDING', moderation_reason: null } : j
+        )
+      )
+    } catch (err) {
+      const body = err.response?.data
+      const msg = Array.isArray(body?.details)
+        ? body.details.map((e) => e.message).join(', ')
+        : body?.message ?? 'Failed to resubmit. Please try again.'
+      setResubmitError(msg)
     }
   }, [setJobs])
 
@@ -153,6 +200,26 @@ export default function EmployerJobsPage() {
             </Link>
           </div>
 
+          {/* Status filter tabs */}
+          <div role="tablist" aria-label="Filter jobs by status" className="flex flex-wrap gap-1.5 mb-4">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                  statusFilter === f.value
+                    ? 'bg-brand-blue text-white'
+                    : 'bg-surface border border-border text-text-muted hover:text-text'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
           {/* Search */}
           <div className="relative mb-6 max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
@@ -187,6 +254,18 @@ export default function EmployerJobsPage() {
             </div>
           )}
 
+          {deleteError && (
+            <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {deleteError}
+            </div>
+          )}
+
+          {resubmitError && (
+            <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {resubmitError}
+            </div>
+          )}
+
           {/* Skeleton loading - Req 4.1 */}
           {loading && jobs.length === 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -205,15 +284,25 @@ export default function EmployerJobsPage() {
             </div>
           )}
 
-          {!loading && jobs.length === 0 && !debouncedSearch && (
+          {!loading && jobs.length === 0 && !debouncedSearch && statusFilter === 'active' && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <p className="text-xl font-semibold text-text mb-2">No jobs yet</p>
+              <p className="text-xl font-semibold text-text mb-2">No active jobs</p>
               <p className="text-text-muted mb-6">
-                Post your first job to start finding candidates.
+                Post your first job to start finding candidates, or check another tab above.
               </p>
               <Link to="/employer/jobs/new">
                 <Button>Post a job</Button>
               </Link>
+            </div>
+          )}
+
+          {!loading && jobs.length === 0 && !debouncedSearch && statusFilter !== 'active' && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <p className="text-xl font-semibold text-text mb-2">
+                No {STATUS_FILTERS.find((f) => f.value === statusFilter)?.label.toLowerCase()} jobs
+              </p>
+              <p className="text-text-muted mb-6">Nothing to show under this filter yet.</p>
+              <Button variant="outline" onClick={() => setStatusFilter('active')}>Back to active</Button>
             </div>
           )}
 
@@ -227,6 +316,8 @@ export default function EmployerJobsPage() {
                   variant="employer"
                   onPublish={handlePublish}
                   onClose={handleClose}
+                  onDelete={handleDelete}
+                  onResubmit={handleResubmit}
                 />
               ))}
             </div>

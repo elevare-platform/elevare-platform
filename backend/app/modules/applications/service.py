@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncSessionLocal
 from app.core.email import get_email_service
 from app.core.exceptions import (
     AlreadyApplied,
@@ -18,8 +17,7 @@ from app.core.exceptions import (
     PermissionDeniedException,
     ProfileNotFoundException,
 )
-from app.modules.ai.service import AIService, get_ai_service
-from app.modules.ai.tasks import score_application_task
+from app.modules.ai.tasks import compute_match_score_task, score_application_task
 from app.modules.applications.enums import ApplicationStatus
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.applications.schema import (
@@ -152,57 +150,17 @@ class ApplicationService:
             f"{candidate.user.first_name} {candidate.user.last_name}",
             str(job.id),
         )
-        # Queue AI score computation — fires after response is returned.
-        # Score starts as null; updated on the application row once computed.
-        background_tasks.add_task(
-            ApplicationService._compute_match_score,
-            application.id,
-            candidate.skills or [],
-            _job_description(job),
-            job.title or "",
-            job.required_skills or [],
-            get_ai_service(),
-        )
-        # Queue Phase 11.5 composite AI scoring (deterministic + LLM reasoning).
-        # Runs independently of match_score — both fields coexist on the application.
-        score_application_task.delay(str(application.id))
-
         await self._db.commit()
 
+        # Queue both scoring tasks after commit — Celery workers run on a
+        # separate DB connection and can't see this transaction until it's
+        # committed. match_score (deterministic/embedding) and ai_score
+        # (LLM reasoning) run independently; both fields coexist on the
+        # application.
+        compute_match_score_task.delay(str(application.id))
+        score_application_task.delay(str(application.id))
+
         return ApplicationResponse.from_application(application, cv_url=cv_url)
-
-    @staticmethod
-    async def _compute_match_score(
-        application_id: uuid.UUID,
-        candidate_skills: list[str],
-        job_description: str,
-        job_title: str,
-        required_skills: list[str],
-        ai_service: AIService,
-    ):
-        async with AsyncSessionLocal() as db:
-            try:
-                repo = ApplicationRepository(db)
-                result = await ai_service.compute_match_score(
-                    candidate_skills,
-                    job_description,
-                    job_title,
-                    required_skills,
-                )
-                await repo.update(
-                    application_id,
-                    {
-                        "match_score": result.score,
-                        "score_computed_at": result.computed_at,
-                    },
-                )
-                await db.commit()
-            except Exception:
-                import logging
-
-                logging.getLogger(__name__).exception(
-                    "Failed to compute match score for application %s", application_id
-                )
 
     async def withdraw_application(
         self, application_id: uuid.UUID, candidate_id: uuid.UUID

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, Briefcase, FileText,
+  LayoutDashboard, Users, Briefcase, FileText, FilePlus2,
   ScrollText, LogOut, Menu, UserPlus, FileSearch, MessageSquareQuote, Mail, Send, TrendingUp, ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/admin/users', icon: Users, label: 'Users' },
   { to: '/admin/jobs', icon: Briefcase, label: 'Jobs' },
+  { to: '/employer/jobs', icon: FilePlus2, label: 'My Job Postings' },
   { to: '/admin/kyc', icon: ShieldCheck, label: 'KYC Verification' },
   { to: '/admin/applications', icon: FileText, label: 'Applications' },
   { to: '/admin/introductions', icon: Send, label: 'Introductions' },

@@ -112,12 +112,22 @@ class AdminRepository:
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def set_job_moderation_status(self, job: Job, moderation_status: str) -> Job:
-        """Set a job's moderation_status and return the job to DRAFT if rejected."""
+    async def set_job_moderation_status(
+        self, job: Job, moderation_status: str, reason: str | None = None
+    ) -> Job:
+        """Set a job's moderation_status and return the job to DRAFT if rejected.
+
+        Persists ``reason`` on rejection so the employer can see why on their
+        dashboard — REJECTED is a terminal state the employer must explicitly
+        resubmit from, not something editing silently clears.
+        """
         job.moderation_status = moderation_status
         if moderation_status == ModerationStatus.REJECTED.value:
             # Return to DRAFT so employer can edit and resubmit — CLOSED is permanent
             job.status = JobStatus.DRAFT.value
+            job.moderation_reason = reason
+        else:
+            job.moderation_reason = None
         await self._db.flush()
         return job
 

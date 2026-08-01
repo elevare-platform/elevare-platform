@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Search } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Search, Plus } from 'lucide-react'
 import AdminLayout from '@/components/admin/AdminLayout'
 import { AdminTable, Th, Td, Pagination } from '@/components/admin/AdminTable'
 import StatusBadge from '@/components/admin/StatusBadge'
@@ -93,9 +94,23 @@ export default function AdminJobsPage() {
         />
       )}
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-text">Jobs</h1>
-        {selected.length > 0 && (
+        <div className="flex items-center gap-3">
+          <Link
+            to="/employer/jobs"
+            className="text-sm text-brand-blue hover:underline"
+          >
+            My postings
+          </Link>
+          <Link
+            to="/employer/jobs/new"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
+          >
+            <Plus size={14} />
+            Post a job
+          </Link>
+          {selected.length > 0 && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => setConfirm({
@@ -144,7 +159,8 @@ export default function AdminJobsPage() {
               Close ({selected.length})
             </button>
           </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Filters */}

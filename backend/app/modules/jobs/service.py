@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
+    JobNotFoundError,
     KYCRequiredException,
     PermissionDeniedException,
     ProfileIncompleteException,
@@ -44,22 +45,46 @@ class JobService:
         self._user_repo = UserRepository(db)
 
     async def create_job(self, data: JobCreateRequest, employer: User) -> JobResponse:
-        """Create a draft job owned by the authenticated employer."""
-        employer = await self._user_repo.get_user_by_id(employer.id)
+        """Create a job owned by the authenticated employer or admin.
 
-        if (
-            not employer.employer_profile
-            or not employer.employer_profile.is_profile_complete
-        ):
-            raise ProfileIncompleteException()
-        if employer.employer_profile.kyc_status != KYCStatus.APPROVED.value:
-            raise KYCRequiredException()
+        Admins bypass the profile-completeness/KYC gate — those checks exist
+        to verify a real employer's legitimacy before they can post, which
+        doesn't apply to internal admin accounts posting jobs for everyone.
+
+        Admin-posted jobs also skip the moderation queue entirely and go
+        straight to ACTIVE — today every admin is inherently a reviewer, so
+        there's no one else to review it. This is a placeholder until admin
+        roles are tiered (a future "superadmin" reviewing lower-privilege
+        admins' posts); at that point this bypass should be scoped down.
+        """
+        employer = await self._user_repo.get_user_by_id(employer.id)
+        is_admin = employer.role == "ADMIN"
+
+        if not is_admin:
+            if (
+                not employer.employer_profile
+                or not employer.employer_profile.is_profile_complete
+            ):
+                raise ProfileIncompleteException()
+            if employer.employer_profile.kyc_status != KYCStatus.APPROVED.value:
+                raise KYCRequiredException()
+
         job = await self._repo.create(data, employer_id=employer.id)
+
+        if is_admin:
+            job.status = JobStatus.ACTIVE.value
+            job.moderation_status = ModerationStatus.APPROVED.value
+
         await self._db.commit()
 
         from app.modules.ai.tasks import generate_job_embedding_task
 
         generate_job_embedding_task.delay(str(job.id))
+
+        if is_admin:
+            from app.modules.ai.tasks import score_job_against_talent_pool_task
+
+            score_job_against_talent_pool_task.delay(str(job.id))
 
         return JobResponse.from_job(job)
 
@@ -92,7 +117,11 @@ class JobService:
 
         """
         job = await self._repo.get_by_id(job_id)
-        self._check_ownership(job, current_user)
+
+        # Admins can publish any job; employers only their own
+        if current_user.role != "ADMIN":
+            self._check_ownership(job, current_user)
+
         self._check_transition(job, JobStatus.ACTIVE)
         if job.moderation_status == ModerationStatus.APPROVED.value:
             job = await self._repo.set_status(job, JobStatus.ACTIVE)
@@ -104,6 +133,33 @@ class JobService:
 
             return JobResponse.from_job(job)
         raise ValidationException("Job listing isn't approved yet")
+
+    async def resubmit_job(self, job_id: UUID, current_user: User) -> JobResponse:
+        """Explicitly resubmit a REJECTED job for another admin review.
+
+        The only way out of REJECTED — a plain edit no longer does this
+        implicitly, so the employer must deliberately choose to put the
+        listing back in the queue.
+
+        Raises
+        ------
+            JobNotFoundError: If the job does not exist.
+            PermissionDeniedException: If the caller does not own the job and is not admin.
+            ValidationException: If the job isn't currently REJECTED.
+
+        """
+        job = await self._repo.get_by_id(job_id)
+
+        if current_user.role != "ADMIN":
+            self._check_ownership(job, current_user)
+
+        if job.moderation_status != ModerationStatus.REJECTED.value:
+            raise ValidationException("Only a rejected job can be resubmitted for review")
+
+        job.moderation_status = ModerationStatus.PENDING.value
+        job.moderation_reason = None
+        await self._db.commit()
+        return JobResponse.from_job(job)
 
     async def close_job(self, job_id: UUID, current_user: User) -> JobResponse:
         """Transition a job from ACTIVE to CLOSED.
@@ -144,11 +200,28 @@ class JobService:
 
         """
         job = await self._repo.get_by_id(job_id)
-        self._check_ownership(job, current_user)
 
-        # If the job was rejected, reset moderation to PENDING so it
-        # resurfaces in the admin queue for re-review.
-        if job.moderation_status == ModerationStatus.REJECTED.value:
+        # Admins can update any job; employers only their own
+        if current_user.role != "ADMIN":
+            self._check_ownership(job, current_user)
+
+        update_data = data.model_dump(exclude_unset=True)
+
+        # REJECTED is a terminal state the employer must explicitly resubmit
+        # from (see resubmit_job) — editing no longer silently clears it, so
+        # the rejection and its reason stay visible until the employer
+        # deliberately asks for another review.
+        if (
+            current_user.role != "ADMIN"
+            and update_data
+            and job.status == JobStatus.ACTIVE.value
+            and job.moderation_status == ModerationStatus.APPROVED.value
+        ):
+            # The admin approved the OLD content, not this edit — pull the
+            # job offline and re-queue it for review. The employer must
+            # publish again once an admin re-approves. Admin edits skip this
+            # since the admin is the one who'd be reviewing it anyway.
+            job.status = JobStatus.DRAFT.value
             job.moderation_status = ModerationStatus.PENDING.value
 
         # Detect whether any scoring-relevant fields are changing
@@ -162,7 +235,6 @@ class JobService:
             "required_skills",
             "seniority_level",
         }
-        update_data = data.model_dump(exclude_unset=True)
         scoring_changed = bool(scoring_fields & update_data.keys())
 
         job = await self._repo.update(job, data)
@@ -201,10 +273,50 @@ class JobService:
 
         return JobResponse.from_job(job)
 
-    async def get_job_by_id(self, job_id: UUID) -> JobResponse:
-        """Return a single job by ID. Public — no ownership check."""
+    async def get_job_by_id(
+        self, job_id: UUID, requesting_user: User | None
+    ) -> JobResponse:
+        """Return a single job by ID.
+
+        Public for ACTIVE/CLOSED jobs. A DRAFT job (unpublished — including
+        one pulled offline for re-review) is only visible to its owning
+        employer or an admin; anyone else gets a 404, same as a nonexistent
+        job, so a leaked draft URL doesn't even confirm the job exists.
+        """
         job = await self._repo.get_by_id(job_id)
+        if job.status == JobStatus.DRAFT.value:
+            is_owner = requesting_user is not None and requesting_user.id == job.employer_id
+            is_admin = requesting_user is not None and requesting_user.role == "ADMIN"
+            if not is_owner and not is_admin:
+                raise JobNotFoundError()
         return JobResponse.from_job(job)
+
+    async def delete_job(self, job_id: UUID, current_user: User) -> None:
+        """Delete a DRAFT job. Owning employer or admin only.
+
+        Restricted to DRAFT — a job that has ever been published may have
+        applications, talent matches, or public visibility tied to it, so it
+        must be closed instead of deleted once it leaves DRAFT.
+
+        Raises
+        ------
+            JobNotFoundError: If the job does not exist.
+            PermissionDeniedException: If the caller does not own the job and is not admin.
+            ValidationException: If the job is not in DRAFT status.
+
+        """
+        job = await self._repo.get_by_id(job_id)
+
+        if current_user.role != "ADMIN":
+            self._check_ownership(job, current_user)
+
+        if job.status != JobStatus.DRAFT.value:
+            raise ValidationException(
+                "Only draft jobs can be deleted — close published jobs instead"
+            )
+
+        await self._repo.delete(job)
+        await self._db.commit()
 
     async def list_jobs(
         self,
@@ -227,9 +339,12 @@ class JobService:
         cursor: str | None = None,
         limit: int = 20,
         search: str | None = None,
+        status_filter: str = "active",
     ) -> JobListResponse:
         """Return paginated jobs owned by the authenticated employer."""
-        result = await self._repo.list_by_employer(employer.id, cursor, limit, search)
+        result = await self._repo.list_by_employer(
+            employer.id, cursor, limit, search, status_filter
+        )
         return JobListResponse(
             items=[JobResponse.from_job(j) for j in result["items"]],
             next_cursor=result["next_cursor"],

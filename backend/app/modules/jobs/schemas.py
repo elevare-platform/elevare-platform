@@ -177,6 +177,7 @@ class JobResponse(BaseModel):
     employer_id: UUID | None
     company_name: str | None = None
     moderation_status: str | None = None
+    moderation_reason: str | None = None
     company_logo_url: str | None = None
     company_website: str | None = None
     company_description: str | None = None
@@ -224,6 +225,7 @@ class JobResponse(BaseModel):
             status=job.status,
             employer_id=job.employer_id,
             moderation_status=job.moderation_status,
+            moderation_reason=job.moderation_reason,
             work_location=job.work_location,
             company_name=profile.company_name if profile else None,
             company_logo_url=profile.company_logo_url if profile else None,

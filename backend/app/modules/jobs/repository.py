@@ -99,6 +99,11 @@ class JobRepository:
         await self._db.flush()
         return await self.get_by_id(job.id)
 
+    async def delete(self, job: Job) -> None:
+        """Delete a job row. Caller enforces that it's safe to delete."""
+        await self._db.delete(job)
+        await self._db.flush()
+
     async def list_active(
         self,
         filters: JobFilterParams,
@@ -155,11 +160,20 @@ class JobRepository:
         cursor: str | None = None,
         limit: int = 20,
         search: str | None = None,
+        status_filter: str = "active",
     ) -> dict:
         """Return paginated jobs owned by a specific employer, with application counts.
 
         ``search`` does a case-insensitive substring match on the job title —
         lets an employer with a large job list find one without scrolling.
+
+        ``status_filter`` buckets the combined status/moderation_status state
+        into what the employer actually cares about:
+        - "active":   live and approved
+        - "pending":  draft, awaiting admin review (new or pulled offline for re-review)
+        - "rejected": draft, rejected by an admin
+        - "closed":   closed
+        - "all":      no filter
 
         Application counts are fetched in a single bulk query and attached to
         each Job instance as a transient ``application_count`` attribute.
@@ -175,6 +189,21 @@ class JobRepository:
             )
             .options(self._with_employer_profile())
         )
+        if status_filter == "active":
+            stmt = stmt.where(Job.status == JobStatus.ACTIVE.value)
+        elif status_filter == "pending":
+            stmt = stmt.where(
+                Job.status == JobStatus.DRAFT.value,
+                Job.moderation_status == ModerationStatus.PENDING.value,
+            )
+        elif status_filter == "rejected":
+            stmt = stmt.where(
+                Job.status == JobStatus.DRAFT.value,
+                Job.moderation_status == ModerationStatus.REJECTED.value,
+            )
+        elif status_filter == "closed":
+            stmt = stmt.where(Job.status == JobStatus.CLOSED.value)
+        # "all" — no additional filter
         if search:
             stmt = stmt.where(Job.title.ilike(f"%{search}%"))
         result = await paginate_cursor(stmt, self._db, cursor, limit)

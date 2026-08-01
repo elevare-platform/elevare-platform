@@ -164,8 +164,12 @@ def mock_celery_task():
     """Prevent real Celery tasks from firing — no broker available in tests."""
     from unittest.mock import MagicMock, patch
 
-    with patch("app.modules.applications.service.score_application_task") as mock_task:
+    with (
+        patch("app.modules.applications.service.score_application_task") as mock_task,
+        patch("app.modules.applications.service.compute_match_score_task") as mock_match_task,
+    ):
         mock_task.delay = MagicMock()
+        mock_match_task.delay = MagicMock()
         yield mock_task
 
 

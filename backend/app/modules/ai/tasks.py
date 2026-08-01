@@ -253,6 +253,105 @@ async def _run_pipeline_async(
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def compute_match_score_task(self, application_id: str) -> None:
+    """Compute the deterministic/embedding-based match_score for an application.
+
+    Runs independently of score_application_task's LLM-based ai_score — both
+    fields coexist on the application. Previously ran via FastAPI
+    BackgroundTasks (in-process, no retry, lost on a crash/redeploy between
+    response and execution); moved to Celery for the same durability
+    score_application_task already has.
+    """
+    asyncio.run(_compute_match_score_async(application_id))
+
+
+async def _compute_match_score_async(application_id_str: str) -> None:
+    from app.modules.ai.service import get_ai_service
+    from app.modules.jobs.schemas import build_full_description
+
+    application_id = uuid.UUID(application_id_str)
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    ai_service = None
+
+    async with SessionLocal() as db:
+        try:
+            app_repo = ApplicationRepository(db)
+            candidate_repo = CandidateRepository(db)
+            job_repo = JobRepository(db)
+
+            application = await app_repo.get_by_id(application_id)
+            if not application:
+                # Enqueued before apply_to_job's commit — a worker that wins
+                # the race against the transaction won't see the row yet.
+                # Raise (not return) so autoretry_for retries instead of
+                # silently skipping the score forever.
+                logger.warning(
+                    "compute_match_score: application %s not found — may not "
+                    "be committed yet, will retry",
+                    application_id,
+                )
+                raise ValueError(f"Application {application_id} not found in DB")
+
+            job = await job_repo.get_by_id(application.job_id)
+            if not job:
+                logger.warning(
+                    "compute_match_score: job not found for application %s, skipping",
+                    application_id,
+                )
+                return
+
+            candidate = await candidate_repo.get_by_user_id(application.candidate_id)
+
+            job_description = build_full_description(
+                about_the_role=job.about_the_role,
+                key_responsibilities=job.key_responsibilities,
+                requirements=job.requirements,
+                preferred_certifications=job.preferred_certifications,
+                technical_competencies=job.technical_competencies,
+                what_we_offer=job.what_we_offer,
+                legacy_description=job.description,
+            )
+
+            ai_service = get_ai_service()
+            result = await ai_service.compute_match_score(
+                candidate.skills or [] if candidate else [],
+                job_description,
+                job.title or "",
+                job.required_skills or [],
+            )
+
+            await app_repo.update(
+                application_id,
+                {
+                    "match_score": result.score,
+                    "score_computed_at": result.computed_at,
+                },
+            )
+            await db.commit()
+
+            logger.info(
+                "compute_match_score: scored application %s -> %s",
+                application_id,
+                result.score,
+            )
+        except Exception:
+            logger.exception(
+                "compute_match_score: failed for application %s", application_id
+            )
+            raise
+        finally:
+            close = getattr(ai_service, "close", None)
+            if callable(close):
+                try:
+                    await close()
+                except Exception:
+                    pass
+            await engine.dispose()
+
+
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def score_application_task(self, application_id: str) -> None:
     """Compute ai_score, strengths, weaknesses, and fit_summary for an application.
 
@@ -280,10 +379,17 @@ async def _score_application_async(application_id_str: str) -> None:
 
             application = await app_repo.get_by_id(application_id)
             if not application:
+                # Raise (not return) so autoretry_for kicks in — this task is
+                # enqueued before apply_to_job's commit, so a worker that wins
+                # the race against the transaction won't see the row yet.
+                # A silent return here would permanently skip AI scoring for
+                # the application with no retry and no visibility beyond a log line.
                 logger.warning(
-                    f"score_application: Application {application_id} not found."
+                    "score_application: Application %s not found — may not be "
+                    "committed yet, will retry",
+                    application_id,
                 )
-                return
+                raise ValueError(f"Application {application_id} not found in DB")
 
             # --- Load parsed CV data via the chain: Application -> CandidateCVs -> ParsedCVSubmission
             if not application.cv_id:
@@ -614,8 +720,11 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
     from datetime import UTC as _UTC
     from datetime import datetime as _datetime
 
+    from sqlalchemy import update as _update
+
     from app.modules.ai.scoring_service import hash_candidate_embedding_source
     from app.modules.ai.service import EmbeddingAIService
+    from app.modules.candidates.models import CandidateProfile
 
     profile_id = uuid.UUID(profile_id_str)
 
@@ -634,6 +743,8 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                     "generate_candidate_embedding: profile %s not found", profile_id
                 )
                 return
+            
+            source_ts = profile.updated_at
 
             parsed_cv_summary: str | None = None
             parsed_current_title: str | None = None
@@ -706,9 +817,33 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
             embedding = await ai_service.generate_embedding(embedding_text)
 
             # Persist
+            write_result = await db.execute(
+                _update(CandidateProfile)
+                .where(
+                    CandidateProfile.id == profile.id,
+                    CandidateProfile.embedding_source_updated_at.is_(None)
+                    | (CandidateProfile.embedding_source_updated_at <= source_ts),
+                )
+                .values(
+                    profile_embedding=embedding,
+                    embedding_source_hash=new_hash,
+                    embedding_generated_at=_datetime.now(_UTC),
+                    embedding_source_updated_at=source_ts,
+                ),
+            )
+
+            if write_result.rowcount == 0:
+                logger.info(
+                    "generate_candidate_embedding: skipped write for profile %s — "
+                    "a newer embedding was already stored while this task was running",
+                    profile_id,
+                )
+                return
+
+            # Keep the in-memory object in sync — the notification call below
+            # reads profile.profile_embedding, but the write above went through
+            # a raw UPDATE that bypasses the ORM's in-memory state.
             profile.profile_embedding = embedding
-            profile.embedding_source_hash = new_hash
-            profile.embedding_generated_at = _datetime.now(_UTC)
 
             # Propagate to the linked talent_pool_profiles row (if any) — that's
             # the table AI Talent Match actually queries. Self-registered
@@ -816,8 +951,11 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
     from datetime import UTC as _UTC
     from datetime import datetime as _datetime
 
+    from sqlalchemy import update as _update
+
     from app.modules.ai.scoring_service import hash_job_embedding_source
     from app.modules.ai.service import EmbeddingAIService
+    from app.modules.jobs.models import Job
 
     job_id = uuid.UUID(job_id_str)
 
@@ -833,6 +971,8 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
             if not job:
                 logger.warning("generate_job_embedding: job %s not found", job_id)
                 return
+
+            source_ts = job.updated_at
 
             # Hash check — skip if source content hasn't changed
             from app.modules.jobs.schemas import build_full_description
@@ -871,10 +1011,35 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
             ai_service = EmbeddingAIService()
             embedding = await ai_service.generate_embedding(embedding_text)
 
-            # Persist
+            # Persist — conditional write so a stale, late-finishing task
+            # (e.g. two rapid job edits racing) can't overwrite a newer result.
+            write_result = await db.execute(
+                _update(Job)
+                .where(
+                    Job.id == job.id,
+                    Job.embedding_source_updated_at.is_(None)
+                    | (Job.embedding_source_updated_at <= source_ts),
+                )
+                .values(
+                    job_embedding=embedding,
+                    embedding_source_hash=new_hash,
+                    embedding_generated_at=_datetime.now(_UTC),
+                    embedding_source_updated_at=source_ts,
+                )
+            )
+
+            if write_result.rowcount == 0:
+                logger.info(
+                    "generate_job_embedding: skipped write for job %s — "
+                    "a newer embedding was already stored while this task was running",
+                    job_id,
+                )
+                return
+
+            # Keep the in-memory object in sync — the notification call below
+            # reads job.job_embedding, but the write above went through a raw
+            # UPDATE that bypasses the ORM's in-memory state.
             job.job_embedding = embedding
-            job.embedding_source_hash = new_hash
-            job.embedding_generated_at = _datetime.now(_UTC)
             await db.commit()
 
             logger.info("generate_job_embedding: stored embedding for job %s", job_id)
@@ -958,6 +1123,66 @@ async def _recompute_stale_scores_async() -> None:
             await engine.dispose()
 
 
+@celery.task
+def backfill_missing_candidate_embeddings_task() -> None:
+    """Hourly Celery beat task — backstop for candidates whose embedding was
+    never generated despite having a complete profile.
+
+    This is a safety net, not the primary trigger. The primary trigger is
+    the explicit .delay() call fired at the moment a profile becomes
+    complete (update_my_profile / upload_cv in candidates/service.py). This
+    task exists to catch what that trigger misses: candidates who completed
+    their profile before the trigger existed, or any case where the trigger
+    call was skipped due to a bug or an untriggered code path (e.g. a direct
+    DB write, an admin action). Runs off-peak-friendly on an hourly cadence
+    since it's a backstop, not the happy path.
+    """
+    asyncio.run(_backfill_missing_candidate_embeddings_async())
+
+
+async def _backfill_missing_candidate_embeddings_async() -> None:
+    from sqlalchemy import select as _select
+
+    from app.modules.candidates.models import CandidateProfile
+
+    # Caps how many embedding API calls a single run can trigger — this
+    # task runs hourly, so a bounded backlog drains within a few hours
+    # instead of one run enqueueing an unbounded, costly burst if a lot of
+    # profiles were ever missed at once (e.g. a bug in the primary trigger
+    # going unnoticed for a while).
+    BATCH_LIMIT = 500
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with SessionLocal() as db:
+        try:
+            stmt = (
+                _select(CandidateProfile.id)
+                .where(
+                    CandidateProfile.is_profile_complete.is_(True),
+                    CandidateProfile.profile_embedding.is_(None),
+                )
+                .limit(BATCH_LIMIT)
+            )
+            result = await db.execute(stmt)
+            missing_ids = result.scalars().all()
+
+            for profile_id in missing_ids:
+                generate_candidate_embedding_task.delay(str(profile_id))
+
+            logger.info(
+                "backfill_missing_candidate_embeddings: queued %d candidate(s)",
+                len(missing_ids),
+            )
+
+        except Exception:
+            logger.exception("backfill_missing_candidate_embeddings: failed")
+            raise
+        finally:
+            await engine.dispose()
+
+
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def generate_talent_pool_embedding_task(self, profile_id: str) -> None:
     """Generate and store a profile embedding for a talent pool profile.
@@ -971,9 +1196,12 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
     from datetime import UTC as _UTC
     from datetime import datetime as _datetime
 
+    from sqlalchemy import update as _update
+
     from app.modules.ai.enums import CVParsingStatus
     from app.modules.ai.scoring_service import hash_talent_pool_embedding_source
     from app.modules.ai.service import EmbeddingAIService
+    from app.modules.talent_pool.models import TalentPoolProfiles
 
     profile_id = uuid.UUID(profile_id_str)
 
@@ -1023,6 +1251,11 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
                 )
                 return
 
+            # The submission's parsed_data is what embedding_text is built
+            # from below (not any field on profile itself), so that's the
+            # timestamp that determines whether a write is stale.
+            source_ts = submission.updated_at
+
             parsed = submission.parsed_data
             summary = parsed.get("summary") or ""
             current_title = parsed.get("current_title") or ""
@@ -1067,9 +1300,32 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
             ai_service = EmbeddingAIService()
             embedding = await ai_service.generate_embedding(embedding_text)
 
+            # Persist — conditional write so a stale, late-finishing task
+            # can't overwrite a newer result.
+            write_result = await db.execute(
+                _update(TalentPoolProfiles)
+                .where(
+                    TalentPoolProfiles.id == profile.id,
+                    TalentPoolProfiles.embedding_source_updated_at.is_(None)
+                    | (TalentPoolProfiles.embedding_source_updated_at <= source_ts),
+                )
+                .values(
+                    profile_embedding=embedding,
+                    embedding_source_hash=new_hash,
+                    embedding_generated_at=_datetime.now(_UTC),
+                    embedding_source_updated_at=source_ts,
+                )
+            )
+
+            if write_result.rowcount == 0:
+                logger.info(
+                    "generate_talent_pool_embedding: skipped write for profile %s — "
+                    "a newer embedding was already stored while this task was running",
+                    profile_id,
+                )
+                return
+
             profile.profile_embedding = embedding
-            profile.embedding_source_hash = new_hash
-            profile.embedding_generated_at = _datetime.now(_UTC)
             await db.commit()
 
             logger.info(

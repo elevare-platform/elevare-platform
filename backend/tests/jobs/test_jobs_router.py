@@ -357,6 +357,40 @@ async def test_publish_job(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_resubmit_rejected_job_via_router(client, db_session):
+    """POST /jobs/{id}/resubmit moves a REJECTED job back to PENDING and clears the reason."""
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from app.modules.jobs.models import Job
+
+    token = await register_and_promote(client, db_session, "EMPLOYER")
+
+    created = await client.post(
+        "/api/v1/jobs",
+        json=job_payload(),
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    job_id = created.json()["id"]
+
+    result = await db_session.execute(select(Job).where(Job.id == UUID(job_id)))
+    job = result.scalar_one()
+    job.moderation_status = "REJECTED"
+    job.moderation_reason = "Needs a clearer title"
+    await db_session.flush()
+
+    response = await client.post(
+        f"/api/v1/jobs/{job_id}/resubmit",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["moderation_status"] == "PENDING"
+    assert body["moderation_reason"] is None
+
+
+@pytest.mark.asyncio
 async def test_invalid_transition_returns_422(client, db_session):
     """Publishing an already ACTIVE job returns 422."""
     from uuid import UUID
@@ -418,12 +452,39 @@ async def test_list_mine_returns_only_own_jobs(client, db_session):
 
     response = await client.get(
         "/api/v1/jobs/mine",
+        params={"filter": "all"},
         headers={"Authorization": f"Bearer {token1}"},
     )
     assert response.status_code == 200
     titles = [j["title"] for j in response.json()["items"]]
     assert "Employer 1 Job" in titles
     assert "Employer 2 Job" not in titles
+
+
+@pytest.mark.asyncio
+async def test_list_mine_defaults_to_active_only(client, db_session):
+    """GET /jobs/mine defaults to the 'active' filter, excluding freshly-created drafts."""
+    token = await register_and_promote(client, db_session, "EMPLOYER")
+
+    await client.post(
+        "/api/v1/jobs",
+        json=job_payload(title="Draft Job"),
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    default_response = await client.get(
+        "/api/v1/jobs/mine",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert default_response.json()["items"] == []
+
+    pending_response = await client.get(
+        "/api/v1/jobs/mine",
+        params={"filter": "pending"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    titles = [j["title"] for j in pending_response.json()["items"]]
+    assert "Draft Job" in titles
 
 
 # ---------------------------------------------------------------------------

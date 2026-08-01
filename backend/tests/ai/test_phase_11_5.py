@@ -273,6 +273,7 @@ class TestJobAccessTokens:
         )
         jobs_resp = await client.get(
             "/api/v1/jobs/mine",
+            params={"filter": "all"},
             headers={"Authorization": f"Bearer {token}"},
         )
         job_id = jobs_resp.json()["items"][0]["id"]
@@ -309,6 +310,7 @@ class TestJobAccessTokens:
         )
         jobs_resp = await client.get(
             "/api/v1/jobs/mine",
+            params={"filter": "all"},
             headers={"Authorization": f"Bearer {token_a}"},
         )
         job_id = jobs_resp.json()["items"][0]["id"]

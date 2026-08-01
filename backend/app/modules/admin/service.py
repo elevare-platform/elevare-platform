@@ -173,7 +173,7 @@ class AdminService:
         if action == "close":
             job = await self._repo.set_job_status(job, "CLOSED")
         else:
-            job = await self._repo.set_job_moderation_status(job, action)
+            job = await self._repo.set_job_moderation_status(job, action, reason)
             from app.modules.applications.tasks import send_job_moderation_email
 
             send_job_moderation_email.delay(

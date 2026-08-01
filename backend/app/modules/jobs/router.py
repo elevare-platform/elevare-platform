@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_db, require_role
+from app.core.dependencies import get_db, get_optional_user, require_role
 from app.modules.introductions.router import router as intro_router
 from app.modules.jobs.schemas import (
     JobCreateRequest,
@@ -48,19 +48,22 @@ async def list_my_jobs(
     cursor: str | None = None,
     limit: int = 20,
     search: str | None = None,
-    current_user: User = Depends(require_role("EMPLOYER")),
+    status_filter: str = Query(default="active", alias="filter"),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> JobListResponse:
-    """Return all jobs owned by the authenticated employer.
+    """Return jobs owned by the authenticated employer (or admin).
 
     Must be declared before /{job_id} to prevent route conflict.
     ``search`` filters by job title (case-insensitive substring match).
+    ``filter`` buckets by status: active (default) | pending | rejected | closed | all.
     """
     return await JobService(db).list_employer_jobs(
         employer=current_user,
         cursor=cursor,
         limit=limit,
         search=search,
+        status_filter=status_filter,
     )
 
 
@@ -82,9 +85,14 @@ async def get_or_create_general_interest_job(
 async def get_job(
     job_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ) -> JobResponse:
-    """Return a single job by ID. Public — no authentication required."""
-    return await JobService(db).get_job_by_id(job_id)
+    """Return a single job by ID.
+
+    Public for published jobs — a DRAFT job (unpublished, or pulled offline
+    for re-review) is only visible to its owning employer or an admin.
+    """
+    return await JobService(db).get_job_by_id(job_id, requesting_user=current_user)
 
 
 # ---------------------------------------------------------------------------
@@ -95,10 +103,10 @@ async def get_job(
 @router.post("", response_model=JobResponse, status_code=201)
 async def create_job(
     data: JobCreateRequest,
-    current_user: User = Depends(require_role("EMPLOYER")),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> JobResponse:
-    """Create a new draft job. Employer only."""
+    """Create a new draft job. Employer or admin."""
     return await JobService(db).create_job(data, employer=current_user)
 
 
@@ -106,20 +114,44 @@ async def create_job(
 async def update_job(
     job_id: UUID,
     data: JobUpdateRequest,
-    current_user: User = Depends(require_role("EMPLOYER")),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> JobResponse:
-    """Update a job partially. Only the owning employer can modify it."""
+    """Update a job partially. Owning employer or admin (any job)."""
     return await JobService(db).update_job(job_id, data, current_user)
+
+
+@router.delete("/{job_id}", status_code=204)
+async def delete_job(
+    job_id: UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a draft job. Owning employer or admin (any job).
+
+    Only DRAFT jobs can be deleted — a job that was ever published must be
+    closed instead, since it may already have applications or matches.
+    """
+    await JobService(db).delete_job(job_id, current_user)
+
+
+@router.post("/{job_id}/resubmit", response_model=JobResponse, status_code=200)
+async def resubmit_job(
+    job_id: UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> JobResponse:
+    """Resubmit a REJECTED job for another admin review. Owning employer or admin (any job)."""
+    return await JobService(db).resubmit_job(job_id, current_user)
 
 
 @router.post("/{job_id}/publish", response_model=JobResponse, status_code=200)
 async def publish_job(
     job_id: UUID,
-    current_user: User = Depends(require_role("EMPLOYER")),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> JobResponse:
-    """Publish a draft job (DRAFT → ACTIVE). Only the owning employer."""
+    """Publish a draft job (DRAFT → ACTIVE). Owning employer or admin (any job)."""
     return await JobService(db).publish_job(job_id, current_user)
 
 
@@ -202,10 +234,10 @@ async def upload_cvs_for_job(
 async def get_talent_matches(
     job_id: UUID,
     limit: int = Query(default=20, ge=3, le=50),
-    current_user: User = Depends(require_role("EMPLOYER")),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> TalentMatchListResponse:
-    """Return AI-matched talent pool profiles for a job. Employer only."""
+    """Return AI-matched talent pool profiles for a job. Employer or admin."""
     import redis.asyncio as aioredis
 
     from app.core.config import settings
@@ -228,6 +260,7 @@ async def get_talent_matches(
         job_id=job_id,
         limit=limit,
         employer_id=current_user.id,
+        is_admin=current_user.role == "ADMIN",
     )
 
 
