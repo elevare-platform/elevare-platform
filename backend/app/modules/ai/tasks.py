@@ -743,7 +743,7 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
                     "generate_candidate_embedding: profile %s not found", profile_id
                 )
                 return
-            
+
             source_ts = profile.updated_at
 
             parsed_cv_summary: str | None = None
