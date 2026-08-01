@@ -8,6 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.jobs.enums import ContractType, SeniorityLevel, WorkLocation, WorkModel
 
+# Admin accounts are never required to have an employer_profile (create_job
+# skips that gate entirely for admins), so there's no company_name to pull a
+# real one from. Every admin-posted job is attributed to the platform itself
+# until the "admin posts on behalf of a real company" flow exists.
+PLATFORM_COMPANY_NAME = "Elevare Human Solutions Ltd"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -206,6 +212,13 @@ class JobResponse(BaseModel):
         if employer and employer.employer_profile:
             profile = employer.employer_profile
 
+        if profile:
+            company_name = profile.company_name
+        elif employer and employer.role == "ADMIN":
+            company_name = PLATFORM_COMPANY_NAME
+        else:
+            company_name = None
+
         return cls(
             id=job.id,
             title=job.title,
@@ -225,7 +238,7 @@ class JobResponse(BaseModel):
             employer_id=job.employer_id,
             moderation_status=job.moderation_status,
             work_location=job.work_location,
-            company_name=profile.company_name if profile else None,
+            company_name=company_name,
             company_logo_url=profile.company_logo_url if profile else None,
             company_website=profile.website if profile else None,
             company_description=profile.company_description if profile else None,

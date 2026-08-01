@@ -446,10 +446,48 @@ async def _score_talent_pool_profile_async(
 
             # --- Load parsed CV data via the chain: TalentPool -> ParsedCVSubmission
             if not talent_pool.parsed_submission_id:
-                logger.info(
-                    "score_talent_pool_profile: No parsed submission for talent pool profile {profile_id}. Skipping."
+                # Self-registered candidates who never went through the
+                # talent-pool CV upload flow have no ParsedCVSubmission of
+                # their own — fall back to the CV on their candidate profile
+                # so on-demand scoring still works for them.
+                if not talent_pool.candidate_profile_id:
+                    logger.info(
+                        "score_talent_pool_profile: No parsed submission for talent pool profile %s. Skipping.",
+                        profile_id,
+                    )
+                    return
+
+                from app.modules.candidates.repository import CandidateProfileRepository
+
+                candidate_repo = CandidateProfileRepository(db)
+                candidate = await candidate_repo.get_by_id(talent_pool.candidate_profile_id)
+                if not candidate or not candidate.cv_id:
+                    logger.warning(
+                        "score_talent_pool_profile: no CV on file for candidate profile %s (talent pool profile %s)",
+                        talent_pool.candidate_profile_id,
+                        profile_id,
+                    )
+                    return
+
+                cv = await candidate_repo.get_cv(candidate.cv_id)
+                if not cv or not cv.submission_id:
+                    logger.warning(
+                        "score_talent_pool_profile: candidate %s's CV has no parsed submission (talent pool profile %s)",
+                        candidate.id,
+                        profile_id,
+                    )
+                    return
+
+                talent_pool.parsed_submission_id = cv.submission_id
+                await talent_pool_repo.update(
+                    talent_pool.id, {"parsed_submission_id": cv.submission_id}
                 )
-                return
+                await db.commit()
+                logger.info(
+                    "score_talent_pool_profile: found parsed submission via candidate "
+                    "profile for talent pool profile %s. Continuing.",
+                    profile_id,
+                )
 
             submission = await ai_repo.get_submission_by_id(
                 talent_pool.parsed_submission_id

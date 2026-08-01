@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   MapPin, Briefcase, Sparkles, User, Bookmark, BookmarkCheck,
@@ -37,7 +37,7 @@ const PAST_ATTEMPT_LABEL = {
   expired: { icon: Clock, label: 'Previous request expired' },
 }
 
-export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpent, onError, savedCandidates, interviewList }) {
+export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpent, onError, savedCandidates, interviewList, onScored }) {
   const tier = scoreTier(match.similarity_score)
   const styles = SCORE_STYLES[tier]
   const displayName = match.candidate_name ?? 'Private profile'
@@ -49,6 +49,36 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
   const [showProfilePanel, setShowProfilePanel] = useState(false)
   const [showCvModal, setShowCvModal] = useState(false)
   const [notifyState, setNotifyState] = useState('idle') // idle | sending | sent
+  // idle | requesting | polling | timeout - AI insights are computed async by
+  // a Celery task, so after firing the request we re-poll the parent match
+  // list (via onScored) until this profile's ai_fit_summary shows up, same
+  // as any other async-job-result pattern in this app.
+  const [scoreState, setScoreState] = useState('idle')
+  const pollAttemptsRef = useRef(0)
+  const MAX_POLL_ATTEMPTS = 10
+  const POLL_INTERVAL_MS = 4000
+
+  // Stop polling once the parent's refetch has actually brought back a
+  // fresh ai_fit_summary for this profile.
+  useEffect(() => {
+    if (match.ai_fit_summary && scoreState === 'polling') {
+      setScoreState('idle')
+      pollAttemptsRef.current = 0
+    }
+  }, [match.ai_fit_summary, scoreState])
+
+  useEffect(() => {
+    if (scoreState !== 'polling') return
+    const interval = setInterval(() => {
+      pollAttemptsRef.current += 1
+      if (pollAttemptsRef.current > MAX_POLL_ATTEMPTS) {
+        setScoreState('timeout')
+        return
+      }
+      onScored?.()
+    }, POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [scoreState, onScored])
 
   // 'own_sourced' - an employer's own imported candidate. They already have
   // full access to this profile (Talent Pipeline), so no credit/consent
@@ -109,6 +139,21 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
     } catch {
       setNotifyState('idle')
       onError?.('Could not notify this candidate. Please try again.')
+    }
+  }
+
+  const handleGetInsights = async () => {
+    if (scoreState === 'requesting' || scoreState === 'polling') return
+    setScoreState('requesting')
+    try {
+      await api.post(`/api/v1/talent-pool/${match.profile_id}/score`, null, {
+        params: { job_id: jobId },
+      })
+      pollAttemptsRef.current = 0
+      setScoreState('polling')
+    } catch {
+      setScoreState('idle')
+      onError?.('Could not request AI insights. Please try again.')
     }
   }
 
@@ -226,11 +271,26 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
         </div>
       )}
 
-      {/* AI fit summary - shown once LLM scoring has run */}
-      {match.ai_fit_summary && (
+      {/* AI fit summary - shown once LLM scoring has run against this job */}
+      {match.ai_fit_summary ? (
         <p className="relative mt-3 text-[11px] text-text-muted leading-relaxed italic border-l-2 border-brand-blue/30 pl-2">
           {match.ai_fit_summary}
         </p>
+      ) : (
+        <button
+          type="button"
+          onClick={handleGetInsights}
+          disabled={scoreState === 'requesting' || scoreState === 'polling'}
+          className="relative mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-brand-blue hover:underline disabled:opacity-60 disabled:no-underline"
+        >
+          {scoreState === 'requesting' || scoreState === 'polling' ? (
+            <><Loader2 size={11} className="animate-spin" /> Scoring against this job…</>
+          ) : scoreState === 'timeout' ? (
+            <><Sparkles size={11} /> Still working — check back shortly</>
+          ) : (
+            <><Sparkles size={11} /> Get AI insights for this job</>
+          )}
+        </button>
       )}
 
       {/* Actions */}

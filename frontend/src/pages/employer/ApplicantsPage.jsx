@@ -824,7 +824,7 @@ function AiMatchesSkeletonCard() {
 }
 
 function AiMatchesTab({
-  matches, loading, error, notReady, onRefresh,
+  matches, loading, error, notReady, onRefresh, onScored,
   jobId, creditsBalance, creditsLoading, onCreditSpent, onError, savedCandidates, interviewList,
 }) {
   return (
@@ -893,6 +893,7 @@ function AiMatchesTab({
               onError={onError}
               savedCandidates={savedCandidates}
               interviewList={interviewList}
+              onScored={onScored}
             />
           ))}
         </div>
@@ -1189,6 +1190,7 @@ export default function ApplicantsPage() {
               error={aiMatchesError}
               notReady={aiMatchesNotReady}
               onRefresh={() => fetchTalentMatches()}
+              onScored={() => fetchTalentMatches(20, { silent: true })}
               jobId={jobId}
               creditsBalance={creditsBalance}
               creditsLoading={creditsLoading}
