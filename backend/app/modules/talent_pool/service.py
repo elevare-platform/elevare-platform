@@ -771,7 +771,7 @@ class TalentPoolService:
             count=len(items),
             job_id=job_id,
         )
-    
+
     async def score_profile_against_job(
         self,
         profile_id: uuid.UUID,
@@ -824,4 +824,4 @@ class TalentPoolService:
         except Exception as e:
             logger.error(f"Error scoring profile against job: {str(e)}")
             raise e
-        
+

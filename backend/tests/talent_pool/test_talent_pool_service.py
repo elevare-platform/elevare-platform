@@ -16,13 +16,11 @@ from app.core.exceptions import (
 from app.modules.ai.enums import CVParsingStatus
 from app.modules.ai.models import ParsedCVSubmission
 from app.modules.ai.scoring_service import hash_job_scoring_inputs
-from app.modules.jobs.enums import ContractType, WorkModel
 from app.modules.jobs.schemas import build_full_description
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.talent_pool.service import TalentPoolService
 from app.modules.users.models import EmployerProfile, User
-from tests.conftest import make_job
-from tests.conftest import make_register_data
+from tests.conftest import make_job, make_register_data
 
 # ---------------------------------------------------------------------------
 # Helpers
