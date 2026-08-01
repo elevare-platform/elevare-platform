@@ -204,3 +204,17 @@ async def get_job_matches(
         limit=limit,
     )
     return result.model_dump()
+
+
+@router.post("/{profile_id}/score", status_code=202)
+async def score_profile_against_job(
+    profile_id: uuid.UUID,
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: TalentPoolService = Depends(_get_talent_pool_service),
+) -> dict:
+    """Queue scoring for a single talent pool profile against a given job.
+
+    Returns immediately with a count of queued tasks — scoring runs in the background.
+    """
+    return await service.score_profile_against_job(profile_id, job_id, current_user)

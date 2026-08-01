@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     JobNotFoundError,
     PermissionDeniedException,
+    ProfileNotFoundException,
     SubmissionNotFound,
     ValidationException,
 )
@@ -610,10 +611,13 @@ class TalentPoolService:
         job_id: uuid.UUID,
         employer_id: uuid.UUID,
         limit: int = 20,
+        is_admin: bool = False,
     ) -> "TalentMatchListResponse":
         """Return AI-matched talent pool profiles for a job, ranked by embedding similarity."""
         from app.core.storage import get_storage_service
+        from app.modules.ai.scoring_service import hash_job_scoring_inputs
         from app.modules.applications.repository import ApplicationRepository
+        from app.modules.jobs.schemas import build_full_description
         from app.modules.notifications.match_repository import (
             MatchNotificationRepository,
         )
@@ -630,13 +634,34 @@ class TalentPoolService:
         if not job:
             raise JobNotFoundError()
 
-        if job.employer_id != employer_id:
+        # Admins can view matches for any job; employers only their own
+        if job.employer_id != employer_id and not is_admin:
             raise PermissionDeniedException()
 
         if job.job_embedding is None:
             raise ValidationException(
                 "Job embedding not yet generated — check back shortly."
             )
+
+        # A profile's ai_score/ai_fit_summary/ai_strengths/ai_weaknesses are a
+        # single set of columns computed against whichever job most recently
+        # triggered scoring (see get_profile's docstring for the same
+        # constraint) — not necessarily this job. Only surface them here if
+        # they were actually computed against this job's current inputs,
+        # same rule get_profile already enforces for the single-profile view.
+        current_job_hash = hash_job_scoring_inputs(
+            build_full_description(
+                about_the_role=job.about_the_role,
+                key_responsibilities=job.key_responsibilities,
+                requirements=job.requirements,
+                preferred_certifications=job.preferred_certifications,
+                technical_competencies=job.technical_competencies,
+                what_we_offer=job.what_we_offer,
+                legacy_description=job.description,
+            ),
+            job.required_skills or [],
+            job.seniority_level,
+        )
 
         user_ids = await application_repo.get_user_ids_for_job(job_id)
 
@@ -731,6 +756,9 @@ class TalentPoolService:
                     ownership=ownership,
                     cv_download_url=cv_download_url,
                     is_new=profile.id in new_profile_ids,
+                    assessment_is_current_for_job=(
+                        profile.ai_score_job_hash == current_job_hash
+                    ),
                 )
             )
 
@@ -743,3 +771,57 @@ class TalentPoolService:
             count=len(items),
             job_id=job_id,
         )
+
+    async def score_profile_against_job(
+        self,
+        profile_id: uuid.UUID,
+        job_id: uuid.UUID,
+        current_user: User,
+    ) -> dict:
+        """
+        Score a single profile against a given job.
+        """
+        from app.modules.ai.scoring_service import hash_job_scoring_inputs
+        from app.modules.jobs.schemas import build_full_description
+
+        profile = await self._repo.get_by_id(profile_id)
+        if not profile:
+            raise ProfileNotFoundException()
+
+        job_repo = JobRepository(self._db)
+        job = await job_repo.get_by_id(job_id)
+        if not job:
+            raise JobNotFoundError()
+
+        # Admins can trigger scoring for any job; employers only their own —
+        # same rule get_job_matches already enforces for viewing matches.
+        if job.employer_id != current_user.id and current_user.role != "ADMIN":
+            raise PermissionDeniedException()
+
+        current_job_hash = hash_job_scoring_inputs(
+            build_full_description(
+                about_the_role=job.about_the_role,
+                key_responsibilities=job.key_responsibilities,
+                requirements=job.requirements,
+                preferred_certifications=job.preferred_certifications,
+                technical_competencies=job.technical_competencies,
+                what_we_offer=job.what_we_offer,
+                legacy_description=job.description,
+            ),
+            job.required_skills or [],
+            job.seniority_level,
+        )
+
+        if profile.ai_score_job_hash == current_job_hash:
+            return {"status": "already_current"}
+
+        try:
+            score_talent_pool_profile_task.delay(
+                str(profile.id),
+                str(job.id),
+            )
+            return {"status": "queued"}
+        except Exception as e:
+            logger.error(f"Error scoring profile against job: {str(e)}")
+            raise e
+

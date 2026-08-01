@@ -105,6 +105,7 @@ class TalentMatchResponse(BaseModel):
         ownership: str = "admin_sourced",
         cv_download_url: str | None = None,
         is_new: bool = False,
+        assessment_is_current_for_job: bool = True,
     ) -> "TalentMatchResponse":
         return cls(
             profile_id=profile.id,
@@ -119,9 +120,9 @@ class TalentMatchResponse(BaseModel):
             candidate_profile_id=profile.candidate_profile_id,
             ownership=ownership,
             cv_download_url=cv_download_url,
-            ai_strengths=profile.ai_strengths,
-            ai_weaknesses=profile.ai_weaknesses,
-            ai_fit_summary=profile.ai_fit_summary,
+            ai_strengths=profile.ai_strengths if assessment_is_current_for_job else None,
+            ai_weaknesses=profile.ai_weaknesses if assessment_is_current_for_job else None,
+            ai_fit_summary=profile.ai_fit_summary if assessment_is_current_for_job else None,
             is_new=is_new,
         )
 

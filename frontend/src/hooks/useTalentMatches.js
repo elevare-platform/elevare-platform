@@ -14,8 +14,8 @@ export function useTalentMatches(jobId) {
   const [error, setError] = useState(null)
   const [notReady, setNotReady] = useState(false)
 
-  const fetchTalentMatches = useCallback(async (limit = 20) => {
-    setLoading(true)
+  const fetchTalentMatches = useCallback(async (limit = 20, { silent = false } = {}) => {
+    if (!silent) setLoading(true)
     setError(null)
     setNotReady(false)
     try {
