@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 import app.core.model_registry  # noqa: F401 — ensures all mappers are registered before any DB use
 from app.core.celery_app import celery
@@ -93,7 +94,7 @@ async def _run_pipeline_async(
 
     # Create a fresh engine and session for this event loop — avoids
     # "Future attached to a different loop" from reusing the module-level engine
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
@@ -271,7 +272,7 @@ async def _compute_match_score_async(application_id_str: str) -> None:
 
     application_id = uuid.UUID(application_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     ai_service = None
 
@@ -367,7 +368,7 @@ async def _score_application_async(application_id_str: str) -> None:
 
     # Create a fresh engine and session for this event loop — avoids
     # "Future attached to a different loop" from reusing the module-level engine
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     sessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with sessionLocal() as db:
@@ -534,7 +535,7 @@ async def _score_talent_pool_profile_async(
 
     # Create a fresh engine and session for this event loop — avoids
     # "Future attached to a different loop" from reusing the module-level engine
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     sessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with sessionLocal() as db:
@@ -766,7 +767,7 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
 
     profile_id = uuid.UUID(profile_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     ai_service = None
 
@@ -997,7 +998,7 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
 
     job_id = uuid.UUID(job_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     ai_service = None
 
@@ -1124,7 +1125,7 @@ async def _recompute_stale_scores_async() -> None:
     from app.modules.applications.models import Application
     from app.modules.candidates.models import CandidateProfile
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
@@ -1190,7 +1191,7 @@ async def _backfill_missing_candidate_embeddings_async() -> None:
     # going unnoticed for a while).
     BATCH_LIMIT = 500
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
@@ -1243,7 +1244,7 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
 
     profile_id = uuid.UUID(profile_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     ai_service = None
 
@@ -1418,7 +1419,7 @@ async def _upload_cv_to_r2_async(
     from datetime import UTC as _UTC
     from datetime import datetime as _datetime
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
@@ -1648,7 +1649,7 @@ async def _score_job_against_talent_pool_async(job_id_str: str) -> None:
 
     job_id = uuid.UUID(job_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
