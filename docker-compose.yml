@@ -67,7 +67,11 @@ services:
     dns:
       - 8.8.8.8
       - 8.8.4.4
-    command: celery -A app.core.celery_app worker --loglevel=info -Q celery
+    # --concurrency=2: same reasoning as celery_worker in docker-compose.prod.yml —
+    # without it, Celery defaults to one forked child per CPU core, and each one
+    # opens its own DB connections per task. Bounds how many of those can exist
+    # at once so a burst of AI-scoring tasks can't exhaust Postgres max_connections.
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q celery
 
   celery_worker_ingestion:
     build:
