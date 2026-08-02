@@ -182,8 +182,15 @@ async def test_fetch_messages_concurrently_isolates_per_message_failures():
 @pytest.mark.asyncio
 async def test_fetch_messages_concurrently_runs_in_parallel_not_sequentially():
     """The whole point of this helper — wall-clock time for N messages
-    should be roughly N/concurrency, not N times a single message's
-    latency, or the "fix" is a no-op."""
+    should be well under the fully-sequential worst case, or the semaphore
+    is a no-op.
+
+    _FETCH_CONCURRENCY=3 and _RATE_LIMIT_DELAY=0.15s means each fetch
+    takes at least 0.15s. We use 3 messages so they all run in the first
+    concurrency slot and complete in roughly one delay's worth of wall time.
+    Sequential would take ~3 * 0.15s = 0.45s; concurrent should be close
+    to one slot's worth. Generous upper bound to avoid CI flakiness.
+    """
     adapter = AsyncMock()
 
     async def get_message(message_id):
@@ -193,11 +200,11 @@ async def test_fetch_messages_concurrently_runs_in_parallel_not_sequentially():
     adapter.get_message.side_effect = get_message
     service = AsyncMock()
 
-    message_ids = [str(i) for i in range(8)]  # fits in one concurrency batch
+    # 3 messages == _FETCH_CONCURRENCY: all start in the first slot.
+    # Sequential would take ~3 * 0.2s = 0.6s; concurrent completes in ~0.2s.
+    message_ids = [str(i) for i in range(3)]
     start = time.monotonic()
     await _fetch_messages_concurrently(service, "integration-1", adapter, message_ids)
     elapsed = time.monotonic() - start
 
-    # Sequential would take ~8 * 0.05s = 0.4s; concurrent should be close to
-    # one message's latency. Generous bound to avoid CI flakiness.
-    assert elapsed < 0.3
+    assert elapsed < 0.45

@@ -29,13 +29,14 @@ logger = logging.getLogger(__name__)
 
 _RATE_LIMIT_DELAY = 0.15
 _MAX_PAGES = 200
-# Bounds how many messages are fetched from the provider concurrently within
-# a single import — the actual per-run bottleneck was never worker
-# concurrency (only one import task runs per run), it was fetching messages
-# one at a time inside that one task. Kept modest and independent of
-# CELERY_WORKER_CONCURRENCY since it's a per-task fan-out of HTTP calls, not
-# additional worker processes.
-_FETCH_CONCURRENCY = 8
+# Deliberately kept low. Each concurrent fetch holds a full attachment's
+# bytes in memory (resp.content — not streamed) until _process_attachment
+# finishes with them. On a page with several multi-MB PDFs, too-high
+# concurrency inside a single forked worker process spikes memory past the
+# container limit, causing the OOM killer to send SIGKILL (WorkerLostError /
+# signal 9). 3 is still meaningfully faster than sequential while keeping
+# peak memory predictable.
+_FETCH_CONCURRENCY = 3
 # A run checkpoints and hands off to a fresh task execution once it's been
 # going this long, rather than risking the task's own 2-hour hard time_limit
 # SIGKILL-ing it mid-page — a hard kill bypasses all cleanup, which is what
