@@ -139,15 +139,17 @@ services:
     deploy:
       resources:
         limits:
-          # Mail ingestion is I/O-bound (network calls to Zoho/Gmail,
-          # attachment downloads) — it dispatches CV parsing/OCR/embedding
-          # work to celery_worker via separate tasks rather than doing any
-          # of that heavy lifting itself, so it needs far less memory per
-          # process than celery_worker does. Higher concurrency is safe
-          # here for the same reason: these processes spend most of their
-          # time waiting on network I/O, not competing for CPU/memory.
+          # Mail ingestion is I/O-bound but NOT zero-memory: attachment bytes
+          # are fully buffered in RAM (resp.content) and held through PDF
+          # text extraction + R2 upload before being released. At
+          # _FETCH_CONCURRENCY=3, a single worker process can hold up to
+          # 3 messages × N attachments × up to 10MB each simultaneously,
+          # plus Python/Celery baseline (~150MB) and PDF lib overhead.
+          # 512M was too tight and caused OOM kills (signal 9 / WorkerLostError).
+          # 1.5G gives safe headroom for 4 concurrent worker processes without
+          # starving other services — host has 7.8G total.
           cpus: '0.5'
-          memory: 512M
+          memory: 1536M
     dns:
       - 8.8.8.8
       - 8.8.4.4
