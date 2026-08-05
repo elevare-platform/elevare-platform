@@ -107,38 +107,52 @@ async def _get_message_with_refresh(service, integration_id, adapter, message_id
         return await adapter.get_message(message_id)
 
 
-async def _fetch_messages_concurrently(
-    service, integration_id, adapter, message_ids
+async def _fetch_and_process_messages(
+    service, integration_id, adapter, message_ids, handle_message
 ):
-    """Fetch a page's messages with bounded concurrency instead of one at a
-    time — the actual driver of a slow import wasn't how many *other*
-    imports were running (only one worker slot is used per import either
-    way), it was this loop awaiting each message's full round trip
-    (details + attachment list + every attachment file) strictly in order
-    before starting the next one.
+    """Fetch a page's messages with bounded concurrency, handing each one to
+    `handle_message` as soon as its own fetch completes — instead of
+    fetching the entire page first and processing afterward.
 
-    Deliberately fetch-only — no DB access happens here, so it's safe to
-    run concurrently. Callers must still process the returned messages
-    (filtering, DB writes) sequentially: AsyncSession isn't safe for
+    With up to 500 message IDs per page, gathering every fetched message
+    (attachment bytes included) before any of them were filtered or
+    discarded meant the whole page was alive in memory at once, regardless
+    of how low fetch concurrency was set — that's what kept OOM-killing the
+    worker even after fetch concurrency was capped. Processing each message
+    right after its own fetch bounds memory to roughly _FETCH_CONCURRENCY
+    messages at a time instead of the whole page.
+
+    Fetching runs concurrently (bounded by _FETCH_CONCURRENCY); processing
+    runs serialized under a lock, since AsyncSession isn't safe for
     concurrent use from multiple coroutines.
 
-    Returns a list of (message_id, message_or_None, exception_or_None)
-    in the same order as message_ids.
+    Returns a list of (message_id, outcome, exception_or_None) in the same
+    order as message_ids, where outcome is "handled", "fetch_failed", or
+    "process_failed" (handle_message itself raised).
     """
     semaphore = asyncio.Semaphore(_FETCH_CONCURRENCY)
+    process_lock = asyncio.Lock()
 
-    async def _fetch_one(message_id):
+    async def _fetch_and_handle_one(message_id):
         async with semaphore:
             await asyncio.sleep(_RATE_LIMIT_DELAY)
             try:
                 message = await _get_message_with_refresh(
                     service, integration_id, adapter, message_id
                 )
-                return message_id, message, None
             except Exception as exc:
-                return message_id, None, exc
+                return message_id, "fetch_failed", exc
 
-    return await asyncio.gather(*[_fetch_one(mid) for mid in message_ids])
+        async with process_lock:
+            try:
+                await handle_message(message_id, message)
+                return message_id, "handled", None
+            except Exception as exc:
+                return message_id, "process_failed", exc
+
+    return await asyncio.gather(
+        *[_fetch_and_handle_one(mid) for mid in message_ids]
+    )
 
 
 @celery.task(
@@ -234,32 +248,12 @@ async def _run_import_async(
                 total_found += len(message_ids)
                 pages_fetched += 1
 
-                # Fetch this page's messages concurrently (network I/O only,
-                # no DB access) — this is the actual bottleneck a single
-                # import hits, independent of how many other imports are
-                # running. Processing each result below stays sequential
-                # since it writes to the shared DB session.
-                fetch_results = await _fetch_messages_concurrently(
-                    service, integration_id, adapter, message_ids
-                )
-
-                from app.modules.ingestion.attachment_filter import filter_message
-
-                for message_id, message, fetch_exc in fetch_results:
-                    if fetch_exc is not None:
-                        logger.warning(
-                            "Failed to fetch message %s",
-                            message_id,
-                            exc_info=fetch_exc,
-                        )
-                        failed += 1
-                        continue
-
+                async def handle_message(message_id, message):
+                    nonlocal processed, skipped, deduplicated, failed
                     result = filter_message(message)
                     if not result.passed:
                         skipped += 1
-                        continue
-
+                        return
                     for attachment in result.cv_attachments:
                         try:
                             outcome = await _process_attachment(
@@ -282,6 +276,28 @@ async def _run_import_async(
                                 exc_info=True,
                             )
                             failed += 1
+
+                # Fetch and process this page's messages together, one at a
+                # time as each fetch completes, rather than fetching the
+                # whole page (up to 500 messages) into memory before any of
+                # it is processed or discarded — see _fetch_and_process_messages.
+                fetch_results = await _fetch_and_process_messages(
+                    service, integration_id, adapter, message_ids, handle_message
+                )
+
+                for message_id, outcome, exc in fetch_results:
+                    if outcome == "fetch_failed":
+                        logger.warning(
+                            "Failed to fetch message %s", message_id, exc_info=exc
+                        )
+                        failed += 1
+                    elif outcome == "process_failed":
+                        logger.warning(
+                            "Unhandled error handling message %s",
+                            message_id,
+                            exc_info=exc,
+                        )
+                        failed += 1
 
                 # Persist progress after every page, not just at the very end —
                 # otherwise a large mailbox leaves the UI showing 0 processed/

@@ -16,7 +16,7 @@ import httpx
 import pytest
 
 from app.modules.ingestion.tasks import (
-    _fetch_messages_concurrently,
+    _fetch_and_process_messages,
     _get_message_with_refresh,
     _list_messages_with_refresh,
     _source_for_provider,
@@ -127,15 +127,15 @@ async def test_list_messages_with_refresh_reraises_non_401():
     service.ensure_fresh_token.assert_not_awaited()
 
 
-# ─── _fetch_messages_concurrently ─────────────────────────────────────────────
+# ─── _fetch_and_process_messages ───────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_fetch_messages_concurrently_returns_results_in_order():
-    """A single import's speed comes from fetching messages concurrently,
-    not from how many other imports are running — results must still come
-    back mapped to the right message_id, in the original order, regardless
-    of which coroutine happened to finish first."""
+async def test_fetch_and_process_messages_returns_results_in_order():
+    """Results must map back to the right message_id, in the original
+    order, regardless of which fetch happened to finish first — even
+    though handle_message runs in completion order, not input order,
+    since processing is serialized under a lock as fetches complete."""
     adapter = AsyncMock()
 
     async def get_message(message_id):
@@ -145,21 +145,30 @@ async def test_fetch_messages_concurrently_returns_results_in_order():
 
     adapter.get_message.side_effect = get_message
     service = AsyncMock()
+    handled = []
 
-    results = await _fetch_messages_concurrently(
-        service, "integration-1", adapter, ["a", "b", "c"]
+    async def handle_message(message_id, message):
+        handled.append((message_id, message))
+
+    results = await _fetch_and_process_messages(
+        service, "integration-1", adapter, ["a", "b", "c"], handle_message
     )
 
     assert [r[0] for r in results] == ["a", "b", "c"]
-    assert [r[1] for r in results] == ["message-a", "message-b", "message-c"]
+    assert [r[1] for r in results] == ["handled", "handled", "handled"]
     assert all(r[2] is None for r in results)
+    assert set(handled) == {
+        ("a", "message-a"),
+        ("b", "message-b"),
+        ("c", "message-c"),
+    }
 
 
 @pytest.mark.asyncio
-async def test_fetch_messages_concurrently_isolates_per_message_failures():
+async def test_fetch_and_process_messages_isolates_per_message_fetch_failures():
     """One message failing to fetch (deleted, corrupt, transient error)
     must not affect the others — it's reported back as that message's
-    exception, not raised and lost."""
+    exception, and handle_message is never called for it."""
     adapter = AsyncMock()
     adapter.get_message.side_effect = [
         "message-a",
@@ -167,23 +176,54 @@ async def test_fetch_messages_concurrently_isolates_per_message_failures():
         "message-c",
     ]
     service = AsyncMock()
+    handled = []
 
-    results = await _fetch_messages_concurrently(
-        service, "integration-1", adapter, ["a", "b", "c"]
+    async def handle_message(message_id, message):
+        handled.append(message_id)
+
+    results = await _fetch_and_process_messages(
+        service, "integration-1", adapter, ["a", "b", "c"], handle_message
     )
 
-    assert results[0] == ("a", "message-a", None)
+    assert results[0] == ("a", "handled", None)
     assert results[1][0] == "b"
-    assert results[1][1] is None
+    assert results[1][1] == "fetch_failed"
     assert isinstance(results[1][2], httpx.HTTPStatusError)
-    assert results[2] == ("c", "message-c", None)
+    assert results[2] == ("c", "handled", None)
+    assert set(handled) == {"a", "c"}
 
 
 @pytest.mark.asyncio
-async def test_fetch_messages_concurrently_runs_in_parallel_not_sequentially():
-    """The whole point of this helper — wall-clock time for N messages
-    should be well under the fully-sequential worst case, or the semaphore
-    is a no-op.
+async def test_fetch_and_process_messages_isolates_per_message_process_failures():
+    """handle_message raising for one message (a bad attachment, a DB
+    hiccup) must not stop the rest of the page from being processed."""
+    adapter = AsyncMock()
+    adapter.get_message.side_effect = ["message-a", "message-b", "message-c"]
+    service = AsyncMock()
+    handled = []
+
+    async def handle_message(message_id, message):
+        if message_id == "b":
+            raise ValueError("boom")
+        handled.append(message_id)
+
+    results = await _fetch_and_process_messages(
+        service, "integration-1", adapter, ["a", "b", "c"], handle_message
+    )
+
+    assert results[0] == ("a", "handled", None)
+    assert results[1][0] == "b"
+    assert results[1][1] == "process_failed"
+    assert isinstance(results[1][2], ValueError)
+    assert results[2] == ("c", "handled", None)
+    assert set(handled) == {"a", "c"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_and_process_messages_fetches_in_parallel_not_sequentially():
+    """Fetching must still overlap even though processing is serialized —
+    wall-clock time for N messages should be well under the fully-sequential
+    worst case, or the semaphore is a no-op.
 
     _FETCH_CONCURRENCY=3 and _RATE_LIMIT_DELAY=0.15s means each fetch
     takes at least 0.15s. We use 3 messages so they all run in the first
@@ -200,11 +240,16 @@ async def test_fetch_messages_concurrently_runs_in_parallel_not_sequentially():
     adapter.get_message.side_effect = get_message
     service = AsyncMock()
 
+    async def handle_message(message_id, message):
+        pass
+
     # 3 messages == _FETCH_CONCURRENCY: all start in the first slot.
     # Sequential would take ~3 * 0.2s = 0.6s; concurrent completes in ~0.2s.
     message_ids = [str(i) for i in range(3)]
     start = time.monotonic()
-    await _fetch_messages_concurrently(service, "integration-1", adapter, message_ids)
+    await _fetch_and_process_messages(
+        service, "integration-1", adapter, message_ids, handle_message
+    )
     elapsed = time.monotonic() - start
 
     assert elapsed < 0.45
