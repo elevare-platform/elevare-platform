@@ -35,7 +35,7 @@ def accept_payload(**overrides) -> dict:
     defaults = {
         "first_name": "Tunde",
         "last_name": "Bakare",
-        "phone_number": f"0801{uuid4().int % 10**7:07d}",
+        "phone_number": f"+234801{uuid4().int % 10**7:07d}",
         "password": "Secure123#",
         "confirm_password": "Secure123#",
     }
@@ -294,7 +294,7 @@ async def test_accept_invite_expired_token_returns_400(db_session):
     data = AcceptInviteRequest(
         first_name="Test",
         last_name="User",
-        phone_number=f"0801{u4().int % 10**7:07d}",
+        phone_number=f"+234801{u4().int % 10**7:07d}",
         password="Secure123#",
         confirm_password="Secure123#",
     )

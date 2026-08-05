@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { isValidPhoneNumber } from 'react-phone-number-input'
 import { storePostVerifyNext } from '@/pages/auth/VerifyEmailPage'
 import { Eye, EyeOff, Loader2, Check, X, Briefcase, User } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PhoneInput } from '@/components/ui/phone-input'
 import { Label } from '@/components/ui/label'
 import { FormField, FormMessage } from '@/components/ui/form'
 import { cn } from '@/lib/utils'
@@ -22,7 +24,7 @@ const schema = z.object({
   phone_number: z
     .string()
     .min(1, 'Phone number is required')
-    .regex(/^\+?[0-9\s\-()]{7,15}$/, 'Enter a valid phone number'),
+    .refine(isValidPhoneNumber, 'Enter a valid phone number'),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -186,7 +188,7 @@ function RegisterForm({ role, onBack }) {
   // e.g. the "Create your free profile" CTA in the role-notification email.
   const prefillEmail = params.get('email') || ''
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
+  const { register, control, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { email: prefillEmail },
   })
@@ -278,7 +280,13 @@ function RegisterForm({ role, onBack }) {
 
         <FormField>
           <Label htmlFor="phone_number">Phone number</Label>
-          <Input id="phone_number" type="tel" placeholder="+234 800 000 0000" {...register('phone_number')} />
+          <Controller
+            name="phone_number"
+            control={control}
+            render={({ field }) => (
+              <PhoneInput id="phone_number" placeholder="800 000 0000" {...field} />
+            )}
+          />
           <FormMessage>{errors.phone_number?.message}</FormMessage>
         </FormField>
 
