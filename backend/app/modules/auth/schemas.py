@@ -9,6 +9,7 @@ Response schemas define the outbound shapes for auth-related API responses.
 import re
 from uuid import UUID
 
+import phonenumbers
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -22,22 +23,29 @@ from app.modules.users.enums import UserRole
 
 
 def validate_phone_digits(v: str) -> str:
-    """Validate that the phone number is a valid Nigerian mobile number.
+    """Validate that the phone number is a valid international mobile number.
 
     Args:
-        v: The raw phone number string.
+        v: The raw phone number string, expected in E.164 format
+            (e.g. ``+919876543210``).
 
     Returns:
-        The phone number string if it matches the expected pattern.
+        The phone number normalized to E.164 format.
 
     Raises:
-        ValueError: If the number does not match the Nigerian format.
+        ValueError: If the number is not a valid, dialable phone number.
 
     """
-    pattern = r"^(\+234|0)[789]\d{9}$"
-    if not re.match(pattern, v):
-        raise ValueError("Invalid Nigerian phone number")
-    return v
+    try:
+        parsed = phonenumbers.parse(v, None)
+        if not phonenumbers.is_valid_number(parsed):
+            raise ValueError("Invalid phone number")
+        return phonenumbers.format_number(
+            parsed,
+            phonenumbers.PhoneNumberFormat.E164,
+        )
+    except phonenumbers.phonenumberutil.NumberParseException as e:
+        raise ValueError("Invalid phone number") from e
 
 
 def validate_password_strength(v: str) -> str:
@@ -88,7 +96,8 @@ class RegisterRequest(BaseModel):
         first_name: User's given name, 2–100 characters.
         last_name: User's family name, 2–100 characters.
         email: Valid email address; used as the login identifier.
-        phone_number: Nigerian mobile number in ``+234`` or ``0`` format.
+        phone_number: International mobile number in E.164 format
+            (e.g. ``+919876543210``).
         password: Plain-text password; must pass strength validation.
         confirm_password: Must match ``password`` exactly.
 
@@ -97,7 +106,7 @@ class RegisterRequest(BaseModel):
     first_name: str = Field(..., min_length=2, max_length=100)
     last_name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
-    phone_number: str = Field(..., min_length=8, max_length=15)
+    phone_number: str = Field(..., min_length=8, max_length=16)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., exclude=True)
     role: UserRole
@@ -128,16 +137,16 @@ class RegisterRequest(BaseModel):
     @field_validator("phone_number")
     @classmethod
     def validate_phone_number(cls, v: str) -> str:
-        """Validate that the phone number is a valid Nigerian mobile number.
+        """Validate that the phone number is a valid international mobile number.
 
         Args:
             v: The raw phone number string.
 
         Returns:
-            The phone number string if it matches the expected pattern.
+            The phone number normalized to E.164 format.
 
         Raises:
-            ValueError: If the number does not match the Nigerian format.
+            ValueError: If the number is not a valid, dialable phone number.
 
         """
         return validate_phone_digits(v)
@@ -189,23 +198,23 @@ class AcceptInviteRequest(BaseModel):
 
     first_name: str = Field(..., min_length=2, max_length=100)
     last_name: str = Field(..., min_length=2, max_length=100)
-    phone_number: str = Field(..., min_length=8, max_length=15)
+    phone_number: str = Field(..., min_length=8, max_length=16)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
 
     @field_validator("phone_number")
     @classmethod
     def validate_phone_number(cls, v: str) -> str:
-        """Validate that the phone number is a valid Nigerian mobile number.
+        """Validate that the phone number is a valid international mobile number.
 
         Args:
             v: The raw phone number string.
 
         Returns:
-            The phone number string if it matches the expected pattern.
+            The phone number normalized to E.164 format.
 
         Raises:
-            ValueError: If the number does not match the Nigerian format.
+            ValueError: If the number is not a valid, dialable phone number.
 
         """
         return validate_phone_digits(v)

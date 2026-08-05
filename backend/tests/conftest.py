@@ -28,7 +28,7 @@ def make_user(**overrides) -> User:
         "first_name": "John",
         "last_name": "Doe",
         "email": f"user_{uuid4().hex[:8]}@example.com",
-        "phone_number": f"0801{uuid4().int % 10**7:07d}",
+        "phone_number": f"+234801{uuid4().int % 10**7:07d}",
         "password_hash": "hashed_password",
         "account_status": "ACTIVE",
     }
@@ -43,7 +43,7 @@ def make_register_data(**overrides) -> RegisterRequest:
         "first_name": "John",
         "last_name": "Doe",
         "email": f"user_{uuid4().hex[:8]}@example.com",
-        "phone_number": f"0801{uuid4().int % 10**7:07d}",
+        "phone_number": f"+234801{uuid4().int % 10**7:07d}",
         "password": "Password123#",
         "confirm_password": "Password123#",
         "role": "CANDIDATE",

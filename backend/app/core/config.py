@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     zoho_client_secret: str | None = None
     zoho_redirect_uri: str = "http://localhost:8000/api/v1/ingestion/callback/zoho"
     zoho_accounts_url: str = "https://accounts.zoho.com"
+    fl_key: str
 
     # Fernet key for encrypting OAuth tokens at rest
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

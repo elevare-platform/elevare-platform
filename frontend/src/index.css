@@ -43,6 +43,16 @@ body {
   min-height: 100vh;
 }
 
+/* react-phone-number-input: match the site's input styling */
+.PhoneInput {
+  --PhoneInputCountryFlag-borderColor: transparent;
+  --PhoneInput-color--focus: var(--color-brand-blue);
+}
+
+.PhoneInputCountrySelectArrow {
+  color: var(--color-text-muted);
+}
+
 /* Headings default to the legible sans font. The Lobster Two display font
    is opt-in only via .font-heading — reserved for the homepage hero — so
    new headings stay readable by default instead of silently inheriting a

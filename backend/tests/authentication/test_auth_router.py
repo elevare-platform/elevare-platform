@@ -77,10 +77,10 @@ async def test_register_success(client):
 @pytest.mark.asyncio
 async def test_register_duplicate_email_returns_409(client):
     """POST /register with a taken email returns 409."""
-    payload = register_payload(email="dup@example.com", phone_number="08011111111")
+    payload = register_payload(email="dup@example.com", phone_number="+2348011111111")
     await client.post("/api/v1/auth/register", json=payload)
 
-    payload2 = register_payload(email="dup@example.com", phone_number="08022222222")
+    payload2 = register_payload(email="dup@example.com", phone_number="+2348022222222")
     response = await client.post("/api/v1/auth/register", json=payload2)
 
     assert response.status_code == 409
