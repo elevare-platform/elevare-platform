@@ -69,8 +69,8 @@ export default function PrivacyPage() {
                 ) : (
                   <p className="text-sm text-text-muted leading-relaxed">
                     For privacy-related enquiries, email us at{' '}
-                    <a href="mailto:hr@elevare.com.ng" className="text-brand-blue hover:underline font-medium">
-                      hr@elevare.com.ng
+                    <a href="mailto:recruitment@elevare.com.ng" className="text-brand-blue hover:underline font-medium">
+                      recruitment@elevare.com.ng
                     </a>{' '}
                     or use our{' '}
                     <Link to="/contact" className="text-brand-blue hover:underline font-medium">

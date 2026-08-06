@@ -74,7 +74,7 @@ class Settings(BaseSettings):
 
     # Contact / Sitemap
     contact_email: str = "info_admin@elevare.com.ng"
-    sales_email: str = "hr@elevare.com.ng"
+    sales_email: str = "recruitment@elevare.com.ng"
     site_url: str = "https://elevare-platform.vercel.app/"
 
     # Claude API KEY
