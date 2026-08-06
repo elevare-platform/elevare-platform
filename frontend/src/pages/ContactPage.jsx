@@ -7,7 +7,7 @@ import { FloatingWhatsApp } from '@/components/ui/FloatingWhatsApp'
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
-import { Mail, MapPin, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Mail, Phone, MapPin, CheckCircle2, AlertCircle } from 'lucide-react'
 
 function LinkedInIcon({ size = 18 }) {
   return (
@@ -28,6 +28,12 @@ const CONTACT_INFO = [
     label: 'Email',
     value: 'recruitment@elevare.com.ng',
     href: 'mailto:recruitment@elevare.com.ng',
+  },
+  {
+    icon: Phone,
+    label: 'Phone',
+    value: '0904 743 7527',
+    href: 'tel:+2349047437527',
   },
   {
     icon: MapPin,
