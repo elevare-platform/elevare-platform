@@ -515,6 +515,10 @@ async def _score_application_async(application_id_str: str) -> None:
             await engine.dispose()
 
 
+class _ParsingInProgress(Exception):
+    """Internal signal that CV parsing hasn't finished yet — retry on a fixed delay."""
+
+
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def score_talent_pool_profile_task(
     self, profile_id: str, job_id: str | None = None
@@ -524,7 +528,14 @@ def score_talent_pool_profile_task(
     job_id is optional — if not provided, falls back to profile.sourced_for_job_id.
     Pass job_id explicitly when scoring retroactively from score_against_job.
     """
-    asyncio.run(_score_talent_pool_profile_async(profile_id, job_id))
+    try:
+        asyncio.run(_score_talent_pool_profile_async(profile_id, job_id))
+    except _ParsingInProgress as exc:
+        # Parsing runs on its own async pipeline (up to task_soft_time_limit=240s),
+        # so poll on a fixed 30s cadence instead of the default exponential
+        # backoff, which exhausts its 3 retries in ~10-15s — long before
+        # parsing can realistically finish.
+        raise self.retry(countdown=30, max_retries=10, exc=exc) from exc
 
 
 async def _score_talent_pool_profile_async(
@@ -619,7 +630,7 @@ async def _score_talent_pool_profile_async(
                         "score_talent_pool_profile: parsing still in progress for profile %s, retrying in 30s",
                         profile_id,
                     )
-                    raise Exception(
+                    raise _ParsingInProgress(
                         f"Parsing not complete for submission {submission.id} — will retry"
                     )
                 else:
