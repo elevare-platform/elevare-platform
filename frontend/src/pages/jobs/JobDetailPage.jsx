@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext'
 import { cn, formatSalary } from '@/lib/utils'
 import api from '@/lib/api'
 import { ApplyButton } from '@/components/jobs/ApplyButton'
+import { buildJobPostingSchema } from '@/lib/jobPostingSchema'
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
@@ -183,6 +184,9 @@ export default function JobDetailPage() {
 
   const isOwner = job ? canManageJob(user, job) : false
 
+  const jobUrl = job ? `https://elevare.com.ng/jobs/${job.id}` : null
+  const jobPostingSchema = job ? buildJobPostingSchema(job, { url: jobUrl }) : null
+
   return (
     <>
       <Helmet>
@@ -192,9 +196,14 @@ export default function JobDetailPage() {
             <meta name="description" content={`${job.title} at ${job.company_name || 'a leading company'}. ${job.location} · ${job.contract_type}. Apply on Elevare.`} />
             <meta property="og:title" content={`${job.title} at ${job.company_name || 'Elevare'}`} />
             <meta property="og:description" content={`${job.title} · ${job.location} · ${job.contract_type}. Apply now on Elevare.`} />
-            <meta property="og:url" content={`https://elevare.com.ng/jobs/${job.id}`} />
+            <meta property="og:url" content={jobUrl} />
             <meta property="og:type" content="website" />
-            <link rel="canonical" href={`https://elevare.com.ng/jobs/${job.id}`} />
+            <link rel="canonical" href={jobUrl} />
+            {jobPostingSchema && (
+              <script type="application/ld+json">
+                {JSON.stringify(jobPostingSchema)}
+              </script>
+            )}
           </>
         ) : (
           <title>Job Listing | Elevare</title>
