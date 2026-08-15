@@ -1,3 +1,7 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/robots.txt", "destination": "https://api.elevare.com.ng/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "https://api.elevare.com.ng/sitemap.xml" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
