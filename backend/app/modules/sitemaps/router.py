@@ -41,6 +41,13 @@ Disallow: /employer
 Disallow: /api
 Disallow: /auth
 
+# Job detail/list pages fetch their data client-side from these endpoints —
+# Googlebot's renderer needs to reach them to hydrate JobPosting structured
+# data, so they must stay reachable despite the blanket Disallow: /api above.
+Allow: /api/v1/jobs
+Disallow: /api/v1/jobs/mine
+Disallow: /api/v1/jobs/admin
+
 Sitemap: {settings.site_url.rstrip("/")}/sitemap.xml
 """
     return Response(content=content, media_type="text/plain")
