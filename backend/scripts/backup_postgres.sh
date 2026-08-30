@@ -7,13 +7,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/../.env.production"
 
-if [ -f "${ENV_FILE}" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
-  set +a
-fi
+read_env_var() {
+  local key="$1"
+  [ -f "${ENV_FILE}" ] || return 0
+  grep -E "^${key}=" "${ENV_FILE}" | tail -n1 | cut -d'=' -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+}
 
+: "${R2_ACCESS_KEY_ID:=$(read_env_var R2_ACCESS_KEY_ID)}"
+: "${R2_SECRET_ACCESS_KEY:=$(read_env_var R2_SECRET_ACCESS_KEY)}"
+: "${R2_ENDPOINT_URL:=$(read_env_var R2_ENDPOINT_URL)}"
+: "${R2_BACKUP_BUCKET:=$(read_env_var R2_BACKUP_BUCKET)}"
 : "${R2_BACKUP_BUCKET:=elevare-backups}"
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
