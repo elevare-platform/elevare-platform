@@ -107,11 +107,19 @@ class InterviewService:
         self._candidate_repo = CandidateRepository(db)
         self._interview_list_repo = InterviewListRepository(db)
         self._talent_pool_repo = TalentPoolRepository(db)
-        self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self._client: AsyncOpenAI | None = None
 
     async def close(self) -> None:
-        """Close the underlying OpenAI HTTP client."""
-        await self._client.close()
+        """Close the underlying OpenAI HTTP client, if one was created."""
+        if self._client is not None:
+            await self._client.close()
+
+    def _get_client(self) -> AsyncOpenAI:
+        """Lazily construct the OpenAI client so most code paths (which never
+        touch the realtime API) don't require OPENAI_API_KEY to be set."""
+        if self._client is None:
+            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        return self._client
 
     # ------------------------------------------------------------------
     # Invite — called by InterviewListService when an employer adds a
@@ -362,7 +370,7 @@ class InterviewService:
 
         job = interview.job
         max_duration_minutes = settings.interview_max_duration_minutes
-        secret = await self._client.realtime.client_secrets.create(
+        secret = await self._get_client().realtime.client_secrets.create(
             expires_after={
                 "anchor": "created_at",
                 "seconds": min(max_duration_minutes * 60, 7200),
