@@ -56,6 +56,10 @@ class TalentPoolProfiles(BaseModel):
         Text,
         nullable=True,
     )
+    override_email: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
     sourced_for_job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("jobs.id", ondelete="SET NULL"),

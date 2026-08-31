@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import (
     JobNotFoundError,
     KYCRequiredException,
@@ -50,6 +51,9 @@ class JobService:
         Admins bypass the profile-completeness/KYC gate — those checks exist
         to verify a real employer's legitimacy before they can post, which
         doesn't apply to internal admin accounts posting jobs for everyone.
+        The KYC half of this can also be switched off entirely for everyone
+        via `settings.kyc_enforcement_enabled` (HR-requested toggle) — the
+        profile-completeness check is unaffected by that flag.
 
         Admin-posted jobs also skip the moderation queue entirely and go
         straight to ACTIVE — today every admin is inherently a reviewer, so
@@ -61,12 +65,12 @@ class JobService:
         is_admin = employer.role == "ADMIN"
 
         if not is_admin:
-            if (
-                not employer.employer_profile
-                or not employer.employer_profile.is_profile_complete
-            ):
+            if not employer.organization or not employer.organization.is_profile_complete:
                 raise ProfileIncompleteException()
-            if employer.employer_profile.kyc_status != KYCStatus.APPROVED.value:
+            if (
+                settings.kyc_enforcement_enabled
+                and employer.organization.kyc_status != KYCStatus.APPROVED.value
+            ):
                 raise KYCRequiredException()
 
         job = await self._repo.create(data, employer_id=employer.id)
@@ -86,7 +90,7 @@ class JobService:
 
             score_job_against_talent_pool_task.delay(str(job.id))
 
-        return JobResponse.from_job(job)
+        return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
 
     async def get_or_create_general_interest_job(
         self, employer_id: UUID
@@ -104,7 +108,7 @@ class JobService:
         if job is None:
             job = await self._repo.create_general_interest_job(employer_id)
             await self._db.commit()
-        return JobResponse.from_job(job)
+        return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
 
     async def publish_job(self, job_id: UUID, current_user: User) -> JobResponse:
         """Transition a job from DRAFT to ACTIVE.
@@ -124,6 +128,20 @@ class JobService:
 
         self._check_transition(job, JobStatus.ACTIVE)
         if job.moderation_status == ModerationStatus.APPROVED.value:
+            # Quota check comes last, right before the state change it
+            # gates — a job that isn't approved yet, or is already ACTIVE
+            # (invalid transition), should fail on that first, not on
+            # quota. Quota is a plan/billing concern, not a jobs concern —
+            # ask billing rather than re-implementing "how many active
+            # jobs does this org have" here. Admins bypass it, same as the
+            # KYC/profile checks in create_job — an admin publishing isn't
+            # spending any organization's billing allowance.
+            if current_user.role != "ADMIN":
+                from app.modules.billing.service import BillingService
+
+                billing_service = BillingService(self._db)
+                await billing_service.assert_can_post_job(current_user.organization_id)
+
             job = await self._repo.set_status(job, JobStatus.ACTIVE)
             await self._db.commit()
 
@@ -131,7 +149,7 @@ class JobService:
 
             score_job_against_talent_pool_task.delay(str(job_id))
 
-            return JobResponse.from_job(job)
+            return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
         raise ValidationException("Job listing isn't approved yet")
 
     async def resubmit_job(self, job_id: UUID, current_user: User) -> JobResponse:
@@ -154,12 +172,14 @@ class JobService:
             self._check_ownership(job, current_user)
 
         if job.moderation_status != ModerationStatus.REJECTED.value:
-            raise ValidationException("Only a rejected job can be resubmitted for review")
+            raise ValidationException(
+                "Only a rejected job can be resubmitted for review"
+            )
 
         job.moderation_status = ModerationStatus.PENDING.value
         job.moderation_reason = None
         await self._db.commit()
-        return JobResponse.from_job(job)
+        return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
 
     async def close_job(self, job_id: UUID, current_user: User) -> JobResponse:
         """Transition a job from ACTIVE to CLOSED.
@@ -182,7 +202,7 @@ class JobService:
         self._check_transition(job, JobStatus.CLOSED)
         job = await self._repo.set_status(job, JobStatus.CLOSED)
         await self._db.commit()
-        return JobResponse.from_job(job)
+        return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
 
     async def update_job(
         self, job_id: UUID, data: JobUpdateRequest, current_user: User
@@ -271,7 +291,7 @@ class JobService:
                     job_id,
                 )
 
-        return JobResponse.from_job(job)
+        return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
 
     async def get_job_by_id(
         self, job_id: UUID, requesting_user: User | None
@@ -284,12 +304,13 @@ class JobService:
         job, so a leaked draft URL doesn't even confirm the job exists.
         """
         job = await self._repo.get_by_id(job_id)
-        if job.status == JobStatus.DRAFT.value:
-            is_owner = requesting_user is not None and requesting_user.id == job.employer_id
-            is_admin = requesting_user is not None and requesting_user.role == "ADMIN"
-            if not is_owner and not is_admin:
-                raise JobNotFoundError()
-        return JobResponse.from_job(job)
+        is_owner = (
+            requesting_user is not None and requesting_user.id == job.employer_id
+        )
+        is_admin = requesting_user is not None and requesting_user.role == "ADMIN"
+        if job.status == JobStatus.DRAFT.value and not is_owner and not is_admin:
+            raise JobNotFoundError()
+        return JobResponse.from_job(job, include_interview_brief=is_owner or is_admin, include_contact_info=is_owner or is_admin)
 
     async def delete_job(self, job_id: UUID, current_user: User) -> None:
         """Delete a DRAFT job. Owning employer or admin only.
@@ -327,7 +348,7 @@ class JobService:
         """Return paginated active jobs with optional filters. Public endpoint."""
         result = await self._repo.list_active(filters, cursor, limit)
         return JobListResponse(
-            items=[JobResponse.from_job(j) for j in result["items"]],
+            items=[JobResponse.from_job(j, include_interview_brief=False, include_contact_info=False) for j in result["items"]],
             next_cursor=result["next_cursor"],
             count=result["count"],
             total=result["total"],
@@ -346,7 +367,7 @@ class JobService:
             employer.id, cursor, limit, search, status_filter
         )
         return JobListResponse(
-            items=[JobResponse.from_job(j) for j in result["items"]],
+            items=[JobResponse.from_job(j, include_interview_brief=True, include_contact_info=True) for j in result["items"]],
             next_cursor=result["next_cursor"],
             count=result["count"],
             total=result["total"],
@@ -360,7 +381,7 @@ class JobService:
         """Return all jobs regardless of status. Admin only."""
         result = await self._repo.list_all(cursor, limit)
         return JobListResponse(
-            items=[JobResponse.from_job(j) for j in result["items"]],
+            items=[JobResponse.from_job(j, include_interview_brief=True, include_contact_info=True) for j in result["items"]],
             next_cursor=result["next_cursor"],
             count=result["count"],
             total=result["total"],

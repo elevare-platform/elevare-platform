@@ -13,7 +13,6 @@ from app.core.exceptions import KYCRequiredException, PermissionDeniedException
 from app.modules.jobs.enums import ContractType, WorkModel
 from app.modules.jobs.schemas import JobCreateRequest
 from app.modules.jobs.service import JobService
-from app.modules.users.models import EmployerProfile
 
 
 def make_create_request(**overrides) -> JobCreateRequest:
@@ -35,22 +34,21 @@ def make_create_request(**overrides) -> JobCreateRequest:
 async def create_employer_with_profile(
     db_session, is_complete: bool, kyc_status: str = "APPROVED"
 ):
-    """Create an employer user with an EmployerProfile set to the given completeness."""
-    from tests.conftest import make_employer
+    """Create an employer user with an Organization set to the given completeness."""
+    from tests.conftest import make_employer, make_organization_for
 
     employer = make_employer()
     db_session.add(employer)
     await db_session.flush()
 
-    profile = EmployerProfile(
-        user_id=employer.id,
+    await make_organization_for(
+        db_session,
+        employer,
         company_name="Acme Corp" if is_complete else None,
         industry="Technology" if is_complete else None,
         is_profile_complete=is_complete,
         kyc_status=kyc_status,
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     # Reload employer so the relationship is populated
     from sqlalchemy import select
@@ -61,7 +59,7 @@ async def create_employer_with_profile(
     result = await db_session.execute(
         select(User)
         .where(User.id == employer.id)
-        .options(selectinload(User.employer_profile))
+        .options(selectinload(User.organization))
     )
     return result.scalar_one()
 
@@ -104,6 +102,45 @@ async def test_create_job_blocked_when_kyc_not_approved(db_session, kyc_status):
 
     service = JobService(db_session)
     with pytest.raises(KYCRequiredException):
+        await service.create_job(make_create_request(), employer=employer)
+
+
+@pytest.mark.parametrize("kyc_status", ["NOT_SUBMITTED", "PENDING", "REJECTED"])
+@pytest.mark.asyncio
+async def test_create_job_allowed_when_kyc_enforcement_disabled(
+    db_session, kyc_status, monkeypatch
+):
+    """The KYC_ENFORCEMENT_ENABLED=False escape hatch (HR-requested) lets an
+    employer post regardless of kyc_status — profile-completeness is
+    unaffected by this flag and still applies.
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "kyc_enforcement_enabled", False)
+    employer = await create_employer_with_profile(
+        db_session, is_complete=True, kyc_status=kyc_status
+    )
+
+    service = JobService(db_session)
+    result = await service.create_job(make_create_request(), employer=employer)
+
+    assert result.employer_id == employer.id
+
+
+@pytest.mark.asyncio
+async def test_create_job_still_blocked_by_profile_completeness_when_kyc_disabled(
+    db_session, monkeypatch
+):
+    """KYC_ENFORCEMENT_ENABLED=False only skips the KYC check — an incomplete
+    profile is still blocked, since that's a separate, unrelated gate.
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "kyc_enforcement_enabled", False)
+    employer = await create_employer_with_profile(db_session, is_complete=False)
+
+    service = JobService(db_session)
+    with pytest.raises(PermissionDeniedException):
         await service.create_job(make_create_request(), employer=employer)
 
 
@@ -161,12 +198,13 @@ async def test_post_job_returns_403_for_incomplete_profile(client, db_session):
     user.account_status = "ACTIVE"
     await db_session.flush()
 
-    profile = EmployerProfile(
-        user_id=user.id,
+    from tests.conftest import make_organization_for
+
+    await make_organization_for(
+        db_session,
+        user,
         is_profile_complete=False,
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     token_pair = create_token_pair(user.id, "EMPLOYER")
     token = token_pair["access_token"]
@@ -218,15 +256,16 @@ async def test_post_job_succeeds_for_complete_profile(client, db_session):
     user.account_status = "ACTIVE"
     await db_session.flush()
 
-    profile = EmployerProfile(
-        user_id=user.id,
+    from tests.conftest import make_organization_for
+
+    await make_organization_for(
+        db_session,
+        user,
         company_name="Acme Corp",
         industry="Technology",
         is_profile_complete=True,
         kyc_status="APPROVED",
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     token_pair = create_token_pair(user.id, "EMPLOYER")
     token = token_pair["access_token"]
@@ -277,15 +316,16 @@ async def test_post_job_returns_403_for_unapproved_kyc(client, db_session):
     user.account_status = "ACTIVE"
     await db_session.flush()
 
-    profile = EmployerProfile(
-        user_id=user.id,
+    from tests.conftest import make_organization_for
+
+    await make_organization_for(
+        db_session,
+        user,
         company_name="Acme Corp",
         industry="Technology",
         is_profile_complete=True,
         kyc_status="PENDING",
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     token_pair = create_token_pair(user.id, "EMPLOYER")
     token = token_pair["access_token"]
@@ -307,3 +347,61 @@ async def test_post_job_returns_403_for_unapproved_kyc(client, db_session):
 
     assert response.status_code == 403
     assert response.json()["code"] == "KYC_REQUIRED"
+
+
+# ---------------------------------------------------------------------------
+# Publish-time quota gate (Starter plan, 1 active job posting)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_publish_blocked_when_starter_quota_already_used(client, db_session):
+    """A second job can't be published on Starter once the first is ACTIVE.
+
+    Reproduces a real bug report: the frontend surfaced a generic "failed to
+    publish" message instead of the real quota-exceeded reason. This locks
+    in the backend side (a real, useful `message`) so a regression there
+    would fail loudly instead of only being noticed by a confused employer.
+    """
+    from app.modules.auth.jwt_handler import create_token_pair
+    from app.modules.jobs.enums import JobStatus
+    from tests.conftest import make_employer, make_job, make_organization_for
+
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    await make_organization_for(
+        db_session,
+        employer,
+        company_name="Test Corp",
+        industry="Technology",
+        company_size="1-10",
+        is_profile_complete=True,
+        kyc_status="APPROVED",
+    )
+
+    # Quota-filling job: already ACTIVE, counts against the Starter limit of 1.
+    active_job = make_job(
+        employer.id, status=JobStatus.ACTIVE.value, moderation_status="APPROVED"
+    )
+    db_session.add(active_job)
+    # The job actually under test: DRAFT + APPROVED, ready to publish.
+    draft_job = make_job(
+        employer.id, status=JobStatus.DRAFT.value, moderation_status="APPROVED"
+    )
+    db_session.add(draft_job)
+    await db_session.flush()
+
+    token = create_token_pair(employer.id, "EMPLOYER")["access_token"]
+
+    response = await client.post(
+        f"/api/v1/jobs/{draft_job.id}/publish",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    body = response.json()
+    assert body["code"] == "JOB_POSTING_LIMIT_EXCEEDED"
+    # The frontend reads this exact field to show the employer why — must
+    # stay a real, specific sentence, not a generic fallback.
+    assert "plan allows" in body["message"].lower()

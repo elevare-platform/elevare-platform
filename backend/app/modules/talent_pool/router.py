@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_db, require_role
 from app.core.limiter import limiter
 from app.modules.talent_pool.schema import (
+    TalentPoolEmailUpdateRequest,
     TalentPoolProfileResponse,
     TalentPoolPromoteResponse,
     TalentPoolStatusUpdateRequest,
@@ -147,6 +148,17 @@ async def update_status(
     return await service.update_status(profile_id, data)
 
 
+@router.patch("/{profile_id}/email", response_model=TalentPoolProfileResponse)
+async def update_email(
+    profile_id: uuid.UUID,
+    data: TalentPoolEmailUpdateRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: TalentPoolService = Depends(_get_talent_pool_service),
+) -> TalentPoolProfileResponse:
+    """Set an employer-entered override email for a candidate with no resolvable one."""
+    return await service.update_email(profile_id, data.email, current_user)
+
+
 @router.post("/{profile_id}/promote", response_model=TalentPoolPromoteResponse)
 async def promote_to_candidate(
     profile_id: uuid.UUID,
@@ -162,11 +174,20 @@ async def score_against_job(
     job_id: uuid.UUID = Query(...),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Queue scoring for all unscored pipeline profiles against a given job.
 
-    Returns immediately with a count of queued tasks — scoring runs in the background.
+    Returns immediately with a count of queued tasks — scoring runs in the
+    background. Professional+ — this is a real LLM call per unscored
+    profile, potentially the whole pool at once.
     """
+    if current_user.role != "ADMIN":
+        from app.modules.billing.service import BillingService
+
+        billing_service = BillingService(db)
+        await billing_service.assert_professional_or_above(current_user.organization_id)
+
     return await service.score_against_job(job_id)
 
 
@@ -212,9 +233,18 @@ async def score_profile_against_job(
     job_id: uuid.UUID,
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Queue scoring for a single talent pool profile against a given job.
 
-    Returns immediately with a count of queued tasks — scoring runs in the background.
+    Returns immediately with a count of queued tasks — scoring runs in the
+    background. Professional+, same as bulk scoring — any LLM scoring call
+    is a paid-tier feature, not just the bulk one.
     """
+    if current_user.role != "ADMIN":
+        from app.modules.billing.service import BillingService
+
+        billing_service = BillingService(db)
+        await billing_service.assert_professional_or_above(current_user.organization_id)
+
     return await service.score_profile_against_job(profile_id, job_id, current_user)

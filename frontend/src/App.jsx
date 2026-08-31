@@ -27,6 +27,7 @@ const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'))
 const InviteAcceptPage = lazy(() => import('@/pages/auth/InviteAcceptPage'))
 const VerifyEmailPage = lazy(() => import('@/pages/auth/VerifyEmailPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
+const NotificationDetailPage = lazy(() => import('@/pages/NotificationDetailPage'))
 const UnauthorisedPage = lazy(() => import('@/pages/UnauthorisedPage'))
 
 const JobBoardPage = lazy(() => import('@/pages/jobs/JobBoardPage'))
@@ -43,8 +44,12 @@ const EmployerCVParserPage = lazy(() => import('@/pages/employer/EmployerCVParse
 const TalentPoolPage = lazy(() => import('@/pages/employer/TalentPoolPage'))
 const CandidateSearchPage = lazy(() => import('@/pages/employer/CandidateSearchPage'))
 const IntroductionsPage = lazy(() => import('@/pages/employer/IntroductionsPage'))
+const TeamPage = lazy(() => import('@/pages/employer/TeamPage'))
+const BillingPage = lazy(() => import('@/pages/employer/BillingPage'))
+const BillingVerifyPage = lazy(() => import('@/pages/employer/BillingVerifyPage'))
 const SharedApplicantsPage = lazy(() => import('@/pages/SharedApplicantsPage'))
 const IntroductionResponsePage = lazy(() => import('@/pages/IntroductionResponsePage'))
+const InterviewInvitePage = lazy(() => import('@/pages/InterviewInvitePage'))
 
 const MailIngestionPage = lazy(() => import('@/pages/employer/MailIngestionPage'))
 const AdminInvitePage = lazy(() => import('@/pages/admin/AdminInvitePage'))
@@ -54,6 +59,7 @@ const AdminJobsPage = lazy(() => import('@/pages/admin/AdminJobsPage'))
 const AdminKycPage = lazy(() => import('@/pages/admin/AdminKycPage'))
 const AdminApplicationsPage = lazy(() => import('@/pages/admin/AdminApplicationsPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/admin/AdminAuditLogPage'))
+const AdminCostsPage = lazy(() => import('@/pages/admin/AdminCostsPage'))
 const AdminIntroductionsPage = lazy(() => import('@/pages/admin/AdminIntroductionsPage'))
 const AdminCVParserPage = lazy(() => import('@/pages/admin/AdminCVParserPage'))
 const AdminTestimonialsPage = lazy(() => import('@/pages/admin/AdminTestimonialsPage'))
@@ -66,6 +72,7 @@ const MyApplicationsPage = lazy(() => import('@/pages/candidate/MyApplicationsPa
 const ProfileViewsPage = lazy(() => import('@/pages/candidate/ProfileViewsPage'))
 const CandidateIntroductionsPage = lazy(() => import('@/pages/candidate/CandidateIntroductionsPage'))
 const CandidateMatchesPage = lazy(() => import('@/pages/candidate/CandidateMatchesPage'))
+const InterviewSessionPage = lazy(() => import('@/pages/candidate/InterviewSessionPage'))
 
 // ─── Shared loading fallback ──────────────────────────────────────────────────
 
@@ -121,9 +128,11 @@ function AppRoutes() {
         <Route path="/jobs/:id" element={<JobDetailPage />} />
         <Route path="/shared/jobs/:token" element={<SharedApplicantsPage />} />
         <Route path="/introduction-response" element={<IntroductionResponsePage />} />
+        <Route path="/interview/:token" element={<InterviewInvitePage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/notifications/:id" element={<NotificationDetailPage />} />
         </Route>
 
         {/* Employer-only routes */}
@@ -139,7 +148,9 @@ function AppRoutes() {
           <Route path="/employer/talent-pool" element={<TalentPoolPage />} />
           <Route path="/employer/candidate-search" element={<CandidateSearchPage />} />
           <Route path="/employer/introductions" element={<IntroductionsPage />} />
-          <Route path="/employer/mail-ingestion" element={<MailIngestionPage />} />
+          <Route path="/employer/team" element={<TeamPage />} />
+          <Route path="/employer/billing" element={<BillingPage />} />
+          <Route path="/employer/billing/verify" element={<BillingVerifyPage />} />
         </Route>
 
         {/* Admin-only routes */}
@@ -151,10 +162,12 @@ function AppRoutes() {
           <Route path="/admin/kyc" element={<AdminKycPage />} />
           <Route path="/admin/applications" element={<AdminApplicationsPage />} />
           <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
+          <Route path="/admin/costs" element={<AdminCostsPage />} />
           <Route path="/admin/introductions" element={<AdminIntroductionsPage />} />
           <Route path="/admin/cv-parser" element={<AdminCVParserPage />} />
           <Route path="/admin/talent-pool" element={<TalentPoolPage />} />
           <Route path="/admin/testimonials" element={<AdminTestimonialsPage />} />
+          <Route path="/admin/mail-ingestion" element={<MailIngestionPage />} />
         </Route>
 
         {/* Candidate-only routes */}
@@ -163,6 +176,7 @@ function AppRoutes() {
           <Route path="/candidate/dashboard/documents" element={<CandidateDocumentsPage />} />
           <Route path="/candidate/profile" element={<CandidateProfilePage />} />
           <Route path="/candidate/applications" element={<MyApplicationsPage />} />
+          <Route path="/candidate/applications/:applicationId/interview" element={<InterviewSessionPage />} />
           <Route path="/candidate/profile-views" element={<ProfileViewsPage />} />
           <Route path="/candidate/introductions" element={<CandidateIntroductionsPage />} />
           <Route path="/candidate/matches" element={<CandidateMatchesPage />} />

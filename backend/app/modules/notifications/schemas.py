@@ -15,6 +15,7 @@ class NotificationResponse(BaseModel):
     body: str | None = None
     entity_type: str | None = None
     entity_id: uuid.UUID | None = None
+    context: dict | None = None
     read_at: datetime | None = None
     created_at: datetime
 

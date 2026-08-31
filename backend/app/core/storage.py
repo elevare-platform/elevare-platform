@@ -34,6 +34,13 @@ class StorageService(ABC):
         """Generate a short-lived URL for accessing a private file."""
         ...
 
+    @abstractmethod
+    async def generate_presigned_upload_url(
+        self, key: str, content_type: str, expires_seconds: int
+    ) -> str:
+        """Generate a short-lived URL the client can PUT a file to directly."""
+        ...
+
 
 class MockStorageService(StorageService):
     """In-memory storage for tests. No network calls, no credentials."""
@@ -60,6 +67,12 @@ class MockStorageService(StorageService):
     async def generate_presigned_url(self, key: str, expires_seconds: int) -> str:
         """Return a mock URL for the given key."""
         return f"https://mock-storage/{key}"
+
+    async def generate_presigned_upload_url(
+        self, key: str, content_type: str, expires_seconds: int
+    ) -> str:
+        """Return a mock upload URL for the given key."""
+        return f"https://mock-storage/{key}?upload=true"
 
 
 class R2StorageService(StorageService):
@@ -117,6 +130,21 @@ class R2StorageService(StorageService):
             return await s3.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self._bucket, "Key": key},
+                ExpiresIn=expires_seconds,
+            )
+
+    async def generate_presigned_upload_url(
+        self, key: str, content_type: str, expires_seconds: int
+    ) -> str:
+        """Generate a pre-signed PUT URL so a client can upload directly to R2."""
+        async with self._session.client("s3", endpoint_url=self._endpoint_url) as s3:
+            return await s3.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": self._bucket,
+                    "Key": key,
+                    "ContentType": content_type,
+                },
                 ExpiresIn=expires_seconds,
             )
 

@@ -19,6 +19,8 @@ class LLMExtractionResult:
     summary: str | None = None
     work_history: list[dict] = field(default_factory=list)
     education: list[dict] = field(default_factory=list)
+    input_tokens: int = 0
+    output_tokens: int = 0
     field_confidence: dict[str, str] = field(
         default_factory=lambda: {
             "skills": "low",

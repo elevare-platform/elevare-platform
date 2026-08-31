@@ -87,6 +87,9 @@ class JobCreateRequest(BaseModel):
     seniority_level: SeniorityLevel | None = None
     openings_count: int = Field(default=1, ge=1, le=999)
     required_years_experience: int | None = Field(default=None, ge=0, le=50)
+    # Topics/goals for the AI video interviewer to probe — leave unset to
+    # keep the AI interview off for this job. Not a fixed question list.
+    interview_brief: str | None = None
 
     @model_validator(mode="after")
     def validate_salary_range(self) -> "JobCreateRequest":
@@ -123,6 +126,7 @@ class JobUpdateRequest(BaseModel):
     seniority_level: SeniorityLevel | None = None
     openings_count: int | None = Field(default=None, ge=1, le=999)
     required_years_experience: int | None = Field(default=None, ge=0, le=50)
+    interview_brief: str | None = None
 
     @model_validator(mode="after")
     def validate_salary_range(self) -> "JobUpdateRequest":
@@ -202,16 +206,36 @@ class JobResponse(BaseModel):
     seniority_level: SeniorityLevel | None = None
     openings_count: int = 1
     required_years_experience: int | None = None
+    interview_brief: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_job(cls, job) -> "JobResponse":
-        """Build a JobResponse from a Job ORM instance."""
+    def from_job(
+        cls, job, *, include_interview_brief: bool, include_contact_info: bool
+    ) -> "JobResponse":
+        """Build a JobResponse from a Job ORM instance.
+
+        Both flags are required (no default) so every call site has to
+        consciously decide. ``include_contact_info`` gates the employer's
+        raw email/phone — candidates browsing or matched to a job should
+        go through the platform's application/introduction flow, not
+        contact the employer directly. Only pass True for either flag for
+        the owning employer or an admin.
+
+        ``include_interview_brief`` is required (no default) so every call
+        site has to consciously decide — the AI interviewer is instructed
+        never to reveal the brief to the candidate in conversation
+        (`_build_instructions` in `interviews/service.py`), but that's
+        meaningless if the REST API hands it out in plain JSON. Only pass
+        True for the owning employer or an admin; every public/candidate-
+        facing call site (the public job listing, the public job detail
+        page) must pass False.
+        """
         profile = None
         employer = job.employer
-        if employer and employer.employer_profile:
-            profile = employer.employer_profile
+        if employer and employer.organization:
+            profile = employer.organization
 
         if profile:
             company_name = profile.company_name
@@ -248,8 +272,8 @@ class JobResponse(BaseModel):
             company_size=profile.company_size if profile else None,
             employer_first_name=employer.first_name if employer else None,
             employer_last_name=employer.last_name if employer else None,
-            employer_email=employer.email if employer else None,
-            employer_phone=employer.phone_number if employer else None,
+            employer_email=employer.email if employer and include_contact_info else None,
+            employer_phone=employer.phone_number if employer and include_contact_info else None,
             created_at=job.created_at,
             application_deadline=job.application_deadline,
             application_count=getattr(job, "application_count", 0),
@@ -258,6 +282,7 @@ class JobResponse(BaseModel):
             seniority_level=job.seniority_level,
             openings_count=job.openings_count,
             required_years_experience=job.required_years_experience,
+            interview_brief=job.interview_brief if include_interview_brief else None,
         )
 
 

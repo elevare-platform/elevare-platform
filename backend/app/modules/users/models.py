@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         InviteToken,
         RefreshToken,
     )
+    from app.modules.billing.models import Payment, Subscription
     from app.modules.candidates.models import CandidateProfile, ProfileView
     from app.modules.credits.models import CreditTransaction, EmployerCredits
     from app.modules.employer.models import KYCDocument
@@ -73,14 +74,37 @@ class User(BaseModel):
         DateTime(timezone=True), nullable=True
     )
 
+    # --- Organization membership ---
+    # A User belongs to at most one Organization (enforced nowhere at the DB
+    # level today since it's a plain nullable FK, not a unique one-to-many
+    # child key — revisit if that ever needs enforcing). organization_role
+    # is a separate axis from `role` above: `role` is platform-wide
+    # (EMPLOYER/CANDIDATE/ADMIN), organization_role is who can manage this
+    # specific company's billing/team (OWNER/ADMIN/MEMBER).
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    organization_role: Mapped[str] = mapped_column(String(20), nullable=True)
+    invited_by_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    joined_organization_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Relationships
     profile: Mapped[UserProfile] = relationship(
         "UserProfile", back_populates="user", uselist=False
     )
-    employer_profile: Mapped[EmployerProfile] = relationship(
-        "EmployerProfile",
-        back_populates="user",
-        uselist=False,
+    organization: Mapped[Organization] = relationship(
+        "Organization",
+        back_populates="members",
+        foreign_keys=[organization_id],
     )
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         "RefreshToken",
@@ -145,15 +169,6 @@ class User(BaseModel):
         "IntroductionRequest",
         back_populates="employer",
     )
-    credit_transactions: Mapped[list[CreditTransaction]] = relationship(
-        "CreditTransaction",
-        back_populates="employer",
-    )
-    employer_credits: Mapped[EmployerCredits | None] = relationship(
-        "EmployerCredits",
-        back_populates="employer",
-        uselist=False,
-    )
     notifications: Mapped[list[Notification]] = relationship(
         "Notification",
         back_populates="recipient",
@@ -184,22 +199,27 @@ class UserProfile(BaseModel):
     user: Mapped[User] = relationship("User", back_populates="profile")
 
 
-class EmployerProfile(BaseModel):
-    """Company profile for employer accounts.
+class Organization(BaseModel):
+    """A company/employer account. Owns billing, KYC, and one or more `User` members.
 
-    Created when an employer registers. Fields are nullable until the
-    employer completes their profile. ``is_profile_complete`` is flipped
-    to True by the service layer when required fields are filled.
+    Created when the first employer for a company registers (that user
+    becomes ``OWNER``, see ``User.organization_role``); teammates join the
+    same row via invite rather than getting their own. Company fields are
+    nullable until the profile is completed; ``is_profile_complete`` is
+    flipped to True by the service layer when required fields are filled.
+
+    Named ``Organization`` rather than ``EmployerProfile`` — the earlier
+    name implied a 1:1 relationship with a single login, which stopped
+    being true once billing/KYC needed to be shared across a company's
+    staff.
     """
 
-    __tablename__ = "employer_profiles"
+    __tablename__ = "organizations"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        unique=True,
-        nullable=False,
-        index=True,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     company_name: Mapped[str] = mapped_column(String(255), nullable=True)
     company_description: Mapped[str] = mapped_column(Text, nullable=True)
@@ -230,11 +250,30 @@ class EmployerProfile(BaseModel):
     )
 
     # relationships
-    user: Mapped[User] = relationship(
+    members: Mapped[list[User]] = relationship(
         "User",
-        back_populates="employer_profile",
+        back_populates="organization",
+        foreign_keys="User.organization_id",
     )
     kyc_documents: Mapped[list[KYCDocument]] = relationship(
         "KYCDocument",
-        back_populates="employer_profile",
+        back_populates="organization",
+    )
+    credit_transactions: Mapped[list[CreditTransaction]] = relationship(
+        "CreditTransaction",
+        back_populates="organization",
+    )
+    employer_credits: Mapped[EmployerCredits | None] = relationship(
+        "EmployerCredits",
+        back_populates="organization",
+        uselist=False,
+    )
+    subscription: Mapped[Subscription | None] = relationship(
+        "Subscription",
+        back_populates="organization",
+        uselist=False,
+    )
+    payments: Mapped[list[Payment]] = relationship(
+        "Payment",
+        back_populates="organization",
     )

@@ -398,6 +398,20 @@ class TokenNotFoundError(NotFoundException):
         super().__init__(message, code, status_code, details)
 
 
+class InterviewNotFound(NotFoundException):
+    """Raised when an interview record is not found."""
+
+    def __init__(
+        self,
+        message: str = "Interview not found",
+        code: str = "INTERVIEW_NOT_FOUND",
+        status_code: int = 404,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
 # ---------------------------------------------------------------------------
 # Validation  (HTTP 422)
 # ---------------------------------------------------------------------------
@@ -531,3 +545,141 @@ class KYCAlreadySubmittedException(PlatformError):
     ) -> None:
         """Initialise with platform error defaults."""
         super().__init__(message, code, status_code, details)
+
+
+# ---------------------------------------------------------------------------
+# Billing  (HTTP 400 / 401 / 403 / 404 / 500)
+# ---------------------------------------------------------------------------
+
+
+class PlanNotFoundException(NotFoundException):
+    """Raised when a requested subscription plan code does not exist."""
+
+    def __init__(
+        self,
+        message: str = "Plan not found",
+        code: str = "PLAN_NOT_FOUND",
+        status_code: int = 404,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class CreditPackageNotFoundException(NotFoundException):
+    """Raised when a requested credit package code does not exist."""
+
+    def __init__(
+        self,
+        message: str = "Credit package not found",
+        code: str = "CREDIT_PACKAGE_NOT_FOUND",
+        status_code: int = 404,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class InvalidWebhookSignatureException(PlatformError):
+    """Raised when an inbound payment webhook's signature doesn't verify."""
+
+    def __init__(
+        self,
+        message: str = "Invalid webhook signature",
+        code: str = "INVALID_WEBHOOK_SIGNATURE",
+        status_code: int = 401,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class PaymentVerificationException(PlatformError):
+    """Raised when a payment's verified amount/status doesn't match what was expected."""
+
+    def __init__(
+        self,
+        message: str = "Payment verification failed",
+        code: str = "PAYMENT_VERIFICATION_FAILED",
+        status_code: int = 400,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class PlanUpgradeRequiredException(PlatformError):
+    """Raised when an organization's current plan doesn't include a feature."""
+
+    def __init__(
+        self,
+        message: str = "This feature requires a Professional plan or above",
+        code: str = "PLAN_UPGRADE_REQUIRED",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class NoActiveSubscriptionException(PlatformError):
+    """Raised when cancelling a subscription an organization doesn't have."""
+
+    def __init__(
+        self,
+        message: str = "You don't have an active paid subscription to cancel",
+        code: str = "NO_ACTIVE_SUBSCRIPTION",
+        status_code: int = 400,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class JobPostingLimitExceededException(PlatformError):
+    """Raised when an organization has reached its plan's active job posting limit."""
+
+    def __init__(
+        self,
+        message: str = "You've reached your plan's active job posting limit",
+        code: str = "JOB_POSTING_LIMIT_EXCEEDED",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class PaystackError(PlatformError):
+    """Base exception for Paystack adapter errors."""
+
+    def __init__(
+        self,
+        message: str = "Paystack error occurred",
+        code: str = "PAYSTACK_ERROR",
+        status_code: int = 500,
+    ) -> None:
+        """Initialise with error code and HTTP status, both overridable by subclasses."""
+        super().__init__(message=message, code=code, status_code=status_code)
+
+
+class PaystackVerificationError(PaystackError):
+    """Raised when verifying a transaction with Paystack fails."""
+
+    def __init__(self, message: str = "Payment verification failed") -> None:
+        """Initialise with parent error code."""
+        super().__init__(message=message)
+
+
+class PaymentsNotConfiguredError(PaystackError):
+    """Raised when a paid checkout is attempted before Paystack is
+    configured (business verification pending) — a known, expected state,
+    not a Paystack API failure, so it gets its own code (503) and message
+    the frontend can match on and show plainly rather than a generic error.
+    """
+
+    def __init__(
+        self, message: str = "Payments aren't available yet — contact us to subscribe."
+    ) -> None:
+        """Initialise with a distinct code/status from generic Paystack errors."""
+        super().__init__(message=message, code="PAYMENTS_NOT_CONFIGURED", status_code=503)

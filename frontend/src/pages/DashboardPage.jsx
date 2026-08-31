@@ -4,7 +4,7 @@ import {
   LogOut, Briefcase, ArrowRight, MailCheck,
   Plus, TrendingUp, FileText, CheckCircle,
   Sparkles, Heart, Cpu, LayoutDashboard,
-  FileSearch, Mail, Send, User, Eye
+  FileSearch, Send, User, Eye, Users, CreditCard
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -200,10 +200,11 @@ function EmployerDashboard({ user }) {
   const tabs = [
     { id: 'overview', label: 'Console Overview', icon: LayoutDashboard },
     { id: 'talent-pipeline', label: 'Talent Pipeline', icon: Sparkles, badge: 'AI' },
-    { id: 'mail-ingestion', label: 'Mail Ingestion', icon: Mail },
     { id: 'saved-candidates', label: 'Saved Candidates', icon: Heart },
     { id: 'ai-recommendations', label: 'Candidate Search', icon: Cpu, badge: 'AI' },
-    { id: 'cv-parser', label: 'CV Parser', icon: FileSearch }
+    { id: 'cv-parser', label: 'CV Parser', icon: FileSearch },
+    { id: 'team', label: 'Team', icon: Users },
+    { id: 'billing', label: 'Billing', icon: CreditCard },
   ]
 
   return (
@@ -228,7 +229,7 @@ function EmployerDashboard({ user }) {
         <div className="rounded-xl border border-brand-amber/30 bg-brand-amber/5 p-4 flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-amber-800">Your company profile is incomplete</p>
-            <p className="text-xs text-amber-700 mt-0.5">Complete your profile to unlock job posting.</p>
+            <p className="text-xs text-amber-700 mt-0.5">Complete your profile to post jobs.</p>
           </div>
           <Link to="/employer/onboarding">
             <Button size="sm" variant="outline" className="border-brand-amber text-brand-amber hover:bg-brand-amber hover:text-white flex-shrink-0">
@@ -377,22 +378,6 @@ function EmployerDashboard({ user }) {
             </div>
           )}
 
-          {activeTab === 'mail-ingestion' && (
-            <div className="bg-white rounded-xl border border-border p-8 text-center max-w-xl mx-auto space-y-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
-                <Mail size={22} />
-              </div>
-              <h2 className="text-xl font-bold text-text">Mail Ingestion</h2>
-              <p className="text-text-muted text-sm leading-relaxed">
-                Connect your recruitment mailbox to automatically import and parse CVs.
-              </p>
-              <Link to="/employer/mail-ingestion">
-                <Button className="flex items-center gap-2 mx-auto">
-                  Manage Mailboxes <ArrowRight size={15} />
-                </Button>
-              </Link>
-            </div>
-          )}
 
           {activeTab === 'saved-candidates' && <SavedCandidatesTab />}
 
@@ -416,6 +401,40 @@ function EmployerDashboard({ user }) {
 
           {activeTab === 'cv-parser' && (
             <EmployerCVParser />
+          )}
+
+          {activeTab === 'team' && (
+            <div className="bg-white rounded-xl border border-border p-8 text-center max-w-xl mx-auto space-y-4">
+              <div className="w-12 h-12 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center mx-auto">
+                <Users size={22} />
+              </div>
+              <h2 className="text-xl font-bold text-text">Team</h2>
+              <p className="text-text-muted text-sm leading-relaxed">
+                Everyone at your company sharing this account. Invite teammates and manage access.
+              </p>
+              <Link to="/employer/team">
+                <Button className="flex items-center gap-2 mx-auto">
+                  Manage Team <ArrowRight size={15} />
+                </Button>
+              </Link>
+            </div>
+          )}
+
+          {activeTab === 'billing' && (
+            <div className="bg-white rounded-xl border border-border p-8 text-center max-w-xl mx-auto space-y-4">
+              <div className="w-12 h-12 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center mx-auto">
+                <CreditCard size={22} />
+              </div>
+              <h2 className="text-xl font-bold text-text">Billing</h2>
+              <p className="text-text-muted text-sm leading-relaxed">
+                Your plan, credits, and payment history.
+              </p>
+              <Link to="/employer/billing">
+                <Button className="flex items-center gap-2 mx-auto">
+                  Manage Billing <ArrowRight size={15} />
+                </Button>
+              </Link>
+            </div>
           )}
 
         </div>

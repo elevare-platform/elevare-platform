@@ -225,9 +225,22 @@ class CandidateService:
         self-registered profiles, so there's no single SQL predicate for
         them). Every result carries a human-readable ``explanation`` so
         ranking is never a black box.
+
+        The whole endpoint — structured filters included, not just the
+        semantic ``query`` field — is Professional+. Candidate Search is
+        marketed as a paid-tier feature on the pricing page; Starter gets
+        no access to it at all.
         """
         from app.modules.talent_pool.repository import TalentPoolRepository
         from app.modules.talent_pool.service import resolve_match_display_fields
+
+        if current_user.role != "ADMIN":
+            from app.modules.billing.service import BillingService
+
+            billing_service = BillingService(self._db)
+            await billing_service.assert_professional_or_above(
+                current_user.organization_id
+            )
 
         min_experience = filters.min_experience
         max_experience = filters.max_experience
@@ -319,7 +332,13 @@ class CandidateService:
             # check — an employer only has access once a candidate has
             # accepted an introduction to them, from any job.
             if ownership == "admin_sourced":
-                has_cv_access = await self._has_accepted_introduction(
+                from app.modules.introductions.repository import (
+                    IntroductionRepository,
+                )
+
+                has_cv_access = await IntroductionRepository(
+                    self._db
+                ).has_accepted_introduction(
                     employer_id=current_user.id, talent_pool_profile_id=profile.id
                 )
             else:
@@ -347,26 +366,6 @@ class CandidateService:
         return CandidateSearchResponse(
             results=results, total=len(results), filters_applied=filters
         )
-
-    async def _has_accepted_introduction(
-        self, *, employer_id: uuid.UUID, talent_pool_profile_id: uuid.UUID
-    ) -> bool:
-        """Has this candidate ever accepted an introduction to this employer, from any job."""
-        from sqlalchemy import select
-
-        from app.modules.introductions.enums import IntroductionStatus
-        from app.modules.introductions.models import IntroductionRequest
-
-        result = await self._db.execute(
-            select(IntroductionRequest.id)
-            .where(
-                IntroductionRequest.employer_id == employer_id,
-                IntroductionRequest.talent_pool_profile_id == talent_pool_profile_id,
-                IntroductionRequest.status == IntroductionStatus.ACCEPTED.value,
-            )
-            .limit(1)
-        )
-        return result.scalar_one_or_none() is not None
 
     @staticmethod
     def _to_search_result(
@@ -501,6 +500,7 @@ class CandidateService:
                 notice_period_days=notice_period_days,
                 location=fields["location"],
                 skills=fields["skills"] or [],
+                summary=fields.get("summary"),
             ),
             match_score=round(match_score, 1),
             matched_skills=matched_skills,
@@ -519,7 +519,7 @@ class CandidateService:
         items = []
         for view in paginated["items"]:
             employer_profile = getattr(
-                getattr(view, "employer", None), "employer_profile", None
+                getattr(view, "employer", None), "organization", None
             )
             items.append(
                 {

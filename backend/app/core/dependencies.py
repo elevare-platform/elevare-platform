@@ -63,7 +63,7 @@ async def get_current_user(
 
     result = await db.execute(
         select(User)
-        .options(selectinload(User.employer_profile))
+        .options(selectinload(User.organization))
         .where(User.id == payload.sub)
     )
     user = result.scalar_one_or_none()
@@ -100,7 +100,7 @@ async def get_current_user_any_status(
 
     result = await db.execute(
         select(User)
-        .options(selectinload(User.employer_profile))
+        .options(selectinload(User.organization))
         .where(User.id == payload.sub)
     )
     user = result.scalar_one_or_none()
@@ -131,7 +131,7 @@ async def get_optional_user(
 
     result = await db.execute(
         select(User)
-        .options(selectinload(User.employer_profile))
+        .options(selectinload(User.organization))
         .where(User.id == payload.sub)
     )
     return result.scalar_one_or_none()
@@ -166,6 +166,30 @@ def require_role(*roles: str):
         return current_user
 
     return _check_role
+
+
+def require_org_role(*org_roles: str):
+    """Dependency factory restricting access by organization-level role.
+
+    Separate axis from `require_role`: `require_role("EMPLOYER")` answers
+    "is this an employer login," this answers "can this specific member
+    act for their organization's billing/team" (OWNER/ADMIN vs MEMBER).
+    Layer both when an endpoint needs both — this only checks
+    `organization_role`, it doesn't imply `role == "EMPLOYER"`.
+
+    Usage::
+
+        @router.post("/team/invite")
+        async def invite(user: User = Depends(require_org_role("OWNER", "ADMIN"))):
+            ...
+    """
+
+    async def _check_org_role(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.organization_role not in org_roles:
+            raise PermissionDeniedException()
+        return current_user
+
+    return _check_org_role
 
 
 async def get_candidate(

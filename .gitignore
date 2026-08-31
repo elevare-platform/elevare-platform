@@ -55,3 +55,16 @@ Procfile
 # Kiro
 .kiro
 docs/02_KIRO_PAIR_PROGRAMMER.md
+
+# Internal working docs — local only. Everything under docs/ is hidden by
+# default; only the ones explicitly meant for the team repo are allowed
+# back in below. Add a new `!docs/<file>.md` line when a doc is deliberately
+# published — do not add a wildcard re-include.
+docs/*.md
+!docs/celery-worker-oom-incident.md
+!docs/postgres-backup-restore.md
+!docs/candidate-search-chunked-retrieval.md
+
+# Cost figures — never meant for the repo
+infrastructure_costs.md
+infrastructure_costs_buffered.md

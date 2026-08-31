@@ -85,7 +85,9 @@ class AdminUserResponse(BaseModel):
     email_verified_at: datetime | None = None
     last_login_at: datetime | None = None
     created_at: datetime
-    employer_profile: AdminEmployerProfileResponse | None = None
+    employer_profile: AdminEmployerProfileResponse | None = Field(
+        None, validation_alias="organization"
+    )
 
 
 class AdminApplicationResponse(BaseModel):
@@ -164,14 +166,24 @@ class AdminKYCEmployerResponse(BaseModel):
 
     @classmethod
     def from_profile(cls, profile) -> "AdminKYCEmployerResponse":
-        """Build from an EmployerProfile ORM object with user/documents loaded."""
+        """Build from an Organization ORM object with members/documents loaded.
+
+        `profile.user`/`profile.user_id` don't exist anymore now that an
+        Organization can have multiple members — the OWNER is who's shown
+        here (an org always has exactly one owner, enforced by
+        EmployerService.remove_team_member refusing to remove the last one).
+        """
+        owner = next(
+            (m for m in profile.members if m.organization_role == "OWNER"),
+            profile.members[0] if profile.members else None,
+        )
         return cls(
             employer_profile_id=profile.id,
-            user_id=profile.user_id,
+            user_id=owner.id if owner else None,
             company_name=profile.company_name,
-            first_name=profile.user.first_name,
-            last_name=profile.user.last_name,
-            email=profile.user.email,
+            first_name=owner.first_name if owner else "",
+            last_name=owner.last_name if owner else "",
+            email=owner.email if owner else "",
             kyc_status=profile.kyc_status,
             kyc_submitted_at=profile.kyc_submitted_at,
             kyc_reviewed_at=profile.kyc_reviewed_at,

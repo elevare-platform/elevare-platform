@@ -1,9 +1,10 @@
 """HTTP endpoints for CV parsing — submit, list, download, and cost tracking."""
 
 import uuid
+from datetime import date
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.requests import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -85,14 +86,35 @@ async def get_costs(
     return await service.get_monthly_cost_summary()
 
 
-# TODO: MAKE THIS A PRO PLAN WHERE HR CAN BATCH ADD MULTIPLE PDFS AT ONCE
+@router.get("/costs/trend", status_code=200)
+async def get_costs_trend(
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    current_user: User = Depends(require_role("ADMIN")),
+    service: CVParsingService = Depends(get_cv_parsing_service),
+):
+    """Return a monthly cost/call trend, optionally bounded by ?from=&to=
+    (YYYY-MM-DD). Omit both for the full history. Admin only."""
+    return await service.get_cost_trend(from_date, to_date)
+
+
 @router.post("/submit/batch", status_code=201)
 async def submit_pdf_batch(
     files: list[UploadFile] = File(...),
     current_user: User = Depends(require_role("ADMIN", "EMPLOYER")),
     service: CVParsingService = Depends(get_cv_parsing_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Upload up to 20 CVs for parsing in a single request."""
+    """Upload up to 20 CVs for parsing in a single request. Professional+ —
+    each file is its own CV-parsing LLM call, so a 20-file batch is the
+    single most expensive thing an employer can trigger in one request.
+    """
+    if current_user.role != "ADMIN":
+        from app.modules.billing.service import BillingService
+
+        billing_service = BillingService(db)
+        await billing_service.assert_professional_or_above(current_user.organization_id)
+
     if len(files) > 20:
         from fastapi import HTTPException
 

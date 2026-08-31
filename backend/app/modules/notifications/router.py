@@ -38,6 +38,21 @@ async def unread_count(
     return UnreadCountResponse(count=count)
 
 
+@router.get("/{notification_id}", response_model=NotificationResponse)
+async def get_notification(
+    notification_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fetch a single notification and mark it read — viewing it is the read action."""
+    repo = NotificationRepository(db)
+    notification = await repo.mark_read(notification_id, current_user.id)
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    await db.commit()
+    return NotificationResponse.model_validate(notification)
+
+
 @router.patch("/{notification_id}/read", response_model=NotificationResponse)
 async def mark_read(
     notification_id: uuid.UUID,

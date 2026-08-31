@@ -19,8 +19,13 @@ from app.modules.ai.scoring_service import hash_job_scoring_inputs
 from app.modules.jobs.schemas import build_full_description
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.talent_pool.service import TalentPoolService
-from app.modules.users.models import EmployerProfile, User
-from tests.conftest import make_job, make_register_data
+from app.modules.users.models import User
+from tests.conftest import (
+    make_job,
+    make_organization_for,
+    make_register_data,
+    make_subscription_for,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,17 +53,52 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
     user.account_status = "ACTIVE"
     await db_session.flush()
     if role == "EMPLOYER":
-        profile = EmployerProfile(
-            user_id=user.id,
+        organization = await make_organization_for(
+            db_session,
+            user,
             company_name="Test Corp",
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
             kyc_status="APPROVED",
         )
-        db_session.add(profile)
-        await db_session.flush()
+        await make_subscription_for(db_session, organization)
     token_pair = create_token_pair(user.id, role)
+    return token_pair["access_token"], user
+
+
+async def register_starter_employer(client, db_session):
+    """Same as register_and_activate(..., "EMPLOYER") but stays on Starter
+    (no subscription row) — for testing plan gates from the losing side."""
+    from app.modules.auth.jwt_handler import create_token_pair
+
+    data = make_register_data(role="CANDIDATE")
+    payload = {
+        "first_name": data.first_name,
+        "last_name": data.last_name,
+        "email": data.email,
+        "phone_number": data.phone_number,
+        "password": data.password,
+        "confirm_password": data.confirm_password,
+        "role": "CANDIDATE",
+    }
+    resp = await client.post("/api/v1/auth/register", json=payload)
+    assert resp.status_code == 201
+    result = await db_session.execute(select(User).where(User.email == data.email))
+    user = result.scalar_one()
+    user.role = "EMPLOYER"
+    user.account_status = "ACTIVE"
+    await db_session.flush()
+    await make_organization_for(
+        db_session,
+        user,
+        company_name="Starter Corp",
+        industry="Technology",
+        company_size="1-10",
+        is_profile_complete=True,
+        kyc_status="APPROVED",
+    )
+    token_pair = create_token_pair(user.id, "EMPLOYER")
     return token_pair["access_token"], user
 
 
@@ -189,6 +229,28 @@ class TestScoreProfileAgainstJobEndpoint:
 
         assert resp.status_code == 202
         assert resp.json()["status"] == "queued"
+
+    @pytest.mark.asyncio
+    async def test_starter_employer_blocked_from_single_profile_scoring(
+        self, client, db_session
+    ):
+        """Individual scoring is Professional+, same as the bulk endpoint —
+        a Starter org shouldn't be able to route around the bulk gate by
+        scoring one profile at a time."""
+        token, employer = await register_starter_employer(client, db_session)
+        job = make_job(employer.id, moderation_status="APPROVED")
+        db_session.add(job)
+        await db_session.flush()
+        profile = await make_sourced_profile(db_session, added_by=employer.id)
+
+        resp = await client.post(
+            f"/api/v1/talent-pool/{profile.id}/score",
+            params={"job_id": str(job.id)},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "PLAN_UPGRADE_REQUIRED"
 
     @pytest.mark.asyncio
     async def test_unknown_job_returns_404(self, client, db_session):
@@ -385,3 +447,106 @@ class TestGetJobMatchesStaleness:
         assert result.items[0].ai_fit_summary is None
         assert result.items[0].ai_strengths is None
         assert result.items[0].ai_weaknesses is None
+
+
+# ===========================================================================
+# _can_auto_score — the upload-time auto-scoring side effect must not
+# bypass the Professional+ scoring gate
+# ===========================================================================
+
+
+class TestCanAutoScore:
+
+    @pytest.mark.asyncio
+    async def test_starter_org_cannot_auto_score(self, db_session):
+        from tests.conftest import make_employer
+
+        employer = make_employer()
+        db_session.add(employer)
+        await db_session.flush()
+        await make_organization_for(db_session, employer)
+
+        service = TalentPoolService(db_session, cv_service=None)
+        assert await service._can_auto_score(employer) is False
+
+    @pytest.mark.asyncio
+    async def test_professional_org_can_auto_score(self, db_session):
+        from tests.conftest import make_employer
+
+        employer = make_employer()
+        db_session.add(employer)
+        await db_session.flush()
+        organization = await make_organization_for(db_session, employer)
+        await make_subscription_for(db_session, organization)
+
+        service = TalentPoolService(db_session, cv_service=None)
+        assert await service._can_auto_score(employer) is True
+
+    @pytest.mark.asyncio
+    async def test_admin_can_always_auto_score(self, db_session):
+        from tests.conftest import make_admin
+
+        admin = make_admin()
+        db_session.add(admin)
+        await db_session.flush()
+
+        service = TalentPoolService(db_session, cv_service=None)
+        assert await service._can_auto_score(admin) is True
+
+
+# ===========================================================================
+# list_profiles — Starter's talent-pool visibility cap (5 profiles, browse
+# only — uploads past the cap still succeed, they just aren't browsable)
+# ===========================================================================
+
+
+class TestTalentPoolVisibilityCap:
+
+    @pytest.mark.asyncio
+    async def test_starter_sees_at_most_five_profiles(self, db_session):
+        from tests.conftest import make_employer
+
+        employer = make_employer()
+        db_session.add(employer)
+        await db_session.flush()
+        await make_organization_for(db_session, employer)
+
+        for _ in range(8):
+            await make_sourced_profile(db_session, added_by=employer.id)
+
+        service = TalentPoolService(db_session, cv_service=None)
+        result = await service.list_profiles(
+            status=None, source=None, job_id=None, cursor=None, limit=20,
+            current_user=employer,
+        )
+
+        assert len(result["items"]) == 5
+        assert result["next_cursor"] is None
+
+    @pytest.mark.asyncio
+    async def test_professional_is_not_capped(self, db_session):
+        from tests.conftest import make_employer
+
+        employer = make_employer()
+        db_session.add(employer)
+        await db_session.flush()
+        organization = await make_organization_for(db_session, employer)
+        await make_subscription_for(db_session, organization)
+
+        created_ids = {
+            (await make_sourced_profile(db_session, added_by=employer.id)).id
+            for _ in range(8)
+        }
+
+        service = TalentPoolService(db_session, cv_service=None)
+        result = await service.list_profiles(
+            status=None, source=None, job_id=None, cursor=None, limit=20,
+            current_user=employer,
+        )
+
+        # Uncapped — every profile this employer created shows up, unlike
+        # the Starter cap test above which truncates to 5. Checking IDs
+        # rather than a bare count since the shared dev DB may also have
+        # unrelated admin-sourced profiles visible to every employer.
+        returned_ids = {item.id for item in result["items"]}
+        assert created_ids <= returned_ids

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Briefcase, FileText, FilePlus2,
-  ScrollText, LogOut, Menu, UserPlus, FileSearch, MessageSquareQuote, Mail, Send, TrendingUp, ShieldCheck
+  ScrollText, LogOut, Menu, UserPlus, FileSearch, MessageSquareQuote, Mail, Send, TrendingUp, ShieldCheck,
+  DollarSign
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import ehsLogo from '@/assets/ehs-logo.png'
@@ -19,8 +20,9 @@ const NAV = [
   { to: '/employer/talent-pool', icon: TrendingUp, label: 'Talent Pipeline' },
   { to: '/admin/testimonials', icon: MessageSquareQuote, label: 'Testimonials' },
   { to: '/admin/audit-log', icon: ScrollText, label: 'Audit Log' },
+  { to: '/admin/costs', icon: DollarSign, label: 'AI Costs' },
   { to: '/admin/invite', icon: UserPlus, label: 'Invite' },
-  { to: '/employer/mail-ingestion', icon: Mail, label: 'Mail Ingestion' },
+  { to: '/admin/mail-ingestion', icon: Mail, label: 'Mail Ingestion' },
 ]
 
 export default function AdminLayout({ children }) {

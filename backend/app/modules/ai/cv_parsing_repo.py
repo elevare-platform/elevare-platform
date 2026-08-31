@@ -1,6 +1,7 @@
 """Data-access layer for CV parsing submissions."""
 
 import uuid
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,3 +143,23 @@ class CVParsingRepo:
             )
         )
         return result.one()
+
+    async def get_cost_trend(self, from_date: date | None, to_date: date | None):
+        """Return per-month cost/call totals, optionally bounded by
+        [from_date, to_date] (inclusive on both ends)."""
+        month_col = func.date_trunc("month", CVParsingCost.created_at)
+        stmt = (
+            select(
+                month_col.label("month"),
+                func.sum(CVParsingCost.cost_usd).label("total_cost"),
+                func.count(CVParsingCost.id).label("total_calls"),
+            )
+            .group_by(month_col)
+            .order_by(month_col)
+        )
+        if from_date:
+            stmt = stmt.where(CVParsingCost.created_at >= from_date)
+        if to_date:
+            stmt = stmt.where(CVParsingCost.created_at < to_date + timedelta(days=1))
+        result = await self._db.execute(stmt)
+        return result.all()

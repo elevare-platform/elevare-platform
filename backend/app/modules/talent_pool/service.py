@@ -35,6 +35,11 @@ from app.modules.users.repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
+# Starter orgs can source and store unlimited CVs into the pool, but can
+# only ever browse this many of them — a visibility cap, not a storage cap.
+# Uploading past this point still works; paging/viewing past it doesn't.
+STARTER_TALENT_POOL_VISIBLE_LIMIT = 5
+
 # Below this blended score, a match is hidden rather than shown at a
 # technically-top-N-but-obviously-irrelevant percentage. Initial estimate —
 # tune after observing real score distributions post-launch.
@@ -73,6 +78,7 @@ async def resolve_match_display_fields(
     parsed_skills: list[str] = []
     parsed_location: str | None = None
     parsed_years: int | None = None
+    parsed_summary: str | None = None
 
     # Source data from parsed submission (works for both sourced and registered profiles)
     submission = profile.parsed_submission
@@ -85,6 +91,7 @@ async def resolve_match_display_fields(
         )
         parsed_skills = pd.get("skills") or []
         parsed_years = pd.get("years_experience")
+        parsed_summary = pd.get("summary")
 
     # For self-registered candidates, prefer structured profile data
     candidate_profile = profile.candidate_profile
@@ -122,6 +129,7 @@ async def resolve_match_display_fields(
         "skills": parsed_skills,
         "location": parsed_location,
         "years_of_experience": parsed_years,
+        "summary": parsed_summary,
     }
 
 
@@ -199,7 +207,27 @@ class TalentPoolService:
                 response.candidate_name = full_name
                 response.candidate_email = data.get("email")
                 response.candidate_current_title = data.get("current_title")
+                response.summary = data.get("summary")
+                response.skills = data.get("skills") or []
+        if profile.override_email:
+            response.candidate_email = profile.override_email
         return response
+
+    async def _can_auto_score(self, current_user: User) -> bool:
+        """Whether uploads for this org may trigger LLM scoring as a
+        side effect. Scoring is a paid-tier feature (see the gates on
+        POST /score-against-job and POST /{id}/score) — without this check,
+        attaching a job to an upload would silently score it for free and
+        bypass those gates entirely.
+        """
+        if current_user.role == UserRole.ADMIN.value:
+            return True
+        from app.modules.billing.service import BillingService
+
+        plan = await BillingService(self._db).get_effective_plan(
+            current_user.organization_id
+        )
+        return plan.code != "starter"
 
     async def submit(
         self,
@@ -233,7 +261,7 @@ class TalentPoolService:
             }
         )
 
-        if data.sourced_for_job_id:
+        if data.sourced_for_job_id and await self._can_auto_score(current_user):
             score_talent_pool_profile_task.delay(str(profile.id))
 
         await self._db.commit()
@@ -247,6 +275,7 @@ class TalentPoolService:
         current_user: User,
     ) -> list[dict]:
         """Upload multiple CVs in one request. Returns per-file status."""
+        can_auto_score = await self._can_auto_score(current_user)
         results = []
         for file_bytes, filename in files:
             try:
@@ -280,7 +309,7 @@ class TalentPoolService:
                         "status": TalentPoolStatus.NEW.value,
                     }
                 )
-                if data.sourced_for_job_id:
+                if data.sourced_for_job_id and can_auto_score:
                     score_talent_pool_profile_task.delay(str(profile.id))
                 await self._db.commit()
                 results.append(
@@ -309,6 +338,19 @@ class TalentPoolService:
     ) -> dict:
         """Return paginated talent pool profiles, enriched with parsed CV data."""
         is_admin = current_user.role == UserRole.ADMIN.value
+
+        capped = False
+        if not is_admin:
+            from app.modules.billing.service import BillingService
+
+            plan = await BillingService(self._db).get_effective_plan(
+                current_user.organization_id
+            )
+            if plan.code == "starter":
+                capped = True
+                cursor = None  # Starter never pages past the visible cap
+                limit = min(limit, STARTER_TALENT_POOL_VISIBLE_LIMIT)
+
         result = await self._repo.list(
             status=status,
             source=source,
@@ -318,10 +360,35 @@ class TalentPoolService:
             viewer_id=current_user.id,
             is_admin=is_admin,
         )
+        if capped:
+            result["items"] = result["items"][:STARTER_TALENT_POOL_VISIBLE_LIMIT]
+            result["next_cursor"] = None
+
+        from app.modules.introductions.repository import IntroductionRepository
+
+        intro_repo = IntroductionRepository(self._db)
+
         enriched = []
         for profile in result["items"]:
             resp = TalentPoolProfileResponse.model_validate(profile)
             resp = await self._enrich(profile, resp)
+
+            is_owner = profile.added_by == current_user.id
+            if profile.candidate_profile_id is not None:
+                resp.ownership = "self_registered"
+                resp.has_cv_access = True
+            elif is_owner:
+                resp.ownership = "own_sourced"
+                resp.has_cv_access = True
+            elif is_admin:
+                resp.ownership = "admin_sourced"
+                resp.has_cv_access = True
+            else:
+                resp.ownership = "admin_sourced"
+                resp.has_cv_access = await intro_repo.has_accepted_introduction(
+                    employer_id=current_user.id, talent_pool_profile_id=profile.id
+                )
+
             enriched.append(resp)
         result["items"] = enriched
         return result
@@ -359,41 +426,13 @@ class TalentPoolService:
         (computed against a different job) and would be actively misleading
         to show as if it were about this one.
         """
-        from sqlalchemy import select
-
         from app.core.storage import get_storage_service
-        from app.modules.introductions.enums import IntroductionStatus
-        from app.modules.introductions.models import IntroductionRequest
 
         profile = await self._repo.get_by_id(id)
         if not profile:
             raise SubmissionNotFound()
 
-        if profile.candidate_profile_id is not None:
-            raise PermissionDeniedException(
-                "Self-registered candidates are viewed via /candidates/{id}, not this endpoint."
-            )
-
-        is_admin = current_user.role == UserRole.ADMIN.value
-        is_owner = profile.added_by == current_user.id
-
-        entitled = is_admin or is_owner
-        if not entitled:
-            accepted = await self._db.execute(
-                select(IntroductionRequest.id)
-                .where(
-                    IntroductionRequest.employer_id == current_user.id,
-                    IntroductionRequest.talent_pool_profile_id == id,
-                    IntroductionRequest.status == IntroductionStatus.ACCEPTED.value,
-                )
-                .limit(1)
-            )
-            entitled = accepted.scalar_one_or_none() is not None
-
-        if not entitled:
-            raise PermissionDeniedException(
-                "You don't have access to this candidate's CV yet."
-            )
+        await self._check_sourced_cv_access(profile, current_user)
 
         response = TalentPoolProfileResponse.model_validate(profile)
         response = await self._enrich(profile, response)
@@ -443,6 +482,69 @@ class TalentPoolService:
                 )
 
         return response
+
+    async def _check_sourced_cv_access(self, profile, current_user: User) -> None:
+        """Raise unless the requester is entitled to view/modify this sourced profile.
+
+        Shared by ``get_profile`` (read) and ``update_email`` (write) — the
+        same access rule applies to viewing a sourced CV and mutating its
+        contact details, so both must check it, not just the read path.
+        Entitled: sourced it themselves, an admin, or holds an ACCEPTED
+        introduction for this candidate (from any job).
+        """
+        from sqlalchemy import select
+
+        from app.modules.introductions.enums import IntroductionStatus
+        from app.modules.introductions.models import IntroductionRequest
+
+        if profile.candidate_profile_id is not None:
+            raise PermissionDeniedException(
+                "Self-registered candidates are managed via /candidates/{id}, not this endpoint."
+            )
+
+        is_admin = current_user.role == UserRole.ADMIN.value
+        is_owner = profile.added_by == current_user.id
+
+        entitled = is_admin or is_owner
+        if not entitled:
+            accepted = await self._db.execute(
+                select(IntroductionRequest.id)
+                .where(
+                    IntroductionRequest.employer_id == current_user.id,
+                    IntroductionRequest.talent_pool_profile_id == profile.id,
+                    IntroductionRequest.status == IntroductionStatus.ACCEPTED.value,
+                )
+                .limit(1)
+            )
+            entitled = accepted.scalar_one_or_none() is not None
+
+        if not entitled:
+            raise PermissionDeniedException(
+                "You don't have access to this candidate's CV yet."
+            )
+
+    async def update_email(
+        self,
+        profile_id: uuid.UUID,
+        email: str,
+        current_user: User,
+    ) -> TalentPoolProfileResponse:
+        """Set an employer-entered override email for a candidate with no resolvable one.
+
+        Used when the AI CV-parsing pipeline couldn't extract an email from
+        a sourced CV, blocking the AI interview invite — see
+        ``resolve_candidate_email`` in interviews/service.py for the
+        priority this participates in.
+        """
+        profile = await self._repo.get_by_id(profile_id)
+        if not profile:
+            raise SubmissionNotFound()
+
+        await self._check_sourced_cv_access(profile, current_user)
+
+        profile = await self._repo.update(profile_id, {"override_email": email})
+        await self._db.commit()
+        return await self.get_profile(profile_id, current_user)
 
     async def update_status(
         self,
@@ -824,4 +926,3 @@ class TalentPoolService:
         except Exception as e:
             logger.error(f"Error scoring profile against job: {str(e)}")
             raise e
-

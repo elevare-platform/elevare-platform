@@ -165,7 +165,7 @@ export default function JobDetailDrawer({ jobId, onClose, onModerate }) {
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Salary</p>
                 <p className="text-sm text-text">
                   {job.salary_min && `₦${Number(job.salary_min).toLocaleString()}`}
-                  {job.salary_min && job.salary_max && ' – '}
+                  {job.salary_min && job.salary_max && ' - '}
                   {job.salary_max && `₦${Number(job.salary_max).toLocaleString()}`}
                 </p>
               </div>

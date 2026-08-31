@@ -98,6 +98,15 @@ class InviteToken(BaseModel):
         nullable=True,
     )
 
+    # NULL means "admin invites a brand-new employer, who registers and
+    # becomes the OWNER of a fresh Organization." Non-null means "an
+    # existing OWNER/ADMIN invites a teammate into their Organization."
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
     # Relationship — points to the admin who sent the invite, not the invitee
     inviter: Mapped[User] = relationship(
         "User", back_populates="invite_tokens", foreign_keys=[invited_by]

@@ -1,13 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { CheckCircle, XCircle, X } from 'lucide-react'
+import PlanUpgradeLink from '@/components/PlanUpgradeLink'
+import { isPlanLimitMessage } from '@/lib/planErrors'
 
 export function Toast({ message, type = 'success', onDone }) {
   const [visible, setVisible] = useState(true)
+  // A plan/limit error needs long enough on screen to actually read and
+  // click the Upgrade link before it disappears — a plain success/error
+  // toast doesn't have anything to click, so it can stay quick.
+  const showUpgradeCta = type === 'error' && isPlanLimitMessage(message)
+  const duration = showUpgradeCta ? 8000 : 3000
 
   useEffect(() => {
-    const t = setTimeout(() => { setVisible(false); setTimeout(onDone, 300) }, 3000)
+    const t = setTimeout(() => { setVisible(false); setTimeout(onDone, 300) }, duration)
     return () => clearTimeout(t)
-  }, [onDone])
+  }, [onDone, duration])
 
   return (
     <div
@@ -20,7 +27,10 @@ export function Toast({ message, type = 'success', onDone }) {
       {type === 'success'
         ? <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
         : <XCircle size={16} className="text-red-500 flex-shrink-0" />}
-      {message}
+      <span>
+        {message}
+        {showUpgradeCta && <PlanUpgradeLink />}
+      </span>
       <button onClick={() => { setVisible(false); setTimeout(onDone, 300) }} aria-label="Dismiss">
         <X size={14} className="text-text-muted hover:text-text" />
       </button>

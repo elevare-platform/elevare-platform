@@ -24,8 +24,8 @@ from app.modules.ai.scoring_service import (
     hash_job_scoring_inputs,
 )
 from app.modules.jobs.enums import ContractType, WorkModel
-from app.modules.users.models import EmployerProfile, User
-from tests.conftest import make_register_data
+from app.modules.users.models import User
+from tests.conftest import make_organization_for, make_register_data
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -53,16 +53,15 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
     user.account_status = "ACTIVE"
     await db_session.flush()
     if role == "EMPLOYER":
-        profile = EmployerProfile(
-            user_id=user.id,
+        await make_organization_for(
+            db_session,
+            user,
             company_name="Test Corp",
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
             kyc_status="APPROVED",
         )
-        db_session.add(profile)
-        await db_session.flush()
     token_pair = create_token_pair(user.id, role)
     return token_pair["access_token"], user
 

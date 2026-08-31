@@ -40,6 +40,8 @@ from app.modules.applications.models import Application
 from app.modules.auth.security import hash_password
 from app.modules.candidates.models import CandidateProfile
 from app.modules.jobs.models import Job
+from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
+from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import User
 
@@ -327,6 +329,19 @@ async def seed(job_id: uuid.UUID, dry_run: bool = False, reset: bool = False) ->
                     )
                     db.add(profile)
                     await db.flush()
+
+                    # Mirrors the real registration flow (users/repository.py) —
+                    # every candidate needs a talent pool profile, otherwise
+                    # interview-list / introductions lookups by candidate_profile_id fail.
+                    pool_entry = TalentPoolProfiles(
+                        candidate_profile_id=profile.id,
+                        added_by=user.id,
+                        source=SourceType.OTHER.value,
+                        status=TalentPoolStatus.NEW.value,
+                    )
+                    db.add(pool_entry)
+                    await db.flush()
+
                     print(
                         f"  Created user: {persona['first_name']} {persona['last_name']} <{persona['email']}>"
                     )
@@ -334,6 +349,30 @@ async def seed(job_id: uuid.UUID, dry_run: bool = False, reset: bool = False) ->
                 print(
                     f"  Existing user: {persona['first_name']} {persona['last_name']} <{persona['email']}>"
                 )
+
+                # Backfill for personas created before this fix, or created
+                # some other way that skipped the talent pool enrollment.
+                profile_result = await db.execute(
+                    select(CandidateProfile).where(CandidateProfile.user_id == user.id)
+                )
+                profile = profile_result.scalar_one_or_none()
+                if profile is not None:
+                    pool_result = await db.execute(
+                        select(TalentPoolProfiles).where(
+                            TalentPoolProfiles.candidate_profile_id == profile.id
+                        )
+                    )
+                    if pool_result.scalar_one_or_none() is None:
+                        db.add(
+                            TalentPoolProfiles(
+                                candidate_profile_id=profile.id,
+                                added_by=user.id,
+                                source=SourceType.OTHER.value,
+                                status=TalentPoolStatus.NEW.value,
+                            )
+                        )
+                        await db.flush()
+                        print("    Backfilled missing talent pool profile.")
 
             if dry_run:
                 print(

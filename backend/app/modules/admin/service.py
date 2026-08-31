@@ -147,7 +147,10 @@ class AdminService:
         result = await self._repo.list_jobs(
             status, moderation_status, search, cursor, limit
         )
-        result["items"] = [JobResponse.from_job(job) for job in result["items"]]
+        result["items"] = [
+            JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
+            for job in result["items"]
+        ]
         return result
 
     async def moderate_job(
@@ -202,7 +205,7 @@ class AdminService:
 
         from app.modules.jobs.schemas import JobResponse
 
-        return JobResponse.from_job(job)
+        return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
 
     async def bulk_update_job_status(
         self, admin_id: UUID, job_ids: list[UUID], action: str
@@ -298,17 +301,25 @@ class AdminService:
         )
         await self._db.commit()
 
-        # Send email notification to employer
+        # Send email notification to employer — profile.user is gone now
+        # that an Organization can have multiple members; notify the OWNER.
         from app.core.email import get_email_service
 
+        owner = next(
+            (m for m in profile.members if m.organization_role == "OWNER"),
+            profile.members[0] if profile.members else None,
+        )
         email_service = get_email_service()
-        employer_email = profile.user.email
+        employer_email = owner.email if owner else None
         company_name = profile.company_name
 
-        if action == KYCStatus.REJECTED.value:
-            await email_service.send_kyc_rejection(employer_email, company_name, reason)
-        elif action == KYCStatus.APPROVED.value:
-            await email_service.send_kyc_approved(employer_email, company_name)
+        if employer_email:
+            if action == KYCStatus.REJECTED.value:
+                await email_service.send_kyc_rejection(
+                    employer_email, company_name, reason
+                )
+            elif action == KYCStatus.APPROVED.value:
+                await email_service.send_kyc_approved(employer_email, company_name)
 
         return AdminKYCEmployerResponse.from_profile(profile)
 
@@ -359,12 +370,21 @@ class AdminService:
         amount: int,
         reason: str | None = None,
     ) -> dict:
-        """Grant credits to an employer, write an audit log entry, and commit."""
+        """Grant credits to an employer's organization, write an audit log entry, and commit."""
+        from sqlalchemy import select
+
         from app.modules.credits.service import CreditsService
+        from app.modules.users.models import User
+
+        organization_id = (
+            await self._db.execute(
+                select(User.organization_id).where(User.id == employer_id)
+            )
+        ).scalar_one()
 
         credits_service = CreditsService(self._db)
         new_balance = await credits_service.grant(
-            employer_id=employer_id,
+            employer_id=organization_id,
             amount=amount,
         )
         await self._repo.write_audit_log(

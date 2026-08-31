@@ -254,6 +254,11 @@ class CandidateSearchProfile(BaseModel):
     notice_period_days: int | None = None  # only known for self-registered candidates
     location: str | None = None
     skills: list[str] = []
+    # General, job-independent CV summary — Candidate Search has no job
+    # context, so only the non-job-specific summary is safe to show here
+    # (a job-fit summary would be stale/misleading with no job to judge it
+    # against — see get_profile's staleness handling for the job-scoped one).
+    summary: str | None = None
 
 
 class CandidateSearchResultItem(BaseModel):

@@ -9,15 +9,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import BaseModel
 
 if TYPE_CHECKING:
-    from app.modules.users.models import EmployerProfile
+    from app.modules.users.models import Organization
 
 
 class KYCDocument(BaseModel):
     __tablename__ = "employer_kyc_documents"
 
-    employer_profile_id: Mapped[uuid.UUID] = mapped_column(
+    organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("employer_profiles.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -26,7 +26,7 @@ class KYCDocument(BaseModel):
     document_type: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Relationships
-    employer_profile: Mapped[EmployerProfile] = relationship(
-        "EmployerProfile",
+    organization: Mapped[Organization] = relationship(
+        "Organization",
         back_populates="kyc_documents",
     )

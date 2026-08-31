@@ -69,6 +69,13 @@ class Job(BaseModel):
     preferred_certifications: Mapped[str | None] = mapped_column(Text, nullable=True)
     technical_competencies: Mapped[str | None] = mapped_column(Text, nullable=True)
     what_we_offer: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Topics/goals for the AI interviewer to probe, not a fixed question
+    # list — every candidate for this job is asked to cover the same
+    # ground, but the live conversation itself varies. Null means the AI
+    # video interview isn't set up for this job yet.
+    interview_brief: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     salary_min: Mapped[Decimal] = mapped_column(
         Numeric(precision=12, scale=2), nullable=True
     )

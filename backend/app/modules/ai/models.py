@@ -82,7 +82,10 @@ class CVParsingCost(BaseModel):
     )
     input_tokens: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     output_tokens: Mapped[int] = mapped_column(sa.Integer, nullable=False)
-    cost_usd: Mapped[float] = mapped_column(sa.Numeric(10, 6), nullable=False)
+    # Nullable: a model missing from the pricing table still gets a row
+    # with real token counts and cost_usd=NULL, rather than a wrong $0 or
+    # a silently dropped row — see app/core/ai_pricing.py.
+    cost_usd: Mapped[float | None] = mapped_column(sa.Numeric(10, 6), nullable=True)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
 
     # Relationships
@@ -90,3 +93,39 @@ class CVParsingCost(BaseModel):
         "ParsedCVSubmission",
         back_populates="parsing_costs",
     )
+
+
+class FitScoringCost(BaseModel):
+    """Records the token cost for a single LLM fit-reasoning call
+    (candidate-vs-job scoring, triggered from either an Application or a
+    talent pool profile). Exactly one of application_id/talent_pool_profile_id
+    is set, depending on which flow triggered the score."""
+
+    __tablename__ = "fit_scoring_costs"
+
+    __table_args__ = (
+        Index("ix_fit_scoring_costs_application_id", "application_id"),
+        Index("ix_fit_scoring_costs_talent_pool_profile_id", "talent_pool_profile_id"),
+        Index("ix_fit_scoring_costs_created_at", "created_at"),
+    )
+
+    application_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    talent_pool_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("talent_pool_profiles.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    input_tokens: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    # Nullable for the same reason as CVParsingCost.cost_usd — see there.
+    cost_usd: Mapped[float | None] = mapped_column(sa.Numeric(10, 6), nullable=True)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)

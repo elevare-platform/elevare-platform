@@ -56,25 +56,23 @@ class AuthService:
         self._auth_repo = AuthRepository(db)
 
     @staticmethod
-    def _build_user_response(user, employer_profile=None) -> UserResponse:
+    def _build_user_response(user, organization=None) -> UserResponse:
         """Build a UserResponse, populating is_profile_complete for employers.
 
-        employer_profile must be passed explicitly when the relationship may
+        organization must be passed explicitly when the relationship may
         not be loaded on the user object (e.g. immediately after create_user).
         When None is passed for an EMPLOYER, is_profile_complete defaults to False.
         """
         is_profile_complete = None
         if user.role == "EMPLOYER":
-            if employer_profile is not None:
-                is_profile_complete = employer_profile.is_profile_complete
+            if organization is not None:
+                is_profile_complete = organization.is_profile_complete
             else:
                 # Try the already-loaded relationship; if not loaded, default False
                 # to avoid triggering async lazy-load outside a coroutine.
                 try:
-                    profile = user.__dict__.get("employer_profile")
-                    is_profile_complete = (
-                        profile.is_profile_complete if profile else False
-                    )
+                    org = user.__dict__.get("organization")
+                    is_profile_complete = org.is_profile_complete if org else False
                 except Exception:
                     is_profile_complete = False
 
@@ -86,6 +84,7 @@ class AuthService:
             role=user.role,
             account_status=user.account_status,
             is_profile_complete=is_profile_complete,
+            organization_role=user.organization_role,
         )
 
     async def register_user(self, data: RegisterRequest, response: Response):
@@ -219,7 +218,7 @@ class AuthService:
         return AuthResponse(
             user=self._build_user_response(
                 user,
-                employer_profile=getattr(user, "__dict__", {}).get("employer_profile"),
+                organization=getattr(user, "__dict__", {}).get("organization"),
             ),
             access_token=token_pair["access_token"],
             token_type=token_pair["token_type"],
@@ -341,8 +340,18 @@ class AuthService:
 
         return MessageResponse(message="Email verified successfully")
 
-    async def create_invite(self, email: str, role: str, admin_id: UUID) -> str:
-        """Create an invite token for a new employer account.
+    async def create_invite(
+        self,
+        email: str,
+        role: str,
+        admin_id: UUID,
+        organization_id: UUID | None = None,
+    ) -> str:
+        """Create an invite token for a new employer account, or a teammate
+        invite into an existing organization when `organization_id` is set.
+
+        Revokes any existing unused invite for this email first, so
+        creating an invite twice doesn't leave duplicate unused rows.
 
         Raises:
             AlreadyExistsException: If a user with that email already exists.
@@ -354,6 +363,10 @@ class AuthService:
                 message="A user with this email already exists"
             )
 
+        existing_invite = await self._auth_repo.get_invite_token_by_email(email)
+        if existing_invite:
+            await self._auth_repo.revoke_invite_token(existing_invite)
+
         raw_token = generate_token()
         hashed_token = hash_token(raw_token)
 
@@ -363,9 +376,23 @@ class AuthService:
             hashed_token=hashed_token,
             expires_at=datetime.now(UTC) + timedelta(days=settings.invite_expiry),
             admin_id=admin_id,
+            organization_id=organization_id,
         )
 
         await self._db.commit()
+
+        company_name = None
+        if organization_id is not None:
+            from app.modules.users.models import Organization
+
+            organization = await self._db.get(Organization, organization_id)
+            company_name = organization.company_name if organization else None
+
+        invite_link = f"{settings.app_url}/invite/accept?token={raw_token}"
+        from app.core.email import get_email_service
+
+        email_service = get_email_service()
+        await email_service.send_invite_email(email, invite_link, company_name)
 
         if settings.email_stub_mode:
             logger.info(f"Invite token (stub mode): {raw_token}")
@@ -389,6 +416,7 @@ class AuthService:
             email=old_invite.email,
             role=old_invite.role,
             admin_id=admin_id,
+            organization_id=old_invite.organization_id,
         )
 
         return new_raw_token
@@ -397,7 +425,9 @@ class AuthService:
         """Accept an invite to join the platform.
 
         Validates the token, registers the user with the invited role and
-        ACTIVE status, then returns a full auth response with tokens.
+        ACTIVE status, then returns a full auth response with tokens. If
+        the invite carries an organization_id, the new user joins that
+        Organization as a MEMBER instead of getting a fresh one.
 
         Raises:
             TokenInvalidException: If the token does not exist.
@@ -438,6 +468,8 @@ class AuthService:
                 "account_status": AccountStatus.ACTIVE.value,
                 "email_verified": True,
                 "email_verified_at": datetime.now(UTC),
+                "organization_id": invite.organization_id,
+                "invited_by_id": invite.invited_by,
             }
         )
 
@@ -464,8 +496,14 @@ class AuthService:
         # Explicitly commit everything
         await self._db.commit()
 
+        # A teammate joining an already-verified org needs is_profile_complete
+        # reflected correctly, not defaulted to False — load it explicitly.
+        organization = None
+        if invite.organization_id is not None:
+            organization = await self._user_repo.get_employer_profile(user.id)
+
         return AuthResponse(
-            user=self._build_user_response(user),
+            user=self._build_user_response(user, organization=organization),
             access_token=token_pair["access_token"],
             token_type=token_pair["token_type"],
         )

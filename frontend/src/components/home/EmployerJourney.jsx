@@ -102,10 +102,10 @@ export default function EmployerJourney() {
           <h2
             className="font-sans text-4xl sm:text-5xl font-extrabold mt-6 tracking-tight text-white leading-tight"
           >
-            The Journey to Hiring Excellence
+            How We Hire
           </h2>
           <p className="mt-4 text-slate-400 text-base sm:text-lg max-w-xl mx-auto">
-            From discovering your need to securing top-tier talent, watch how we streamline your recruitment cycle step-by-step.
+            From defining your need to securing the right person, here's how we handle your recruitment cycle, step by step.
           </p>
         </div>
 
@@ -116,10 +116,10 @@ export default function EmployerJourney() {
           <div className="lg:col-span-5 lg:sticky lg:top-32 flex flex-col justify-between">
             <div>
               <div className="text-slate-400 text-sm font-semibold tracking-wide uppercase mb-3">
-                Live Roadmap
+                Hiring Pipeline
               </div>
               <h3 className="text-2xl sm:text-3xl font-bold mb-6 text-white leading-tight">
-                Streamlined pipeline that guarantees results.
+                A clear pipeline that delivers results.
               </h3>
               <p className="text-slate-300 text-sm sm:text-base leading-relaxed mb-8">
                 Each step in the hiring pipeline feeds directly into the next, giving you a clear view of progress from first search to final placement.

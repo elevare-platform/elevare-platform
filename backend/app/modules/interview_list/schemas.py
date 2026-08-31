@@ -31,6 +31,13 @@ class InterviewListAddRequest(BaseModel):
         return self
 
 
+class InterviewListAddResponse(BaseModel):
+    """Response for adding a candidate to a job's interview list."""
+
+    message: str
+    talent_pool_profile_id: UUID
+
+
 class InterviewListEntryResponse(BaseModel):
     """A single interview-list entry, enriched for display."""
 
@@ -39,6 +46,7 @@ class InterviewListEntryResponse(BaseModel):
     talent_pool_profile_id: UUID
     candidate_profile_id: UUID | None = None
     ownership: str  # "self_registered" | "own_sourced" | "admin_sourced"
+    has_cv_access: bool = True
     candidate_name: str | None = None
     current_title: str | None = None
     location: str | None = None
@@ -46,6 +54,8 @@ class InterviewListEntryResponse(BaseModel):
     skills: list[str] = []
     note: str | None = None
     added_at: datetime
+    interview_status: str | None = None
+    """Current ``InterviewStatus`` for this candidate on this job, or ``None`` if never invited."""
 
     model_config = {"from_attributes": True}
 

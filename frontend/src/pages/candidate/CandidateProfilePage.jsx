@@ -163,7 +163,7 @@ function EducationEntry({ entry, onDelete }) {
         <p className="text-xs text-text-muted">{entry.institution_name}</p>
         {(entry.start_year || entry.end_year) && (
           <p className="text-xs text-text-muted mt-0.5">
-            {entry.start_year ?? ' - '} – {entry.end_year ?? 'Present'}
+            {entry.start_year ?? ' - '} - {entry.end_year ?? 'Present'}
           </p>
         )}
       </div>

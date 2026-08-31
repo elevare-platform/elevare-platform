@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.modules.talent_pool.models import TalentPoolProfiles
 
@@ -23,6 +23,12 @@ class TalentPoolStatusUpdateRequest(BaseModel):
     """Payload for updating a talent pool profile's status."""
 
     status: str  # new, shortlisted, archived
+
+
+class TalentPoolEmailUpdateRequest(BaseModel):
+    """Payload for an employer-entered override email on a sourced candidate."""
+
+    email: EmailStr
 
 
 class TalentPoolProfileResponse(BaseModel):
@@ -45,6 +51,12 @@ class TalentPoolProfileResponse(BaseModel):
     candidate_name: str | None = None
     candidate_email: str | None = None
     candidate_current_title: str | None = None
+    # General, job-independent CV summary and skills — always valid to show,
+    # unlike ai_fit_summary/strengths/weaknesses below which are only
+    # meaningful next to a specific job (see ai_score_job_hash staleness
+    # handling in get_profile).
+    summary: str | None = None
+    skills: list[str] = []
 
     ai_score: int | None = None
     ai_fit_summary: str | None = None
@@ -55,6 +67,12 @@ class TalentPoolProfileResponse(BaseModel):
     # Populated by the service only once the requester's access is verified —
     # never present on an unentitled fetch.
     cv_download_url: str | None = None
+
+    # Populated by list_profiles only (get_profile has already resolved
+    # access by the time it returns) — lets the frontend decide whether to
+    # show "View CV" or "Request Introduction" without a per-row API call.
+    ownership: str | None = None  # "self_registered" | "own_sourced" | "admin_sourced"
+    has_cv_access: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -120,9 +138,15 @@ class TalentMatchResponse(BaseModel):
             candidate_profile_id=profile.candidate_profile_id,
             ownership=ownership,
             cv_download_url=cv_download_url,
-            ai_strengths=profile.ai_strengths if assessment_is_current_for_job else None,
-            ai_weaknesses=profile.ai_weaknesses if assessment_is_current_for_job else None,
-            ai_fit_summary=profile.ai_fit_summary if assessment_is_current_for_job else None,
+            ai_strengths=profile.ai_strengths
+            if assessment_is_current_for_job
+            else None,
+            ai_weaknesses=profile.ai_weaknesses
+            if assessment_is_current_for_job
+            else None,
+            ai_fit_summary=profile.ai_fit_summary
+            if assessment_is_current_for_job
+            else None,
             is_new=is_new,
         )
 

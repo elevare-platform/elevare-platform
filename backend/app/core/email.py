@@ -82,6 +82,30 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
+    async def send_ai_interview_invite(
+        self,
+        candidate_email: str,
+        interview_url: str,
+        job_title: str,
+        company_name: str,
+    ) -> None:
+        """Invite a candidate to a live AI video interview, no login required."""
+        ...
+
+    @abstractmethod
+    async def send_interview_restart_request(
+        self,
+        employer_email: str,
+        candidate_name: str,
+        job_title: str,
+        company_name: str,
+        manage_url: str,
+    ) -> None:
+        """Notify an employer that a candidate is locked out of their AI
+        interview's restart lock and is asking for it to be reset."""
+        ...
+
+    @abstractmethod
     async def send_introduction_accepted(
         self,
         employer_email: str,
@@ -111,6 +135,21 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
+    async def send_subscription_payment_failed(
+        self,
+        recipient_email: str,
+        company_name: str | None,
+        plan_name: str,
+        retry_by: str,
+    ) -> None:
+        """Notify a billing manager that a subscription renewal charge
+        failed. Access continues (see BillingService grace-period handling)
+        until `retry_by` — this email is the only signal they get before
+        then, so it needs to say plainly what will happen and when.
+        """
+        ...
+
+    @abstractmethod
     async def send_introduction_request_admin(
         self,
         admin_email: str,
@@ -123,6 +162,20 @@ class EmailService(ABC):
         Sent instead of send_introduction_request when the profile was
         sourced by an admin — the admin does the outreach manually, so this
         has no accept/decline links, just enough context to act on.
+        """
+        ...
+
+    @abstractmethod
+    async def send_invite_email(
+        self,
+        email: str,
+        invite_link: str,
+        company_name: str | None = None,
+    ) -> None:
+        """Send an invite link to a prospective new employer or teammate.
+
+        `company_name` set means this is a teammate invite into an
+        existing organization; None means a brand-new employer invite.
         """
         ...
 
@@ -674,6 +727,68 @@ class ResendEmailService(EmailService):
             html_body=html_body,
         )
 
+    async def send_ai_interview_invite(
+        self,
+        candidate_email: str,
+        interview_url: str,
+        job_title: str,
+        company_name: str,
+    ) -> None:
+        """Invite a candidate to a live AI video interview, no login required.
+
+        Always the real token link — even for self-registered candidates,
+        who aren't guaranteed to have an Application for this specific job
+        (they may have been sourced via Candidate Search / Talent
+        Matches), so a login-gated dashboard link would be a dead end
+        whenever that's the case.
+        """
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You're invited to an AI video interview</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_name}</strong> would like to move you forward for the role of <strong>{job_title}</strong> with a short live interview.</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You'll speak with an AI interviewer, not a human — it will ask you questions and follow up based on your answers, the same way a real interview would. Your camera records the session for the employer to review afterward.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">No login required — just click below when you're ready, with your camera and microphone available.</p>
+        {_render_button("Start Interview", interview_url, is_primary=True)}
+        """
+        html_body = _render_email_layout(
+            title=f"AI Interview Invite — {job_title}",
+            preheader=f"{company_name} would like to interview you for {job_title}.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because your CV is in the Elevare talent pool.",
+        )
+        await self._send_html(
+            subject=f"Interview Invite: {job_title} at {company_name}",
+            recipients=[candidate_email],
+            html_body=html_body,
+        )
+
+    async def send_interview_restart_request(
+        self,
+        employer_email: str,
+        candidate_name: str,
+        job_title: str,
+        company_name: str,
+        manage_url: str,
+    ) -> None:
+        """Notify an employer that a candidate is locked out of their AI
+        interview's restart lock and is asking for it to be reset."""
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">A candidate needs their AI interview reset</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{candidate_name}</strong> was locked out of their AI interview for <strong>{job_title}</strong> after restarting it twice, and is asking you to resend their invite so they can try again.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Resending their invite from the interview list resets this automatically — no other action is needed.</p>
+        {_render_button("Manage Interview List", manage_url, is_primary=True)}
+        """
+        html_body = _render_email_layout(
+            title=f"Interview Reset Requested — {job_title}",
+            preheader=f"{candidate_name} is asking you to reset their AI interview for {job_title}.",
+            body_content_html=body_content_html,
+            footer_note=f"You're receiving this because you own the {job_title} posting on {company_name}'s Elevare account.",
+        )
+        await self._send_html(
+            subject=f"Interview reset requested: {candidate_name} — {job_title}",
+            recipients=[employer_email],
+            html_body=html_body,
+        )
+
     async def send_introduction_accepted(
         self,
         employer_email: str,
@@ -854,6 +969,89 @@ class ResendEmailService(EmailService):
             html_body=html_body,
         )
 
+    async def send_subscription_payment_failed(
+        self,
+        recipient_email: str,
+        company_name: str | None,
+        plan_name: str,
+        retry_by: str,
+    ) -> None:
+        """Notify a billing manager that a subscription renewal charge
+        failed, with the date access continues until."""
+        company_label = company_name or "your organization"
+        cta_url = f"{settings.app_url}/employer/billing"
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">We couldn't process your payment</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your {plan_name} renewal charge for <strong>{company_label}</strong> didn't go through — this is usually an expired card or a temporary decline from your bank.</p>
+
+        <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #B45309; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">What happens next</div>
+          <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F;">Your plan keeps working for now. We'll automatically retry the charge — if it's still unresolved by <strong>{retry_by}</strong>, your account will move to the Starter plan.</p>
+        </div>
+
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Update your card to avoid any interruption.</p>
+        {_render_button("Update Payment Method", cta_url)}
+        """
+        html_body = _render_email_layout(
+            title="Payment Failed — Action Required",
+            preheader=f"Your {plan_name} renewal didn't go through. Update your card by {retry_by}.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you manage billing for an Elevare organization.",
+        )
+        await self._send_html(
+            subject="Action needed: your Elevare payment failed",
+            recipients=[recipient_email],
+            html_body=html_body,
+        )
+
+    async def send_invite_email(
+        self,
+        email: str,
+        invite_link: str,
+        company_name: str | None = None,
+    ) -> None:
+        """Send an invite link to a prospective new employer or teammate."""
+        if company_name:
+            subject = f"You've been invited to join {company_name} on Elevare"
+            heading = "You're invited to join a team on Elevare"
+            copy = f"You've been invited to join <strong>{company_name}</strong> on Elevare. Click below to accept and set up your account."
+        else:
+            subject = "You've been invited to Elevare"
+            heading = "You're invited to Elevare"
+            copy = "You've been invited to create an employer account on Elevare. Click below to accept and get started."
+
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">{heading}</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{copy}</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">This link expires in {settings.invite_expiry} day{"s" if settings.invite_expiry != 1 else ""}.</p>
+
+        {_render_button("Accept Invite", invite_link)}
+
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 24px; border-top: 1px solid #E2E8F0; padding-top: 20px;">
+          <tr>
+            <td>
+              <p style="margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Trouble clicking the button?</p>
+              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #1A4D8F; word-break: break-all;">
+                <a href="{invite_link}" target="_blank" style="color: #1A4D8F; text-decoration: none; word-break: break-all;">{invite_link}</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+        """
+
+        html_body = _render_email_layout(
+            title=subject,
+            preheader=copy,
+            body_content_html=body_content_html,
+            footer_note="If you weren't expecting this invite, you can safely ignore this email.",
+        )
+
+        await self._send_html(
+            subject=subject,
+            recipients=[email],
+            html_body=html_body,
+        )
+
 
 class StubEmailService(EmailService):
     """Concrete implementation that logs to stdout — used in tests and CI."""
@@ -966,6 +1164,40 @@ class StubEmailService(EmailService):
             decline_url,
         )
 
+    async def send_ai_interview_invite(
+        self,
+        candidate_email: str,
+        interview_url: str,
+        job_title: str,
+        company_name: str,
+    ) -> None:
+        """Log a stub AI interview invite email."""
+        logger.info(
+            "STUB AI INTERVIEW INVITE to %s for role '%s' at '%s'\n  Link: %s",
+            candidate_email,
+            job_title,
+            company_name,
+            interview_url,
+        )
+
+    async def send_interview_restart_request(
+        self,
+        employer_email: str,
+        candidate_name: str,
+        job_title: str,
+        company_name: str,
+        manage_url: str,
+    ) -> None:
+        """Log a stub interview restart request email."""
+        logger.info(
+            "STUB INTERVIEW RESTART REQUEST to %s for candidate '%s' on role '%s' at '%s'\n  Manage: %s",
+            employer_email,
+            candidate_name,
+            job_title,
+            company_name,
+            manage_url,
+        )
+
     async def send_introduction_accepted(
         self,
         employer_email: str,
@@ -1054,6 +1286,36 @@ class StubEmailService(EmailService):
             "STUB KYC APPROVED to %s — company=%s",
             employer_email,
             company_name,
+        )
+
+    async def send_subscription_payment_failed(
+        self,
+        recipient_email: str,
+        company_name: str | None,
+        plan_name: str,
+        retry_by: str,
+    ) -> None:
+        """Log a stub payment-failed email."""
+        logger.info(
+            "STUB PAYMENT FAILED to %s — company=%s plan=%s retry_by=%s",
+            recipient_email,
+            company_name,
+            plan_name,
+            retry_by,
+        )
+
+    async def send_invite_email(
+        self,
+        email: str,
+        invite_link: str,
+        company_name: str | None = None,
+    ) -> None:
+        """Log a stub invite email with a full clickable link."""
+        logger.info(
+            "STUB INVITE EMAIL to %s — company=%s\n  Accept: %s",
+            email,
+            company_name,
+            invite_link,
         )
 
 

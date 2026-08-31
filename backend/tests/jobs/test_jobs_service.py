@@ -33,24 +33,22 @@ def make_create_request(**overrides) -> JobCreateRequest:
 @pytest.mark.asyncio
 async def test_create_job_returns_draft(db_session):
     """create_job always creates a DRAFT job."""
-    from app.modules.users.models import EmployerProfile
-    from tests.conftest import make_employer
+    from tests.conftest import make_employer, make_organization_for
 
     employer = make_employer()
     db_session.add(employer)
     await db_session.flush()
 
     # Gate requires a complete profile
-    profile = EmployerProfile(
-        user_id=employer.id,
+    await make_organization_for(
+        db_session,
+        employer,
         company_name="Test Corp",
         industry="Technology",
         company_size="11-50",
         is_profile_complete=True,
         kyc_status="APPROVED",
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     service = JobService(db_session)
     result = await service.create_job(make_create_request(), employer=employer)

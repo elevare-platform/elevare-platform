@@ -17,7 +17,7 @@ const FALLBACK_JOBS = [
     industry: 'Fintech',
     location: 'Lagos',
     work_mode: 'Hybrid',
-    salary_range: '₦800k – ₦1.2M/mo',
+    salary_range: '₦800k - ₦1.2M/mo',
   },
   {
     id: 2,
@@ -26,7 +26,7 @@ const FALLBACK_JOBS = [
     industry: 'Payments',
     location: 'Lagos',
     work_mode: 'Remote',
-    salary_range: '₦600k – ₦900k/mo',
+    salary_range: '₦600k - ₦900k/mo',
   },
   {
     id: 3,
@@ -35,7 +35,7 @@ const FALLBACK_JOBS = [
     industry: 'Banking',
     location: 'Abuja',
     work_mode: 'On-site',
-    salary_range: '₦400k – ₦600k/mo',
+    salary_range: '₦400k - ₦600k/mo',
   },
   {
     id: 4,
@@ -44,7 +44,7 @@ const FALLBACK_JOBS = [
     industry: 'Tech',
     location: 'Remote',
     work_mode: 'Remote',
-    salary_range: '₦500k – ₦750k/mo',
+    salary_range: '₦500k - ₦750k/mo',
   },
 ]
 
@@ -65,7 +65,7 @@ const WORK_MODE_LABELS = {
 function formatSalary(min, max) {
   if (!min && !max) return null
   const fmt = (n) => `₦${Number(n).toLocaleString('en-NG')}`
-  if (min && max) return `${fmt(min)} – ${fmt(max)}`
+  if (min && max) return `${fmt(min)} - ${fmt(max)}`
   if (min) return fmt(min)
   return fmt(max)
 }

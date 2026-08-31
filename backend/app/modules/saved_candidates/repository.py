@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.modules.candidates.models import CandidateProfile
 from app.modules.saved_candidates.models import SavedCandidate
 from app.modules.talent_pool.models import TalentPoolProfiles
 
@@ -101,9 +102,9 @@ class SavedCandidateRepository:
             select(SavedCandidate)
             .where(SavedCandidate.employer_id == employer_id)
             .options(
-                selectinload(SavedCandidate.talent_pool_profile).selectinload(
-                    TalentPoolProfiles.candidate_profile
-                ),
+                selectinload(SavedCandidate.talent_pool_profile)
+                .selectinload(TalentPoolProfiles.candidate_profile)
+                .selectinload(CandidateProfile.user),
                 selectinload(SavedCandidate.talent_pool_profile).selectinload(
                     TalentPoolProfiles.parsed_submission
                 ),

@@ -52,6 +52,7 @@ For skills:
 For summary:
 - Maximum 3 sentences.
 - Must be supported by the CV.
+- Write in plain, natural prose. No em dashes or en dashes; use commas or periods instead.
 
 For profession:
 - Return the broad occupational field (e.g. "Healthcare", "Finance", "Software Engineering", "Legal", "Marketing", "Engineering", "Education", "Hospitality").

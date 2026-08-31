@@ -17,7 +17,16 @@ from app.modules.introductions.service import (
 from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.users.enums import UserRole
-from tests.conftest import make_employer, make_job
+from tests.conftest import make_employer, make_job, make_organization_for
+
+
+async def make_employer_with_org(db_session):
+    """Create an employer User and their Organization, return both."""
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    organization = await make_organization_for(db_session, employer)
+    return employer, organization
 
 
 def make_talent_pool_profile(employer_id, job_id, **overrides):
@@ -94,9 +103,7 @@ def test_resolve_email_returns_none_when_no_email():
 
 @pytest.mark.asyncio
 async def test_request_introduction_deducts_credit_and_creates_row(db_session):
-    employer = make_employer()
-    db_session.add(employer)
-    await db_session.flush()
+    employer, organization = await make_employer_with_org(db_session)
 
     job = make_job(employer.id)
     db_session.add(job)
@@ -107,7 +114,7 @@ async def test_request_introduction_deducts_credit_and_creates_row(db_session):
     await db_session.flush()
 
     credits_service = CreditsService(db_session)
-    await credits_service.grant(employer.id, amount=3)
+    await credits_service.grant(organization.id, amount=3)
 
     service = IntroductionService(db_session)
 
@@ -129,14 +136,12 @@ async def test_request_introduction_deducts_credit_and_creates_row(db_session):
 
     assert result.status == IntroductionStatus.PENDING.value
     assert result.employer_id == employer.id
-    assert await credits_service.get_balance(employer.id) == 2
+    assert await credits_service.get_balance(organization.id) == 2
 
 
 @pytest.mark.asyncio
 async def test_request_introduction_raises_when_no_credits(db_session):
-    employer = make_employer()
-    db_session.add(employer)
-    await db_session.flush()
+    employer, _organization = await make_employer_with_org(db_session)
 
     job = make_job(employer.id)
     db_session.add(job)
@@ -162,9 +167,7 @@ async def test_request_introduction_raises_when_no_credits(db_session):
 
 @pytest.mark.asyncio
 async def test_request_introduction_raises_on_duplicate_pending(db_session):
-    employer = make_employer()
-    db_session.add(employer)
-    await db_session.flush()
+    employer, organization = await make_employer_with_org(db_session)
 
     job = make_job(employer.id)
     db_session.add(job)
@@ -179,7 +182,7 @@ async def test_request_introduction_raises_on_duplicate_pending(db_session):
     await db_session.flush()
 
     credits_service = CreditsService(db_session)
-    await credits_service.grant(employer.id, amount=3)
+    await credits_service.grant(organization.id, amount=3)
 
     service = IntroductionService(db_session)
 
@@ -200,9 +203,7 @@ async def test_request_introduction_raises_on_duplicate_pending(db_session):
 
 @pytest.mark.asyncio
 async def test_accept_marks_accepted(db_session):
-    employer = make_employer()
-    db_session.add(employer)
-    await db_session.flush()
+    employer, _organization = await make_employer_with_org(db_session)
 
     job = make_job(employer.id)
     db_session.add(job)
@@ -226,9 +227,7 @@ async def test_accept_marks_accepted(db_session):
 
 @pytest.mark.asyncio
 async def test_accept_already_used_returns_status(db_session):
-    employer = make_employer()
-    db_session.add(employer)
-    await db_session.flush()
+    employer, _organization = await make_employer_with_org(db_session)
 
     job = make_job(employer.id)
     db_session.add(job)
@@ -257,9 +256,7 @@ async def test_accept_already_used_returns_status(db_session):
 
 @pytest.mark.asyncio
 async def test_decline_marks_declined_and_refunds_credit(db_session):
-    employer = make_employer()
-    db_session.add(employer)
-    await db_session.flush()
+    employer, organization = await make_employer_with_org(db_session)
 
     job = make_job(employer.id)
     db_session.add(job)
@@ -274,8 +271,8 @@ async def test_decline_marks_declined_and_refunds_credit(db_session):
     await db_session.flush()
 
     credits_service = CreditsService(db_session)
-    await credits_service.grant(employer.id, amount=2)
-    await credits_service.deduct(employer.id)
+    await credits_service.grant(organization.id, amount=2)
+    await credits_service.deduct(organization.id)
 
     result = await IntroductionService(db_session).decline("decline-token-1")
 
@@ -283,7 +280,7 @@ async def test_decline_marks_declined_and_refunds_credit(db_session):
     await db_session.refresh(intro)
     assert intro.status == IntroductionStatus.DECLINED.value
     assert intro.responded_at is not None
-    assert await credits_service.get_balance(employer.id) == 2
+    assert await credits_service.get_balance(organization.id) == 2
 
 
 # lazy expiry
@@ -291,9 +288,7 @@ async def test_decline_marks_declined_and_refunds_credit(db_session):
 
 @pytest.mark.asyncio
 async def test_expired_token_refunds_credit_on_accept(db_session):
-    employer = make_employer()
-    db_session.add(employer)
-    await db_session.flush()
+    employer, organization = await make_employer_with_org(db_session)
 
     job = make_job(employer.id)
     db_session.add(job)
@@ -314,20 +309,18 @@ async def test_expired_token_refunds_credit_on_accept(db_session):
     await db_session.flush()
 
     credits_service = CreditsService(db_session)
-    await credits_service.grant(employer.id, amount=1)
-    await credits_service.deduct(employer.id)
+    await credits_service.grant(organization.id, amount=1)
+    await credits_service.deduct(organization.id)
 
     result = await IntroductionService(db_session).accept("expired-token-1")
 
     assert result["status"] == "EXPIRED"
-    assert await credits_service.get_balance(employer.id) == 1
+    assert await credits_service.get_balance(organization.id) == 1
 
 
 @pytest.mark.asyncio
 async def test_expired_token_refunds_credit_on_decline(db_session):
-    employer = make_employer()
-    db_session.add(employer)
-    await db_session.flush()
+    employer, organization = await make_employer_with_org(db_session)
 
     job = make_job(employer.id)
     db_session.add(job)
@@ -348,10 +341,10 @@ async def test_expired_token_refunds_credit_on_decline(db_session):
     await db_session.flush()
 
     credits_service = CreditsService(db_session)
-    await credits_service.grant(employer.id, amount=1)
-    await credits_service.deduct(employer.id)
+    await credits_service.grant(organization.id, amount=1)
+    await credits_service.deduct(organization.id)
 
     result = await IntroductionService(db_session).decline("expired-token-2")
 
     assert result["status"] == "EXPIRED"
-    assert await credits_service.get_balance(employer.id) == 1
+    assert await credits_service.get_balance(organization.id) == 1

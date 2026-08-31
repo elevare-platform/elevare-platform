@@ -1,5 +1,4 @@
-"""Deterministic scoring for candidate-job fit.
-"""
+"""Deterministic scoring for candidate-job fit."""
 
 import hashlib
 

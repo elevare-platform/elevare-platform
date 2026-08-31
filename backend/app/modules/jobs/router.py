@@ -56,7 +56,7 @@ async def list_my_jobs(
 
     Must be declared before /{job_id} to prevent route conflict.
     ``search`` filters by job title (case-insensitive substring match).
-    ``filter`` buckets by status: active (default) | pending | rejected | closed | all.
+    ``filter`` buckets by status: active (default) | pending | approved | rejected | closed | all.
     """
     return await JobService(db).list_employer_jobs(
         employer=current_user,

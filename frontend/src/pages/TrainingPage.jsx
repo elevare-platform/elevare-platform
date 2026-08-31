@@ -127,7 +127,7 @@ export default function TrainingPage() {
           <div className="text-center mb-16">
             <h2 className="text-3xl font-extrabold text-text tracking-tight">Our Upcoming Training Tracks</h2>
             <p className="text-text-muted text-sm max-w-xl mx-auto mt-2">
-              Browse through our modular training programs, engineered by top-tier HR strategists and tech leaders.
+              Browse through our modular training programs, developed by experienced HR strategists and tech leaders.
             </p>
           </div>
 

@@ -95,6 +95,31 @@ export function useAdmin() {
         .then((r) => r.data.data.url)
     )
 
+  // AI cost tracking
+  const getCvParsingCosts = () =>
+    request(() => api.get('/api/v1/cv-parsing/costs').then((r) => r.data))
+
+  const getInterviewCosts = () =>
+    request(() => api.get('/api/v1/interviews/costs').then((r) => r.data))
+
+  const getFitScoringCosts = () =>
+    request(() => api.get('/api/v1/ai/fit-scoring/costs').then((r) => r.data))
+
+  const getCvParsingCostTrend = (from, to) =>
+    request(() =>
+      api.get('/api/v1/cv-parsing/costs/trend', { params: { from, to } }).then((r) => r.data)
+    )
+
+  const getInterviewCostTrend = (from, to) =>
+    request(() =>
+      api.get('/api/v1/interviews/costs/trend', { params: { from, to } }).then((r) => r.data)
+    )
+
+  const getFitScoringCostTrend = (from, to) =>
+    request(() =>
+      api.get('/api/v1/ai/fit-scoring/costs/trend', { params: { from, to } }).then((r) => r.data)
+    )
+
   return {
     loading,
     error,
@@ -117,5 +142,11 @@ export function useAdmin() {
     listKycSubmissions,
     moderateKyc,
     getKycDocumentUrl,
+    getCvParsingCosts,
+    getInterviewCosts,
+    getFitScoringCosts,
+    getCvParsingCostTrend,
+    getInterviewCostTrend,
+    getFitScoringCostTrend,
   }
 }

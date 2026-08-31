@@ -47,6 +47,9 @@ from app.modules.ai.cv_parsing_router import router as cv_parsing_router
 from app.modules.ai.router import router as ai_router
 from app.modules.applications.router import router as app_router
 from app.modules.auth.router import router as auth_router
+from app.modules.billing.router import public_router as billing_public_router
+from app.modules.billing.router import router as billing_router
+from app.modules.billing.router import webhook_router as billing_webhook_router
 from app.modules.candidates.matches_router import router as candidate_matches_router
 from app.modules.candidates.router import router as candidates_router
 from app.modules.contact.router import router as contact_router
@@ -54,6 +57,8 @@ from app.modules.credits.router import router as credits_router
 from app.modules.employer.router import router as employer_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.interview_list.router import router as interview_list_router
+from app.modules.interviews.router import public_router as interviews_public_router
+from app.modules.interviews.router import router as interviews_router
 from app.modules.introductions.router import admin_router as intro_admin_router
 from app.modules.introductions.router import mine_router as intro_mine_router
 from app.modules.introductions.router import public_router as intro_public_router
@@ -189,6 +194,9 @@ app.include_router(
     testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"]
 )
 app.include_router(credits_router, prefix="/api/v1/credits", tags=["credits"])
+app.include_router(billing_webhook_router, prefix="/api/v1/billing", tags=["billing"])
+app.include_router(billing_public_router, prefix="/api/v1/billing", tags=["billing"])
+app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(intro_public_router, prefix="/api/v1/public", tags=["introductions"])
 app.include_router(
     intro_mine_router, prefix="/api/v1/introductions", tags=["introductions"]
@@ -206,6 +214,16 @@ app.include_router(
     interview_list_router,
     prefix="/api/v1/interview-list",
     tags=["interview-list"],
+)
+app.include_router(
+    interviews_router,
+    prefix="/api/v1/interviews",
+    tags=["interviews"],
+)
+app.include_router(
+    interviews_public_router,
+    prefix="/api/v1/public/interviews",
+    tags=["interviews"],
 )
 app.include_router(
     candidate_matches_router, prefix="/api/v1/candidates", tags=["candidates"]

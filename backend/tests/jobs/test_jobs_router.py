@@ -58,8 +58,8 @@ async def register_and_promote(client, db_session, role: str) -> str:
     from sqlalchemy import select
 
     from app.modules.auth.jwt_handler import create_token_pair
-    from app.modules.users.models import EmployerProfile, User
-    from tests.conftest import make_register_data
+    from app.modules.users.models import User
+    from tests.conftest import make_organization_for, make_register_data
 
     data = make_register_data()
     payload = {
@@ -83,16 +83,15 @@ async def register_and_promote(client, db_session, role: str) -> str:
 
     # Employers need a complete profile to pass the job posting gate
     if role == "EMPLOYER":
-        profile = EmployerProfile(
-            user_id=user.id,
+        await make_organization_for(
+            db_session,
+            user,
             company_name="Test Corp",
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
             kyc_status="APPROVED",
         )
-        db_session.add(profile)
-        await db_session.flush()
 
     # Issue a fresh token with the updated role — avoids a login round-trip
     # that would fail if account_status enforcement is strict on login

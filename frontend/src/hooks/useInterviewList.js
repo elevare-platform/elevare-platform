@@ -39,16 +39,19 @@ export function useInterviewList(jobId) {
         : { candidate_profile_id: candidateProfileId }),
     }
 
+    let result
     if (onList) {
       await api.delete('/api/v1/interview-list', { params })
     } else {
-      await api.post('/api/v1/interview-list', {
+      const { data } = await api.post('/api/v1/interview-list', {
         job_id: jobId,
         talent_pool_profile_id: talentPoolProfileId ?? null,
         candidate_profile_id: candidateProfileId ?? null,
       })
+      result = data
     }
     await refetch()
+    return result
   }, [isOnList, refetch, jobId])
 
   return { isOnList, toggle, loading }

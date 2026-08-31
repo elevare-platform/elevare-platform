@@ -16,9 +16,8 @@ from sqlalchemy import select
 from app.core.storage import MockStorageService, get_storage_service
 from app.main import app
 from app.modules.ai.schema import MatchResult
-from app.modules.ai.service import KeywordAIService
-from app.modules.users.models import EmployerProfile
-from tests.conftest import make_register_data
+from app.modules.ai.service import EmbeddingAIService, KeywordAIService
+from tests.conftest import make_organization_for, make_register_data
 
 # ---------------------------------------------------------------------------
 # Helpers (mirrors pattern from test_applications_router.py)
@@ -69,16 +68,15 @@ async def register_and_activate(client, db_session, role: str = "CANDIDATE"):
     await db_session.flush()
 
     if role == "EMPLOYER":
-        profile = EmployerProfile(
-            user_id=user.id,
+        await make_organization_for(
+            db_session,
+            user,
             company_name="Test Corp",
             industry="Technology",
             company_size="11-50",
             is_profile_complete=True,
             kyc_status="APPROVED",
         )
-        db_session.add(profile)
-        await db_session.flush()
 
     token_pair = create_token_pair(user.id, role)
     return token_pair["access_token"], user
@@ -259,6 +257,85 @@ async def test_keyword_service_case_insensitive_matching():
         job_title="Backend Engineer",
     )
     assert len(result.matched_keywords) == 3
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — EmbeddingAIService (no DB, no HTTP, no OpenAI calls: these
+# construct embedding vectors directly rather than generating them)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_falls_back_to_keyword_matching_without_embeddings():
+    """No candidate_embedding/job_embedding given — same behavior as before
+    this was fixed, not a crash or a zero score.
+    """
+    service = EmbeddingAIService()
+    result = await service.compute_match_score(
+        candidate_skills=["Python", "FastAPI"],
+        job_description="We need a Python developer with FastAPI experience.",
+        job_title="Backend Engineer",
+        required_skills=["Python", "FastAPI"],
+    )
+    assert isinstance(result, MatchResult)
+    assert result.score > 0  # keyword overlap exists — not silently zeroed
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_uses_cosine_similarity_when_embeddings_given():
+    """Identical embeddings must score at (or near) the top of the scale —
+    this is the actual bug fix: before this, embeddings were never used at
+    all, so this score would previously have been a low keyword-match score
+    regardless of how similar the embeddings were.
+    """
+    service = EmbeddingAIService()
+    vector = [1.0, 0.0, 0.0]
+    result = await service.compute_match_score(
+        candidate_skills=["Python", "FastAPI"],
+        job_description="irrelevant when embeddings are given",
+        job_title="Backend Engineer",
+        required_skills=["Python", "FastAPI"],
+        candidate_embedding=vector,
+        job_embedding=vector,
+    )
+    assert result.score == 100  # cosine similarity of 1.0, full skill overlap
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_score_matches_talent_pool_formula():
+    """Same formula as talent_pool/service.py::get_top_matches_for_job:
+    embedding_score = round((1 - cosine_distance) * 100), then modulated
+    0.5-1.0 by skill overlap. Orthogonal vectors -> 0 cosine similarity,
+    full skill overlap -> modulator of 1.0 -> final score 0.
+    """
+    service = EmbeddingAIService()
+    result = await service.compute_match_score(
+        candidate_skills=["Python", "FastAPI"],
+        job_description="irrelevant",
+        job_title="Backend Engineer",
+        required_skills=["Python", "FastAPI"],
+        candidate_embedding=[1.0, 0.0],
+        job_embedding=[0.0, 1.0],
+    )
+    assert result.score == 0
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_no_skill_overlap_halves_embedding_score():
+    """Full embedding similarity but zero skill overlap -> modulator 0.5,
+    per compute_skill_overlap_modulator's documented floor.
+    """
+    service = EmbeddingAIService()
+    vector = [1.0, 0.0, 0.0]
+    result = await service.compute_match_score(
+        candidate_skills=["Figma", "Sketch"],
+        job_description="irrelevant",
+        job_title="Backend Engineer",
+        required_skills=["Python", "FastAPI"],
+        candidate_embedding=vector,
+        job_embedding=vector,
+    )
+    assert result.score == 50
 
 
 # ---------------------------------------------------------------------------

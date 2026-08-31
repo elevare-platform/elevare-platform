@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -29,6 +30,7 @@ from app.modules.introductions.schemas import (
 from app.modules.jobs.repository import JobRepository
 from app.modules.talent_pool.repository import TalentPoolRepository
 from app.modules.users.enums import UserRole
+from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,19 @@ class IntroductionService:
         self._db = db
         self._repo = IntroductionRepository(db)
         self._credits = CreditsService(db)
+
+    async def _resolve_organization_id(self, user_id: uuid.UUID) -> uuid.UUID:
+        """Resolve the Organization a member belongs to.
+
+        Credits are a shared company wallet keyed to `organizations.id`
+        (see credits/models.py), while `employer_id` throughout this
+        service is a `User` id (job ownership, "who took this action").
+        Every credits call needs the former, resolved from the latter.
+        """
+        result = await self._db.execute(
+            select(User.organization_id).where(User.id == user_id)
+        )
+        return result.scalar_one()
 
     async def request_introduction(
         self,
@@ -146,7 +161,8 @@ class IntroductionService:
         expires_at = datetime.now(UTC) + timedelta(days=_TOKEN_EXPIRY_DAYS)
 
         # Deduct first — raises ValidationException if balance = 0
-        await self._credits.deduct(employer_id=employer_id)
+        organization_id = await self._resolve_organization_id(employer_id)
+        await self._credits.deduct(employer_id=organization_id)
 
         intro = await self._repo.create(
             employer_id=employer_id,
@@ -314,8 +330,9 @@ class IntroductionService:
     async def _process_accept(self, intro) -> dict:
         """Shared accept logic for both the public token flow and admin-by-id flow."""
         if intro.status == IntroductionStatus.EXPIRED.value:
+            organization_id = await self._resolve_organization_id(intro.employer_id)
             await self._credits.refund(
-                employer_id=intro.employer_id, reference_id=intro.id
+                employer_id=organization_id, reference_id=intro.id
             )
             await self._db.commit()
             return {
@@ -358,8 +375,9 @@ class IntroductionService:
     async def _process_decline(self, intro) -> dict:
         """Shared decline logic for both the public token flow and admin-by-id flow."""
         if intro.status == IntroductionStatus.EXPIRED.value:
+            organization_id = await self._resolve_organization_id(intro.employer_id)
             await self._credits.refund(
-                employer_id=intro.employer_id, reference_id=intro.id
+                employer_id=organization_id, reference_id=intro.id
             )
             await self._db.commit()
             return {
@@ -374,7 +392,8 @@ class IntroductionService:
             }
 
         await self._repo.mark_declined(intro)
-        await self._credits.refund(employer_id=intro.employer_id, reference_id=intro.id)
+        organization_id = await self._resolve_organization_id(intro.employer_id)
+        await self._credits.refund(employer_id=organization_id, reference_id=intro.id)
 
         from app.modules.introductions.tasks import send_introduction_declined_email
 
@@ -535,5 +554,6 @@ class IntroductionService:
         if not newly_expired:
             return
         for row in newly_expired:
-            await self._credits.refund(employer_id=row.employer_id, reference_id=row.id)
+            organization_id = await self._resolve_organization_id(row.employer_id)
+            await self._credits.refund(employer_id=organization_id, reference_id=row.id)
         await self._db.commit()

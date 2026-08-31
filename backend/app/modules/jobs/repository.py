@@ -29,7 +29,7 @@ class JobRepository:
     @staticmethod
     def _with_employer_profile():
         """Return selectinload options to load employer + their profile in one query."""
-        return selectinload(Job.employer).selectinload(User.employer_profile)
+        return selectinload(Job.employer).selectinload(User.organization)
 
     async def create(self, data: JobCreateRequest, employer_id: UUID) -> Job:
         """Insert a new draft job owned by the given employer."""
@@ -171,6 +171,7 @@ class JobRepository:
         into what the employer actually cares about:
         - "active":   live and approved
         - "pending":  draft, awaiting admin review (new or pulled offline for re-review)
+        - "approved": draft, approved by an admin but not yet published by the employer
         - "rejected": draft, rejected by an admin
         - "closed":   closed
         - "all":      no filter
@@ -195,6 +196,11 @@ class JobRepository:
             stmt = stmt.where(
                 Job.status == JobStatus.DRAFT.value,
                 Job.moderation_status == ModerationStatus.PENDING.value,
+            )
+        elif status_filter == "approved":
+            stmt = stmt.where(
+                Job.status == JobStatus.DRAFT.value,
+                Job.moderation_status == ModerationStatus.APPROVED.value,
             )
         elif status_filter == "rejected":
             stmt = stmt.where(

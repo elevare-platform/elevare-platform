@@ -9,8 +9,7 @@ from app.core.storage import MockStorageService
 from app.modules.admin.service import AdminService
 from app.modules.employer.models import KYCDocument
 from app.modules.users.enums import UserRole
-from app.modules.users.models import EmployerProfile
-from tests.conftest import make_employer, make_user
+from tests.conftest import make_employer, make_organization_for, make_user
 
 
 async def make_employer_with_pending_kyc(db_session, *, with_document: bool = True):
@@ -19,21 +18,20 @@ async def make_employer_with_pending_kyc(db_session, *, with_document: bool = Tr
     db_session.add(employer)
     await db_session.flush()
 
-    profile = EmployerProfile(
-        user_id=employer.id,
+    profile = await make_organization_for(
+        db_session,
+        employer,
         company_name="Test Corp",
         industry="Tech",
         company_size="11-50",
         is_profile_complete=True,
         kyc_status="PENDING",
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     doc = None
     if with_document:
         doc = KYCDocument(
-            employer_profile_id=profile.id,
+            organization_id=profile.id,
             key=f"kyc/{profile.id}/business_reg.pdf",
             filename="business_reg.pdf",
             document_type="Business Registration",
@@ -52,17 +50,15 @@ async def test_list_kyc_submissions_filters_by_status(db_session):
     other_employer = make_employer()
     db_session.add(other_employer)
     await db_session.flush()
-    db_session.add(
-        EmployerProfile(
-            user_id=other_employer.id,
-            company_name="Approved Co",
-            industry="Tech",
-            company_size="11-50",
-            is_profile_complete=True,
-            kyc_status="APPROVED",
-        )
+    await make_organization_for(
+        db_session,
+        other_employer,
+        company_name="Approved Co",
+        industry="Tech",
+        company_size="11-50",
+        is_profile_complete=True,
+        kyc_status="APPROVED",
     )
-    await db_session.flush()
 
     service = AdminService(db_session)
     result = await service.list_kyc_submissions(status="PENDING", limit=100)

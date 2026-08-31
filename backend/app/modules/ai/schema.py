@@ -70,6 +70,22 @@ class FitReasoningResult:
     strengths: list[str] = field(default_factory=list)
     weaknesses: list[str] = field(default_factory=list)
     fit_summary: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass
+class InterviewScoringResult:
+    """Structured output from the LLM interview-scoring step."""
+
+    score: int = 0
+    summary: str = ""
+    strengths: list[str] = field(default_factory=list)
+    weaknesses: list[str] = field(default_factory=list)
+    missing_evidence: list[str] = field(default_factory=list)
+    contradictions: list[str] = field(default_factory=list)
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 class JobContext(BaseModel):

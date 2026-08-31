@@ -13,6 +13,10 @@ import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
+import SourcedCvModal from '@/components/employer/SourcedCvModal'
+import CandidateActionModal from '@/components/employer/CandidateActionModal'
+import { matchScoreBand } from '@/lib/matchScore'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -35,20 +39,17 @@ const SOURCE_LABELS = {
   email: 'Email', gmail_import: 'Gmail', zoho_import: 'Zoho', referral: 'Referral', linkedin: 'LinkedIn', other: 'Other',
 }
 
-function scoreColor(score) {
-  if (score == null) return 'bg-gray-100 text-gray-400 border-gray-200'
-  if (score >= 75) return 'bg-green-100 text-green-700 border-green-200'
-  if (score >= 50) return 'bg-amber-100 text-amber-700 border-amber-200'
-  return 'bg-red-100 text-red-600 border-red-200'
-}
-
 function ScoreBadge({ score }) {
+  const band = matchScoreBand(score)
   return (
-    <div className={cn(
-      'w-12 h-12 rounded-full border-2 flex items-center justify-center text-sm font-bold flex-shrink-0',
-      scoreColor(score)
-    )}>
-      {score != null ? score : 'N/A'}
+    <div
+      title={score != null ? `Raw score: ${score}/100` : undefined}
+      className={cn(
+        'px-2.5 py-1.5 rounded-full border text-xs font-bold flex-shrink-0 whitespace-nowrap',
+        band.className
+      )}
+    >
+      {band.label}
     </div>
   )
 }
@@ -357,53 +358,58 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
   )
 }
 
-// ─── View CV Button ───────────────────────────────────────────────────────────
+// ─── CV Access Button ─────────────────────────────────────────────────────────
+// Ownership-aware: self-registered candidates open their real profile,
+// own-sourced or already-entitled admin-sourced candidates open the CV
+// directly, and admin-sourced candidates without an accepted introduction
+// go to Request Introduction instead of a dead-end "CV not available".
 
-function ViewCvButton({ submissionId }) {
-  const [loading, setLoading] = useState(false)
-  const [errMsg, setErrMsg] = useState(null)
+function CvAccessButton({ profile }) {
+  const [showPanel, setShowPanel] = useState(false)
+  const [showCvModal, setShowCvModal] = useState(false)
+  const [showActionModal, setShowActionModal] = useState(false)
 
-  const handleClick = async (e) => {
+  const isSelfRegistered = profile.ownership === 'self_registered' && profile.candidate_profile_id
+  const canViewCv = profile.has_cv_access
+
+  const handleClick = (e) => {
     e.stopPropagation()
-    if (!submissionId) return
-    setLoading(true)
-    setErrMsg(null)
-    try {
-      const { data } = await api.get(`/api/v1/cv-parsing/submissions/${submissionId}/download`)
-      window.open(typeof data === 'string' ? data : data.url, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      const status = err.response?.status
-      if (status === 425) {
-        setErrMsg('Still processing. Try again in a few seconds.')
-      } else if (status === 404) {
-        setErrMsg('CV file not found.')
-      } else {
-        setErrMsg('Could not open CV.')
-      }
-      setTimeout(() => setErrMsg(null), 4000)
-    } finally {
-      setLoading(false)
-    }
+    if (isSelfRegistered) return setShowPanel(true)
+    if (canViewCv) return setShowCvModal(true)
+    setShowActionModal(true)
   }
 
-  if (!submissionId) return null
+  const label = isSelfRegistered ? 'Profile' : canViewCv ? 'CV' : 'Request'
+
   return (
-    <div className="relative flex flex-col items-end">
+    <>
       <button
         onClick={handleClick}
-        disabled={loading}
-        title="View CV"
-        className="flex items-center gap-1 text-xs font-medium text-text-muted hover:text-brand-blue transition-colors disabled:opacity-50"
+        title={isSelfRegistered ? 'View Profile' : canViewCv ? 'View CV' : 'Request Introduction'}
+        className="flex items-center gap-1 text-xs font-medium text-text-muted hover:text-brand-blue transition-colors"
       >
-        {loading ? <RefreshCw size={12} className="animate-spin" /> : <ExternalLink size={12} />}
-        <span>CV</span>
+        <ExternalLink size={12} />
+        <span>{label}</span>
       </button>
-      {errMsg && (
-        <span className="absolute top-5 right-0 z-10 whitespace-nowrap rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-2.5 py-1.5 shadow-sm">
-          {errMsg}
-        </span>
+
+      {showPanel && (
+        <CandidateProfilePanel profileId={profile.candidate_profile_id} onClose={() => setShowPanel(false)} />
       )}
-    </div>
+      {showCvModal && (
+        <SourcedCvModal profileId={profile.id} onClose={() => setShowCvModal(false)} />
+      )}
+      {showActionModal && (
+        <CandidateActionModal
+          match={{
+            id: profile.id,
+            ownership: profile.ownership,
+            candidate_name: profile.candidate_name,
+            current_title: profile.candidate_current_title,
+          }}
+          onClose={() => setShowActionModal(false)}
+        />
+      )}
+    </>
   )
 }
 
@@ -413,6 +419,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
   const [expanded, setExpanded] = useState(false)
 
   const hasReasoning = profile.ai_fit_summary || profile.ai_strengths?.length > 0
+  const hasDetails = hasReasoning || profile.summary || profile.skills?.length > 0
 
   return (
     <div className={cn(
@@ -484,9 +491,9 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
             </span>
           )}
 
-          <ViewCvButton submissionId={profile.parsed_submission_id} />
+          <CvAccessButton profile={profile} />
 
-          {hasReasoning && (
+          {hasDetails && (
             <button onClick={() => setExpanded(v => !v)}
               className="p-1.5 rounded-lg text-text-muted hover:text-brand-blue hover:bg-brand-blue/5 transition-colors"
               aria-expanded={expanded}>
@@ -496,9 +503,23 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
         </div>
       </div>
 
-      {/* AI reasoning panel */}
-      {expanded && hasReasoning && (
+      {/* Details panel — summary/skills are general (job-independent) and
+          always shown when present; the AI fit assessment below is job-
+          specific and only present when it's actually current for a job. */}
+      {expanded && hasDetails && (
         <div className="border-t border-border bg-gradient-to-b from-surface-muted to-white px-5 py-4 space-y-3">
+          {profile.summary && (
+            <p className="text-sm text-text leading-relaxed">{profile.summary}</p>
+          )}
+          {profile.skills?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {profile.skills.map((skill) => (
+                <span key={skill} className="px-2 py-0.5 rounded-full bg-brand-blue/10 text-brand-blue text-xs">
+                  {skill}
+                </span>
+              ))}
+            </div>
+          )}
           {profile.ai_fit_summary && (
             <p className="text-sm text-text leading-relaxed">{profile.ai_fit_summary}</p>
           )}
@@ -537,55 +558,84 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
 // ─── Pipeline Row (no-job pipeline view) ─────────────────────────────────────
 
 function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasDetails = profile.summary || profile.skills?.length > 0
+
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all group">
-      <div className="w-8 h-8 rounded-full bg-surface-muted flex items-center justify-center flex-shrink-0">
-        <Users size={14} className="text-text-muted" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-text truncate">
-          {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
-        </p>
-        <p className="text-xs text-text-muted flex items-center gap-1.5 mt-0.5">
-          <span>{SOURCE_ICONS[profile.source] ?? '📎'}</span>
-          <span className="capitalize">{SOURCE_LABELS[profile.source] ?? profile.source}</span>
-          {profile.candidate_current_title && <><span className="text-border">·</span><span>{profile.candidate_current_title}</span></>}
-          {!profile.candidate_current_title && profile.source_note && (
-            <><span className="text-border">·</span><span className="truncate max-w-[140px]">{profile.source_note.replace(/(Gmail|Zoho) import-  /, '').replace(/ · message .+$/, '')}</span></>
+    <div className="rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all group">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="w-8 h-8 rounded-full bg-surface-muted flex items-center justify-center flex-shrink-0">
+          <Users size={14} className="text-text-muted" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-text truncate">
+            {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
+          </p>
+          <p className="text-xs text-text-muted flex items-center gap-1.5 mt-0.5">
+            <span>{SOURCE_ICONS[profile.source] ?? '📎'}</span>
+            <span className="capitalize">{SOURCE_LABELS[profile.source] ?? profile.source}</span>
+            {profile.candidate_current_title && <><span className="text-border">·</span><span>{profile.candidate_current_title}</span></>}
+            {!profile.candidate_current_title && profile.source_note && (
+              <><span className="text-border">·</span><span className="truncate max-w-[140px]">{profile.source_note.replace(/(Gmail|Zoho) import-  /, '').replace(/ · message .+$/, '')}</span></>
+            )}
+          </p>
+        </div>
+
+        {/* Unscored indicator */}
+        {profile.ai_score == null && (
+          <span className="text-xs text-text-muted bg-surface-muted px-2 py-0.5 rounded-full border border-border">
+            Unscored
+          </span>
+        )}
+
+        <StatusBadge status={profile.status} />
+
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          {!['promoted', 'promoted_pending'].includes(profile.status) && (
+            <div className="relative">
+              <select value="" onChange={e => { if (e.target.value) onStatusChange(profile.id, e.target.value) }}
+                className="appearance-none text-xs rounded-lg border border-border bg-white pl-2.5 pr-7 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-blue cursor-pointer">
+                <option value="" disabled>Move to…</option>
+                {STATUSES.filter(s => s !== profile.status && !['promoted', 'promoted_pending'].includes(s)).map(s => (
+                  <option key={s} value={s}>{STATUS_CONFIG[s]?.label ?? s}</option>
+                ))}
+              </select>
+              <ChevronDown size={10} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
+            </div>
           )}
-        </p>
+          {isAdmin && profile.status === 'shortlisted' && (
+            <button onClick={() => onPromote(profile.id)}
+              className="text-xs font-medium text-brand-blue hover:underline flex items-center gap-1">
+              <UserPlus size={11} /> Promote
+            </button>
+          )}
+          <CvAccessButton profile={profile} />
+          {hasDetails && (
+            <button onClick={() => setExpanded(v => !v)}
+              className="p-1.5 rounded-lg text-text-muted hover:text-brand-blue hover:bg-brand-blue/5 transition-colors"
+              aria-expanded={expanded}>
+              <Brain size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Unscored indicator */}
-      {profile.ai_score == null && (
-        <span className="text-xs text-text-muted bg-surface-muted px-2 py-0.5 rounded-full border border-border">
-          Unscored
-        </span>
-      )}
-
-      <StatusBadge status={profile.status} />
-
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        {!['promoted', 'promoted_pending'].includes(profile.status) && (
-          <div className="relative">
-            <select value="" onChange={e => { if (e.target.value) onStatusChange(profile.id, e.target.value) }}
-              className="appearance-none text-xs rounded-lg border border-border bg-white pl-2.5 pr-7 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-blue cursor-pointer">
-              <option value="" disabled>Move to…</option>
-              {STATUSES.filter(s => s !== profile.status && !['promoted', 'promoted_pending'].includes(s)).map(s => (
-                <option key={s} value={s}>{STATUS_CONFIG[s]?.label ?? s}</option>
+      {expanded && hasDetails && (
+        <div className="border-t border-border bg-gradient-to-b from-surface-muted to-white px-5 py-4 space-y-3">
+          {profile.summary && (
+            <p className="text-sm text-text leading-relaxed">{profile.summary}</p>
+          )}
+          {profile.skills?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {profile.skills.map((skill) => (
+                <span key={skill} className="px-2 py-0.5 rounded-full bg-brand-blue/10 text-brand-blue text-xs">
+                  {skill}
+                </span>
               ))}
-            </select>
-            <ChevronDown size={10} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
-          </div>
-        )}
-        {isAdmin && profile.status === 'shortlisted' && (
-          <button onClick={() => onPromote(profile.id)}
-            className="text-xs font-medium text-brand-blue hover:underline flex items-center gap-1">
-            <UserPlus size={11} /> Promote
-          </button>
-        )}
-        <ViewCvButton submissionId={profile.parsed_submission_id} />
-      </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -752,7 +802,7 @@ export default function TalentPoolPage() {
       const { data } = await api.post(`/api/v1/talent-pool/score-against-job?job_id=${activeJob}`)
       show(`Queued scoring for ${data.queued} profile${data.queued !== 1 ? 's' : ''}. Results will appear shortly.`, 'success')
       setTimeout(() => loadProfiles(true), 3000)
-    } catch { show('Failed to trigger scoring', 'error') }
+    } catch (err) { show(err.response?.data?.message ?? 'Failed to trigger scoring', 'error') }
     finally { setScoring(false) }
   }
 

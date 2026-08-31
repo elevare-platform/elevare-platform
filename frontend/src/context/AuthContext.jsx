@@ -134,11 +134,19 @@ export function isAccountRestricted(user) {
 }
 
 // Derive redirect path after login/register based on user role and profile state
+//
+// Does NOT route on kyc_status — OnboardingPage already sends a freshly
+// onboarded employer to /employer/verification once, right after they
+// complete their profile. If this function also redirected there whenever
+// kyc_status isn't APPROVED, every subsequent login would re-trigger the
+// same detour indefinitely (and this function is also what Navbar's
+// logo/dashboard link uses, so it wasn't just logins — any nav click did
+// it too). One nudge at onboarding is enough; the KYC_REQUIRED banner on
+// PostJobPage covers anyone who never verified and later tries to post.
 export function getPostAuthRedirect(user) {
   if (!user) return '/login'
   if (user.role === 'EMPLOYER') {
     if (!user.is_profile_complete) return '/employer/onboarding'
-    if (user.kyc_status !== 'APPROVED') return '/employer/verification'
     return '/dashboard'
   }
   if (user.role === 'CANDIDATE') {

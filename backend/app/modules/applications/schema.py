@@ -34,6 +34,17 @@ class ApplicationResponse(BaseModel):
     # AI match score — null until background task computes it
     match_score: int | None = None
     score_computed_at: datetime | None = None
+    # True when the job has an AI video interview configured AND the
+    # employer has added this candidate to the job's interview list —
+    # drives whether the candidate sees a "Start AI Interview" action.
+    # Being on the interview list is the actual invite; a job merely
+    # having a brief is not enough on its own.
+    has_ai_interview: bool = False
+    # Real Interview.status (PENDING/IN_PROGRESS/UPLOADED/SCORED/FAILED/
+    # EXPIRED), or null if never invited — lets the frontend tell "not
+    # started" apart from "already completed", which has_ai_interview
+    # alone can't (it only reflects invite-list membership).
+    interview_status: str | None = None
     # Phase 11.5 composite AI score — distinct from match_score (Phase 6.5 keyword signal)
     ai_score: int | None = None
     ai_fit_summary: str | None = None
@@ -45,16 +56,22 @@ class ApplicationResponse(BaseModel):
 
     @classmethod
     def from_application(
-        cls, application, cv_url: str | None = None
+        cls,
+        application,
+        cv_url: str | None = None,
+        interview_invited: bool = False,
+        interview_status: str | None = None,
     ) -> "ApplicationResponse":
         """Build an ApplicationResponse from an Application ORM object.
 
-        cv_url is resolved by the service layer (async presigned URL) and
-        passed in here — schemas are synchronous and cannot do async work.
+        cv_url, interview_invited, and interview_status are resolved by
+        the service layer (async presigned URL / interview-list
+        membership / Interview.status lookup) and passed in here —
+        schemas are synchronous and cannot do async work.
         """
         employer = getattr(application.job, "employer", None)
         employer_profile = (
-            getattr(employer, "employer_profile", None) if employer else None
+            getattr(employer, "organization", None) if employer else None
         )
 
         candidate = getattr(application, "candidate", None)
@@ -90,6 +107,11 @@ class ApplicationResponse(BaseModel):
                 candidate_profile.years_of_experience if candidate_profile else None
             ),
             candidate_profile_id=candidate_profile.id if candidate_profile else None,
+            has_ai_interview=bool(
+                application.job and application.job.interview_brief
+            )
+            and interview_invited,
+            interview_status=interview_status,
             match_score=application.match_score,
             score_computed_at=application.score_computed_at,
             ai_score=application.ai_score,
@@ -111,9 +133,11 @@ class CandidateApplicationResponse(ApplicationResponse):
 
     @classmethod
     def from_application(
-        cls, application, cv_url: str | None = None
+        cls, application, cv_url: str | None = None, interview_invited: bool = False
     ) -> "CandidateApplicationResponse":
-        instance = super().from_application(application, cv_url=cv_url)
+        instance = super().from_application(
+            application, cv_url=cv_url, interview_invited=interview_invited
+        )
         # Null out AI fields so they are omitted from candidate-facing responses
         instance.ai_score = None
         instance.ai_fit_summary = None

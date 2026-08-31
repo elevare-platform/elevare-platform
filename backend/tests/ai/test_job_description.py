@@ -37,7 +37,8 @@ async def register_employer(client, db_session):
     from sqlalchemy import select
 
     from app.modules.auth.jwt_handler import create_token_pair
-    from app.modules.users.models import EmployerProfile, User
+    from app.modules.users.models import User
+    from tests.conftest import make_organization_for
 
     data = make_register_data(role="EMPLOYER")
     payload = {
@@ -58,16 +59,15 @@ async def register_employer(client, db_session):
     user.account_status = "ACTIVE"
     await db_session.flush()
 
-    profile = EmployerProfile(
-        user_id=user.id,
+    await make_organization_for(
+        db_session,
+        user,
         company_name="Acme Ltd",
         industry="Technology",
         company_size="11-50",
         is_profile_complete=True,
         kyc_status="APPROVED",
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     token_pair = create_token_pair(user.id, "EMPLOYER")
     return token_pair["access_token"], user

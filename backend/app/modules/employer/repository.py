@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.modules.employer.models import KYCDocument
 from app.modules.jobs.models import Job
-from app.modules.users.models import EmployerProfile
+from app.modules.users.models import Organization, User
 
 from .schemas import EmployerStats
 
@@ -53,28 +53,45 @@ class EmployerRepository:
     # KYC
     # ------------------------------------------------------------------
 
-    async def get_employer_profile_by_user_id(
+    async def get_organization_by_user_id(
         self, user_id: uuid.UUID
-    ) -> EmployerProfile | None:
-        """Return the employer profile with kyc_documents eagerly loaded."""
+    ) -> Organization | None:
+        """Return the organization the given user belongs to, kyc_documents eagerly loaded.
+
+        Joins through ``User.organization_id`` rather than looking the
+        organization up by a 1:1 owner FK — a user's organization may be
+        shared with teammates, not owned exclusively by them.
+        """
         stmt = (
-            select(EmployerProfile)
-            .where(EmployerProfile.user_id == user_id)
-            .options(selectinload(EmployerProfile.kyc_documents))
+            select(Organization)
+            .join(User, User.organization_id == Organization.id)
+            .where(User.id == user_id)
+            .options(selectinload(Organization.kyc_documents))
         )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_organization_by_id(
+        self, organization_id: uuid.UUID
+    ) -> Organization | None:
+        """Return the organization the given organization_id.
+        If the user does not belong to an organization, return None.
+
+        """
+        stmt = select(Organization).where(Organization.id == organization_id)
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
     async def save_kyc_document(
         self,
-        employer_profile_id: uuid.UUID,
+        organization_id: uuid.UUID,
         key: str,
         filename: str,
         document_type: str,
     ) -> KYCDocument:
         """Persist a KYC document record and return it."""
         doc = KYCDocument(
-            employer_profile_id=employer_profile_id,
+            organization_id=organization_id,
             key=key,
             filename=filename,
             document_type=document_type,
@@ -93,18 +110,65 @@ class EmployerRepository:
 
     async def set_kyc_status(
         self,
-        profile: EmployerProfile,
+        organization: Organization,
         status: str,
         rejection_reason: str | None = None,
-    ) -> EmployerProfile:
-        """Update kyc_status and related timestamps on the employer profile."""
+    ) -> Organization:
+        """Update kyc_status and related timestamps on the organization."""
         from app.modules.employer.enums import KYCStatus
 
-        profile.kyc_status = status
+        organization.kyc_status = status
         if status == KYCStatus.PENDING.value:
-            profile.kyc_submitted_at = datetime.now(UTC)
+            organization.kyc_submitted_at = datetime.now(UTC)
         elif status in (KYCStatus.APPROVED.value, KYCStatus.REJECTED.value):
-            profile.kyc_reviewed_at = datetime.now(UTC)
-            profile.kyc_rejection_reason = rejection_reason
+            organization.kyc_reviewed_at = datetime.now(UTC)
+            organization.kyc_rejection_reason = rejection_reason
         await self._db.flush()
-        return profile
+        return organization
+
+    # ------------------------------------------------------------------
+    # Team membership
+    # ------------------------------------------------------------------
+
+    async def list_members(self, organization_id: uuid.UUID) -> list[User]:
+        """Return every user belonging to this organization."""
+        stmt = select(User).where(User.organization_id == organization_id)
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_member(
+        self, organization_id: uuid.UUID, user_id: uuid.UUID
+    ) -> User | None:
+        """Return a single member of this organization, or None if not a member."""
+        stmt = select(User).where(
+            User.organization_id == organization_id, User.id == user_id
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_billing_managers(self, organization_id: uuid.UUID) -> list[User]:
+        """Members who can act on this organization's billing (OWNER/ADMIN)
+        — used to notify someone when a renewal charge fails, since that
+        event isn't triggered by any particular user's action.
+        """
+        from app.modules.employer.enums import OrganizationRole
+
+        stmt = select(User).where(
+            User.organization_id == organization_id,
+            User.organization_role.in_(
+                [OrganizationRole.OWNER.value, OrganizationRole.ADMIN.value]
+            ),
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def count_owners(self, organization_id: uuid.UUID) -> int:
+        """Return how many OWNER-role members this organization currently has."""
+        from app.modules.employer.enums import OrganizationRole
+
+        stmt = select(func.count(User.id)).where(
+            User.organization_id == organization_id,
+            User.organization_role == OrganizationRole.OWNER.value,
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one()

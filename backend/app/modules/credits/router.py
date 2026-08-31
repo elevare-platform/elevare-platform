@@ -18,5 +18,5 @@ async def get_balance(
 ):
     """Return the authenticated employer's current credit balance."""
     service = CreditsService(db)
-    balance = await service.get_balance(current_user.id)
+    balance = await service.get_balance(current_user.organization_id)
     return CreditBalanceResponse(balance=balance)
