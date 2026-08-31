@@ -181,6 +181,27 @@ class EmployerService:
             )
 
         await self._repo.set_kyc_status(organization, KYCStatus.PENDING.value)
+
+        from app.modules.employer.tasks import send_kyc_submission_notification_email
+        from app.modules.notifications.repository import NotificationRepository
+
+        admins = await self._repo.list_admin_users()
+        notification_repo = NotificationRepository(self._db)
+        for admin in admins:
+            send_kyc_submission_notification_email.delay(
+                admin_email=admin.email,
+                company_name=organization.company_name,
+                organization_id=str(organization.id),
+            )
+            await notification_repo.create(
+                recipient_id=admin.id,
+                type="KYC_SUBMITTED",
+                title=f"{organization.company_name or 'An employer'} submitted KYC documents",
+                body="Review their documents to approve or reject verification.",
+                entity_type="ORGANIZATION",
+                entity_id=organization.id,
+            )
+
         await self._db.commit()
 
         return KYCStatusResponse(

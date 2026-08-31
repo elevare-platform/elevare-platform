@@ -18,7 +18,9 @@ from app.core.exceptions import (
 from app.core.storage import StorageService
 from app.modules.admin.repository import AdminRepository
 from app.modules.employer.enums import KYCStatus
+from app.modules.employer.tasks import send_kyc_approved_email, send_kyc_rejection_email
 from app.modules.jobs.enums import ModerationStatus
+from app.modules.notifications.repository import NotificationRepository
 from app.modules.users.enums import UserRole
 
 _VALID_MODERATION_ACTIONS = {
@@ -301,25 +303,44 @@ class AdminService:
         )
         await self._db.commit()
 
-        # Send email notification to employer — profile.user is gone now
-        # that an Organization can have multiple members; notify the OWNER.
-        from app.core.email import get_email_service
-
+        # Notify the employer — profile.user is gone now that an
+        # Organization can have multiple members; notify the OWNER.
         owner = next(
             (m for m in profile.members if m.organization_role == "OWNER"),
             profile.members[0] if profile.members else None,
         )
-        email_service = get_email_service()
-        employer_email = owner.email if owner else None
         company_name = profile.company_name
 
-        if employer_email:
+        if owner:
             if action == KYCStatus.REJECTED.value:
-                await email_service.send_kyc_rejection(
-                    employer_email, company_name, reason
+                send_kyc_rejection_email.delay(
+                    employer_email=owner.email,
+                    company_name=company_name,
+                    reason=reason,
+                )
+                await NotificationRepository(self._db).create(
+                    recipient_id=owner.id,
+                    type="KYC_REJECTED",
+                    title="Your company verification was rejected",
+                    body=reason
+                    or "Please review your documents and resubmit for verification.",
+                    entity_type="ORGANIZATION",
+                    entity_id=profile.id,
                 )
             elif action == KYCStatus.APPROVED.value:
-                await email_service.send_kyc_approved(employer_email, company_name)
+                send_kyc_approved_email.delay(
+                    employer_email=owner.email,
+                    company_name=company_name,
+                )
+                await NotificationRepository(self._db).create(
+                    recipient_id=owner.id,
+                    type="KYC_APPROVED",
+                    title="Your company verification was approved",
+                    body=f"{company_name or 'Your company'} is now verified. You can post jobs on Elevare.",
+                    entity_type="ORGANIZATION",
+                    entity_id=profile.id,
+                )
+            await self._db.commit()
 
         return AdminKYCEmployerResponse.from_profile(profile)
 

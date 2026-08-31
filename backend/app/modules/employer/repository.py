@@ -162,6 +162,17 @@ class EmployerRepository:
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_admin_users(self) -> list[User]:
+        """Platform admins (role=ADMIN) — used to notify someone when a
+        KYC submission needs review, since that event isn't triggered by
+        any particular admin's action.
+        """
+        from app.modules.users.enums import UserRole
+
+        stmt = select(User).where(User.role == UserRole.ADMIN.value)
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
     async def count_owners(self, organization_id: uuid.UUID) -> int:
         """Return how many OWNER-role members this organization currently has."""
         from app.modules.employer.enums import OrganizationRole

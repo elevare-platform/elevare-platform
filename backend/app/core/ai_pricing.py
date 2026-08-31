@@ -47,6 +47,17 @@ ANTHROPIC_TOKEN_PRICES: dict[str, dict[str, Decimal | None]] = {
         "cache_write_1h_per_mtok": None,
         "cache_hit_per_mtok": None,
     },
+    # settings.anthropic_model_fast's configured value — the tiering
+    # "fast pass" model for CV extraction and fit reasoning.
+    # PLACEHOLDER — not independently verified against Anthropic's pricing
+    # page, re-check before trusting for real budgeting.
+    "claude-haiku-4-5": {
+        "input_per_mtok": Decimal("1.00"),
+        "output_per_mtok": Decimal("5.00"),
+        "cache_write_5m_per_mtok": Decimal("1.25"),
+        "cache_write_1h_per_mtok": Decimal("2.00"),
+        "cache_hit_per_mtok": Decimal("0.10"),
+    },
 }
 
 # ---------------------------------------------------------------------------

@@ -121,7 +121,7 @@ async def _run_pipeline_with_llm_result(monkeypatch, db_session, llm_result):
     cv_result = _make_cv_result()
 
     async def fake_run_extraction_pipeline(file, nlp, ai_service):
-        return cv_result, (deterministic, llm_result, lang_result)
+        return cv_result, (deterministic, llm_result, lang_result), [llm_result]
 
     monkeypatch.setattr(
         "app.core.cv_pipeline.pipeline.run_extraction_pipeline",
@@ -150,6 +150,7 @@ async def _run_pipeline_with_llm_result(monkeypatch, db_session, llm_result):
 @pytest.mark.asyncio
 async def test_pipeline_writes_real_cost_row_not_hardcoded_zero(db_session, monkeypatch):
     llm_result = LLMExtractionResult(
+        model=_PRICED_MODEL,
         skills=["Python"],
         field_confidence={"skills": "high"},
         input_tokens=1800,
@@ -172,6 +173,7 @@ async def test_low_confidence_with_real_usage_still_gets_cost_row(db_session, mo
     """Regression for the original bug: the old gate skipped low-confidence
     extractions entirely, even when a real (billed) LLM call happened."""
     llm_result = LLMExtractionResult(
+        model=_PRICED_MODEL,
         skills=[],
         field_confidence={"skills": "low"},
         input_tokens=1200,

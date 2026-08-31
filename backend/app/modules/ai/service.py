@@ -85,6 +85,7 @@ class AIService(ABC):
         self,
         sections: DetectedSections,
         already_extracted: dict,
+        model: str | None = None,
     ) -> LLMExtractionResult:
         """Extract structured data from CV sections using AI."""
         ...
@@ -94,6 +95,7 @@ class AIService(ABC):
         self,
         candidate_context: str,
         job_context: str,
+        model: str | None = None,
     ) -> "FitReasoningResult":
         """Generate fit score and qualitative reasoning for a candidate-job pair."""
         ...
@@ -164,6 +166,7 @@ class KeywordAIService(AIService):
         self,
         sections,
         already_extracted: dict,
+        model: str | None = None,
     ) -> "LLMExtractionResult":
         """Return an empty extraction result (keyword service does not parse CVs)."""
         from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
@@ -174,6 +177,7 @@ class KeywordAIService(AIService):
         self,
         candidate_context: str,
         job_context: str,
+        model: str | None = None,
     ) -> "FitReasoningResult":
         """Delegate fit reasoning to MockAIService."""
         return await MockAIService().generate_fit_reasoning(
@@ -230,6 +234,7 @@ class MockAIService(AIService):
         self,
         sections: DetectedSections,
         already_extracted: dict,
+        model: str | None = None,
     ) -> LLMExtractionResult:
         """Return an empty extraction result for test purposes."""
         return LLMExtractionResult()
@@ -238,6 +243,7 @@ class MockAIService(AIService):
         self,
         candidate_context: str,
         job_context: str,
+        model: str | None = None,
     ) -> "FitReasoningResult":
         """Return a canned fit reasoning result for test purposes."""
         return FitReasoningResult(
@@ -301,12 +307,20 @@ class AnthropicCVExtractionService(AIService):
         self,
         sections: DetectedSections,
         already_extracted: dict,
+        model: str | None = None,
     ) -> LLMExtractionResult:
-        """Extract structured CV data by calling the Claude API."""
+        """Extract structured CV data by calling the Claude API.
+
+        `model` defaults to the fast tiering model — pass
+        `settings.anthropic_model` explicitly to force the deep model
+        (e.g. when re-running an extraction that the fast model got wrong).
+        """
         from app.modules.ai.prompts.cv_extraction import (
             CV_EXTRACTION_SYSTEM_PROMPT,
             build_user_prompt,
         )
+
+        model = model or settings.anthropic_model_fast
 
         user_prompt = build_user_prompt(
             already_extracted=already_extracted,
@@ -318,13 +332,13 @@ class AnthropicCVExtractionService(AIService):
 
         try:
             response = await self._client.messages.create(
-                model=settings.anthropic_model,
+                model=model,
                 # 2048 was too tight for a detailed CV (long work history,
                 # many skills/education entries) — the structured JSON
                 # response could hit the cap mid-string, producing a
                 # JSONDecodeError ("Unterminated string...") that fell back
                 # to an empty, low-confidence extraction for that CV.
-                max_tokens=4096,
+                max_tokens=5120,
                 system=CV_EXTRACTION_SYSTEM_PROMPT,
                 messages=[
                     {
@@ -338,6 +352,7 @@ class AnthropicCVExtractionService(AIService):
             data = self._parse_response(raw)
 
             return LLMExtractionResult(
+                model=model,
                 skills=data.get("skills", []),
                 years_experience=data.get("years_experience"),
                 current_title=data.get("current_title"),
@@ -434,13 +449,22 @@ class AnthropicCVExtractionService(AIService):
         self,
         candidate_context: str,
         job_context: str,
+        model: str | None = None,
     ) -> "FitReasoningResult":
-        """Generate fit score, strengths/weaknesses and summary via Claude."""
+        """Generate fit score, strengths/weaknesses and summary via Claude.
+
+        `model` defaults to the fast tiering model — pass
+        `settings.anthropic_model` explicitly to force the deep model
+        (e.g. when re-running a fit-reasoning call the fast model flagged
+        as important enough to double-check).
+        """
         from app.modules.ai.prompts.fit_reasoning import (
             FIT_REASONING_SYSTEM_PROMPT,
             build_fit_reasoning_prompt,
         )
         from app.modules.ai.schema import FitReasoningResult
+
+        model = model or settings.anthropic_model_fast
 
         user_prompt = build_fit_reasoning_prompt(
             candidate_context=candidate_context,
@@ -451,7 +475,7 @@ class AnthropicCVExtractionService(AIService):
 
         try:
             response = await self._client.messages.create(
-                model=settings.anthropic_model,
+                model=model,
                 max_tokens=1024,
                 system=FIT_REASONING_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}],
@@ -467,6 +491,7 @@ class AnthropicCVExtractionService(AIService):
                 fit_summary=data.get("fit_summary", ""),
                 input_tokens=response.usage.input_tokens,
                 output_tokens=response.usage.output_tokens,
+                model=model,
             )
         except (KeyError, TypeError, Exception) as e:
             logger.error(
@@ -672,12 +697,12 @@ class EmbeddingAIService(AIService):
             computed_at=datetime.now(UTC),
         )
 
-    async def extract_cv_data(self, sections, already_extracted):
+    async def extract_cv_data(self, sections, already_extracted, model=None):
         """Not implemented — EmbeddingAIService does not extract CV data."""
         raise NotImplementedError("EmbeddingAIService does not extract CV data.")
 
     async def generate_fit_reasoning(
-        self, candidate_context: str, job_context: str
+        self, candidate_context: str, job_context: str, model: str | None = None
     ) -> "FitReasoningResult":
         """Not implemented — EmbeddingAIService does not generate fit reasoning."""
         raise NotImplementedError("EmbeddingAIService does not generate fit reasoning.")

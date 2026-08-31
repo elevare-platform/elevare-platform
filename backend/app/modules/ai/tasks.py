@@ -56,6 +56,56 @@ def _json_serialise(obj):
 CACHE_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
 
+def _fit_score_needs_escalation(reasoning) -> bool:
+    """Whether a fast-model fit-reasoning result should be re-run on the deep model.
+
+    Triggers on the API/parse-failure sentinel `generate_fit_reasoning`
+    returns (score 0 with no summary — see service.py), or when the fast
+    model's own score lands inside the configured "important enough to
+    double-check" band.
+    """
+    if reasoning.score == 0 and not reasoning.fit_summary:
+        return True
+    low, high = settings.ai_fit_score_escalation_band
+    return low <= reasoning.score <= high
+
+
+async def _generate_tiered_fit_reasoning(ai_service, candidate_context, job_context):
+    """Run fit reasoning on the fast model first, escalating to the deep model
+    only when the fast model's own output signals it's a hard/important case.
+
+    Returns (final_reasoning, all_attempts) — all_attempts lists every LLM
+    call actually made, for accurate per-model cost tracking.
+    """
+    first_model = (
+        settings.anthropic_model_fast
+        if settings.ai_tiering_enabled
+        else settings.anthropic_model
+    )
+    reasoning = await ai_service.generate_fit_reasoning(
+        candidate_context=candidate_context,
+        job_context=job_context,
+        model=first_model,
+    )
+    attempts = [reasoning]
+
+    if settings.ai_tiering_enabled and _fit_score_needs_escalation(reasoning):
+        logger.info(
+            "Fit reasoning escalated from %s to %s — score=%s",
+            settings.anthropic_model_fast,
+            settings.anthropic_model,
+            reasoning.score,
+        )
+        reasoning = await ai_service.generate_fit_reasoning(
+            candidate_context=candidate_context,
+            job_context=job_context,
+            model=settings.anthropic_model,
+        )
+        attempts.append(reasoning)
+
+    return reasoning, attempts
+
+
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def run_full_pipeline_task(
     self,
@@ -144,6 +194,7 @@ async def _run_pipeline_async(
             (
                 cv_result,
                 (deterministic, llm_result, lang_result),
+                llm_attempts,
             ) = await run_extraction_pipeline(file, nlp, ai_service)
 
             flag_reasons = []
@@ -185,21 +236,24 @@ async def _run_pipeline_async(
                 cache_key, CACHE_TTL_SECONDS, json.dumps(parsed_data, default=str)
             )
 
-            if llm_result.input_tokens or llm_result.output_tokens:
-                from app.core.ai_pricing import compute_anthropic_cost_usd
+            from app.core.ai_pricing import compute_anthropic_cost_usd
 
-                cost_row = CVParsingCost(
-                    submission_id=submission_id,
-                    input_tokens=llm_result.input_tokens,
-                    output_tokens=llm_result.output_tokens,
-                    cost_usd=compute_anthropic_cost_usd(
-                        settings.anthropic_model,
-                        llm_result.input_tokens,
-                        llm_result.output_tokens,
-                    ),
-                    model=settings.anthropic_model,
+            for attempt in llm_attempts:
+                if not (attempt.input_tokens or attempt.output_tokens):
+                    continue
+                db.add(
+                    CVParsingCost(
+                        submission_id=submission_id,
+                        input_tokens=attempt.input_tokens,
+                        output_tokens=attempt.output_tokens,
+                        cost_usd=compute_anthropic_cost_usd(
+                            attempt.model,
+                            attempt.input_tokens,
+                            attempt.output_tokens,
+                        ),
+                        model=attempt.model,
+                    )
                 )
-                db.add(cost_row)
 
             await db.commit()
 
@@ -496,9 +550,8 @@ async def _score_application_async(application_id_str: str) -> None:
                     f"Preferred certifications: {job.preferred_certifications or ''}"
                 )
 
-                reasoning = await ai_service.generate_fit_reasoning(
-                    candidate_context=candidate_context,
-                    job_context=job_context,
+                reasoning, fit_attempts = await _generate_tiered_fit_reasoning(
+                    ai_service, candidate_context, job_context
                 )
             finally:
                 # Close before the session/engine tears down so the loop is still alive
@@ -517,20 +570,22 @@ async def _score_application_async(application_id_str: str) -> None:
                 },
             )
 
-            if reasoning.input_tokens or reasoning.output_tokens:
-                from app.core.ai_pricing import compute_anthropic_cost_usd
+            from app.core.ai_pricing import compute_anthropic_cost_usd
 
+            for attempt in fit_attempts:
+                if not (attempt.input_tokens or attempt.output_tokens):
+                    continue
                 await ai_repo.create_fit_scoring_cost_row(
                     job_id=application.job_id,
                     application_id=application_id,
-                    input_tokens=reasoning.input_tokens,
-                    output_tokens=reasoning.output_tokens,
+                    input_tokens=attempt.input_tokens,
+                    output_tokens=attempt.output_tokens,
                     cost_usd=compute_anthropic_cost_usd(
-                        settings.anthropic_model,
-                        reasoning.input_tokens,
-                        reasoning.output_tokens,
+                        attempt.model,
+                        attempt.input_tokens,
+                        attempt.output_tokens,
                     ),
-                    model=settings.anthropic_model,
+                    model=attempt.model,
                 )
 
             await db.commit()
@@ -757,9 +812,8 @@ async def _score_talent_pool_profile_async(
                     f"Preferred certifications: {job.preferred_certifications or ''}"
                 )
 
-                reasoning = await ai_service.generate_fit_reasoning(
-                    candidate_context=candidate_context,
-                    job_context=job_context,
+                reasoning, fit_attempts = await _generate_tiered_fit_reasoning(
+                    ai_service, candidate_context, job_context
                 )
             finally:
                 # Close before the session/engine tears down so the loop is still alive
@@ -778,20 +832,22 @@ async def _score_talent_pool_profile_async(
                 },
             )
 
-            if reasoning.input_tokens or reasoning.output_tokens:
-                from app.core.ai_pricing import compute_anthropic_cost_usd
+            from app.core.ai_pricing import compute_anthropic_cost_usd
 
+            for attempt in fit_attempts:
+                if not (attempt.input_tokens or attempt.output_tokens):
+                    continue
                 await ai_repo.create_fit_scoring_cost_row(
                     job_id=effective_job_id,
                     talent_pool_profile_id=profile_id,
-                    input_tokens=reasoning.input_tokens,
-                    output_tokens=reasoning.output_tokens,
+                    input_tokens=attempt.input_tokens,
+                    output_tokens=attempt.output_tokens,
                     cost_usd=compute_anthropic_cost_usd(
-                        settings.anthropic_model,
-                        reasoning.input_tokens,
-                        reasoning.output_tokens,
+                        attempt.model,
+                        attempt.input_tokens,
+                        attempt.output_tokens,
                     ),
-                    model=settings.anthropic_model,
+                    model=attempt.model,
                 )
 
             await db.commit()

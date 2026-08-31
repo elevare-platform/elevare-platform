@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, BrainCircuit, Briefcase, Video, CheckCheck } from 'lucide-react'
+import { Bell, BrainCircuit, Briefcase, Video, CheckCheck, ShieldCheck, ShieldX } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotifications } from '@/hooks/useNotifications'
 import { cn } from '@/lib/utils'
@@ -11,6 +11,9 @@ const TYPE_ICON = {
   APPLICATION_STATUS: Briefcase,
   AI_INTERVIEW_INVITE: Video,
   AI_INTERVIEW_COMPLETED: Video,
+  KYC_SUBMITTED: ShieldCheck,
+  KYC_APPROVED: ShieldCheck,
+  KYC_REJECTED: ShieldX,
 }
 
 function NotificationItem({ notification }) {

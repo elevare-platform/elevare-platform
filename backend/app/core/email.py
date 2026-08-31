@@ -135,6 +135,16 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
+    async def send_kyc_submission_notification(
+        self,
+        admin_email: str,
+        company_name: str | None,
+        organization_id: str,
+    ) -> None:
+        """Notify an admin that an employer submitted KYC documents for review."""
+        ...
+
+    @abstractmethod
     async def send_subscription_payment_failed(
         self,
         recipient_email: str,
@@ -901,7 +911,7 @@ class ResendEmailService(EmailService):
         reason: str | None,
     ) -> None:
         """Notify employer that their KYC was rejected, with a link to resubmit."""
-        cta_url = f"{settings.app_url}/employer/verify"
+        cta_url = f"{settings.app_url}/employer/verification"
         company_label = company_name or "your company"
         reason_block = (
             f"""
@@ -966,6 +976,32 @@ class ResendEmailService(EmailService):
         await self._send_html(
             subject="Company Verified — You Can Now Post Jobs",
             recipients=[employer_email],
+            html_body=html_body,
+        )
+
+    async def send_kyc_submission_notification(
+        self,
+        admin_email: str,
+        company_name: str | None,
+        organization_id: str,
+    ) -> None:
+        """Notify an admin that an employer submitted KYC documents for review."""
+        company_label = company_name or "An employer"
+        review_url = f"{settings.app_url}/admin/kyc"
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New KYC Submission</h2>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_label}</strong> has submitted company verification documents and is waiting for review.</p>
+        {_render_button("Review Submission", review_url)}
+        """
+        html_body = _render_email_layout(
+            title="New KYC Submission — Elevare",
+            preheader=f"{company_label} submitted documents for company verification.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you are an Elevare platform admin.",
+        )
+        await self._send_html(
+            subject=f"New KYC Submission — {company_label}",
+            recipients=[admin_email],
             html_body=html_body,
         )
 
@@ -1269,7 +1305,7 @@ class StubEmailService(EmailService):
     ) -> None:
         """Log a stub KYC rejection email."""
         logger.info(
-            "STUB KYC REJECTED to %s — company=%s reason=%s link=%s/employer/verify",
+            "STUB KYC REJECTED to %s — company=%s reason=%s link=%s/employer/verification",
             employer_email,
             company_name,
             reason,
@@ -1286,6 +1322,20 @@ class StubEmailService(EmailService):
             "STUB KYC APPROVED to %s — company=%s",
             employer_email,
             company_name,
+        )
+
+    async def send_kyc_submission_notification(
+        self,
+        admin_email: str,
+        company_name: str | None,
+        organization_id: str,
+    ) -> None:
+        """Log a stub KYC submission notification email."""
+        logger.info(
+            "STUB KYC SUBMITTED notify %s — company=%s organization_id=%s",
+            admin_email,
+            company_name,
+            organization_id,
         )
 
     async def send_subscription_payment_failed(
