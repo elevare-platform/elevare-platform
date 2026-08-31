@@ -59,6 +59,22 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://elevare:elevare_dev@localhost:5432/elevare_db
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: "ci-test-secret-key-not-for-production"
+          APP_VERSION: "0.0.0-ci"
+          APP_URL: "http://localhost:8000"
+          DEBUG: "true"
+          ENVIRONMENT: "test"
+          CORS_ORIGINS: '["http://localhost:5173"]'
+          COOKIE_SECURE: "false"
+          HMAC_SECRET: "ci-test-hmac-secret-not-for-production"
+          PLAN_GATES_ENABLED: "true"
+          KYC_ENFORCEMENT_ENABLED: "true"
+          REALTIME_MODEL: "ci-realtime-model"
+          TRANSCRIPTION_MODEL: "ci-transcription-model"
+          INTERVIEW_MAX_DURATION_MINUTES: "30"
+          INTERVIEW_VIDEO_RETENTION_DAYS: "30"
+          GMAIL_REDIRECT_URI: "http://localhost:8000/oauth/gmail/callback"
+          ZOHO_REDIRECT_URI: "http://localhost:8000/oauth/zoho/callback"
+          ZOHO_ACCOUNTS_URL: "https://accounts.zoho.com"
 
       - name: Ruff lint
         run: ruff check .
@@ -79,3 +95,15 @@ jobs:
           ACCESS_TOKEN_EXPIRE_MINUTES: "30"
           REFRESH_TOKEN_EXPIRE_DAYS: "30"
           ALGORITHM: "HS256"
+          APP_VERSION: "0.0.0-ci"
+          APP_URL: "http://localhost:8000"
+          CORS_ORIGINS: '["http://localhost:5173"]'
+          PLAN_GATES_ENABLED: "true"
+          KYC_ENFORCEMENT_ENABLED: "true"
+          REALTIME_MODEL: "ci-realtime-model"
+          TRANSCRIPTION_MODEL: "ci-transcription-model"
+          INTERVIEW_MAX_DURATION_MINUTES: "30"
+          INTERVIEW_VIDEO_RETENTION_DAYS: "30"
+          GMAIL_REDIRECT_URI: "http://localhost:8000/oauth/gmail/callback"
+          ZOHO_REDIRECT_URI: "http://localhost:8000/oauth/zoho/callback"
+          ZOHO_ACCOUNTS_URL: "https://accounts.zoho.com"
