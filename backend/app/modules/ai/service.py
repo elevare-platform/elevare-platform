@@ -585,11 +585,11 @@ class EmbeddingAIService(AIService):
     """Embedding-based scoring service backed by the OpenAI embedding API."""
 
     def __init__(self) -> None:
-        """Initialise the OpenAI async client using the configured API key."""
-        self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        """Initialise the service; the OpenAI client is created lazily."""
+        self._client: AsyncOpenAI | None = None
 
     async def close(self) -> None:
-        """Close the underlying httpx client.
+        """Close the underlying httpx client, if one was created.
 
         Callers (Celery tasks run via asyncio.run()) must call this before
         their event loop is torn down — otherwise the client's connections
@@ -597,11 +597,20 @@ class EmbeddingAIService(AIService):
         longer exists, which surfaces as a noisy but real resource leak
         ("Event loop is closed") on every embedding task run.
         """
-        await self._client.close()
+        if self._client is not None:
+            await self._client.close()
+
+    def _get_client(self) -> AsyncOpenAI:
+        """Lazily construct the OpenAI client so callers that never generate
+        embeddings (e.g. cosine-similarity scoring given precomputed
+        vectors) don't require OPENAI_API_KEY to be set."""
+        if self._client is None:
+            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        return self._client
 
     async def generate_embedding(self, text: str) -> list[float]:
         """Call OpenAI text-embedding-3-small and return the 1536-dim vector."""
-        response = await self._client.embeddings.create(
+        response = await self._get_client().embeddings.create(
             input=text,
             model="text-embedding-3-small",
         )
