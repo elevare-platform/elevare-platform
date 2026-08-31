@@ -47,6 +47,7 @@ celery = Celery(
         "app.modules.applications.tasks",
         "app.modules.billing.tasks",  # payment reconciliation
         "app.modules.contact.tasks",  # contact form notification emails
+        "app.modules.employer.tasks",  # KYC submission notification emails
         "app.modules.ingestion.tasks",  # candidate ingestion
         "app.modules.introductions.tasks",  # introduction request emails
         "app.modules.interviews.tasks",  # AI video interview invite emails

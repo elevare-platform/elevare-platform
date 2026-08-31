@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 class LLMExtractionResult:
     """Structured output from the LLM CV extraction step."""
 
+    model: str = ""
     skills: list[str] = field(default_factory=list)
     years_experience: int | None = None
     current_title: str | None = None

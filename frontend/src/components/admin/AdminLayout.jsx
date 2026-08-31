@@ -6,6 +6,7 @@ import {
   DollarSign
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import NotificationBell from '@/components/layout/NotificationBell'
 import ehsLogo from '@/assets/ehs-logo.png'
 
 const NAV = [
@@ -102,7 +103,12 @@ export default function AdminLayout({ children }) {
             <Menu size={20} />
           </button>
           <img src={ehsLogo} alt="Elevare" width={81} height={28} className="h-7 w-auto" />
-          <div className="w-9" />
+          <NotificationBell />
+        </header>
+
+        {/* Desktop topbar */}
+        <header className="hidden lg:flex items-center justify-end px-6 py-3 bg-white border-b border-border">
+          <NotificationBell />
         </header>
 
         <main className="flex-1 p-6">

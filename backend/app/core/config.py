@@ -81,6 +81,21 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-3-5-sonnet-20241022"
 
+    # Tiered AI model routing — the fast/cheap model used as a first pass for
+    # CV extraction and fit reasoning, escalating to anthropic_model (Sonnet)
+    # only when the fast model's own output signals it's a hard/important case.
+    anthropic_model_fast: str = "claude-haiku-4-5"
+    ai_tiering_enabled: bool = True
+    # Below this average field_confidence, a Haiku CV extraction is re-run on Sonnet.
+    ai_cv_confidence_escalation_threshold: float = 0.75
+    # Haiku fit-reasoning scores inside this [low, high] band are re-run on Sonnet —
+    # start wide (conservative) and narrow once real escalation-rate data comes in.
+    ai_fit_score_escalation_band: tuple[int, int] = (35, 100)
+    anthropic_model_fast: str = "claude-haiku-4-5"
+    ai_tiering_enabled: bool = True
+    ai_cv_confidence_escalation_threshold: float = 0.65
+    ai_fit_score_escalation_threshold: int = 40
+
     # HMAC secret for CV text cache keys
     hmac_secret: str
 

@@ -72,6 +72,7 @@ class FitReasoningResult:
     fit_summary: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
+    model: str = ""
 
 
 @dataclass

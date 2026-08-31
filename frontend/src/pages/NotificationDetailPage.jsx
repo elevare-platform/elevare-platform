@@ -5,6 +5,7 @@ import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
+import { useAuth } from '@/context/AuthContext'
 
 /**
  * NotificationDetailPage - the full view of a single notification,
@@ -35,6 +36,15 @@ function resolveAction(notification) {
       label: 'View interview list',
       to: `/employer/jobs/${notification.entity_id}/applicants?tab=interview-list`,
     }
+  }
+  if (notification.type === 'KYC_SUBMITTED' && notification.entity_type === 'ORGANIZATION') {
+    return { label: 'Review submission', to: '/admin/kyc' }
+  }
+  if (notification.type === 'KYC_APPROVED' && notification.entity_type === 'ORGANIZATION') {
+    return { label: 'Post a job', to: '/employer/jobs/new' }
+  }
+  if (notification.type === 'KYC_REJECTED' && notification.entity_type === 'ORGANIZATION') {
+    return { label: 'Resubmit verification', to: '/employer/verification' }
   }
   return null
 }
@@ -91,9 +101,11 @@ function ResendInviteAction({ jobId, talentPoolProfileId }) {
 
 export default function NotificationDetailPage() {
   const { id } = useParams()
+  const { user } = useAuth()
   const [notification, setNotification] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const backTo = user?.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard'
 
   useEffect(() => {
     let cancelled = false
@@ -115,7 +127,7 @@ export default function NotificationDetailPage() {
       <main className="min-h-screen bg-background pt-16">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <Link
-            to="/dashboard"
+            to={backTo}
             className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text mb-6 transition-colors"
           >
             <ArrowLeft size={16} />

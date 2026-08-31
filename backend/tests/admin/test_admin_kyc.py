@@ -75,16 +75,24 @@ async def test_list_kyc_submissions_filters_by_status(db_session):
 
 
 @pytest.mark.asyncio
-async def test_moderate_kyc_approves_and_logs(db_session):
+async def test_moderate_kyc_approves_and_logs(db_session, monkeypatch):
     """moderate_kyc flips kyc_status to APPROVED and writes an audit log entry."""
+    from unittest.mock import Mock
+
     from sqlalchemy import select
 
+    from app.modules.admin import service as admin_service_module
     from app.modules.admin.models import AuditLog
+    from app.modules.notifications.models import Notification
+
+    mock_task = Mock()
+    mock_task.delay = Mock()
+    monkeypatch.setattr(admin_service_module, "send_kyc_approved_email", mock_task)
 
     admin = make_user(role=UserRole.ADMIN.value)
     db_session.add(admin)
     await db_session.flush()
-    _, profile, _doc = await make_employer_with_pending_kyc(db_session)
+    employer, profile, _doc = await make_employer_with_pending_kyc(db_session)
 
     service = AdminService(db_session)
     result = await service.moderate_kyc(
@@ -101,14 +109,35 @@ async def test_moderate_kyc_approves_and_logs(db_session):
     assert log.log_metadata["before"]["kyc_status"] == "PENDING"
     assert log.log_metadata["after"]["kyc_status"] == "APPROVED"
 
+    assert mock_task.delay.call_count == 1
+    assert mock_task.delay.call_args.kwargs["employer_email"] == employer.email
+
+    notif_result = await db_session.execute(
+        select(Notification).where(Notification.recipient_id == employer.id)
+    )
+    notification = notif_result.scalar_one()
+    assert notification.type == "KYC_APPROVED"
+    assert notification.entity_id == profile.id
+
 
 @pytest.mark.asyncio
-async def test_moderate_kyc_rejects_with_reason(db_session):
+async def test_moderate_kyc_rejects_with_reason(db_session, monkeypatch):
     """moderate_kyc flips kyc_status to REJECTED and stores the rejection reason."""
+    from unittest.mock import Mock
+
+    from sqlalchemy import select
+
+    from app.modules.admin import service as admin_service_module
+    from app.modules.notifications.models import Notification
+
+    mock_task = Mock()
+    mock_task.delay = Mock()
+    monkeypatch.setattr(admin_service_module, "send_kyc_rejection_email", mock_task)
+
     admin = make_user(role=UserRole.ADMIN.value)
     db_session.add(admin)
     await db_session.flush()
-    _, profile, _doc = await make_employer_with_pending_kyc(db_session)
+    employer, profile, _doc = await make_employer_with_pending_kyc(db_session)
 
     service = AdminService(db_session)
     result = await service.moderate_kyc(
@@ -120,6 +149,19 @@ async def test_moderate_kyc_rejects_with_reason(db_session):
 
     assert result.kyc_status == "REJECTED"
     assert result.kyc_rejection_reason == "Business registration document is illegible"
+
+    assert mock_task.delay.call_count == 1
+    assert mock_task.delay.call_args.kwargs["employer_email"] == employer.email
+    assert mock_task.delay.call_args.kwargs["reason"] == (
+        "Business registration document is illegible"
+    )
+
+    notif_result = await db_session.execute(
+        select(Notification).where(Notification.recipient_id == employer.id)
+    )
+    notification = notif_result.scalar_one()
+    assert notification.type == "KYC_REJECTED"
+    assert notification.entity_id == profile.id
 
 
 @pytest.mark.asyncio
