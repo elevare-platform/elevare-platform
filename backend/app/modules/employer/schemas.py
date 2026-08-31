@@ -46,3 +46,22 @@ class KYCStatusResponse(BaseModel):
     documents: list[KYCDocumentResponse]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TeamMemberResponse(BaseModel):
+    """A single member of an organization's team."""
+
+    id: uuid.UUID
+    first_name: str
+    last_name: str
+    email: str
+    organization_role: str | None
+    joined_organization_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InviteTeammateRequest(BaseModel):
+    """Request body for inviting a teammate into the caller's organization."""
+
+    email: str

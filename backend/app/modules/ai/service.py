@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.cv_pipeline.layer3_sections import DetectedSections
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
 
-from .schema import FitReasoningResult, MatchResult
+from .schema import FitReasoningResult, InterviewScoringResult, MatchResult
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,16 @@ class AIService(ABC):
         job_description: str,
         job_title: str,
         required_skills: list[str] | None = None,
+        candidate_embedding: list[float] | None = None,
+        job_embedding: list[float] | None = None,
     ) -> MatchResult:
-        """Compute a match score between a candidate's skills and a job."""
+        """Compute a match score between a candidate's skills and a job.
+
+        `candidate_embedding`/`job_embedding`, when both given, let an
+        embedding-capable implementation score by semantic similarity
+        instead of keyword overlap — see EmbeddingAIService. Implementations
+        that don't support embeddings simply ignore them.
+        """
         ...
 
     @abstractmethod
@@ -125,8 +133,14 @@ class KeywordAIService(AIService):
         job_description: str,
         job_title: str,
         required_skills: list[str] | None = None,
+        candidate_embedding: list[float] | None = None,
+        job_embedding: list[float] | None = None,
     ) -> MatchResult:
-        """Score a candidate against a job using keyword matching."""
+        """Score a candidate against a job using keyword matching.
+
+        Ignores candidate_embedding/job_embedding — this is the
+        no-API-key fallback and never computes embeddings.
+        """
         if required_skills:
             required_lower = [s.lower() for s in required_skills]
             matched = [s for s in candidate_skills if s.lower() in required_lower]
@@ -201,6 +215,8 @@ class MockAIService(AIService):
         job_description: str,
         job_title: str,
         required_skills: list[str] | None = None,
+        candidate_embedding: list[float] | None = None,
+        job_embedding: list[float] | None = None,
     ) -> MatchResult:
         """Return a fixed score of 75 for test purposes."""
         return MatchResult(
@@ -265,7 +281,13 @@ class AnthropicCVExtractionService(AIService):
 
     # Stub for the existing method - this class only handles CV extraction
     async def compute_match_score(
-        self, candidate_skills, job_description, job_title, required_skills=None
+        self,
+        candidate_skills,
+        job_description,
+        job_title,
+        required_skills=None,
+        candidate_embedding=None,
+        job_embedding=None,
     ):
         """Delegate match scoring to KeywordAIService (this class handles CV extraction only)."""
         return await KeywordAIService().compute_match_score(
@@ -324,6 +346,8 @@ class AnthropicCVExtractionService(AIService):
                 summary=data.get("summary"),
                 work_history=data.get("work_history", []),
                 education=data.get("education", []),
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
                 field_confidence=data.get("field_confidence", {}),
             )
         except (KeyError, TypeError, Exception) as e:
@@ -441,6 +465,8 @@ class AnthropicCVExtractionService(AIService):
                 strengths=data.get("strengths", []),
                 weaknesses=data.get("weaknesses", []),
                 fit_summary=data.get("fit_summary", ""),
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
             )
         except (KeyError, TypeError, Exception) as e:
             logger.error(
@@ -451,6 +477,57 @@ class AnthropicCVExtractionService(AIService):
                 job_context[:300],
             )
             return FitReasoningResult(score=0)
+
+    async def score_interview_transcript(
+        self,
+        interview_brief: str,
+        transcript: str,
+        job_context: str = "",
+    ) -> "InterviewScoringResult":
+        """Score an interview transcript against the employer's brief via Claude."""
+        from app.modules.ai.prompts.interview_scoring import (
+            build_interview_scoring_prompt,
+        )
+        from app.modules.ai.schema import InterviewScoringResult
+
+        system_prompt, user_prompt = build_interview_scoring_prompt(
+            interview_brief=interview_brief,
+            transcript=transcript,
+            scoring_rubric=interview_brief,
+            job_context=job_context,
+        )
+
+        raw = ""
+
+        try:
+            response = await self._client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=3072,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+
+            raw = response.content[0].text
+            data = self._parse_response(raw)
+
+            return InterviewScoringResult(
+                score=max(0, min(100, int(data.get("score", 0)))),
+                summary=data.get("summary", ""),
+                strengths=data.get("strengths", []),
+                weaknesses=data.get("weaknesses", []),
+                missing_evidence=data.get("missing_evidence", []),
+                contradictions=data.get("contradictions", []),
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+            )
+        except Exception as e:
+            logger.error(
+                "LLM Interview Scoring failed: %s | prompt_length=%d | interview_brief=%s",
+                e,
+                len(user_prompt),
+                interview_brief[:300],
+            )
+            return InterviewScoringResult(score=0)
 
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate a 1536-dim embedding vector for the given text."""
@@ -508,11 +585,11 @@ class EmbeddingAIService(AIService):
     """Embedding-based scoring service backed by the OpenAI embedding API."""
 
     def __init__(self) -> None:
-        """Initialise the OpenAI async client using the configured API key."""
-        self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        """Initialise the service; the OpenAI client is created lazily."""
+        self._client: AsyncOpenAI | None = None
 
     async def close(self) -> None:
-        """Close the underlying httpx client.
+        """Close the underlying httpx client, if one was created.
 
         Callers (Celery tasks run via asyncio.run()) must call this before
         their event loop is torn down — otherwise the client's connections
@@ -520,11 +597,20 @@ class EmbeddingAIService(AIService):
         longer exists, which surfaces as a noisy but real resource leak
         ("Event loop is closed") on every embedding task run.
         """
-        await self._client.close()
+        if self._client is not None:
+            await self._client.close()
+
+    def _get_client(self) -> AsyncOpenAI:
+        """Lazily construct the OpenAI client so callers that never generate
+        embeddings (e.g. cosine-similarity scoring given precomputed
+        vectors) don't require OPENAI_API_KEY to be set."""
+        if self._client is None:
+            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        return self._client
 
     async def generate_embedding(self, text: str) -> list[float]:
         """Call OpenAI text-embedding-3-small and return the 1536-dim vector."""
-        response = await self._client.embeddings.create(
+        response = await self._get_client().embeddings.create(
             input=text,
             model="text-embedding-3-small",
         )
@@ -541,11 +627,49 @@ class EmbeddingAIService(AIService):
         return max(0, min(100, round((similarity + 1) / 2 * 100)))
 
     async def compute_match_score(
-        self, candidate_skills, job_description, job_title, required_skills=None
+        self,
+        candidate_skills,
+        job_description,
+        job_title,
+        required_skills=None,
+        candidate_embedding=None,
+        job_embedding=None,
     ):
-        """Delegate to KeywordAIService for keyword-based match scoring."""
-        return await KeywordAIService().compute_match_score(
-            candidate_skills, job_description, job_title, required_skills
+        """Embedding-based match score — the same formula Talent Pool and
+        Candidate Search already use (cosine similarity, scaled 0-100,
+        modulated 0.5-1.0 by skill overlap — see
+        talent_pool/service.py::get_top_matches_for_job), so a score means
+        the same thing everywhere in the app instead of Applications being
+        structurally weaker than the other two surfaces.
+
+        Falls back to keyword matching when either embedding is missing
+        (e.g. a candidate profile or job that hasn't been embedded yet) —
+        the same fallback behavior this always had, just narrower now that
+        the embedding path actually works.
+        """
+        if candidate_embedding is None or job_embedding is None:
+            return await KeywordAIService().compute_match_score(
+                candidate_skills, job_description, job_title, required_skills
+            )
+
+        from app.modules.ai.scoring_service import compute_skill_overlap_modulator
+
+        a = np.array(candidate_embedding)
+        b = np.array(job_embedding)
+        cosine_similarity = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+        embedding_score = max(0, min(100, round(cosine_similarity * 100)))
+
+        modulator = compute_skill_overlap_modulator(candidate_skills, required_skills)
+        final_score = max(0, min(100, round(embedding_score * modulator)))
+
+        required_lower = {s.lower() for s in (required_skills or [])}
+        matched = [s for s in (candidate_skills or []) if s.lower() in required_lower][:3]
+
+        return MatchResult(
+            score=final_score,
+            matched_keywords=matched,
+            total_job_keywords=len(required_skills or []),
+            computed_at=datetime.now(UTC),
         )
 
     async def extract_cv_data(self, sections, already_extracted):

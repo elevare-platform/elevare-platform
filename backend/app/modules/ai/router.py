@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import UTC, date, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cost_trend import build_flat_series
 from app.core.dependencies import get_db, require_role
 from app.modules.ai.enums import JobDescriptionMode
+from app.modules.ai.repository import AIRepository
 from app.modules.ai.schema import (
     JobDescriptionRequest,
     JobDescriptionResponse,
@@ -16,6 +20,36 @@ from app.modules.jobs.schemas import build_full_description
 from app.modules.users.models import User
 
 router = APIRouter()
+
+
+@router.get("/fit-scoring/costs", status_code=200)
+async def get_fit_scoring_costs(
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the current month's LLM cost summary for candidate-vs-job fit
+    scoring (Application and talent-pool "score against job" flows). Admin only.
+    """
+    now = datetime.now(UTC)
+    row = await AIRepository(db).get_monthly_fit_scoring_cost_summary()
+    return {
+        "month": now.strftime("%Y-%m"),
+        "total_cost_usd": float(row.total_cost) if row.total_cost is not None else None,
+        "total_llm_calls": row.total_calls or 0,
+    }
+
+
+@router.get("/fit-scoring/costs/trend", status_code=200)
+async def get_fit_scoring_costs_trend(
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a monthly fit-scoring cost/call trend, optionally bounded by
+    ?from=&to= (YYYY-MM-DD). Omit both for the full history. Admin only."""
+    rows = await AIRepository(db).get_fit_scoring_cost_trend(from_date, to_date)
+    return {"series": build_flat_series(rows, from_date, to_date)}
 
 # Modes that require existing text to operate on
 _MODES_REQUIRING_TEXT = {
@@ -61,6 +95,8 @@ async def ai_match(
         ),
         job.title or "",
         job.required_skills or [],
+        candidate_embedding=candidate.profile_embedding,
+        job_embedding=job.job_embedding,
     )
 
 

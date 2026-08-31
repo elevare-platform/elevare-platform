@@ -13,9 +13,16 @@ issues during initialization.
 """
 
 from app.modules.admin.models import AuditLog
-from app.modules.ai.models import CVParsingCost, ParsedCVSubmission
+from app.modules.ai.models import CVParsingCost, FitScoringCost, ParsedCVSubmission
 from app.modules.applications.models import Application
 from app.modules.auth.models import EmailVerificationToken, InviteToken, RefreshToken
+from app.modules.billing.models import (
+    CreditPackage,
+    Payment,
+    Plan,
+    Subscription,
+    WebhookEvent,
+)
 from app.modules.candidates.models import (
     CandidateCvs,
     CandidateDocuments,
@@ -29,13 +36,14 @@ from app.modules.credits.models import CreditTransaction, EmployerCredits
 from app.modules.employer.models import KYCDocument
 from app.modules.ingestion.models import IngestionImportRun, MailIntegration
 from app.modules.interview_list.models import InterviewListEntry
+from app.modules.interviews.models import Interview, InterviewCost
 from app.modules.introductions.models import IntroductionRequest
 from app.modules.jobs.models import Job, JobAccessTokens
 from app.modules.notifications.models import Notification
 from app.modules.saved_candidates.models import SavedCandidate
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.testimonials.models import Testimonial
-from app.modules.users.models import EmployerProfile, User, UserProfile
+from app.modules.users.models import Organization, User, UserProfile
 
 __all__ = [
     "EmailVerificationToken",
@@ -52,12 +60,13 @@ __all__ = [
     "TalentPoolProfiles",
     "User",
     "UserProfile",
-    "EmployerProfile",
+    "Organization",
     "Application",
     "AuditLog",
     "ContactSubmission",
     "ParsedCVSubmission",
     "CVParsingCost",
+    "FitScoringCost",
     "Testimonial",
     "MailIntegration",
     "IngestionImportRun",
@@ -68,4 +77,11 @@ __all__ = [
     "Notification",
     "SavedCandidate",
     "InterviewListEntry",
+    "Interview",
+    "InterviewCost",
+    "Plan",
+    "CreditPackage",
+    "Subscription",
+    "Payment",
+    "WebhookEvent",
 ]

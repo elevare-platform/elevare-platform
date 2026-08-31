@@ -14,7 +14,7 @@ from typing import TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Select, desc, func, select
+from sqlalchemy import Select, and_, desc, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationException
@@ -23,14 +23,20 @@ from app.core.schemas import PaginationMeta, PaginationResponse
 T = TypeVar("T")
 
 
-def encode_cursor(created_at: datetime, id: UUID) -> str:
-    """Encode (created_at, id) into a base64 URL-safe cursor string."""
-    raw = f"{created_at.isoformat()}:{str(id)}"
+def encode_cursor(created_at: datetime, id: UUID, sort_value: float | None = None) -> str:
+    """Encode (created_at, id) — plus an optional secondary sort value — into a cursor.
+
+    ``sort_value`` is only meaningful when the query was paginated with an extra
+    ``sort_column`` (see ``paginate_cursor``); callers that don't use one simply
+    never read it back out.
+    """
+    sort_value_str = "" if sort_value is None else repr(sort_value)
+    raw = f"{sort_value_str}:{created_at.isoformat()}:{str(id)}"
     return base64.urlsafe_b64encode(raw.encode()).decode()
 
 
-def decode_cursor(cursor: str) -> tuple[datetime, UUID]:
-    """Decode a base64 URL-safe cursor string into (created_at, id).
+def decode_cursor(cursor: str) -> tuple[float | None, datetime, UUID]:
+    """Decode a base64 URL-safe cursor string into (sort_value, created_at, id).
 
     Raises:
         ValidationException: If the cursor string is malformed or cannot be decoded.
@@ -38,10 +44,12 @@ def decode_cursor(cursor: str) -> tuple[datetime, UUID]:
     """
     try:
         raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        sort_value_str, rest = raw.split(":", 1)
         # rsplit from the right once — datetime contains colons too
-        created_at_str, id_str = raw.rsplit(":", 1)
+        created_at_str, id_str = rest.rsplit(":", 1)
         created_at = datetime.fromisoformat(created_at_str)
-        return created_at, UUID(id_str)
+        sort_value = float(sort_value_str) if sort_value_str else None
+        return sort_value, created_at, UUID(id_str)
     except Exception as exc:
         raise ValidationException(message="Invalid pagination cursor") from exc
 
@@ -51,6 +59,7 @@ async def paginate_cursor(
     session: AsyncSession,
     cursor: str | None = None,
     limit: int = 20,
+    sort_column: str | None = None,
 ) -> dict:
     """Paginate a query using cursor-based (keyset) pagination.
 
@@ -59,6 +68,11 @@ async def paginate_cursor(
         session: The async database session.
         cursor: Opaque cursor string from the previous page, or None for the first page.
         limit: Number of items per page (default 20, max 100).
+        sort_column: Optional name of a nullable numeric column to sort by (DESC,
+            NULLS LAST) ahead of the default created_at/id ordering — e.g. "ai_score".
+            When given, the keyset filter and cursor stay consistent with that
+            ordering across pages; when omitted, behavior is unchanged (created_at
+            desc, id desc).
 
     Returns:
         A dict with ``items``, ``next_cursor``, ``count`` (page size), and ``total``
@@ -70,21 +84,42 @@ async def paginate_cursor(
     count_query = select(func.count()).select_from(query.subquery())
     total: int = (await session.scalar(count_query)) or 0
 
-    if cursor:
-        from sqlalchemy import tuple_
+    created_at_col = query.froms[0].c.created_at
+    id_col = query.froms[0].c.id
+    sort_col = getattr(query.froms[0].c, sort_column) if sort_column else None
 
-        created_at, last_id = decode_cursor(cursor)
-        # Keyset filter: rows older than the cursor position
-        query = query.where(
-            tuple_(
-                query.froms[0].c.created_at,
-                query.froms[0].c.id,
+    if cursor:
+        last_sort_value, created_at, last_id = decode_cursor(cursor)
+        if sort_col is not None:
+            if last_sort_value is None:
+                # Cursor is already in the NULLS-LAST tail: stay there.
+                query = query.where(
+                    and_(
+                        sort_col.is_(None),
+                        tuple_(created_at_col, id_col) < tuple_(created_at, last_id),
+                    )
+                )
+            else:
+                query = query.where(
+                    or_(
+                        sort_col < last_sort_value,
+                        and_(
+                            sort_col == last_sort_value,
+                            tuple_(created_at_col, id_col) < tuple_(created_at, last_id),
+                        ),
+                    )
+                )
+        else:
+            # Keyset filter: rows older than the cursor position
+            query = query.where(
+                tuple_(created_at_col, id_col) < tuple_(created_at, last_id)
             )
-            < tuple_(created_at, last_id)
-        )
+
+    order_cols = [sort_col.desc().nulls_last()] if sort_col is not None else []
+    order_cols += [desc("created_at"), desc("id")]
 
     # Fetch one extra item to detect whether a next page exists
-    query = query.order_by(desc("created_at"), desc("id")).limit(limit + 1)
+    query = query.order_by(*order_cols).limit(limit + 1)
 
     result = await session.execute(query)
     items = result.scalars().all()
@@ -96,7 +131,8 @@ async def paginate_cursor(
     next_cursor = None
     if has_next and items:
         last = items[-1]
-        next_cursor = encode_cursor(last.created_at, last.id)
+        last_sort_value = getattr(last, sort_column) if sort_column else None
+        next_cursor = encode_cursor(last.created_at, last.id, last_sort_value)
 
     return {
         "items": items,

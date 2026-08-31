@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { isValidPhoneNumber } from 'react-phone-number-input'
 import { storePostVerifyNext } from '@/pages/auth/VerifyEmailPage'
+import { trackEvent } from '@/lib/analytics'
 import { Eye, EyeOff, Loader2, Check, X, Briefcase, User } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
@@ -206,6 +207,7 @@ function RegisterForm({ role, onBack }) {
         role,
         cv_sharing_consent: values.cv_sharing_consent ?? false,
       })
+      trackEvent('Auth', 'signup_completed', role)
       // Store intended destination so VerifyEmailPage can redirect there after verification.
       const postVerifyDest = next || getPostAuthRedirect(user)
       storePostVerifyNext(postVerifyDest)

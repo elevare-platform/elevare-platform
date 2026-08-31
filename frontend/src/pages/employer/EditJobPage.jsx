@@ -31,8 +31,7 @@ export default function EditJobPage() {
   const handleSubmit = async (data) => {
     const isLiveApproved = job?.status === 'ACTIVE' && job?.moderation_status === 'APPROVED'
     if (isLiveApproved && !window.confirm(
-      'This listing is live. Submitting will pull it offline and re-queue it for admin review — ' +
-      "it won't be visible to candidates again until an admin re-approves it. Continue?"
+      'This listing is live. Submitting will pull it offline for admin review, and candidates will not see it until it is re-approved. Continue?'
     )) {
       return
     }
@@ -44,7 +43,7 @@ export default function EditJobPage() {
       navigate('/employer/jobs')
     } catch (err) {
       const body = err.response?.data
-      if (Array.isArray(body?.details)) {
+      if (body?.details?.length > 0) {
         // Custom handler: { details: [{ field, message }] }
         setSubmitError(body.details.map((e) => `${e.field}: ${e.message}`).join(' · '))
       } else {
@@ -65,6 +64,7 @@ export default function EditJobPage() {
     preferred_certifications:   job.preferred_certifications ?? '',
     technical_competencies:     job.technical_competencies ?? '',
     what_we_offer:              job.what_we_offer ?? '',
+    interview_brief:            job.interview_brief ?? '',
     location:                   job.location ?? '',
     contract_type:              job.contract_type ?? undefined,
     work_model:                 job.work_model ?? '',
@@ -108,8 +108,8 @@ export default function EditJobPage() {
 
           {job && job.status === 'ACTIVE' && job.moderation_status === 'APPROVED' && (
             <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 mb-6">
-              This listing is live. Saving changes will pull it offline and re-queue it for admin
-              review — it won't be visible to candidates again until an admin re-approves it.
+              This listing is live. Saving changes will pull it offline for admin review.
+              Candidates will not see it until an admin re-approves it.
             </div>
           )}
 
@@ -120,8 +120,8 @@ export default function EditJobPage() {
                 {job.moderation_reason ?? 'No reason was given.'}
               </p>
               <p className="mt-1.5 text-red-600">
-                Saving here only updates the content — go back to My Jobs and use "Resubmit for
-                review" once you're ready for another admin review.
+                Saving here only updates the content. Go back to My Jobs and select "Resubmit for
+                review" when you are ready.
               </p>
             </div>
           )}

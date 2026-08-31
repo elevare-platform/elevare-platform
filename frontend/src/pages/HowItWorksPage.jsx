@@ -79,7 +79,7 @@ const CANDIDATE_STEPS = [
 const EMPLOYER_FAQS = [
   {
     q: 'How quickly will I see candidates after posting a job?',
-    a: 'Most roles receive an initial shortlist within 3–5 business days, depending on the seniority and availability of candidates in the market.',
+    a: 'Most roles receive an initial shortlist within 3 to 5 business days, depending on the seniority and availability of candidates in the market.',
   },
   {
     q: 'Do I need to pay to post a job?',

@@ -11,6 +11,8 @@ import { cn, formatSalary } from '@/lib/utils'
 import api from '@/lib/api'
 import { ApplyButton } from '@/components/jobs/ApplyButton'
 import { buildJobPostingSchema } from '@/lib/jobPostingSchema'
+import PlanUpgradeLink from '@/components/PlanUpgradeLink'
+import { isPlanLimitMessage } from '@/lib/planErrors'
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
@@ -141,8 +143,8 @@ export default function JobDetailPage() {
     try {
       const { data } = await api.post(`/api/v1/jobs/${job.id}/publish`)
       setJob((prev) => ({ ...prev, status: data.status ?? 'ACTIVE' }))
-    } catch {
-      setActionError('Failed to publish job. Please try again.')
+    } catch (err) {
+      setActionError(err.response?.data?.message ?? 'Failed to publish job. Please try again.')
     } finally {
       setActionLoading(false)
     }
@@ -176,7 +178,7 @@ export default function JobDetailPage() {
   const salaryText = (() => {
     const min = job?.salary_min != null ? Number(job.salary_min) : null
     const max = job?.salary_max != null ? Number(job.salary_max) : null
-    if (min != null && max != null) return `${formatSalary(min)} – ${formatSalary(max)}`
+    if (min != null && max != null) return `${formatSalary(min)} - ${formatSalary(max)}`
     if (min != null) return formatSalary(min)
     if (max != null) return formatSalary(max)
     return null
@@ -340,7 +342,12 @@ export default function JobDetailPage() {
                       <Button size="sm" variant="outline" disabled={actionLoading}>Edit</Button>
                     </Link>
                   )}
-                  {actionError && <p className="w-full text-sm text-red-600 mt-1">{actionError}</p>}
+                  {actionError && (
+                    <p className="w-full text-sm text-red-600 mt-1">
+                      {actionError}
+                      {isPlanLimitMessage(actionError) && <PlanUpgradeLink />}
+                    </p>
+                  )}
                 </div>
               )}
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Building2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Building2, Sparkles, CheckCircle2 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,12 @@ function ApplicationCard({ application, onWithdraw }) {
   const [withdrawing, setWithdrawing] = useState(false)
 
   const canWithdraw = application.status === 'SUBMITTED' || application.status === 'REVIEWING'
+  const interviewCompleted = application.interview_status === 'UPLOADED'
+    || application.interview_status === 'SCORED'
+  const canInterview = application.has_ai_interview
+    && !interviewCompleted
+    && application.status !== 'REJECTED'
+    && application.status !== 'WITHDRAWN'
 
   const handleWithdraw = async () => {
     if (!window.confirm('Are you sure you want to withdraw this application?')) return
@@ -87,18 +94,36 @@ function ApplicationCard({ application, onWithdraw }) {
         </p>
       </div>
 
-      {/* Withdraw */}
-      {canWithdraw && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleWithdraw}
-          disabled={withdrawing}
-          className="flex-shrink-0 text-red-600 border-red-200 hover:bg-red-50"
-        >
-          {withdrawing ? 'Withdrawing…' : 'Withdraw'}
-        </Button>
-      )}
+      {/* Actions */}
+      <div className="flex flex-shrink-0 items-center gap-2">
+        {canInterview && (
+          <Button size="sm" asChild>
+            <Link to={`/candidate/applications/${application.id}/interview`} className="inline-flex items-center gap-1.5">
+              <Sparkles size={14} />
+              Start AI Interview
+            </Link>
+          </Button>
+        )}
+
+        {application.has_ai_interview && interviewCompleted && (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+            <CheckCircle2 size={13} />
+            Interview completed
+          </span>
+        )}
+
+        {canWithdraw && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleWithdraw}
+            disabled={withdrawing}
+            className="text-red-600 border-red-200 hover:bg-red-50"
+          >
+            {withdrawing ? 'Withdrawing…' : 'Withdraw'}
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

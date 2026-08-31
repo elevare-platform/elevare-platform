@@ -45,9 +45,11 @@ celery = Celery(
         "core.tasks",  # health check task
         "app.modules.ai.tasks",  # CV parsing pipeline
         "app.modules.applications.tasks",
+        "app.modules.billing.tasks",  # payment reconciliation
         "app.modules.contact.tasks",  # contact form notification emails
         "app.modules.ingestion.tasks",  # candidate ingestion
         "app.modules.introductions.tasks",  # introduction request emails
+        "app.modules.interviews.tasks",  # AI video interview invite emails
     ],
 )
 
@@ -89,9 +91,7 @@ celery.conf.update(
         "app.modules.ingestion.tasks.run_historical_import_task": {
             "queue": "ingestion"
         },
-        "app.modules.ingestion.tasks.sync_all_mailboxes_task": {
-            "queue": "ingestion"
-        },
+        "app.modules.ingestion.tasks.sync_all_mailboxes_task": {"queue": "ingestion"},
     },
     # Beat schedule — nightly off-peak jobs
     beat_schedule={
@@ -112,6 +112,26 @@ celery.conf.update(
         },
         "reap-stale-import-runs": {
             "task": "app.modules.ingestion.tasks.reap_stale_import_runs_task",
+            "schedule": 60 * 30,  # every 30 minutes
+            "options": {"expires": 60 * 29},
+        },
+        "reconcile-pending-payments": {
+            "task": "app.modules.billing.tasks.reconcile_pending_payments_task",
+            "schedule": 60 * 15,  # every 15 minutes
+            "options": {"expires": 60 * 14},
+        },
+        "expire-lapsed-subscriptions": {
+            "task": "app.modules.billing.tasks.expire_lapsed_subscriptions_task",
+            "schedule": 60 * 60,  # every hour
+            "options": {"expires": 60 * 55},
+        },
+        "expire-interview-videos": {
+            "task": "app.modules.interviews.tasks.expire_interview_videos_task",
+            "schedule": 60 * 60 * 6,  # every 6 hours
+            "options": {"expires": 60 * 60 * 5},
+        },
+        "reap-stale-interviews": {
+            "task": "app.modules.interviews.tasks.reap_stale_interviews_task",
             "schedule": 60 * 30,  # every 30 minutes
             "options": {"expires": 60 * 29},
         },

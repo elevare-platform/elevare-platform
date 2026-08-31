@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import Navbar from '@/components/layout/Navbar'
@@ -5,6 +6,13 @@ import Footer from '@/components/layout/Footer'
 import { FloatingWhatsApp } from '@/components/ui/FloatingWhatsApp'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, Minus } from 'lucide-react'
+import api from '@/lib/api'
+import { useAuth } from '@/context/AuthContext'
+
+function formatPrice(priceKobo) {
+  if (priceKobo === 0) return 'Free'
+  return `₦${(priceKobo / 100).toLocaleString()}`
+}
 
 const TIERS = [
   {
@@ -14,14 +22,14 @@ const TIERS = [
     highlight: false,
     cta: { label: 'Get Started', href: '/register?role=employer' },
     features: [
-      { text: 'Up to 3 active job postings', included: true },
-      { text: 'Basic candidate search', included: true },
+      { text: '1 active job posting', included: true },
+      { text: 'Browse up to 5 talent pool CVs', included: true },
       { text: 'Application management dashboard', included: true },
       { text: 'Email notifications', included: true },
-      { text: 'Unlimited job postings', included: false },
-      { text: 'Priority candidate matching', included: false },
+      { text: 'Candidate search', included: false },
+      { text: 'AI CV scoring against jobs', included: false },
+      { text: 'Priority support', included: false },
       { text: 'Dedicated account manager', included: false },
-      { text: 'SLA guarantee', included: false },
     ],
   },
   {
@@ -34,10 +42,10 @@ const TIERS = [
     cta: { label: 'Get Started', href: '/register?role=employer' },
     features: [
       { text: 'Unlimited active job postings', included: true },
-      { text: 'Advanced candidate search & filters', included: true },
+      { text: 'Unlimited talent pool + AI CV scoring', included: true },
+      { text: 'Candidate search with filters and matching', included: true },
       { text: 'Application management dashboard', included: true },
       { text: 'Email notifications', included: true },
-      { text: 'Priority candidate matching', included: true },
       { text: 'Priority support', included: true },
       { text: 'Dedicated account manager', included: false },
       { text: 'SLA guarantee', included: false },
@@ -51,10 +59,9 @@ const TIERS = [
     cta: { label: 'Contact Sales', href: '/contact?type=employer_inquiry' },
     features: [
       { text: 'Unlimited active job postings', included: true },
-      { text: 'Advanced candidate search & filters', included: true },
+      { text: 'Unlimited talent pool + AI CV scoring', included: true },
+      { text: 'Candidate search with filters and matching', included: true },
       { text: 'Application management dashboard', included: true },
-      { text: 'Email notifications', included: true },
-      { text: 'Priority candidate matching', included: true },
       { text: 'Priority support', included: true },
       { text: 'Dedicated account manager', included: true },
       { text: 'SLA guarantee', included: true },
@@ -63,6 +70,32 @@ const TIERS = [
 ]
 
 export default function PricingPage() {
+  const { user } = useAuth()
+  const isEmployer = user?.role === 'EMPLOYER'
+  const [tiers, setTiers] = useState(TIERS)
+
+  useEffect(() => {
+    let cancelled = false
+    api.get('/api/v1/billing/plans')
+      .then(({ data }) => {
+        if (cancelled) return
+        const byName = Object.fromEntries(data.map((p) => [p.name.toLowerCase(), p]))
+        setTiers((prev) =>
+          prev.map((tier) => {
+            const plan = byName[tier.name.toLowerCase()]
+            if (!plan) return tier
+            return {
+              ...tier,
+              price: formatPrice(plan.price_kobo),
+              priceNote: plan.price_kobo > 0 ? `per ${plan.interval.toLowerCase()}` : undefined,
+            }
+          })
+        )
+      })
+      .catch(() => { /* keep static fallback pricing */ })
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <>
       <Helmet>
@@ -109,7 +142,7 @@ export default function PricingPage() {
         {/* ── Tiers ── */}
         <section className="py-16 sm:py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-            {TIERS.map((tier) => (
+            {tiers.map((tier) => (
               <div
                 key={tier.name}
                 className={`premium-card relative rounded-2xl border p-8 flex flex-col gap-6 ${
@@ -168,7 +201,7 @@ export default function PricingPage() {
                   ))}
                 </ul>
 
-                <Link to={tier.cta.href}>
+                <Link to={isEmployer && tier.name !== 'Enterprise' ? '/employer/billing' : tier.cta.href}>
                   <Button
                     className={`w-full font-bold text-sm uppercase tracking-wider rounded-full border-0 ${
                       tier.highlight
@@ -176,14 +209,26 @@ export default function PricingPage() {
                         : 'bg-brand-blue hover:bg-brand-blue/90 text-white'
                     }`}
                   >
-                    {tier.cta.label}
+                    {isEmployer && tier.name !== 'Enterprise' ? 'Manage Billing' : tier.cta.label}
                   </Button>
                 </Link>
               </div>
             ))}
           </div>
 
-          <p className="text-center text-xs text-text-muted mt-10">
+          {/* Credits explainer — applies on every plan, including Professional */}
+          <div className="mt-12 bg-white border border-border rounded-2xl p-6 max-w-3xl mx-auto">
+            <p className="text-sm font-bold text-text mb-1.5">How introductions work</p>
+            <p className="text-sm text-text-muted leading-relaxed">
+              Candidates you source yourself are always free to contact. For candidates we've
+              sourced on your behalf, requesting an introduction costs 1 credit across every plan,
+              including Professional. That's because we personally verify the candidate's
+              willingness to be introduced before you get access to their CV, not an
+              automated check. Credits are purchased separately from your subscription.
+            </p>
+          </div>
+
+          <p className="text-center text-xs text-text-muted mt-6">
             Pricing subject to change. Contact us for current rates.
           </p>
 

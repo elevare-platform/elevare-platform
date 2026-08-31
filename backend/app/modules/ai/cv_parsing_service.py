@@ -5,12 +5,13 @@ import hmac
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.cost_trend import build_flat_series
 from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
 from app.core.exceptions import PermissionDeniedException
 from app.core.file_validation import validate_pdf_upload
@@ -170,14 +171,33 @@ class CVParsingService:
         return result
 
     async def get_monthly_cost_summary(self) -> dict:
-        """Return the current month's total LLM cost and call count."""
+        """Return the current month's total LLM cost and call count.
+
+        ``total_cost_usd`` is None (not 0) whenever there were calls but no
+        price was configured for the model used — coalescing that to 0
+        would silently hide the fact that real, billed calls happened with
+        unknown cost. Distinguish "no calls this month" (total_llm_calls=0)
+        from "calls happened, price unknown" (total_llm_calls>0, cost=None).
+        """
         now = datetime.now(UTC)
         row = await self._repo.get_monthly_cost_summary()
         return {
             "month": now.strftime("%Y-%m"),
-            "total_cost_usd": float(row.total_cost or 0),
+            "total_cost_usd": float(row.total_cost) if row.total_cost is not None else None,
             "total_llm_calls": row.total_calls or 0,
         }
+
+    async def get_cost_trend(
+        self, from_date: date | None = None, to_date: date | None = None
+    ) -> dict:
+        """Return a gap-free monthly series of cost/call totals, optionally
+        bounded by [from_date, to_date]. A month with real calls but no
+        priced model has total_cost_usd=None (same "unknown, not free"
+        rule as the point-in-time summary); a month with zero calls is a
+        real 0.
+        """
+        rows = await self._repo.get_cost_trend(from_date, to_date)
+        return {"series": build_flat_series(rows, from_date, to_date)}
 
     async def generate_cv_url(
         self, submission_id: uuid.UUID, requesting_user: User

@@ -11,11 +11,19 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import BaseModel
 
 if TYPE_CHECKING:
-    from app.modules.users.models import User
+    from app.modules.users.models import Organization
 
 
 class EmployerCredits(BaseModel):
-    """One row per employer - holds their current credit balance."""
+    """One row per organization - holds its current shared credit balance.
+
+    Keyed to `organizations.id`, not `users.id` — credits are a company
+    wallet shared by every member of an Organization (see
+    docs/subscription-payment-architecture-review.md finding #7). The
+    `employer_id` column name is kept as-is even though it now points at
+    an Organization: every caller already treats it as an opaque FK
+    target, so renaming it would be pure churn.
+    """
 
     __tablename__ = "employer_credits"
     __table_args__ = (
@@ -27,7 +35,7 @@ class EmployerCredits(BaseModel):
 
     employer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
     )
@@ -40,17 +48,19 @@ class EmployerCredits(BaseModel):
     )
 
     # Relationship
-    employer: Mapped[User] = relationship("User", back_populates="employer_credits")
+    organization: Mapped[Organization] = relationship(
+        "Organization", back_populates="employer_credits"
+    )
 
 
 class CreditTransaction(BaseModel):
-    """Ledger of all credit changes for an employer."""
+    """Ledger of all credit changes for an organization's shared wallet."""
 
     __tablename__ = "credit_transactions"
 
     employer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -63,8 +73,8 @@ class CreditTransaction(BaseModel):
         UUID(as_uuid=True), nullable=True
     )  # introduction_request.id or admin action id
 
-    employer: Mapped[User] = relationship(
-        "User",
+    organization: Mapped[Organization] = relationship(
+        "Organization",
         foreign_keys=[employer_id],
         back_populates="credit_transactions",
     )

@@ -12,6 +12,7 @@ Rules:
 5. Match the seniority and industry context provided.
 6. Never hallucinate company details not supplied in the context.
 7. Keep output proportionate to the field: about_the_role (2-4 sentences), key_responsibilities (4-8 bullet points), requirements (4-8 bullet points).
+8. Write in plain, natural prose that reads like it was written by a person, not a language model. No em dashes or en dashes; use commas or periods instead. Avoid stock AI phrasing (e.g. "leverage", "seamless", "unlock", "delve into", "in today's fast-paced world").
 """
 
 _MODE_INSTRUCTIONS: dict[JobDescriptionMode, str] = {

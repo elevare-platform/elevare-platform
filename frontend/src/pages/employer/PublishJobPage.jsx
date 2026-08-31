@@ -148,6 +148,7 @@ export default function PublishJobPage() {
   const navigate = useNavigate()
   const [status, setStatus] = useState('loading') // loading | success | error
   const [errorMsg, setErrorMsg] = useState(null)
+  const [planUpgradeNeeded, setPlanUpgradeNeeded] = useState(false)
   const [jobTitle, setJobTitle] = useState(null)
   const [showCVUpload, setShowCVUpload] = useState(false)
 
@@ -168,7 +169,9 @@ export default function PublishJobPage() {
         if (typeof msg === 'string' && msg.toLowerCase().includes('active')) {
           setStatus('success')
         } else {
-          setErrorMsg(typeof msg === 'string' ? msg : 'Something went wrong. Please try again.')
+          const text = typeof msg === 'string' ? msg : 'Something went wrong. Please try again.'
+          setErrorMsg(text)
+          setPlanUpgradeNeeded(/plan|limit/i.test(text))
           setStatus('error')
         }
       }
@@ -242,9 +245,15 @@ export default function PublishJobPage() {
               <h1 className="text-xl font-bold text-text">Couldn't publish</h1>
               <p className="text-sm text-text-muted">{errorMsg}</p>
               <div className="flex flex-col gap-2 pt-2">
-                <Button onClick={() => navigate(`/employer/jobs/${id}/edit`)} className="w-full">
-                  Edit job
-                </Button>
+                {planUpgradeNeeded ? (
+                  <Button onClick={() => navigate('/pricing')} className="w-full">
+                    Upgrade plan
+                  </Button>
+                ) : (
+                  <Button onClick={() => navigate(`/employer/jobs/${id}/edit`)} className="w-full">
+                    Edit job
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => navigate('/employer/jobs')} className="w-full">
                   Back to jobs
                 </Button>

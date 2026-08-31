@@ -56,7 +56,9 @@ def _extract_name(text: str, nlp) -> tuple[str | None, str]:
         if ent.label_ == "PERSON":
             # Figure out which line the name appeared on
             char_position = ent.start_char
-            line_number = first_20[:char_position].count(
+            line_number = first_20[
+                :char_position
+            ].count(
                 "\n"
             )  # Counts how many new line the name appear before the point where it is found
 

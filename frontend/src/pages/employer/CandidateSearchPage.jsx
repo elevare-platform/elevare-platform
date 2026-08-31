@@ -88,8 +88,8 @@ export default function CandidateSearchPage() {
       const payload = toPayload(filters)
       const { data } = await api.post('/api/v1/candidates/search', payload)
       setResults(data)
-    } catch {
-      show('Search failed', 'error')
+    } catch (err) {
+      show(err.response?.data?.message ?? 'Search failed', 'error')
     } finally {
       setSearching(false)
     }
@@ -174,7 +174,7 @@ export default function CandidateSearchPage() {
                   placeholder="Min"
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                 />
-                <span className="text-text-muted text-sm">–</span>
+                <span className="text-text-muted text-sm">-</span>
                 <input
                   type="number"
                   min="0"

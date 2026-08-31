@@ -26,6 +26,7 @@ from app.modules.applications.schema import (
     ApplicationResponse,
 )
 from app.modules.candidates.repository import CandidateRepository
+from app.modules.interview_list.repository import InterviewListRepository
 from app.modules.jobs.repository import JobRepository
 from app.modules.jobs.schemas import build_full_description
 from app.modules.users.enums import UserRole
@@ -60,6 +61,11 @@ class ApplicationService:
             ApplicationStatus.REJECTED.value,
         ],
         ApplicationStatus.SHORTLISTED.value: [
+            ApplicationStatus.INTERVIEWING.value,
+            ApplicationStatus.HIRED.value,
+            ApplicationStatus.REJECTED.value,
+        ],
+        ApplicationStatus.INTERVIEWING.value: [
             ApplicationStatus.HIRED.value,
             ApplicationStatus.REJECTED.value,
         ],
@@ -75,6 +81,7 @@ class ApplicationService:
         self._app_repo = ApplicationRepository(db)
         self._candidate_repo = CandidateRepository(db)
         self._user_repo = UserRepository(db)
+        self._interview_list_repo = InterviewListRepository(db)
 
     async def apply_to_job(
         self,
@@ -138,8 +145,8 @@ class ApplicationService:
             candidate.user.email,
             job.title,
             (
-                job.employer.employer_profile.company_name
-                if job.employer and job.employer.employer_profile
+                job.employer.organization.company_name
+                if job.employer and job.employer.organization
                 else ""
             ),
         )
@@ -196,14 +203,45 @@ class ApplicationService:
         limit: int = 20,
     ) -> ApplicationList:
         """Return paginated applications for the authenticated candidate."""
+        from app.modules.interviews.repository import InterviewRepository
+        from app.modules.talent_pool.repository import TalentPoolRepository
+
         paginated = await self._app_repo.get_all_applications_by_candidate(
             candidate_id, filters, cursor, limit
         )
+
+        candidate_profile = await self._candidate_repo.get_by_user_id(candidate_id)
+        invited_job_ids = (
+            await self._interview_list_repo.list_invited_job_ids(candidate_profile.id)
+            if candidate_profile
+            else set()
+        )
+
+        # Interview.status per job for this candidate — separate from
+        # invited_job_ids above, which only says "was ever invited," not
+        # whether the interview was actually completed. Needed so the
+        # frontend can hide the "Start interview" action once it's done.
+        interview_statuses: dict[uuid.UUID, str] = {}
+        if candidate_profile:
+            talent_pool_profile = await TalentPoolRepository(
+                self._db
+            ).get_by_candidate_profile_id(candidate_profile.id)
+            if talent_pool_profile:
+                job_ids = [application.job_id for application in paginated["items"]]
+                interview_statuses = await InterviewRepository(
+                    self._db
+                ).list_statuses_for_profile(talent_pool_profile.id, job_ids)
+
         items = []
         for application in paginated["items"]:
             cv_url = await self._resolve_cv_url(application.cv_id)
             items.append(
-                ApplicationResponse.from_application(application, cv_url=cv_url)
+                ApplicationResponse.from_application(
+                    application,
+                    cv_url=cv_url,
+                    interview_invited=application.job_id in invited_job_ids,
+                    interview_status=interview_statuses.get(application.job_id),
+                )
             )
         return ApplicationList(
             items=items,

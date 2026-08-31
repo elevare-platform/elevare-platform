@@ -19,7 +19,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import get_db, require_role
 from app.core.storage import get_storage_service
 from app.modules.ingestion.schema import (
     GmailConnectResponse,
@@ -28,21 +28,19 @@ from app.modules.ingestion.schema import (
     TriggerImportRequest,
 )
 from app.modules.ingestion.service import IngestionService
-from app.modules.users.enums import UserRole
 from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
-def _require_admin_or_employer(current_user: User = Depends(get_current_user)) -> User:
-    """Only admins and employers can manage mail integrations."""
-    if current_user.role not in (UserRole.ADMIN.value, UserRole.EMPLOYER.value):
-        from app.core.exceptions import PermissionDeniedException
-
-        raise PermissionDeniedException()
-    return current_user
+# Mail ingestion (historical import) is the single most expensive ungated
+# operation in the codebase — a run can page through up to 200 pages over
+# up to 2 hours, and each matching attachment triggers its own CV-parsing
+# LLM call. Restricted to admin-only for now (was admin-or-employer);
+# revisit as a Professional/Enterprise self-serve perk once it has real
+# rate-limiting under it.
+_require_admin = require_role("ADMIN")
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> IngestionService:
@@ -56,7 +54,7 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> IngestionService:
 
 @router.get("/connect/gmail", response_model=GmailConnectResponse)
 async def connect_gmail(
-    current_user: User = Depends(_require_admin_or_employer),
+    current_user: User = Depends(_require_admin),
     service: IngestionService = Depends(_get_service),
 ):
     """Initiate Gmail OAuth2 flow. Returns the URL to redirect the user to."""
@@ -66,7 +64,7 @@ async def connect_gmail(
 
 @router.get("/connect/zoho", response_model=GmailConnectResponse)
 async def connect_zoho(
-    current_user: User = Depends(_require_admin_or_employer),
+    current_user: User = Depends(_require_admin),
     service: IngestionService = Depends(_get_service),
 ):
     """Initiate Zoho Mail OAuth2 flow. Returns the URL to redirect the user to."""
@@ -156,7 +154,7 @@ async def zoho_callback(
 
 @router.get("/integrations", response_model=list[IntegrationResponse])
 async def list_integrations(
-    current_user: User = Depends(_require_admin_or_employer),
+    current_user: User = Depends(_require_admin),
     service: IngestionService = Depends(_get_service),
 ):
     """List all mail integrations for the current user."""
@@ -167,7 +165,7 @@ async def list_integrations(
 @router.delete("/integrations/{integration_id}", status_code=204)
 async def disconnect_integration(
     integration_id: uuid.UUID,
-    current_user: User = Depends(_require_admin_or_employer),
+    current_user: User = Depends(_require_admin),
     service: IngestionService = Depends(_get_service),
 ):
     """Disconnect a mail integration and wipe its stored tokens."""
@@ -187,7 +185,7 @@ async def disconnect_integration(
 async def trigger_import(
     integration_id: uuid.UUID,
     body: TriggerImportRequest = TriggerImportRequest(),
-    current_user: User = Depends(_require_admin_or_employer),
+    current_user: User = Depends(_require_admin),
     service: IngestionService = Depends(_get_service),
 ):
     """Trigger a historical email import for a connected Gmail integration.
@@ -210,7 +208,7 @@ async def trigger_import(
 async def get_import_run(
     integration_id: uuid.UUID,
     run_id: uuid.UUID,
-    current_user: User = Depends(_require_admin_or_employer),
+    current_user: User = Depends(_require_admin),
     service: IngestionService = Depends(_get_service),
 ):
     """Poll the status of an import run."""

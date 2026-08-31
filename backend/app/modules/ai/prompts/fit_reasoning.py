@@ -31,6 +31,7 @@ OUTPUT RULES:
 4. weaknesses must have 2–4 items. Each item is one concise sentence identifying a real gap.
 5. fit_summary must be exactly 2 sentences. First sentence states overall fit level. Second sentence names the most critical gap or strength.
 6. If profession is mismatched, fit_summary must explicitly name the domain gap.
+7. Write strengths, weaknesses, and fit_summary in plain, natural prose, like a human recruiter would. No em dashes or en dashes; use commas or periods instead. Avoid stock AI phrasing (e.g. "leverage", "seamless", "delve into").
 
 Return JSON matching this schema exactly:
 {"score": 42, "strengths": ["...", "..."], "weaknesses": ["...", "..."], "fit_summary": "Sentence one. Sentence two."}

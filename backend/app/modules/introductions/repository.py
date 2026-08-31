@@ -40,6 +40,28 @@ class IntroductionRepository:
         await self._db.flush()
         return row
 
+    async def has_accepted_introduction(
+        self, *, employer_id: uuid.UUID, talent_pool_profile_id: uuid.UUID
+    ) -> bool:
+        """Has this employer ever had an introduction to this candidate
+        accepted, from any job — an acceptance is the candidate agreeing to
+        be introduced to this employer, not to one specific posting.
+
+        Shared by every surface that needs to decide "show View CV or show
+        Request Introduction" for a sourced candidate: Candidate Search,
+        Talent Pool, and a job's Interview List.
+        """
+        result = await self._db.execute(
+            select(IntroductionRequest.id)
+            .where(
+                IntroductionRequest.employer_id == employer_id,
+                IntroductionRequest.talent_pool_profile_id == talent_pool_profile_id,
+                IntroductionRequest.status == IntroductionStatus.ACCEPTED.value,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def get_by_token(self, token: str) -> IntroductionRequest | None:
         """Fetch by token with lazy expiry — flips PENDING→EXPIRED if past expires_at.
 

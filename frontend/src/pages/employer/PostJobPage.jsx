@@ -6,6 +6,7 @@ import Footer from '@/components/layout/Footer'
 import { JobForm } from '@/components/employer/JobForm'
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 
 /**
  * PostJobPage-  /employer/jobs/new
@@ -31,6 +32,7 @@ export default function PostJobPage() {
 
     try {
       const { data: created } = await api.post('/api/v1/jobs', data)
+      trackEvent('Jobs', 'job_posted', created.id)
       setSubmittedJob(created)
       setSubmitted(true)
     } catch (err) {
@@ -40,7 +42,7 @@ export default function PostJobPage() {
         setProfileIncomplete(true)
       } else if (code === 'KYC_REQUIRED') {
         setKycRequired(true)
-      } else if (Array.isArray(body?.details)) {
+      } else if (body?.details?.length > 0) {
         // Custom handler: { details: [{ field, message }] }
         setError(body.details.map((e) => `${e.field}: ${e.message}`).join(' · '))
       } else {

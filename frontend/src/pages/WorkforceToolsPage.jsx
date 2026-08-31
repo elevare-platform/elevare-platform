@@ -133,7 +133,7 @@ export default function WorkforceToolsPage() {
           <div className="text-center mb-16">
             <h2 className="text-3xl font-extrabold text-text tracking-tight">Interactive Workforce Suite</h2>
             <p className="text-text-muted text-sm max-w-xl mx-auto mt-2">
-              SaaS dashboard modules designed to streamline operations and maintain complete statutory regulatory compliance.
+              SaaS dashboard modules designed to simplify operations and maintain complete statutory regulatory compliance.
             </p>
           </div>
 

@@ -5,19 +5,7 @@ import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
 import SaveHeartButton from '@/components/employer/SaveHeartButton'
-
-function scoreTier(score) {
-  if (score == null) return 'grey'
-  if (score >= 75) return 'green'
-  if (score >= 50) return 'amber'
-  return 'grey'
-}
-
-const SCORE_STYLES = {
-  green: { ring: 'border-green-500', text: 'text-green-700' },
-  amber: { ring: 'border-amber-500', text: 'text-amber-700' },
-  grey: { ring: 'border-gray-300', text: 'text-gray-500' },
-}
+import { matchScoreBand } from '@/lib/matchScore'
 
 /**
  * CandidateSearchResultCard  -  one ranked, explainable result from the
@@ -35,8 +23,7 @@ const SCORE_STYLES = {
  */
 export default function CandidateSearchResultCard({ result, savedCandidates }) {
   const { profile, match_score: matchScore, matched_skills: matchedSkills, explanation } = result
-  const tier = scoreTier(matchScore)
-  const styles = SCORE_STYLES[tier]
+  const band = matchScoreBand(matchScore)
   const displayName = profile.candidate_name || 'Private profile'
 
   const [showPanel, setShowPanel] = useState(false)
@@ -60,12 +47,12 @@ export default function CandidateSearchResultCard({ result, savedCandidates }) {
       <div className="flex items-start gap-4">
         <div
           className={cn(
-            'w-14 h-14 rounded-full border-2 flex items-center justify-center text-base font-bold flex-shrink-0',
-            styles.ring, styles.text
+            'px-2.5 py-1.5 rounded-full border text-xs font-bold flex-shrink-0 whitespace-nowrap',
+            band.className
           )}
-          title="Match score"
+          title={`Raw score: ${Math.round(matchScore)}/100`}
         >
-          {Math.round(matchScore)}
+          {band.label}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -96,9 +83,13 @@ export default function CandidateSearchResultCard({ result, savedCandidates }) {
             )}
           </div>
 
+          {profile.summary && (
+            <p className="text-xs text-text-muted mt-2 leading-relaxed">{profile.summary}</p>
+          )}
+
           {profile.skills?.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {profile.skills.slice(0, 8).map((skill) => (
+              {profile.skills.map((skill) => (
                 <span
                   key={skill}
                   className={cn(

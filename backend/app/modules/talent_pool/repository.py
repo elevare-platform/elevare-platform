@@ -268,7 +268,9 @@ class TalentPoolRepository:
             )
             .options(
                 selectinload(TalentPoolProfiles.parsed_submission),
-                selectinload(TalentPoolProfiles.candidate_profile),
+                selectinload(TalentPoolProfiles.candidate_profile).selectinload(
+                    CandidateProfile.user
+                ),
             )
         )
 

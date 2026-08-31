@@ -94,7 +94,9 @@ async def _run_pipeline_async(
 
     # Create a fresh engine and session for this event loop — avoids
     # "Future attached to a different loop" from reusing the module-level engine
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
@@ -139,9 +141,10 @@ async def _run_pipeline_async(
             await repo.update(
                 submission_id, {"parse_status": CVParsingStatus.PROCESSING.value}
             )
-            cv_result, (deterministic, llm_result, lang_result) = (
-                await run_extraction_pipeline(file, nlp, ai_service)
-            )
+            (
+                cv_result,
+                (deterministic, llm_result, lang_result),
+            ) = await run_extraction_pipeline(file, nlp, ai_service)
 
             flag_reasons = []
             if not lang_result.is_english:
@@ -182,12 +185,18 @@ async def _run_pipeline_async(
                 cache_key, CACHE_TTL_SECONDS, json.dumps(parsed_data, default=str)
             )
 
-            if llm_result.field_confidence.get("skills") not in (None, "low"):
+            if llm_result.input_tokens or llm_result.output_tokens:
+                from app.core.ai_pricing import compute_anthropic_cost_usd
+
                 cost_row = CVParsingCost(
                     submission_id=submission_id,
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=0.0,
+                    input_tokens=llm_result.input_tokens,
+                    output_tokens=llm_result.output_tokens,
+                    cost_usd=compute_anthropic_cost_usd(
+                        settings.anthropic_model,
+                        llm_result.input_tokens,
+                        llm_result.output_tokens,
+                    ),
                     model=settings.anthropic_model,
                 )
                 db.add(cost_row)
@@ -272,7 +281,9 @@ async def _compute_match_score_async(application_id_str: str) -> None:
 
     application_id = uuid.UUID(application_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     ai_service = None
 
@@ -321,6 +332,8 @@ async def _compute_match_score_async(application_id_str: str) -> None:
                 job_description,
                 job.title or "",
                 job.required_skills or [],
+                candidate_embedding=candidate.profile_embedding if candidate else None,
+                job_embedding=job.job_embedding,
             )
 
             await app_repo.update(
@@ -363,12 +376,13 @@ def score_application_task(self, application_id: str) -> None:
 
 
 async def _score_application_async(application_id_str: str) -> None:
-
     application_id = uuid.UUID(application_id_str)
 
     # Create a fresh engine and session for this event loop — avoids
     # "Future attached to a different loop" from reusing the module-level engine
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     sessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with sessionLocal() as db:
@@ -502,6 +516,23 @@ async def _score_application_async(application_id_str: str) -> None:
                     "ai_score_computed_at": datetime.now(UTC),
                 },
             )
+
+            if reasoning.input_tokens or reasoning.output_tokens:
+                from app.core.ai_pricing import compute_anthropic_cost_usd
+
+                await ai_repo.create_fit_scoring_cost_row(
+                    job_id=application.job_id,
+                    application_id=application_id,
+                    input_tokens=reasoning.input_tokens,
+                    output_tokens=reasoning.output_tokens,
+                    cost_usd=compute_anthropic_cost_usd(
+                        settings.anthropic_model,
+                        reasoning.input_tokens,
+                        reasoning.output_tokens,
+                    ),
+                    model=settings.anthropic_model,
+                )
+
             await db.commit()
             logger.info(
                 f"score_application: scored application {application_id} -> {reasoning.score}"
@@ -541,12 +572,13 @@ def score_talent_pool_profile_task(
 async def _score_talent_pool_profile_async(
     profile_id_str: str, job_id_str: str | None = None
 ) -> None:
-
     profile_id = uuid.UUID(profile_id_str)
 
     # Create a fresh engine and session for this event loop — avoids
     # "Future attached to a different loop" from reusing the module-level engine
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     sessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with sessionLocal() as db:
@@ -578,7 +610,9 @@ async def _score_talent_pool_profile_async(
                 from app.modules.candidates.repository import CandidateProfileRepository
 
                 candidate_repo = CandidateProfileRepository(db)
-                candidate = await candidate_repo.get_by_id(talent_pool.candidate_profile_id)
+                candidate = await candidate_repo.get_by_id(
+                    talent_pool.candidate_profile_id
+                )
                 if not candidate or not candidate.cv_id:
                     logger.warning(
                         "score_talent_pool_profile: no CV on file for candidate profile %s (talent pool profile %s)",
@@ -743,6 +777,23 @@ async def _score_talent_pool_profile_async(
                     "ai_score_computed_at": datetime.now(UTC),
                 },
             )
+
+            if reasoning.input_tokens or reasoning.output_tokens:
+                from app.core.ai_pricing import compute_anthropic_cost_usd
+
+                await ai_repo.create_fit_scoring_cost_row(
+                    job_id=effective_job_id,
+                    talent_pool_profile_id=profile_id,
+                    input_tokens=reasoning.input_tokens,
+                    output_tokens=reasoning.output_tokens,
+                    cost_usd=compute_anthropic_cost_usd(
+                        settings.anthropic_model,
+                        reasoning.input_tokens,
+                        reasoning.output_tokens,
+                    ),
+                    model=settings.anthropic_model,
+                )
+
             await db.commit()
             logger.info(
                 f"score_talent_pool_profile: scored talent_pool_profile {profile_id} -> {reasoning.score}"
@@ -778,7 +829,9 @@ async def _generate_candidate_embedding_async(profile_id_str: str) -> None:
 
     profile_id = uuid.UUID(profile_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     ai_service = None
 
@@ -1009,7 +1062,9 @@ async def _generate_job_embedding_async(job_id_str: str) -> None:
 
     job_id = uuid.UUID(job_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     ai_service = None
 
@@ -1136,7 +1191,9 @@ async def _recompute_stale_scores_async() -> None:
     from app.modules.applications.models import Application
     from app.modules.candidates.models import CandidateProfile
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
@@ -1202,7 +1259,9 @@ async def _backfill_missing_candidate_embeddings_async() -> None:
     # going unnoticed for a while).
     BATCH_LIMIT = 500
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
@@ -1255,7 +1314,9 @@ async def _generate_talent_pool_embedding_async(profile_id_str: str) -> None:
 
     profile_id = uuid.UUID(profile_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     ai_service = None
 
@@ -1430,7 +1491,9 @@ async def _upload_cv_to_r2_async(
     from datetime import UTC as _UTC
     from datetime import datetime as _datetime
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with SessionLocal() as db:
@@ -1660,7 +1723,9 @@ async def _score_job_against_talent_pool_async(job_id_str: str) -> None:
 
     job_id = uuid.UUID(job_id_str)
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     async with SessionLocal() as db:

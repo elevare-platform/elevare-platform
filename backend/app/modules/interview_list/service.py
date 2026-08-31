@@ -26,9 +26,7 @@ class InterviewListService:
         self._db = db
         self._repo = InterviewListRepository(db)
 
-    async def _verify_job_ownership(
-        self, employer_id: uuid.UUID, job_id: uuid.UUID
-    ) -> None:
+    async def _verify_job_ownership(self, employer_id: uuid.UUID, job_id: uuid.UUID):
         from app.modules.jobs.repository import JobRepository
 
         job = await JobRepository(self._db).get_by_id(job_id)
@@ -36,6 +34,7 @@ class InterviewListService:
             raise JobNotFoundError()
         if job.employer_id != employer_id:
             raise PermissionDeniedException("You do not own this job")
+        return job
 
     async def _resolve_talent_pool_profile_id(
         self,
@@ -61,14 +60,26 @@ class InterviewListService:
         talent_pool_profile_id: uuid.UUID | None,
         candidate_profile_id: uuid.UUID | None,
         note: str | None,
-    ) -> None:
-        """Add a candidate to a job's interview list. Commits."""
+    ) -> uuid.UUID:
+        """Add a candidate to a job's interview list. Commits.
+
+        If the job has an AI video interview configured, this is also the
+        invite trigger — being added here is what grants interview access
+        (see Interview model docstring), regardless of whether the
+        candidate has an Elevare account or ever submitted an Application.
+
+        Returns the resolved ``talent_pool_profile_id`` — callers that only
+        had a ``candidate_profile_id`` on hand need this to then call the
+        send-invite endpoint, which is keyed on talent_pool_profile_id.
+        """
         await self._verify_job_ownership(employer_id, job_id)
         resolved_id = await self._resolve_talent_pool_profile_id(
             talent_pool_profile_id, candidate_profile_id
         )
         await self._repo.add(employer_id, resolved_id, job_id, note)
         await self._db.commit()
+
+        return resolved_id
 
     async def remove(
         self,
@@ -102,9 +113,17 @@ class InterviewListService:
         self, employer_id: uuid.UUID, job_id: uuid.UUID
     ) -> InterviewListResponse:
         """Return the interview list for one job, enriched for display."""
+        from app.modules.interviews.repository import InterviewRepository
         from app.modules.talent_pool.service import resolve_match_display_fields
 
         entries = await self._repo.list_for_job(employer_id, job_id)
+
+        from app.modules.introductions.repository import IntroductionRepository
+
+        intro_repo = IntroductionRepository(self._db)
+        interview_statuses = await InterviewRepository(self._db).list_statuses_for_job(
+            job_id, [entry.talent_pool_profile_id for entry in entries]
+        )
 
         items = []
         for entry in entries:
@@ -113,10 +132,15 @@ class InterviewListService:
 
             if profile.candidate_profile_id:
                 ownership = "self_registered"
+                has_cv_access = True
             elif profile.added_by == employer_id:
                 ownership = "own_sourced"
+                has_cv_access = True
             else:
                 ownership = "admin_sourced"
+                has_cv_access = await intro_repo.has_accepted_introduction(
+                    employer_id=employer_id, talent_pool_profile_id=profile.id
+                )
 
             items.append(
                 InterviewListEntryResponse(
@@ -125,6 +149,7 @@ class InterviewListService:
                     talent_pool_profile_id=profile.id,
                     candidate_profile_id=profile.candidate_profile_id,
                     ownership=ownership,
+                    has_cv_access=has_cv_access,
                     candidate_name=fields["name"],
                     current_title=fields["current_title"],
                     location=fields["location"],
@@ -132,6 +157,7 @@ class InterviewListService:
                     skills=fields["skills"] or [],
                     note=entry.note,
                     added_at=entry.created_at,
+                    interview_status=interview_statuses.get(profile.id),
                 )
             )
 

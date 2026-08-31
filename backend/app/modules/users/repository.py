@@ -1,13 +1,15 @@
 """Data-access layer for user records."""
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.modules.candidates.models import CandidateProfile
+from app.modules.employer.enums import OrganizationRole
 from app.modules.users.enums import UserRole
-from app.modules.users.models import EmployerProfile, User, UserProfile
+from app.modules.users.models import Organization, User, UserProfile
 from app.modules.users.schemas import EmployerProfileUpdateRequest
 
 
@@ -23,7 +25,7 @@ class UserRepository:
         stmt = (
             select(User)
             .where(User.email == email)
-            .options(selectinload(User.employer_profile))
+            .options(selectinload(User.organization))
         )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
@@ -31,9 +33,7 @@ class UserRepository:
     async def get_user_by_id(self, id: UUID) -> User | None:
         """Return a user by UUID, or None if not found."""
         stmt = (
-            select(User)
-            .where(User.id == id)
-            .options(selectinload(User.employer_profile))
+            select(User).where(User.id == id).options(selectinload(User.organization))
         )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
@@ -47,6 +47,13 @@ class UserRepository:
     async def create_user(self, data: dict) -> User:
         """Create a new user and an empty UserProfile, then return the user.
 
+        For an EMPLOYER: if `organization_id` is present in `data`, the
+        user joins that existing Organization as a MEMBER (a teammate
+        accepting an invite). Otherwise a brand-new Organization is
+        created with this user as its OWNER (a fresh employer
+        registration). `invited_by_id`, if present, is stamped on the
+        user regardless of which branch runs.
+
         Args:
             data: Dict of field values to pass to the User constructor.
 
@@ -54,9 +61,18 @@ class UserRepository:
             The newly created and refreshed User ORM instance.
 
         """
-        # cv_sharing_consent belongs on CandidateProfile, not User — strip it before construction
-        user_data = {k: v for k, v in data.items() if k != "cv_sharing_consent"}
+        # cv_sharing_consent/organization_id/invited_by_id aren't User
+        # constructor fields — pulled out before construction.
+        organization_id = data.get("organization_id")
+        invited_by_id = data.get("invited_by_id")
+        user_data = {
+            k: v
+            for k, v in data.items()
+            if k not in ("cv_sharing_consent", "organization_id", "invited_by_id")
+        }
         user = User(**user_data)
+        if invited_by_id is not None:
+            user.invited_by_id = invited_by_id
         self._db.add(user)
         await self._db.flush()
 
@@ -64,12 +80,22 @@ class UserRepository:
         self._db.add(profile)
         await self._db.flush()
 
-        await self._db.refresh(user)
-
         if user.role == UserRole.EMPLOYER.value:
-            employer_profile = EmployerProfile(user_id=user.id)
-            employer_profile.is_profile_complete = False
-            self._db.add(employer_profile)
+            if organization_id is not None:
+                # Teammate joining an existing organization.
+                user.organization_id = organization_id
+                user.organization_role = OrganizationRole.MEMBER.value
+                user.joined_organization_at = datetime.now(UTC)
+            else:
+                # Brand-new employer — creates and owns a fresh organization.
+                organization = Organization(
+                    created_by=user.id, is_profile_complete=False
+                )
+                self._db.add(organization)
+                await self._db.flush()
+                user.organization_id = organization.id
+                user.organization_role = OrganizationRole.OWNER.value
+                user.joined_organization_at = datetime.now(UTC)
             await self._db.flush()
         elif user.role == UserRole.CANDIDATE.value:
             candidate_profile = CandidateProfile(
@@ -95,16 +121,20 @@ class UserRepository:
         await self._db.refresh(user)
         return user
 
-    async def get_employer_profile(self, user_id: UUID) -> EmployerProfile | None:
-        """Return the EmployerProfile for a given user, or None."""
-        stmt = select(EmployerProfile).where(EmployerProfile.user_id == user_id)
+    async def get_employer_profile(self, user_id: UUID) -> Organization | None:
+        """Return the Organization for a given user, or None."""
+        stmt = (
+            select(Organization)
+            .join(User, User.organization_id == Organization.id)
+            .where(User.id == user_id)
+        )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
     async def upsert_employer_profile(
         self, user_id: UUID, data: EmployerProfileUpdateRequest
-    ) -> EmployerProfile:
-        """Create or update an employer profile and mark it complete.
+    ) -> Organization:
+        """Create or update an organization's company profile and mark it complete.
 
         Required fields (company_name, industry, company_size) are always
         written. Optional fields are only written when provided.
@@ -114,28 +144,35 @@ class UserRepository:
             data: Validated profile payload from the request.
 
         Returns:
-            The updated EmployerProfile ORM instance.
+            The updated Organization ORM instance.
 
         """
-        profile = await self.get_employer_profile(user_id)
+        organization = await self.get_employer_profile(user_id)
 
-        if profile is None:
-            profile = EmployerProfile(user_id=user_id)
-            self._db.add(profile)
+        if organization is None:
+            # Defensive — every employer should already have an
+            # organization from registration. Create one if somehow missing.
+            organization = Organization(created_by=user_id)
+            self._db.add(organization)
+            await self._db.flush()
+            user = await self.get_user_by_id(user_id)
+            user.organization_id = organization.id
+            user.organization_role = OrganizationRole.OWNER.value
+            user.joined_organization_at = datetime.now(UTC)
 
-        profile.company_name = data.company_name
-        profile.industry = data.industry
-        profile.company_size = data.company_size
+        organization.company_name = data.company_name
+        organization.industry = data.industry
+        organization.company_size = data.company_size
 
         if data.website is not None:
-            profile.website = data.website
+            organization.website = data.website
 
         if data.company_description is not None:
-            profile.company_description = data.company_description
+            organization.company_description = data.company_description
 
         # Flip the gate — required fields are now present
-        profile.is_profile_complete = True
+        organization.is_profile_complete = True
 
         await self._db.flush()
-        await self._db.refresh(profile)
-        return profile
+        await self._db.refresh(organization)
+        return organization

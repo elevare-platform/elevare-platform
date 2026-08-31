@@ -153,7 +153,7 @@ function EmployerActions({ job, onPublish, onClose, onDelete, onResubmit }) {
               : 'Awaiting admin approval before you can publish'}
             className="inline-flex items-center h-8 px-3 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 cursor-not-allowed"
           >
-            {wasPulledOffline ? 'Offline — pending re-review' : 'Pending approval'}
+            {wasPulledOffline ? 'Offline: pending review' : 'Pending approval'}
           </span>
         ) : isRejected ? (
           <Button
@@ -354,7 +354,7 @@ function CardBody({ job, variant, onPublish, onClose, onDelete, onResubmit, init
   const salaryText = (() => {
     const min = job.salary_min != null ? Number(job.salary_min) : null
     const max = job.salary_max != null ? Number(job.salary_max) : null
-    if (min != null && max != null) return `${formatSalary(min)} – ${formatSalary(max)}`
+    if (min != null && max != null) return `${formatSalary(min)} - ${formatSalary(max)}`
     if (min != null) return formatSalary(min)
     if (max != null) return formatSalary(max)
     return null
@@ -458,7 +458,7 @@ function CardBody({ job, variant, onPublish, onClose, onDelete, onResubmit, init
       {variant === 'employer' && job.status === 'DRAFT' && job.moderation_status === 'REJECTED' && (
         <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
           <span className="font-semibold">Rejected</span>
-          {job.moderation_reason ? `: ${job.moderation_reason}` : ' — no reason given.'}
+          {job.moderation_reason ? `: ${job.moderation_reason}` : ' (no reason given).'}
         </div>
       )}
 

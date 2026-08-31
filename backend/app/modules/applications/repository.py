@@ -25,10 +25,10 @@ class ApplicationRepository:
     def _base_options(self):
         """Eager-load relationships needed to build ApplicationResponse."""
         return [
-            # job → employer (User) → employer_profile (company name, logo)
+            # job → employer (User) → organization (company name, logo)
             selectinload(Application.job)
             .selectinload(Job.employer)
-            .selectinload(User.employer_profile),
+            .selectinload(User.organization),
             # candidate (User) → candidate_profile (location, experience)
             selectinload(Application.candidate).selectinload(User.candidate_profile),
         ]
@@ -140,12 +140,7 @@ class ApplicationRepository:
         limit: int = 20,
     ):
         """Return a paginated cursor result of applicants for a specific job."""
-        # Default order: created_at desc. If sort=ai_score, order by ai_score desc nulls last.
-        order_by = (
-            Application.ai_score.desc().nulls_last()
-            if filters and filters.sort == "ai_score"
-            else Application.created_at.desc()
-        )
+        sort_by_ai_score = bool(filters and filters.sort == "ai_score")
 
         stmt = (
             select(Application)
@@ -153,16 +148,21 @@ class ApplicationRepository:
             .options(
                 selectinload(Application.job)
                 .selectinload(Job.employer)
-                .selectinload(User.employer_profile),
+                .selectinload(User.organization),
                 selectinload(Application.candidate).selectinload(
                     User.candidate_profile
                 ),
                 selectinload(Application.cv).selectinload(CandidateCvs.submission),
             )
-            .order_by(order_by)
         )
 
         if filters and filters.status:
             stmt = stmt.where(Application.status == filters.status.value)
 
-        return await paginate_cursor(stmt, self._db, cursor, limit)
+        return await paginate_cursor(
+            stmt,
+            self._db,
+            cursor,
+            limit,
+            sort_column="ai_score" if sort_by_ai_score else None,
+        )

@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Building2, Globe, Search, X } from 'lucide-react'
+import { Building2, Globe, Search, X, Rocket } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { JobCard } from '@/components/jobs/JobCard'
 import { useJobs } from '@/hooks/useJobs'
 import { Button } from '@/components/ui/button'
 import StatusBadge from '@/components/admin/StatusBadge'
+import { useToast } from '@/components/admin/Toast'
 import api from '@/lib/api'
 
 // ─── Skeleton placeholder ─────────────────────────────────────────────────────
@@ -37,11 +38,14 @@ function SkeletonCard() {
  */
 const STATUS_FILTERS = [
   { value: 'active',   label: 'Active' },
+  { value: 'approved', label: 'Ready to publish' },
   { value: 'pending',  label: 'Pending review' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'closed',   label: 'Closed' },
   { value: 'all',      label: 'All' },
 ]
+
+const READY_BANNER_KEY = 'employerJobs.readyToPublish.dismissedAt'
 
 export default function EmployerJobsPage() {
   const [search, setSearch] = useState('')
@@ -67,24 +71,60 @@ export default function EmployerJobsPage() {
       .catch(() => {})
   }, [])
 
-  const [publishError, setPublishError] = useState(null)
+  const { show, ToastContainer } = useToast()
+
+  // Approved-but-unpublished jobs are an action waiting on the employer, not
+  // just another status bucket - surface a count so a banner can nudge them
+  // there even when they're viewing a different tab.
+  const [readyToPublishCount, setReadyToPublishCount] = useState(0)
+  const [dismissedAt, setDismissedAt] = useState(() => {
+    try {
+      return Number(sessionStorage.getItem(READY_BANNER_KEY)) || 0
+    } catch {
+      return 0
+    }
+  })
+
+  const refreshReadyToPublishCount = useCallback(() => {
+    api.get('/api/v1/jobs/mine', { params: { filter: 'approved', limit: 1 } })
+      .then(({ data }) => setReadyToPublishCount(data.total ?? 0))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => { refreshReadyToPublishCount() }, [refreshReadyToPublishCount])
+
+  const dismissReadyBanner = useCallback(() => {
+    setDismissedAt(readyToPublishCount)
+    try {
+      sessionStorage.setItem(READY_BANNER_KEY, String(readyToPublishCount))
+    } catch {
+      // ignore - sessionStorage unavailable (private mode, etc.)
+    }
+  }, [readyToPublishCount])
+
+  const showReadyBanner = readyToPublishCount > 0 && readyToPublishCount > dismissedAt
+
+  const goToReadyToPublish = useCallback(() => {
+    setSearch('')
+    setStatusFilter('approved')
+  }, [])
 
   // Req 4.7-  Publish a DRAFT job and update local state on success
   const handlePublish = useCallback(async (job) => {
-    setPublishError(null)
     try {
       await api.post(`/api/v1/jobs/${job.id}/publish`)
       setJobs((prev) =>
         prev.map((j) => (j.id === job.id ? { ...j, status: 'ACTIVE' } : j))
       )
+      refreshReadyToPublishCount()
     } catch (err) {
       const body = err.response?.data
-      const msg = Array.isArray(body?.details)
+      const msg = body?.details?.length > 0
         ? body.details.map((e) => e.message).join(', ')
         : body?.message ?? 'Failed to publish. Please try again.'
-      setPublishError(msg)
+      show(msg, 'error')
     }
-  }, [setJobs])
+  }, [setJobs, show, refreshReadyToPublishCount])
 
   // Req 4.8-  Close an ACTIVE job and update local state on success
   const handleClose = useCallback(async (job) => {
@@ -94,32 +134,26 @@ export default function EmployerJobsPage() {
         prev.map((j) => (j.id === job.id ? { ...j, status: 'CLOSED' } : j))
       )
     } catch {
-      // Silently ignore - the button remains available for retry
+      show('Failed to close job. Please try again.', 'error')
     }
-  }, [setJobs])
-
-  const [deleteError, setDeleteError] = useState(null)
+  }, [setJobs, show])
 
   // Delete a draft job and remove it from local state on success
   const handleDelete = useCallback(async (job) => {
-    setDeleteError(null)
     try {
       await api.delete(`/api/v1/jobs/${job.id}`)
       setJobs((prev) => prev.filter((j) => j.id !== job.id))
     } catch (err) {
       const body = err.response?.data
-      const msg = Array.isArray(body?.details)
+      const msg = body?.details?.length > 0
         ? body.details.map((e) => e.message).join(', ')
         : body?.message ?? 'Failed to delete. Please try again.'
-      setDeleteError(msg)
+      show(msg, 'error')
     }
-  }, [setJobs])
-
-  const [resubmitError, setResubmitError] = useState(null)
+  }, [setJobs, show])
 
   // Explicitly resubmit a REJECTED job for another admin review
   const handleResubmit = useCallback(async (job) => {
-    setResubmitError(null)
     try {
       await api.post(`/api/v1/jobs/${job.id}/resubmit`)
       setJobs((prev) =>
@@ -129,16 +163,17 @@ export default function EmployerJobsPage() {
       )
     } catch (err) {
       const body = err.response?.data
-      const msg = Array.isArray(body?.details)
+      const msg = body?.details?.length > 0
         ? body.details.map((e) => e.message).join(', ')
         : body?.message ?? 'Failed to resubmit. Please try again.'
-      setResubmitError(msg)
+      show(msg, 'error')
     }
-  }, [setJobs])
+  }, [setJobs, show])
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-muted">
       <Navbar />
+      <ToastContainer />
 
       <main className="flex-1 pt-16">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
@@ -200,6 +235,33 @@ export default function EmployerJobsPage() {
             </Link>
           </div>
 
+          {/* Ready-to-publish nudge - approved drafts are an action waiting
+              on the employer, so surface it even when they're on another tab */}
+          {showReadyBanner && statusFilter !== 'approved' && (
+            <div className="flex items-center gap-3 mb-4 p-3.5 rounded-xl border border-emerald-200 bg-emerald-50">
+              <span className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                <Rocket size={16} className="text-emerald-700" />
+              </span>
+              <p className="flex-1 text-sm text-emerald-800">
+                <span className="font-semibold">
+                  {readyToPublishCount} job{readyToPublishCount > 1 ? 's' : ''} approved
+                </span>{' '}
+                and ready to publish.
+              </p>
+              <Button size="sm" onClick={goToReadyToPublish} className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 flex-shrink-0">
+                Review &amp; publish
+              </Button>
+              <button
+                type="button"
+                onClick={dismissReadyBanner}
+                aria-label="Dismiss"
+                className="text-emerald-700/60 hover:text-emerald-800 flex-shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           {/* Status filter tabs */}
           <div role="tablist" aria-label="Filter jobs by status" className="flex flex-wrap gap-1.5 mb-4">
             {STATUS_FILTERS.map((f) => (
@@ -216,6 +278,15 @@ export default function EmployerJobsPage() {
                 }`}
               >
                 {f.label}
+                {f.value === 'approved' && readyToPublishCount > 0 && (
+                  <span
+                    className={`ml-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-none ${
+                      statusFilter === f.value ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    {readyToPublishCount > 99 ? '99+' : readyToPublishCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -246,24 +317,6 @@ export default function EmployerJobsPage() {
           {/* Error state */}
           {error && !loading && (
             <p className="text-red-600 text-sm mb-6">{error}</p>
-          )}
-
-          {publishError && (
-            <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-              {publishError}
-            </div>
-          )}
-
-          {deleteError && (
-            <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-              {deleteError}
-            </div>
-          )}
-
-          {resubmitError && (
-            <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-              {resubmitError}
-            </div>
           )}
 
           {/* Skeleton loading - Req 4.1 */}

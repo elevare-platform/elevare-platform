@@ -28,6 +28,7 @@ const jobSchema = z
     preferred_certifications: z.string().optional().or(z.literal('')),
     technical_competencies: z.string().min(10, 'Technical Competencies must be at least 10 characters').optional().or(z.literal('')),
     what_we_offer: z.string().optional().or(z.literal('')),
+    interview_brief: z.string().optional().or(z.literal('')),
     location: z.string().min(1, 'Location is required'),
     contract_type: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT', 'FREELANCE', 'INTERNSHIP'], {
       error: 'Select a contract type',
@@ -157,6 +158,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
     preferred_certifications: '',
     technical_competencies: '',
     what_we_offer: '',
+    interview_brief: '',
     location: '',
     contract_type: undefined,
     work_model: '',
@@ -228,6 +230,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
     if (cleaned.preferred_certifications === '') cleaned.preferred_certifications = null
     if (cleaned.technical_competencies === '') cleaned.technical_competencies = null
     if (cleaned.what_we_offer === '') cleaned.what_we_offer = null
+    if (cleaned.interview_brief === '') cleaned.interview_brief = null
     if (draftKey) { try { localStorage.removeItem(draftKey) } catch { /* ignore */ } }
     onSubmit(cleaned)
   }
@@ -354,6 +357,29 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
           {...register('what_we_offer')}
         />
         <FormMessage>{errors.what_we_offer?.message}</FormMessage>
+      </FormField>
+
+      <SectionDivider title="AI Video Interview" />
+
+      {/* Interview brief */}
+      <FormField>
+        <Label htmlFor="interview_brief">
+          Interview Brief <span className="text-text-muted text-xs">(optional)</span>
+        </Label>
+        <p className="text-xs text-text-muted mb-1.5">
+          Topics and goals for the AI interviewer to probe. This is not a fixed script; the AI
+          asks real follow-up questions based on the candidate's answers. Leave blank to
+          keep the AI video interview off for this job. Candidates never see this text;
+          you'll choose who gets invited from your applicant list.
+        </p>
+        <textarea
+          id="interview_brief"
+          rows={4}
+          placeholder="e.g. Probe depth of experience with X. Ask for a specific example of debugging under pressure. Assess comfort with Y…"
+          className={textareaClass}
+          {...register('interview_brief')}
+        />
+        <FormMessage>{errors.interview_brief?.message}</FormMessage>
       </FormField>
 
       <SectionDivider title="Job Details" />

@@ -183,8 +183,8 @@ export function EmployerCVParser() {
       setFiles([])
       await loadSubmissions(true)
       show(`${results.length} CV${results.length > 1 ? 's' : ''} submitted for parsing`)
-    } catch {
-      show('Upload failed', 'error')
+    } catch (err) {
+      show(err.response?.data?.message ?? 'Upload failed', 'error')
     } finally {
       setUploading(false)
     }

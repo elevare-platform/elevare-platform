@@ -7,25 +7,19 @@ import { useToast } from '@/components/admin/Toast'
 import { useAdmin } from '@/hooks/useAdmin'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { matchScoreBand } from '@/lib/matchScore'
 
-const STATUSES = ['', 'SUBMITTED', 'REVIEWING', 'SHORTLISTED', 'HIRED', 'REJECTED', 'WITHDRAWN']
-
-function scoreColour(score) {
-  if (score === null || score === undefined) return 'bg-gray-100 text-gray-500'
-  if (score <= 40) return 'bg-red-100 text-[#DC2626]'
-  if (score <= 70) return 'bg-amber-100 text-[#E87722]'
-  return 'bg-green-100 text-[#16A34A]'
-}
+const STATUSES = ['', 'SUBMITTED', 'REVIEWING', 'SHORTLISTED', 'INTERVIEWING', 'HIRED', 'REJECTED', 'WITHDRAWN']
 
 function ScoreBadge({ score, label }) {
-  const hasScore = score !== null && score !== undefined
+  const band = matchScoreBand(score)
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <span className={cn(
-        'inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold',
-        scoreColour(score)
-      )}>
-        {hasScore ? `${score}` : ' - '}
+      <span
+        className={cn('inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-semibold border whitespace-nowrap', band.className)}
+        title={score != null ? `Raw score: ${score}/100` : undefined}
+      >
+        {band.label}
       </span>
       {label && <span className="text-[10px] text-text-muted">{label}</span>}
     </div>

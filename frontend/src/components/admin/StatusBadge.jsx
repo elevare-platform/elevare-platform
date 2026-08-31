@@ -17,6 +17,7 @@ const VARIANTS = {
   SUBMITTED: 'bg-blue-100 text-blue-700',
   REVIEWING: 'bg-purple-100 text-purple-700',
   SHORTLISTED: 'bg-indigo-100 text-indigo-700',
+  INTERVIEWING: 'bg-purple-100 text-purple-700',
   HIRED: 'bg-green-100 text-green-700',
   // Roles
   ADMIN: 'bg-purple-100 text-purple-700',

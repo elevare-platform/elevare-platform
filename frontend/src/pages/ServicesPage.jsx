@@ -93,7 +93,7 @@ const SERVICES_DATA = [
     category: 'advisory',
     icon: Building,
     name: 'Business Support Service',
-    description: 'Comprehensive operational support and advisory to streamline non-core enterprise activities.',
+    description: 'Operational support and advisory to simplify non-core enterprise activities.',
     features: ['Facilities management advisory', 'Procurement support solutions', 'Office administration set-up'],
   },
 
@@ -219,7 +219,7 @@ export default function ServicesPage() {
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="max-w-4xl space-y-6">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-brand-amber/20 text-brand-amber text-xs font-bold uppercase tracking-wider border border-brand-amber/35">
-                Enterprise-Grade HR Excellence
+                Enterprise HR Solutions
               </span>
               <h1 className="font-sans text-4xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight leading-tight">
                 Workforce Transformation &amp; Consulting Services
@@ -260,7 +260,7 @@ export default function ServicesPage() {
         {/* ── 2. Filter & Services Section ── */}
         <section className="py-16 sm:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-extrabold text-text tracking-tight mb-3">Our Scope of Capabilities</h2>
+            <h2 className="text-3xl font-extrabold text-text tracking-tight mb-3">What We Do</h2>
             <p className="text-text-muted text-base max-w-xl mx-auto">
               Filter through our 16 core business and consulting domains to find the exact support model your business needs.
             </p>
@@ -335,7 +335,7 @@ export default function ServicesPage() {
         <section className="bg-white py-16 sm:py-20 border-y border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
-              <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-2">Our Execution Roadmap</p>
+              <p className="text-brand-amber font-bold text-xs tracking-widest uppercase mb-2">How We Work</p>
               <h2 className="text-3xl font-extrabold text-text tracking-tight">Structured Strategy, Reliable Delivery</h2>
               <p className="text-text-muted text-sm max-w-lg mx-auto mt-2">
                 We believe in rigorous diagnostics, careful system deployment, and sustained tracking to scale organizations.
@@ -347,7 +347,7 @@ export default function ServicesPage() {
                 {
                   step: '01',
                   title: 'Consult & Diagnose',
-                  desc: 'Comprehensive diagnostic audits of current policies, team competency matrices, and automation tools.',
+                  desc: 'Diagnostic audits of current policies, team competency matrices, and automation tools.',
                 },
                 {
                   step: '02',
@@ -380,9 +380,9 @@ export default function ServicesPage() {
         {/* ── 4. Frequently Asked Questions ── */}
         <section className="py-16 sm:py-20 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-extrabold text-text tracking-tight mb-3">Service Inquiries &amp; FAQs</h2>
+            <h2 className="text-3xl font-extrabold text-text tracking-tight mb-3">Frequently Asked Questions</h2>
             <p className="text-text-muted text-sm">
-              Answers to critical questions regarding our technology platforms, consulting setups, and outsourcing processes.
+               Common questions about our technology platforms, consulting engagements, and outsourcing processes.
             </p>
           </div>
 
@@ -419,9 +419,9 @@ export default function ServicesPage() {
         <section className="relative overflow-hidden bg-brand-blue text-white py-16 sm:py-20">
           <div className="absolute inset-0 bg-gradient-to-r from-brand-blue to-brand-blue-dark opacity-90" />
           <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">Ready to Transform Your Organization?</h2>
+            <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">Ready to Get Started?</h2>
             <p className="text-base text-blue-100 max-w-xl mx-auto mb-8 leading-relaxed">
-              Book a complimentary strategy consultation with our human capital experts. We will diagnostic your systems and layout a customized roadmap.
+               Book a free strategy consultation with our team. We'll review your systems and build a roadmap tailored to your organisation.
             </p>
             <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
               <Button

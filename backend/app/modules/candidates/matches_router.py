@@ -75,7 +75,7 @@ async def get_my_job_matches(
         .where(Job.job_embedding.is_not(None))
         .where(Job.status == JobStatus.ACTIVE.value)
         .where(Job.moderation_status == ModerationStatus.APPROVED.value)
-        .options(selectinload(Job.employer).selectinload(User.employer_profile))
+        .options(selectinload(Job.employer).selectinload(User.organization))
         .order_by(distance.asc())
         .limit(limit)
     )
@@ -95,7 +95,7 @@ async def get_my_job_matches(
         ][:3]
         matches.append(
             JobMatchResult(
-                job=JobResponse.from_job(job),
+                job=JobResponse.from_job(job, include_interview_brief=False, include_contact_info=False),
                 similarity_score=similarity,
                 matched_skills=matched,
             )

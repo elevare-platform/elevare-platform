@@ -10,7 +10,10 @@ import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import SaveHeartButton from '@/components/employer/SaveHeartButton'
 import InterviewListButton from '@/components/employer/InterviewListButton'
+import { matchScoreBand } from '@/lib/matchScore'
 
+// Used only for the card's ambient glow accent below, kept separate from
+// the Strong/Good/Fair band since it's a broader 2-tier visual, not a label.
 function scoreTier(score) {
   if (score == null) return 'grey'
   if (score >= 75) return 'green'
@@ -19,9 +22,9 @@ function scoreTier(score) {
 }
 
 const SCORE_STYLES = {
-  green: { ring: 'border-green-500', text: 'text-green-700', glow: 'from-green-500/20' },
-  amber: { ring: 'border-amber-500', text: 'text-amber-700', glow: 'from-amber-500/20' },
-  grey: { ring: 'border-gray-300', text: 'text-gray-500', glow: 'from-gray-400/10' },
+  green: { glow: 'from-green-500/20' },
+  amber: { glow: 'from-amber-500/20' },
+  grey: { glow: 'from-gray-400/10' },
 }
 
 // 'pending' gets a static badge. 'accepted' gets its own button (view
@@ -40,6 +43,7 @@ const PAST_ATTEMPT_LABEL = {
 export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpent, onError, savedCandidates, interviewList, onScored }) {
   const tier = scoreTier(match.similarity_score)
   const styles = SCORE_STYLES[tier]
+  const band = matchScoreBand(match.similarity_score)
   const displayName = match.candidate_name ?? 'Private profile'
 
   const [shortlistState, setShortlistState] = useState('idle') // idle | saving | done
@@ -151,9 +155,9 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       })
       pollAttemptsRef.current = 0
       setScoreState('polling')
-    } catch {
+    } catch (err) {
       setScoreState('idle')
-      onError?.('Could not request AI insights. Please try again.')
+      onError?.(err.response?.data?.message ?? 'Could not request AI insights. Please try again.')
     }
   }
 
@@ -237,14 +241,12 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
 
         <div
           className={cn(
-            'flex items-center justify-center w-14 h-14 rounded-full border-2 flex-shrink-0 bg-white',
-            styles.ring
+            'px-2.5 py-1.5 rounded-full border text-xs font-bold flex-shrink-0 whitespace-nowrap',
+            band.className
           )}
-          title={`${match.similarity_score}% similarity to this job`}
+          title={`Raw score: ${match.similarity_score}/100`}
         >
-          <span className={cn('text-sm font-bold leading-none', styles.text)}>
-            {match.similarity_score}%
-          </span>
+          {band.label}
         </div>
       </div>
 
@@ -286,7 +288,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
           {scoreState === 'requesting' || scoreState === 'polling' ? (
             <><Loader2 size={11} className="animate-spin" /> Scoring against this job…</>
           ) : scoreState === 'timeout' ? (
-            <><Sparkles size={11} /> Still working — check back shortly</>
+            <><Sparkles size={11} /> Still working. Check back shortly</>
           ) : (
             <><Sparkles size={11} /> Get AI insights for this job</>
           )}

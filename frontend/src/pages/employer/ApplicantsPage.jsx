@@ -1,61 +1,70 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import {
   User, ArrowLeft, ChevronDown, X,
   Share2, Link as LinkIcon, Copy, Check as CheckIcon,
   Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3, Sparkles, Coins,
-  Eye, FileText, CalendarCheck,
+  Eye, FileText, CalendarCheck, Send, PlayCircle,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { matchScoreBand } from '@/lib/matchScore'
 import { useTalentMatches } from '@/hooks/useTalentMatches'
 import { useCredits } from '@/hooks/useCredits'
 import { useSavedCandidates } from '@/hooks/useSavedCandidates'
 import { useInterviewList } from '@/hooks/useInterviewList'
 import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
+import CandidateActionModal from '@/components/employer/CandidateActionModal'
 import TalentMatchCard from '@/components/employer/TalentMatchCard'
 import SaveHeartButton from '@/components/employer/SaveHeartButton'
 import InterviewListButton from '@/components/employer/InterviewListButton'
+import InterviewBriefSetupModal from '@/components/employer/InterviewBriefSetupModal'
+import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
+import PlanUpgradeLink from '@/components/PlanUpgradeLink'
+import { isPlanLimitMessage } from '@/lib/planErrors'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
 const STATUS_BADGE = {
-  SUBMITTED:   'bg-blue-100 text-blue-700',
-  REVIEWING:   'bg-amber-100 text-amber-700',
-  SHORTLISTED: 'bg-green-100 text-green-700',
-  REJECTED:    'bg-red-100 text-red-600',
-  HIRED:       'bg-emerald-100 text-emerald-800',
-  WITHDRAWN:   'bg-gray-100 text-gray-500',
+  SUBMITTED:    'bg-blue-100 text-blue-700',
+  REVIEWING:    'bg-amber-100 text-amber-700',
+  SHORTLISTED:  'bg-green-100 text-green-700',
+  INTERVIEWING: 'bg-purple-100 text-purple-700',
+  REJECTED:     'bg-red-100 text-red-600',
+  HIRED:        'bg-emerald-100 text-emerald-800',
+  WITHDRAWN:    'bg-gray-100 text-gray-500',
 }
 
 const STATUS_LABELS = {
-  SUBMITTED:   'Submitted',
-  REVIEWING:   'Reviewing',
-  SHORTLISTED: 'Shortlisted',
-  REJECTED:    'Rejected',
-  HIRED:       'Hired',
-  WITHDRAWN:   'Withdrawn',
+  SUBMITTED:    'Submitted',
+  REVIEWING:    'Reviewing',
+  SHORTLISTED:  'Shortlisted',
+  INTERVIEWING: 'Interviewing',
+  REJECTED:     'Rejected',
+  HIRED:        'Hired',
+  WITHDRAWN:    'Withdrawn',
 }
 
 // Valid next statuses per current status (mirrors backend VALID_TRANSITIONS)
 const TRANSITIONS = {
-  SUBMITTED:   ['REVIEWING', 'REJECTED'],
-  REVIEWING:   ['SHORTLISTED', 'REJECTED'],
-  SHORTLISTED: ['HIRED', 'REJECTED'],
-  HIRED:       [],
-  REJECTED:    [],
-  WITHDRAWN:   [],
+  SUBMITTED:    ['REVIEWING', 'REJECTED'],
+  REVIEWING:    ['SHORTLISTED', 'REJECTED'],
+  SHORTLISTED:  ['INTERVIEWING', 'HIRED', 'REJECTED'],
+  INTERVIEWING: ['HIRED', 'REJECTED'],
+  HIRED:        [],
+  REJECTED:     [],
+  WITHDRAWN:    [],
 }
 
-const FILTER_TABS = ['all', 'SUBMITTED', 'REVIEWING', 'SHORTLISTED', 'HIRED', 'REJECTED', 'WITHDRAWN']
+const FILTER_TABS = ['all', 'SUBMITTED', 'REVIEWING', 'SHORTLISTED', 'INTERVIEWING', 'HIRED', 'REJECTED', 'WITHDRAWN']
 
 const SORT_OPTIONS = [
-  { value: 'date', label: 'Date Applied' },
   { value: 'ai_score', label: 'AI Score' },
+  { value: 'date', label: 'Date Applied' },
   { value: 'match_score', label: 'Match Score' },
 ]
 
@@ -68,55 +77,6 @@ function StatusBadge({ status }) {
     )}>
       {STATUS_LABELS[status] ?? status}
     </span>
-  )
-}
-
-// ─── Match score badge ────────────────────────────────────────────────────────
-
-function scoreColour(score) {
-  if (score === null || score === undefined) return 'bg-gray-100 text-gray-500'
-  if (score <= 40) return 'bg-red-100 text-red-600'
-  if (score <= 70) return 'bg-amber-100 text-amber-700'
-  return 'bg-green-100 text-green-700'
-}
-
-function MatchScoreBadge({ score, matchedKeywords = [] }) {
-  const [tooltipVisible, setTooltipVisible] = useState(false)
-  const hasScore = score !== null && score !== undefined
-
-  const tooltipText = hasScore && matchedKeywords.length > 0
-    ? `Matched: ${matchedKeywords.join(', ')}`
-    : hasScore
-      ? 'No keyword matches found'
-      : 'Score not yet computed'
-
-  return (
-    <div className="relative inline-flex items-center">
-      <button
-        type="button"
-        onMouseEnter={() => setTooltipVisible(true)}
-        onMouseLeave={() => setTooltipVisible(false)}
-        onFocus={() => setTooltipVisible(true)}
-        onBlur={() => setTooltipVisible(false)}
-        aria-label={`Match score: ${hasScore ? `${score}%` : 'not computed'}. ${tooltipText}`}
-        className={cn(
-          'w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 cursor-default',
-          scoreColour(score)
-        )}
-      >
-        {hasScore ? `${score}%` : 'N/A'}
-      </button>
-
-      {tooltipVisible && (
-        <div
-          role="tooltip"
-          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 w-max max-w-xs rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg pointer-events-none"
-        >
-          {tooltipText}
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-900" />
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -133,14 +93,7 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
   const [open, setOpen] = useState(false)
   const [btnRef, setBtnRef] = useState(null)
   const hasScore = score !== null && score !== undefined
-
-  const colour = !hasScore
-    ? 'bg-gray-100 text-gray-400 border-gray-200'
-    : score >= 70
-      ? 'bg-purple-100 text-purple-700 border-purple-200'
-      : score >= 40
-        ? 'bg-amber-100 text-amber-700 border-amber-200'
-        : 'bg-red-100 text-red-600 border-red-200'
+  const band = matchScoreBand(score)
 
   // Position the panel relative to the button using a fixed overlay
   const btnRect = btnRef?.getBoundingClientRect()
@@ -152,13 +105,13 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={hasScore ? 'AI Score (click for reasoning)' : 'AI score not yet computed'}
-        aria-label={`AI score: ${hasScore ? score : 'not computed'}`}
+        aria-label={`AI score: ${band.label}`}
         className={cn(
-          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer',
-          colour
+          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer whitespace-nowrap',
+          band.className
         )}
       >
-        {hasScore ? score : 'N/A'}
+        {band.label}
       </button>
 
       {open && hasScore && btnRect && (
@@ -183,6 +136,16 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
             >
               <X size={14} />
             </button>
+
+            <div className="flex items-center justify-between">
+              <span className={cn('px-2 py-0.5 rounded-full text-xs font-semibold border', band.className)}>
+                {band.label}
+              </span>
+              <span className="text-[10px] text-text-muted">raw: {score}/100</span>
+            </div>
+            <p className="text-[10px] text-text-muted leading-relaxed">
+              Reflects how closely this candidate's experience matches the role, rather than a pass or fail score.
+            </p>
 
             {fitSummary && (
               <p className="text-text text-xs leading-relaxed">{fitSummary}</p>
@@ -415,16 +378,115 @@ function ShareModal({ jobId, onClose }) {
   )
 }
 
+// ─── Send AI interview invite prompt (triggered by moving status to Interviewing) ──
+
+function SendInterviewInvitePrompt({
+  candidateName, jobId, candidateProfileId, hasInterviewBrief,
+  interviewList, onJobUpdated, onClose, onSent,
+}) {
+  const [showBriefModal, setShowBriefModal] = useState(!hasInterviewBrief)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState(null)
+
+  const handleSend = async () => {
+    if (sending) return
+    setSending(true)
+    setError(null)
+    try {
+      const addResult = await interviewList.toggle({ candidateProfileId })
+      const talentPoolProfileId = addResult?.talent_pool_profile_id
+      if (!talentPoolProfileId) {
+        setError('Something went wrong')
+        return
+      }
+      const { data } = await api.post(
+        `/api/v1/interviews/${talentPoolProfileId}/send-invite`,
+        null,
+        { params: { job_id: jobId } }
+      )
+      if (data.sent) {
+        onSent?.()
+        onClose()
+      } else {
+        setError(data.reason)
+      }
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (showBriefModal) {
+    return (
+      <InterviewBriefSetupModal
+        jobId={jobId}
+        onClose={onClose}
+        onSaved={(updatedJob) => {
+          onJobUpdated?.(updatedJob)
+          setShowBriefModal(false)
+        }}
+      />
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-xl border border-border bg-white p-6 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-bold text-text">Send AI interview invite?</h2>
+            <p className="text-sm text-text-muted mt-1">
+              {candidateName} will get an email invite to a live AI video interview for this role.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-text-muted hover:text-text flex-shrink-0"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {error && <p className="text-xs text-red-600">Failed: {error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:bg-surface-muted transition-colors"
+          >
+            Skip
+          </button>
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={sending}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors disabled:opacity-50"
+          >
+            {sending ? 'Sending…' : 'Send interview invite'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Applicant card ───────────────────────────────────────────────────────────
 
-function ApplicantCard({ application, jobId, onError, savedCandidates, interviewList }) {
+function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCandidates, interviewList }) {
   const [status, setStatus] = useState(application.status)
   const [updating, setUpdating] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [showInvitePrompt, setShowInvitePrompt] = useState(false)
+  const [aiInviteSentOverride, setAiInviteSentOverride] = useState(false)
 
   const nextStatuses = TRANSITIONS[status] ?? []
   const isTerminal = nextStatuses.length === 0
+  const hasAiInterview = aiInviteSentOverride || application.has_ai_interview
 
   const handleStatusChange = async (e) => {
     const newStatus = e.target.value
@@ -434,6 +496,15 @@ function ApplicantCard({ application, jobId, onError, savedCandidates, interview
     setUpdating(true)
     try {
       await api.patch(`/api/v1/applications/${application.id}/status`, { new_status: newStatus })
+      if (
+        newStatus === 'INTERVIEWING'
+        && job // still loading? skip rather than guess hasInterviewBrief wrong
+        && application.candidate_profile_id
+        && interviewList
+        && !interviewList.isOnList({ candidateProfileId: application.candidate_profile_id })
+      ) {
+        setShowInvitePrompt(true)
+      }
     } catch {
       setStatus(prev) // revert on failure
       onError('Failed to update status. Please try again.')
@@ -495,6 +566,12 @@ function ApplicantCard({ application, jobId, onError, savedCandidates, interview
           )}
 
           <StatusBadge status={status} />
+
+          {hasAiInterview && (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-blue/10 text-brand-blue flex-shrink-0">
+              AI interview sent
+            </span>
+          )}
 
           {/* AI score badge with popout reasoning panel */}
           <AiScoreBadge
@@ -572,6 +649,19 @@ function ApplicantCard({ application, jobId, onError, savedCandidates, interview
           onClose={() => setProfileOpen(false)}
         />
       )}
+
+      {showInvitePrompt && (
+        <SendInterviewInvitePrompt
+          candidateName={candidateName}
+          jobId={jobId}
+          candidateProfileId={application.candidate_profile_id}
+          hasInterviewBrief={!!job?.interview_brief}
+          interviewList={interviewList}
+          onJobUpdated={onJobUpdated}
+          onClose={() => setShowInvitePrompt(false)}
+          onSent={() => setAiInviteSentOverride(true)}
+        />
+      )}
     </div>
   )
 }
@@ -596,12 +686,6 @@ function SkeletonCard() {
 
 function TalentPoolProfilePanel({ profile, onClose }) {
   if (!profile) return null
-  const scoreColor = (s) => {
-    if (s == null) return 'bg-gray-100 text-gray-500'
-    if (s >= 75) return 'bg-green-100 text-green-700'
-    if (s >= 50) return 'bg-amber-100 text-amber-700'
-    return 'bg-red-100 text-red-600'
-  }
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
@@ -642,8 +726,11 @@ function TalentPoolProfilePanel({ profile, onClose }) {
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
                   <Brain size={12} /> AI Assessment
                 </p>
-                <span className={cn('px-2.5 py-0.5 rounded-full text-sm font-bold', scoreColor(profile.ai_score))}>
-                  {profile.ai_score}/100
+                <span
+                  className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(profile.ai_score).className)}
+                  title={`Raw score: ${profile.ai_score}/100`}
+                >
+                  {matchScoreBand(profile.ai_score).label}
                 </span>
               </div>
               {profile.ai_fit_summary && (
@@ -699,13 +786,6 @@ function TalentPoolProfilePanel({ profile, onClose }) {
 // ─── Pipeline Tab (Item 2) ────────────────────────────────────────────────────
 
 function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh, interviewList }) {
-  const scoreColor = (s) => {
-    if (s == null) return 'bg-gray-100 text-gray-400 border-gray-200'
-    if (s >= 75) return 'bg-green-100 text-green-700 border-green-200'
-    if (s >= 50) return 'bg-amber-100 text-amber-700 border-amber-200'
-    return 'bg-red-100 text-red-600 border-red-200'
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -769,11 +849,14 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh, inte
                     {[p.candidate_current_title, p.candidate_email].filter(Boolean).join(' · ') || 'No details yet'}
                   </p>
                 </div>
-                <div className={cn(
-                  'w-11 h-11 rounded-full border-2 flex items-center justify-center text-sm font-bold flex-shrink-0',
-                  scoreColor(p.ai_score)
-                )}>
-                  {p.ai_score != null ? p.ai_score : 'N/A'}
+                <div
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-full border text-xs font-bold flex-shrink-0 whitespace-nowrap',
+                    matchScoreBand(p.ai_score).className
+                  )}
+                  title={p.ai_score != null ? `Raw score: ${p.ai_score}/100` : undefined}
+                >
+                  {matchScoreBand(p.ai_score).label}
                 </div>
                 <span className="text-xs text-text-muted capitalize px-2.5 py-0.5 rounded-full border border-border">
                   {(p.status || '').replace('_', ' ')}
@@ -904,12 +987,39 @@ function AiMatchesTab({
 
 // ─── Interview List Tab ───────────────────────────────────────────────────────
 
-function InterviewListRow({ item, jobId, onRemoved }) {
+// Maps the real Interview.status (or null = never invited) to button label + badge.
+const INTERVIEW_STATUS_META = {
+  PENDING: { button: 'Resend', badge: 'Sent: awaiting response', badgeClass: 'text-amber-600' },
+  IN_PROGRESS: { button: 'Resend', badge: 'In progress', badgeClass: 'text-blue-600' },
+  UPLOADED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
+  SCORED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
+  EXPIRED: { button: 'Resend', badge: 'Link expired', badgeClass: 'text-red-600' },
+  FAILED: { button: 'Resend', badge: 'Scoring failed', badgeClass: 'text-red-600' },
+}
+
+function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
   const [showPanel, setShowPanel] = useState(false)
   const [showCvModal, setShowCvModal] = useState(false)
+  const [showActionModal, setShowActionModal] = useState(false)
+  const [showInterviewDetail, setShowInterviewDetail] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState(null)
+  const [statusOverride, setStatusOverride] = useState(null)
+  const [emailInput, setEmailInput] = useState('')
+  const [savingEmail, setSavingEmail] = useState(false)
 
   const isSelfRegistered = item.ownership === 'self_registered' && item.candidate_profile_id
+  const canViewCv = item.has_cv_access
+  const interviewStatus = statusOverride ?? item.interview_status ?? null
+  const statusMeta = interviewStatus ? INTERVIEW_STATUS_META[interviewStatus] : null
+  const needsEmail = sendError === 'No email on file for this candidate'
+
+  const handleViewClick = () => {
+    if (isSelfRegistered) return setShowPanel(true)
+    if (canViewCv) return setShowCvModal(true)
+    setShowActionModal(true)
+  }
 
   const handleRemove = async () => {
     if (removing) return
@@ -921,6 +1031,45 @@ function InterviewListRow({ item, jobId, onRemoved }) {
       onRemoved(item.id)
     } finally {
       setRemoving(false)
+    }
+  }
+
+  const handleSendInvite = async () => {
+    if (sending) return
+    setSending(true)
+    setSendError(null)
+    try {
+      const { data } = await api.post(
+        `/api/v1/interviews/${item.talent_pool_profile_id}/send-invite`,
+        null,
+        { params: { job_id: jobId } }
+      )
+      if (data.sent) {
+        setStatusOverride('PENDING')
+      } else {
+        setSendError(data.reason)
+      }
+    } catch {
+      setSendError('Something went wrong')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleSaveEmailAndSend = async () => {
+    if (!emailInput.trim() || savingEmail) return
+    setSavingEmail(true)
+    try {
+      await api.patch(`/api/v1/talent-pool/${item.talent_pool_profile_id}/email`, {
+        email: emailInput.trim(),
+      })
+      await handleSendInvite()
+    } catch (err) {
+      const body = err.response?.data
+      const msg = body?.message ?? body?.detail
+      setSendError(typeof msg === 'string' ? msg : 'Failed to save email')
+    } finally {
+      setSavingEmail(false)
     }
   }
 
@@ -942,27 +1091,113 @@ function InterviewListRow({ item, jobId, onRemoved }) {
 
       <button
         type="button"
-        onClick={() => (isSelfRegistered ? setShowPanel(true) : setShowCvModal(true))}
+        onClick={handleViewClick}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors flex-shrink-0"
       >
-        {isSelfRegistered ? <><Eye size={13} /> View Profile</> : <><FileText size={13} /> View CV</>}
+        {isSelfRegistered
+          ? <><Eye size={13} /> View Profile</>
+          : canViewCv
+            ? <><FileText size={13} /> View CV</>
+            : <><FileText size={13} /> Request Introduction</>}
       </button>
 
       <InterviewListButton onList onToggle={handleRemove} className={removing ? 'opacity-50' : ''} />
+
+      {hasInterviewBrief && (statusMeta?.button !== null) && (
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <button
+            type="button"
+            onClick={handleSendInvite}
+            disabled={sending}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue/5 transition-colors disabled:opacity-50"
+          >
+            <Send size={13} />
+            {sending ? 'Sending…' : (statusMeta?.button ?? 'Send interview link')}
+          </button>
+          {statusMeta && (
+            <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
+          )}
+          {sendError && (
+            <span className="text-[11px] text-red-600">Failed: {sendError}</span>
+          )}
+        </div>
+      )}
+      {hasInterviewBrief && statusMeta?.button === null && (
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowInterviewDetail(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue/5 transition-colors"
+          >
+            <PlayCircle size={13} /> Review AI Interview
+          </button>
+          <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
+        </div>
+      )}
+
+      {needsEmail && (
+        <div className="w-full flex items-center gap-2 pt-1 border-t border-border">
+          <input
+            type="email"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            placeholder="Enter candidate's email to send"
+            className="flex-1 text-sm rounded-lg border border-border px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+          />
+          <button
+            type="button"
+            onClick={handleSaveEmailAndSend}
+            disabled={savingEmail || sending || !emailInput.trim()}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors disabled:opacity-50 flex-shrink-0"
+          >
+            {savingEmail || sending ? 'Sending…' : 'Save & send'}
+          </button>
+        </div>
+      )}
 
       {showPanel && (
         <CandidateProfilePanel profileId={item.candidate_profile_id} onClose={() => setShowPanel(false)} />
       )}
       {showCvModal && (
-        <SourcedCvModal profileId={item.talent_pool_profile_id} jobId={jobId} onClose={() => setShowCvModal(false)} />
+        <SourcedCvModal
+          profileId={item.talent_pool_profile_id}
+          jobId={jobId}
+          hasInterviewBrief={hasInterviewBrief}
+          onSent={() => setStatusOverride('PENDING')}
+          onClose={() => setShowCvModal(false)}
+        />
+      )}
+      {showActionModal && (
+        <CandidateActionModal
+          match={{
+            id: item.talent_pool_profile_id,
+            ownership: item.ownership,
+            candidate_name: item.candidate_name,
+            current_title: item.current_title,
+          }}
+          onClose={() => setShowActionModal(false)}
+        />
+      )}
+      {showInterviewDetail && (
+        <InterviewDetailModal
+          jobId={jobId}
+          talentPoolProfileId={item.talent_pool_profile_id}
+          candidateName={item.candidate_name}
+          onClose={() => setShowInterviewDetail(false)}
+        />
       )}
     </div>
   )
 }
 
-function InterviewListTab({ jobId }) {
+function InterviewListTab({ jobId, job, onJobUpdated }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [sendingAll, setSendingAll] = useState(false)
+  const [bulkSummary, setBulkSummary] = useState(null)
+  const [showBriefModal, setShowBriefModal] = useState(false)
+
+  const hasInterviewBrief = !!job?.interview_brief
 
   const load = useCallback(() => {
     setLoading(true)
@@ -976,6 +1211,28 @@ function InterviewListTab({ jobId }) {
 
   const handleRemoved = (entryId) => {
     setItems((prev) => prev.filter((i) => i.id !== entryId))
+  }
+
+  const handleSendAll = async () => {
+    if (sendingAll) return
+    setSendingAll(true)
+    setBulkSummary(null)
+    try {
+      const { data } = await api.post('/api/v1/interviews/send-invites', null, {
+        params: { job_id: jobId },
+      })
+      const skippedCount = data.skipped?.length ?? 0
+      setBulkSummary(
+        skippedCount > 0
+          ? `Sent to ${data.sent}, skipped ${skippedCount} (${data.skipped.map((s) => s.reason).join(', ')})`
+          : `Sent to ${data.sent}`
+      )
+      load()
+    } catch {
+      setBulkSummary('Failed to send invites. Please try again.')
+    } finally {
+      setSendingAll(false)
+    }
   }
 
   if (loading) {
@@ -1000,8 +1257,48 @@ function InterviewListTab({ jobId }) {
 
   return (
     <div className="space-y-3">
+      {hasInterviewBrief ? (
+        <div className="flex flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={handleSendAll}
+            disabled={sendingAll}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors disabled:opacity-50"
+          >
+            <Send size={13} />
+            {sendingAll ? 'Sending…' : 'Send interview link to all'}
+          </button>
+          {bulkSummary && <span className="text-[11px] text-text-muted">{bulkSummary}</span>}
+        </div>
+      ) : (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowBriefModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
+          >
+            Set up AI interview →
+          </button>
+        </div>
+      )}
+      {showBriefModal && (
+        <InterviewBriefSetupModal
+          jobId={jobId}
+          onClose={() => setShowBriefModal(false)}
+          onSaved={(updatedJob) => {
+            onJobUpdated?.(updatedJob)
+            setShowBriefModal(false)
+          }}
+        />
+      )}
       {items.map((item) => (
-        <InterviewListRow key={item.id} item={item} jobId={jobId} onRemoved={handleRemoved} />
+        <InterviewListRow
+          key={item.id}
+          item={item}
+          jobId={jobId}
+          hasInterviewBrief={hasInterviewBrief}
+          onRemoved={handleRemoved}
+        />
       ))}
     </div>
   )
@@ -1009,13 +1306,17 @@ function InterviewListTab({ jobId }) {
 
 // ─── ApplicantsPage ───────────────────────────────────────────────────────────
 
+const MAIN_TAB_KEYS = ['applicants', 'pipeline', 'ai-matches', 'interview-list']
+
 export default function ApplicantsPage() {
   const { jobId } = useParams()
+  const [searchParams] = useSearchParams()
 
   const [jobTitle, setJobTitle] = useState(null)
+  const [job, setJob] = useState(null)
   const [activeTab, setActiveTab] = useState('all')
   const [applicants, setApplicants] = useState([])
-  const [sortBy, setSortBy] = useState('date')
+  const [sortBy, setSortBy] = useState('ai_score')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [toast, setToast] = useState(null)
@@ -1023,7 +1324,10 @@ export default function ApplicantsPage() {
   const [hasMore, setHasMore] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   // Pipeline tab - talent pool profiles sourced for this job
-  const [mainTab, setMainTab] = useState('applicants') // 'applicants' | 'pipeline' | 'ai-matches'
+  const [mainTab, setMainTab] = useState(() => {
+    const t = searchParams.get('tab')
+    return MAIN_TAB_KEYS.includes(t) ? t : 'applicants'
+  }) // 'applicants' | 'pipeline' | 'ai-matches' | 'interview-list'
   const [pipeline, setPipeline] = useState([])
   const [pipelineLoading, setPipelineLoading] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState(null) // for detail panel
@@ -1050,7 +1354,9 @@ export default function ApplicantsPage() {
 
   const showToast = useCallback((msg) => {
     setToast(msg)
-    setTimeout(() => setToast(null), 4000)
+    // Longer for a plan/limit error — needs enough time to read and click
+    // the Upgrade link before it disappears.
+    setTimeout(() => setToast(null), isPlanLimitMessage(msg) ? 8000 : 4000)
   }, [])
 
   const fetchApplicants = useCallback(async (status, nextCursor, replace) => {
@@ -1089,6 +1395,13 @@ export default function ApplicantsPage() {
       .then(({ data }) => setJobTitle(data.title))
       .catch(() => {})
   }, [jobId, jobTitle])
+
+  // Fetch the full job (needed for interview_brief, to gate the send-invite buttons)
+  useEffect(() => {
+    api.get(`/api/v1/jobs/${jobId}`)
+      .then(({ data }) => setJob(data))
+      .catch(() => {})
+  }, [jobId])
 
   useEffect(() => {
     fetchApplicants(activeTab, null, true)
@@ -1200,7 +1513,7 @@ export default function ApplicantsPage() {
               interviewList={interviewList}
             />
           ) : mainTab === 'interview-list' ? (
-            <InterviewListTab jobId={jobId} onProfileClick={setSelectedProfile} />
+            <InterviewListTab jobId={jobId} job={job} onJobUpdated={setJob} onProfileClick={setSelectedProfile} />
           ) : (
           <>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter applicants by status">
@@ -1268,6 +1581,8 @@ export default function ApplicantsPage() {
                   key={app.id}
                   application={app}
                   jobId={jobId}
+                  job={job}
+                  onJobUpdated={setJob}
                   onError={showToast}
                   savedCandidates={savedCandidates}
                   interviewList={interviewList}
@@ -1301,6 +1616,7 @@ export default function ApplicantsPage() {
           className="fixed bottom-6 right-6 z-50 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-md"
         >
           {toast}
+          {isPlanLimitMessage(toast) && <PlanUpgradeLink />}
         </div>
       )}
 

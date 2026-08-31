@@ -30,10 +30,10 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "Elevare API"
-    app_version: str = "0.1.0"
-    app_url: str = "http://localhost:5173"
-    debug: bool = True
-    environment: str = "development"
+    app_version: str
+    app_url: str
+    debug: bool
+    environment: str
 
     # --- Persistence ---
     database_url: str
@@ -48,10 +48,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str]
 
     # Cookies
-    cookie_secure: bool = False
+    cookie_secure: bool
 
     # Email Verification
     email_stub_mode: bool = True
@@ -82,15 +82,42 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-3-5-sonnet-20241022"
 
     # HMAC secret for CV text cache keys
-    hmac_secret: str = "change-me-in-production"
+    hmac_secret: str
 
     # AI scoring visibility — candidates never see ai_score unless this is True
     show_ai_score_to_candidates: bool = False
     # Default expiry for job access tokens in days
     default_access_token_expiry_days: int = 30
 
+    # Master switch for every Starter/Professional plan gate (job posting
+    # limit, talent pool visibility cap, candidate search block, scoring
+    # gates — all of them read BillingService.get_effective_plan, so this
+    # one flag controls all of them at once). MUST stay True in production —
+    # this exists so gating can be switched off during testing without
+    # touching individual orgs' subscriptions.
+    plan_gates_enabled: bool
+
+    # Master switch for the KYC-required-to-post-a-job gate (JobService.
+    # create_job). When False, an employer can post without an APPROVED
+    # kyc_status — everything else (the self-serve upload/submit flow at
+    # /employer/verification, admin review/approval) still works exactly
+    # the same; this only controls whether posting is blocked on the
+    # result. Turning this back on does NOT strand employers who signed up
+    # while it was off — kyc_status still defaults to NOT_SUBMITTED for
+    # everyone, and the existing /employer/verification page (already
+    # built, unaffected by this flag) is how any employer, old or new,
+    # gets from NOT_SUBMITTED to APPROVED. The PostJobPage banner that
+    # links there on a KYC_REQUIRED error is what surfaces this to them.
+    kyc_enforcement_enabled: bool
+
     # OpenAI
     openai_api_key: str | None = None
+
+    # AI video interviews — live realtime voice conversation
+    realtime_model: str
+    transcription_model: str
+    interview_max_duration_minutes: int
+    interview_video_retention_days: int
 
     # Sentry
     sentry_dsn: str | None = None
@@ -98,7 +125,7 @@ class Settings(BaseSettings):
     # Gmail OAuth — required for Phase 16A ingestion
     gmail_client_id: str | None = None
     gmail_client_secret: str | None = None
-    gmail_redirect_uri: str = "http://localhost:8000/api/v1/ingestion/callback/gmail"
+    gmail_redirect_uri: str
 
     # Zoho Mail OAuth — required for Phase 16B ingestion
     # accounts_url varies by region:
@@ -108,14 +135,16 @@ class Settings(BaseSettings):
     #   AU:     https://accounts.zoho.com.au
     zoho_client_id: str | None = None
     zoho_client_secret: str | None = None
-    zoho_redirect_uri: str = "http://localhost:8000/api/v1/ingestion/callback/zoho"
-    zoho_accounts_url: str = "https://accounts.zoho.com"
-    # Flowmingo AI interview API key (proposed integration, not yet wired in)
-    fl_key: str | None = None
+    zoho_redirect_uri: str
+    zoho_accounts_url: str
 
     # Fernet key for encrypting OAuth tokens at rest
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     fernet_key: str | None = None
+
+    # Paystack — primary payment provider (billing module)
+    paystack_secret_key: str | None = None
+    paystack_public_key: str | None = None
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

@@ -150,9 +150,7 @@ async def _fetch_and_process_messages(
             except Exception as exc:
                 return message_id, "process_failed", exc
 
-    return await asyncio.gather(
-        *[_fetch_and_handle_one(mid) for mid in message_ids]
-    )
+    return await asyncio.gather(*[_fetch_and_handle_one(mid) for mid in message_ids])
 
 
 @celery.task(

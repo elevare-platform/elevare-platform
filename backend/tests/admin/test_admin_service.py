@@ -146,23 +146,22 @@ async def test_bulk_update_creates_audit_logs_per_record(db_session):
 async def test_moderate_job_updates_status_and_logs(db_session):
     """moderate_job updates moderation_status and writes audit log."""
     from app.modules.admin.models import AuditLog
-    from app.modules.users.models import EmployerProfile
+    from tests.conftest import make_organization_for
 
     admin = make_user(role=UserRole.ADMIN.value)
     employer = make_employer()
     db_session.add_all([admin, employer])
     await db_session.flush()
 
-    profile = EmployerProfile(
-        user_id=employer.id,
+    await make_organization_for(
+        db_session,
+        employer,
         company_name="Test Corp",
         industry="Tech",
         company_size="11-50",
         is_profile_complete=True,
         kyc_status="APPROVED",
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     job = make_job(employer.id, moderation_status=ModerationStatus.PENDING.value)
     db_session.add(job)
@@ -190,23 +189,22 @@ async def test_moderate_job_updates_status_and_logs(db_session):
 @pytest.mark.asyncio
 async def test_moderate_job_rejection_persists_reason(db_session):
     """Rejecting a job persists the reason on the job row for the employer to see."""
-    from app.modules.users.models import EmployerProfile
+    from tests.conftest import make_organization_for
 
     admin = make_user(role=UserRole.ADMIN.value)
     employer = make_employer()
     db_session.add_all([admin, employer])
     await db_session.flush()
 
-    profile = EmployerProfile(
-        user_id=employer.id,
+    await make_organization_for(
+        db_session,
+        employer,
         company_name="Test Corp",
         industry="Tech",
         company_size="11-50",
         is_profile_complete=True,
         kyc_status="APPROVED",
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     job = make_job(employer.id, moderation_status=ModerationStatus.PENDING.value)
     db_session.add(job)
@@ -265,18 +263,17 @@ async def test_stats_endpoint_returns_correct_counts(db_session):
     db_session.add_all([candidate, employer, admin])
     await db_session.flush()
 
-    from app.modules.users.models import EmployerProfile
+    from tests.conftest import make_organization_for
 
-    profile = EmployerProfile(
-        user_id=employer.id,
+    await make_organization_for(
+        db_session,
+        employer,
         company_name="Test",
         industry="Tech",
         company_size="11-50",
         is_profile_complete=True,
         kyc_status="APPROVED",
     )
-    db_session.add(profile)
-    await db_session.flush()
 
     service = AdminService(db_session)
     stats = await service.get_platform_stats()

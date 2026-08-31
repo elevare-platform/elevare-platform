@@ -98,16 +98,26 @@ export default function CompanyVerificationPage() {
 
       <main className="flex-1 pt-16">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
-          <div className="flex items-center gap-3 mb-8">
-            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-brand-blue text-white flex-shrink-0">
-              <ShieldCheck size={20} />
-            </span>
-            <div>
-              <h1 className="text-xl font-bold text-text">Company Verification</h1>
-              <p className="text-sm text-text-muted mt-0.5">
-                Verify your company to unlock job posting.
-              </p>
+          <div className="flex items-center justify-between gap-3 mb-8">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-brand-blue text-white flex-shrink-0">
+                <ShieldCheck size={20} />
+              </span>
+              <div>
+                <h1 className="text-xl font-bold text-text">Company Verification</h1>
+                <p className="text-sm text-text-muted mt-0.5">
+                  Verify your company to unlock job posting.
+                </p>
+              </div>
             </div>
+            {kycStatus !== 'APPROVED' && (
+              <Link
+                to="/employer/jobs"
+                className="text-sm text-text-muted hover:text-text underline whitespace-nowrap flex-shrink-0"
+              >
+                Skip for now →
+              </Link>
+            )}
           </div>
 
           {loading ? (

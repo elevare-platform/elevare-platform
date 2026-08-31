@@ -3,13 +3,7 @@ import { createPortal } from 'react-dom'
 import { X, Users, Brain, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
-
-function scoreColor(s) {
-  if (s == null) return 'bg-gray-100 text-gray-500'
-  if (s >= 75) return 'bg-green-100 text-green-700'
-  if (s >= 50) return 'bg-amber-100 text-amber-700'
-  return 'bg-red-100 text-red-600'
-}
+import { matchScoreBand } from '@/lib/matchScore'
 
 /**
  * SourcedCvModal - shown for sourced-only talent pool profiles (no
@@ -17,10 +11,14 @@ function scoreColor(s) {
  * There's no separate "profile" to view for these - the parsed CV data
  * itself, fetched by profile ID, is the full extent of what's available.
  */
-export default function SourcedCvModal({ profileId, jobId, onClose }) {
+export default function SourcedCvModal({ profileId, jobId, hasInterviewBrief, onClose, onSent }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+
+  const [emailInput, setEmailInput] = useState('')
+  const [savingEmail, setSavingEmail] = useState(false)
+  const [emailResult, setEmailResult] = useState(null) // { ok: bool, message: string } | null
 
   useEffect(() => {
     let cancelled = false
@@ -33,6 +31,44 @@ export default function SourcedCvModal({ profileId, jobId, onClose }) {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [profileId, jobId])
+
+  const handleSaveEmail = async () => {
+    if (!emailInput.trim() || savingEmail) return
+    setSavingEmail(true)
+    setEmailResult(null)
+    try {
+      const { data } = await api.patch(`/api/v1/talent-pool/${profileId}/email`, {
+        email: emailInput.trim(),
+      })
+      setProfile(data)
+
+      if (jobId && hasInterviewBrief) {
+        try {
+          const { data: sendData } = await api.post(
+            `/api/v1/interviews/${profileId}/send-invite`,
+            null,
+            { params: { job_id: jobId } }
+          )
+          if (sendData.sent) {
+            setEmailResult({ ok: true, message: 'Email saved, interview link sent.' })
+            onSent?.()
+          } else {
+            setEmailResult({ ok: false, message: `Email saved, but sending failed: ${sendData.reason}` })
+          }
+        } catch {
+          setEmailResult({ ok: false, message: 'Email saved, but sending failed: something went wrong.' })
+        }
+      } else {
+        setEmailResult({ ok: true, message: 'Email saved.' })
+      }
+    } catch (err) {
+      const body = err.response?.data
+      const msg = body?.message ?? body?.detail
+      setEmailResult({ ok: false, message: typeof msg === 'string' ? msg : 'Failed to save email.' })
+    } finally {
+      setSavingEmail(false)
+    }
+  }
 
   // Portalled straight to <body> - this modal is opened from cards that use
   // CSS transforms (e.g. TalentMatchCard's hover:-translate-y-0.5) and/or
@@ -97,6 +133,36 @@ export default function SourcedCvModal({ profileId, jobId, onClose }) {
                 </div>
               </div>
 
+              {!profile.candidate_email && (
+                <div className="rounded-lg border border-dashed border-border p-3 space-y-2">
+                  <p className="text-xs text-text-muted">
+                    No email on file for this candidate. Enter it manually to send an interview link.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="candidate@example.com"
+                      className="flex-1 text-sm rounded-lg border border-border px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveEmail}
+                      disabled={savingEmail || !emailInput.trim()}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors disabled:opacity-50 flex-shrink-0"
+                    >
+                      {savingEmail ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                  {emailResult && (
+                    <p className={cn('text-xs', emailResult.ok ? 'text-green-600' : 'text-red-600')}>
+                      {emailResult.message}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {profile.cv_download_url ? (
                 <a
                   href={profile.cv_download_url}
@@ -123,8 +189,11 @@ export default function SourcedCvModal({ profileId, jobId, onClose }) {
                     <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
                       <Brain size={12} /> AI Assessment
                     </p>
-                    <span className={cn('px-2.5 py-0.5 rounded-full text-sm font-bold', scoreColor(profile.ai_score))}>
-                      {profile.ai_score}/100
+                    <span
+                      className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(profile.ai_score).className)}
+                      title={`Raw score: ${profile.ai_score}/100`}
+                    >
+                      {matchScoreBand(profile.ai_score).label}
                     </span>
                   </div>
                   {profile.ai_fit_summary && (

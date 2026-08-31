@@ -118,8 +118,12 @@ class AuthRepository:
         hashed_token: str,
         expires_at: datetime,
         admin_id: UUID,
+        organization_id: UUID | None = None,
     ) -> InviteToken:
         """Persist a new invite token for the given email and role.
+
+        `organization_id` set means this is a teammate invite into an
+        existing Organization, rather than a brand-new employer invite.
 
         Returns:
             The newly created InviteToken ORM instance.
@@ -131,11 +135,28 @@ class AuthRepository:
             role=role,
             expires_at=expires_at,
             invited_by=admin_id,
+            organization_id=organization_id,
         )
         self._db.add(invite)
         await self._db.flush()
         await self._db.refresh(invite)
         return invite
+
+    async def get_invite_token_by_email(self, email: str) -> InviteToken | None:
+        """Return the most recent unused invite token for this email, if any.
+
+        Used by create_invite to revoke a stale duplicate before issuing a
+        new one — filters to unused tokens only (an already-accepted
+        invite shouldn't block a new one) and orders newest-first so a
+        history of multiple past invites doesn't return an arbitrary row.
+        """
+        stmt = (
+            select(InviteToken)
+            .where(InviteToken.email == email, InviteToken.is_used.is_(False))
+            .order_by(InviteToken.created_at.desc())
+        )
+        result = await self._db.execute(stmt)
+        return result.scalars().first()
 
     async def get_invite_token(self, token: str) -> InviteToken | None:
         """Look up an invite token by its raw (unhashed) value.

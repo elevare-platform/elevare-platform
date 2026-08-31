@@ -125,7 +125,7 @@ export default function EmployerDashboardPage() {
           {!isProfileComplete && (
             <div className="rounded-xl border border-brand-amber/30 bg-brand-amber/5 p-4 flex items-center justify-between gap-4">
               <p className="text-sm text-amber-800">
-                Complete your company profile to unlock job posting.
+                Complete your company profile to post jobs.
               </p>
               <Link to="/employer/profile">
                 <Button size="sm" variant="outline" className="border-brand-amber text-brand-amber hover:bg-brand-amber hover:text-white flex-shrink-0">
@@ -141,7 +141,7 @@ export default function EmployerDashboardPage() {
               <p className="text-sm text-amber-800">
                 {user?.kyc_status === 'PENDING'
                   ? 'Your company verification is under review.'
-                  : 'Verify your company to unlock job posting.'}
+                  : 'Verify your company to post jobs.'}
               </p>
               <Link to="/employer/verification">
                 <Button size="sm" variant="outline" className="border-brand-amber text-brand-amber hover:bg-brand-amber hover:text-white flex-shrink-0">

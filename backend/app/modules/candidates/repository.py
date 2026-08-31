@@ -464,7 +464,7 @@ class CandidateRepository:
             select(ProfileView)
             .where(ProfileView.candidate_id == candidate_profile_id)
             .options(
-                selectinload(ProfileView.employer).selectinload(User.employer_profile)
+                selectinload(ProfileView.employer).selectinload(User.organization)
             )
         )
         return await paginate_cursor(stmt, self._db, cursor, limit)

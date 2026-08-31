@@ -17,7 +17,7 @@ from app.modules.applications.models import Application
 from app.modules.jobs.enums import JobStatus, ModerationStatus
 from app.modules.jobs.models import Job
 from app.modules.users.enums import AccountStatus, UserRole
-from app.modules.users.models import EmployerProfile, User
+from app.modules.users.models import Organization, User
 
 
 class AdminRepository:
@@ -41,7 +41,7 @@ class AdminRepository:
     ) -> dict:
         """Return a paginated cursor result of users with optional filters."""
         stmt = select(User).options(
-            selectinload(User.employer_profile),
+            selectinload(User.organization),
         )
         if role:
             stmt = stmt.where(User.role == role)
@@ -64,7 +64,7 @@ class AdminRepository:
             select(User)
             .where(User.id == user_id)
             .options(
-                selectinload(User.employer_profile),
+                selectinload(User.organization),
                 selectinload(User.candidate_profile),
             )
         )
@@ -91,7 +91,7 @@ class AdminRepository:
     ) -> dict:
         """Return a paginated cursor result of jobs with optional filters."""
         stmt = select(Job).options(
-            selectinload(Job.employer).selectinload(User.employer_profile)
+            selectinload(Job.employer).selectinload(User.organization)
         )
         if status:
             stmt = stmt.where(Job.status == status)
@@ -103,11 +103,11 @@ class AdminRepository:
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
     async def get_job_by_id(self, job_id: UUID) -> Job | None:
-        """Fetch a job by UUID with employer and employer_profile loaded."""
+        """Fetch a job by UUID with employer and organization loaded."""
         stmt = (
             select(Job)
             .where(Job.id == job_id)
-            .options(selectinload(Job.employer).selectinload(User.employer_profile))
+            .options(selectinload(Job.employer).selectinload(User.organization))
         )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
@@ -147,25 +147,25 @@ class AdminRepository:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
-        """Return a paginated cursor result of employer KYC submissions."""
-        stmt = select(EmployerProfile).options(
-            selectinload(EmployerProfile.user),
-            selectinload(EmployerProfile.kyc_documents),
+        """Return a paginated cursor result of organization KYC submissions."""
+        stmt = select(Organization).options(
+            selectinload(Organization.members),
+            selectinload(Organization.kyc_documents),
         )
         if status:
-            stmt = stmt.where(EmployerProfile.kyc_status == status)
+            stmt = stmt.where(Organization.kyc_status == status)
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
     async def get_employer_profile_by_id(
-        self, employer_profile_id: UUID
-    ) -> EmployerProfile | None:
-        """Fetch an employer profile by UUID with user and KYC documents loaded."""
+        self, organization_id: UUID
+    ) -> Organization | None:
+        """Fetch an organization by UUID with members and KYC documents loaded."""
         stmt = (
-            select(EmployerProfile)
-            .where(EmployerProfile.id == employer_profile_id)
+            select(Organization)
+            .where(Organization.id == organization_id)
             .options(
-                selectinload(EmployerProfile.user),
-                selectinload(EmployerProfile.kyc_documents),
+                selectinload(Organization.members),
+                selectinload(Organization.kyc_documents),
             )
         )
         result = await self._db.execute(stmt)
@@ -191,12 +191,12 @@ class AdminRepository:
         return await paginate_cursor(stmt, self._db, cursor, limit)
 
     async def get_all_applications_for_export(self) -> list[Application]:
-        """Fetch all applications with employer profile data for CSV export."""
+        """Fetch all applications with organization data for CSV export."""
         stmt = select(Application).options(
             selectinload(Application.candidate),
             selectinload(Application.job)
             .selectinload(Job.employer)
-            .selectinload(User.employer_profile),
+            .selectinload(User.organization),
         )
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
@@ -346,8 +346,8 @@ class AdminRepository:
         )
         for app in applications:
             company = ""
-            if app.job and app.job.employer and app.job.employer.employer_profile:
-                company = app.job.employer.employer_profile.company_name or ""
+            if app.job and app.job.employer and app.job.employer.organization:
+                company = app.job.employer.organization.company_name or ""
             writer.writerow(
                 [
                     str(app.id),

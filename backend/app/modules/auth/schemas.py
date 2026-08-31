@@ -273,6 +273,7 @@ class UserResponse(BaseModel):
     role: str
     account_status: str
     is_profile_complete: bool | None = None  # only populated for EMPLOYER role
+    organization_role: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

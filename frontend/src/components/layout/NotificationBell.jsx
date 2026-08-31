@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, BrainCircuit, Briefcase, CheckCheck } from 'lucide-react'
+import { Bell, BrainCircuit, Briefcase, Video, CheckCheck } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotifications } from '@/hooks/useNotifications'
 import { cn } from '@/lib/utils'
@@ -9,19 +9,17 @@ const TYPE_ICON = {
   NEW_JOB_MATCHES: BrainCircuit,
   NEW_CANDIDATE_MATCHES: BrainCircuit,
   APPLICATION_STATUS: Briefcase,
+  AI_INTERVIEW_INVITE: Video,
+  AI_INTERVIEW_COMPLETED: Video,
 }
 
-function NotificationItem({ notification, onRead }) {
+function NotificationItem({ notification }) {
   const Icon = TYPE_ICON[notification.type] ?? Bell
   const isUnread = !notification.read_at
 
-  const handleClick = () => {
-    if (isUnread) onRead(notification.id)
-  }
-
-  const inner = (
-    <div
-      onClick={handleClick}
+  return (
+    <Link
+      to={`/notifications/${notification.id}`}
       className={cn(
         'flex items-start gap-3 px-4 py-3 hover:bg-surface-muted transition-colors cursor-pointer',
         isUnread && 'bg-brand-blue/5'
@@ -42,18 +40,12 @@ function NotificationItem({ notification, onRead }) {
         </p>
       </div>
       {isUnread && <span className="w-1.5 h-1.5 rounded-full bg-brand-blue flex-shrink-0 mt-1.5" aria-hidden="true" />}
-    </div>
+    </Link>
   )
-
-  // If it links to a job, wrap with Link
-  if (notification.entity_type === 'JOB' && notification.type === 'NEW_JOB_MATCHES') {
-    return <Link to="/candidate/matches">{inner}</Link>
-  }
-  return inner
 }
 
 export default function NotificationBell() {
-  const { notifications, unreadCount, loading, markRead, markAllRead } = useNotifications()
+  const { notifications, unreadCount, loading, markAllRead } = useNotifications()
   const [open, setOpen] = useState(false)
   const wrapperRef = useRef(null)
 
@@ -120,7 +112,7 @@ export default function NotificationBell() {
                 <p className="text-xs text-text-muted text-center py-8">No notifications yet</p>
               )}
               {!loading && notifications.map((n) => (
-                <NotificationItem key={n.id} notification={n} onRead={markRead} />
+                <NotificationItem key={n.id} notification={n} />
               ))}
             </div>
           </motion.div>

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import BaseModel
@@ -49,6 +50,14 @@ class Notification(BaseModel):
     entity_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    # Extra structured data a notification's action needs beyond a single
+    # (entity_type, entity_id) link — e.g. AI_INTERVIEW_RESET_REQUEST needs
+    # both a job_id and a talent_pool_profile_id to let the recipient
+    # resend the invite directly from the notification, not just navigate
+    # to a list and hunt for the right row. Named `context`, not
+    # `metadata`, since the latter collides with SQLAlchemy's own
+    # Base.metadata attribute.
+    context: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     read_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

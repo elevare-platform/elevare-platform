@@ -26,6 +26,7 @@ class NotificationRepository:
         body: str | None = None,
         entity_type: str | None = None,
         entity_id: uuid.UUID | None = None,
+        context: dict | None = None,
     ) -> Notification:
         """Insert a new notification and return it."""
         notification = Notification(
@@ -35,6 +36,7 @@ class NotificationRepository:
             body=body,
             entity_type=entity_type,
             entity_id=entity_id,
+            context=context,
         )
         self._db.add(notification)
         await self._db.flush()

@@ -9,6 +9,7 @@ from app.core.dependencies import get_db, require_role
 from app.core.schemas import SuccessResponse
 from app.modules.interview_list.schemas import (
     InterviewListAddRequest,
+    InterviewListAddResponse,
     InterviewListIdsResponse,
     InterviewListResponse,
 )
@@ -42,21 +43,24 @@ async def list_interview_list_ids(
     return await service.list_ids(current_user.id, job_id)
 
 
-@router.post("", response_model=SuccessResponse, status_code=201)
+@router.post("", response_model=InterviewListAddResponse, status_code=201)
 async def add_to_interview_list(
     body: InterviewListAddRequest,
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: InterviewListService = Depends(get_service),
 ):
     """Add a candidate to a job's interview list (idempotent)."""
-    await service.add(
+    talent_pool_profile_id = await service.add(
         current_user.id,
         body.job_id,
         body.talent_pool_profile_id,
         body.candidate_profile_id,
         body.note,
     )
-    return SuccessResponse(message="Added to interview list")
+    return InterviewListAddResponse(
+        message="Added to interview list",
+        talent_pool_profile_id=talent_pool_profile_id,
+    )
 
 
 @router.delete("", response_model=SuccessResponse, status_code=200)
