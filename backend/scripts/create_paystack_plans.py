@@ -12,10 +12,10 @@ Usage (from inside the API container, with a real Paystack key set):
 
 import asyncio
 
-import app.main  # noqa: F401 — forces every module's models to register before querying
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import app.main  # noqa: F401 — forces every module's models to register before querying
 from app.core.config import settings
 from app.modules.billing.models import Plan
 from app.modules.billing.providers.paystack import PaystackAdapter

@@ -446,7 +446,6 @@ async def test_webhook_charge_success_unknown_reference_records_renewal(
     customer_code we recognize, must be treated as an auto-renewal: a new
     Payment row and an extended subscription period — not silently dropped.
     """
-    from app.modules.billing.models import Subscription
     from app.modules.users.models import Organization
 
     token, user = await register_and_promote(client, db_session, "EMPLOYER")

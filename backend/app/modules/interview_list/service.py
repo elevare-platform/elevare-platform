@@ -113,8 +113,8 @@ class InterviewListService:
         self, employer_id: uuid.UUID, job_id: uuid.UUID
     ) -> InterviewListResponse:
         """Return the interview list for one job, enriched for display."""
-        from app.modules.talent_pool.service import resolve_match_display_fields
         from app.modules.interviews.repository import InterviewRepository
+        from app.modules.talent_pool.service import resolve_match_display_fields
 
         entries = await self._repo.list_for_job(employer_id, job_id)
 

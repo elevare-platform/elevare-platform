@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     zoho_client_secret: str | None = None
     zoho_redirect_uri: str
     zoho_accounts_url: str
-    
+
     # Fernet key for encrypting OAuth tokens at rest
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     fernet_key: str | None = None

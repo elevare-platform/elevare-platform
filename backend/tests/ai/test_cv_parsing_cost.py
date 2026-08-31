@@ -11,13 +11,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ai_pricing import ANTHROPIC_TOKEN_PRICES
 from app.core.cv_pipeline.layer2_language import LanguageDetectionResult
 from app.core.cv_pipeline.layer4_deterministic import DeterministicExtractionResult
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
 from app.core.cv_pipeline.models import CVExtractionResult
-from app.core.ai_pricing import ANTHROPIC_TOKEN_PRICES
 from app.modules.ai import tasks as ai_tasks
 from app.modules.ai.enums import CVParsingStatus
 from app.modules.ai.models import CVParsingCost, ParsedCVSubmission
@@ -60,31 +59,31 @@ def _patch_engine_to_use_test_session(monkeypatch, db_session):
 
 
 def _make_cv_result(**overrides) -> CVExtractionResult:
-    defaults = dict(
-        full_name="Test Candidate",
-        email="test@example.com",
-        phone=None,
-        linkedin_url=None,
-        location=None,
-        current_title=None,
-        seniority_level=None,
-        years_experience=None,
-        skills=["Python"],
-        taxonomy_matched_skills=[],
-        llm_inferred_skills=[],
-        summary=None,
-        work_history=[],
-        education=[],
-        detected_language="en",
-        is_english=True,
-        language_confidence=0.9,
-        overall_confidence=0.8,
-        field_confidence={},
-        extraction_layers_used=["llm"],
-        is_scanned=False,
-        ocr_used=False,
-        extracted_at=datetime.now(UTC),
-    )
+    defaults = {
+        "full_name": "Test Candidate",
+        "email": "test@example.com",
+        "phone": None,
+        "linkedin_url": None,
+        "location": None,
+        "current_title": None,
+        "seniority_level": None,
+        "years_experience": None,
+        "skills": ["Python"],
+        "taxonomy_matched_skills": [],
+        "llm_inferred_skills": [],
+        "summary": None,
+        "work_history": [],
+        "education": [],
+        "detected_language": "en",
+        "is_english": True,
+        "language_confidence": 0.9,
+        "overall_confidence": 0.8,
+        "field_confidence": {},
+        "extraction_layers_used": ["llm"],
+        "is_scanned": False,
+        "ocr_used": False,
+        "extracted_at": datetime.now(UTC),
+    }
     defaults.update(overrides)
     return CVExtractionResult(**defaults)
 
