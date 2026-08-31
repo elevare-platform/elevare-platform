@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import IntentModal from './IntentModal'
 
 // ─── Hero background slides ──────────────────────────────────────────────────
 // Images are served from /public/hero-images/ via Vite static assets.
@@ -110,6 +110,7 @@ const FEATURE_ROWS = [
 // ─── HeroSection ─────────────────────────────────────────────────────────────
 
 export default function HeroSection({ onBookConsultation }) {
+  const [activeIntent, setActiveIntent] = useState(null) // 'employer' | 'candidate' | null
   return (
     <section
       className="relative min-h-screen flex items-center overflow-hidden"
@@ -193,25 +194,35 @@ export default function HeroSection({ onBookConsultation }) {
               style={{ animationDelay: '1550ms', width: 'fit-content' }}
             >
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                <Link to="/register">
+
+                {/* Hire Talent: opens employer intent modal */}
+                <div className="flex flex-col items-center gap-1">
                   <Button
+                    id="cta-hire-talent"
                     size="lg"
                     className="hero-btn-primary w-full sm:w-auto min-h-[44px] bg-brand-blue hover:bg-brand-blue-dark text-white border-0"
+                    onClick={() => setActiveIntent('employer')}
                   >
                     Hire Talent <span className="hero-btn-arrow">→</span>
                   </Button>
-                </Link>
-                <Link to="/jobs">
+                  <span className="hero-cta-subtitle">For employers &amp; organisations</span>
+                </div>
+
+                {/* Find a Role: opens candidate intent modal */}
+                <div className="flex flex-col items-center gap-1">
                   <Button
+                    id="cta-find-role"
                     size="lg"
                     variant="outline"
                     className="hero-btn-secondary w-full sm:w-auto min-h-[44px]"
-                    // style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#ffffff', background: 'rgba(255,255,255,0.08)' }}
                     style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#ffffff', background: 'rgb(232, 119, 34)' }}
+                    onClick={() => setActiveIntent('candidate')}
                   >
                     Find a Role <span className="hero-btn-arrow">→</span>
                   </Button>
-                </Link>
+                  <span className="hero-cta-subtitle">For job seekers &amp; candidates</span>
+                </div>
+
               </div>
             </div>
 
@@ -290,6 +301,11 @@ export default function HeroSection({ onBookConsultation }) {
           </div>
         </div>
       </div>
+      {/* Intent confirmation modal: fires before routing to employer or candidate portal */}
+      <IntentModal
+        intent={activeIntent}
+        onClose={() => setActiveIntent(null)}
+      />
     </section>
   )
 }
