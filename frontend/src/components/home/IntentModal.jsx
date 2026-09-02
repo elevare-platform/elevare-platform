@@ -48,7 +48,7 @@ const INTENTS = {
       'CV parsing and automated candidate scoring',
     ],
     primaryLabel: 'Continue as Employer →',
-    primaryRoute: '/register',
+    primaryRoute: '/register?role=employer',
     switchLabel: "I'm looking for a job instead",
     switchRoute: '/jobs',
   },
@@ -69,7 +69,7 @@ const INTENTS = {
     primaryLabel: 'Continue as Candidate →',
     primaryRoute: '/jobs',
     switchLabel: "I'm an employer looking to hire",
-    switchRoute: '/register',
+    switchRoute: '/register?role=employer',
   },
 }
 

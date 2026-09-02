@@ -40,7 +40,7 @@ from app.modules.auth.security import (
     hash_token,
     verify_password,
 )
-from app.modules.users.enums import AccountStatus
+from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.repository import UserRepository
 
 logger = logging.getLogger(__name__)
@@ -325,19 +325,57 @@ class AuthService:
         """Mark a verification token as used. Caller is responsible for committing."""
         await self._auth_repo.mark_token_used(token)
 
-    async def verify_email(self, token: str) -> MessageResponse:
-        """Verify a user's email using the raw token from the verification link."""
+    async def verify_email(
+        self, token: str, switch_role: str | None = None
+    ) -> MessageResponse:
+        """Verify a user's email using the raw token from the verification link.
+
+        ``switch_role`` lets a user correct a role they picked by mistake at
+        signup ("I meant to sign up as a job seeker, not an employer") straight
+        from the verification email, without needing to log in first. It is only
+        honoured while the account is still PENDING_VERIFICATION — i.e. it has
+        never been used, so there are no jobs, applications, or organization
+        data to orphan by flipping the role. Possession of the single-use
+        verification token is the authentication.
+        """
         token_record = await self.get_verification_token(token)
 
         await self.mark_token_used(token_record)
 
         user = await self._user_repo.get_user_by_id(token_record.user_id)
+
+        role_changed = False
+        if switch_role:
+            target = switch_role.upper()
+            if target not in (UserRole.CANDIDATE.value, UserRole.EMPLOYER.value):
+                raise TokenInvalidException()
+            # Never let a token flip an admin, and never rewrite the role of an
+            # account that has already been activated and used.
+            if (
+                user.role != UserRole.ADMIN.value
+                and user.account_status == AccountStatus.PENDING_VERIFICATION.value
+                and user.role != target
+            ):
+                logger.info(
+                    "Correcting role for user %s: %s -> %s (self-service via "
+                    "verification link)",
+                    user.id,
+                    user.role,
+                    target,
+                )
+                user.role = target
+                role_changed = True
+
         user.account_status = AccountStatus.ACTIVE.value
         user.email_verified = True
         user.email_verified_at = datetime.now(UTC)
 
         await self._db.commit()
 
+        if role_changed:
+            return MessageResponse(
+                message=f"Email verified — your account is now a {user.role.lower()} account"
+            )
         return MessageResponse(message="Email verified successfully")
 
     async def create_invite(
