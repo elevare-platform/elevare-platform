@@ -29,6 +29,9 @@ export default function VerifyEmailPage() {
 
   const token = params.get('token')
   const nextFromUrl = params.get('next')
+  // Set by the "I'm actually a job seeker / employer" link in the verification
+  // email - corrects a role picked by mistake at signup, in the same click.
+  const roleFromUrl = params.get('role')
 
   const [status, setStatus] = useState('loading') // loading | success | error | no_token
   const [errorMsg, setErrorMsg] = useState(null)
@@ -37,7 +40,11 @@ export default function VerifyEmailPage() {
     if (!token) { setStatus('no_token'); return }
 
     let cancelled = false
-    api.post(`/api/v1/auth/verify-email?token=${token}`)
+    const verifyUrl = roleFromUrl
+      ? `/api/v1/auth/verify-email?token=${token}&role=${encodeURIComponent(roleFromUrl)}`
+      : `/api/v1/auth/verify-email?token=${token}`
+
+    api.post(verifyUrl)
       .then(async () => {
         if (cancelled) return
         setStatus('success')
@@ -51,7 +58,13 @@ export default function VerifyEmailPage() {
         } catch { /* silent - they can re-login */ }
 
         // Redirect after 2 seconds
-        const destination = nextFromUrl || consumePostVerifyNext() || '/candidate/dashboard'
+        // When the link carries an explicit role correction, trust it over any
+        // `next` stashed at signup - that one points at the wrong portal.
+        const roleDestination = roleFromUrl
+          ? (roleFromUrl.toUpperCase() === 'EMPLOYER' ? '/employer/onboarding' : '/candidate/dashboard')
+          : null
+        const destination =
+          nextFromUrl || roleDestination || consumePostVerifyNext() || '/candidate/dashboard'
         setTimeout(() => { if (!cancelled) navigate(destination, { replace: true }) }, 2000)
       })
       .catch((err) => {
@@ -68,7 +81,7 @@ export default function VerifyEmailPage() {
       })
 
     return () => { cancelled = true }
-  }, [token])
+  }, [token, roleFromUrl])
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-surface-muted px-4">

@@ -47,6 +47,17 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
+    async def send_verification_reminder(
+        self,
+        email: str,
+        first_name: str,
+        verification_token: str,
+        role: str,
+    ) -> None:
+        """Nudge an unverified account, offering a role correction for employers."""
+        ...
+
+    @abstractmethod
     async def send_job_moderation_status(
         self,
         employer_email: str,
@@ -571,6 +582,75 @@ class ResendEmailService(EmailService):
 
         await self._send_html(
             subject="Verify Your Email Address — Elevare",
+            recipients=[email],
+            html_body=html_body,
+        )
+
+    async def send_verification_reminder(
+        self,
+        email: str,
+        first_name: str,
+        verification_token: str,
+        role: str,
+    ) -> None:
+        """Remind an unverified account to finish signing up.
+
+        For accounts sitting on the EMPLOYER role this doubles as a role
+        correction: a sizeable share of them are job seekers who clicked the
+        wrong CTA on the homepage, so the email offers two doors — confirm as
+        an employer, or switch to a job seeker account — and either one also
+        verifies the address. Both links carry the same single-use token, so
+        whichever they click is the one that takes effect.
+        """
+        from urllib.parse import quote
+
+        base = f"{settings.app_url}/verify-email?token={verification_token}"
+        is_employer = role.upper() == "EMPLOYER"
+
+        employer_link = f"{base}&role=EMPLOYER&next={quote('/employer/onboarding', safe='')}"
+        candidate_link = f"{base}&role=CANDIDATE&next={quote('/candidate/dashboard', safe='')}"
+        greeting = f"Hi {first_name}," if first_name else "Hi,"
+
+        if is_employer:
+            body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">One click left to finish your Elevare account</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{greeting}</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You started signing up on Elevare but never confirmed your email address, so your account isn't active yet.</p>
+        <p style="margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your account was created as an <strong>employer</strong> account — for posting jobs and hiring. Pick the one that's actually you:</p>
+
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #0F172A; font-weight: 600;">I'm hiring — I want to post jobs and review applicants</p>
+        {_render_button("Confirm as an employer", employer_link)}
+
+        <p style="margin: 8px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #0F172A; font-weight: 600;">I'm looking for a job — I want to build a profile and apply to roles</p>
+        {_render_button("Switch me to a job seeker account", candidate_link, is_primary=False)}
+
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Either link also verifies your email — you only need to click one.</p>
+        """
+            subject = "Finish your Elevare sign-up — employer or job seeker?"
+            preheader = "Confirm your email and pick the right account type."
+        else:
+            body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">One click left to finish your Elevare account</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{greeting}</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You started signing up on Elevare but never confirmed your email address. Verify it now to activate your job seeker account, build your profile, and start applying to roles.</p>
+
+        {_render_button("Verify my email", candidate_link)}
+
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Signed up to hire rather than to find a role?</p>
+        {_render_button("Switch me to an employer account", employer_link, is_primary=False)}
+        """
+            subject = "Finish your Elevare sign-up — verify your email"
+            preheader = "Verify your email to activate your Elevare account."
+
+        html_body = _render_email_layout(
+            title="Finish your Elevare sign-up",
+            preheader=preheader,
+            body_content_html=body_content_html,
+            footer_note="You received this email because an account was created with this address on Elevare. If that wasn't you, ignore this email and the account will stay inactive.",
+        )
+
+        await self._send_html(
+            subject=subject,
             recipients=[email],
             html_body=html_body,
         )
@@ -1139,6 +1219,23 @@ class StubEmailService(EmailService):
             "STUB VERIFICATION EMAIL to %s — click to verify:\n%s",
             email,
             link,
+        )
+
+    async def send_verification_reminder(
+        self,
+        email: str,
+        first_name: str,
+        verification_token: str,
+        role: str,
+    ) -> None:
+        """Log a stub verification reminder with both role-correction links."""
+        base = f"{settings.app_url}/verify-email?token={verification_token}"
+        logger.info(
+            "STUB VERIFICATION REMINDER to %s (role=%s)\n  employer: %s\n  candidate: %s",
+            email,
+            role,
+            f"{base}&role=EMPLOYER",
+            f"{base}&role=CANDIDATE",
         )
 
     async def send_job_moderation_status(

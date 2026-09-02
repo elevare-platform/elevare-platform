@@ -88,10 +88,15 @@ async def get_me(
 async def verify_email(
     request: Request,
     token: str,
+    role: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponse:
-    """Verify a user's email address using a token."""
-    return await AuthService(db).verify_email(token)
+    """Verify a user's email address using a token.
+
+    ``role`` is optional and lets the "I signed up as the wrong type of user"
+    link in the verification email correct CANDIDATE/EMPLOYER in the same click.
+    """
+    return await AuthService(db).verify_email(token, switch_role=role)
 
 
 @router.post(

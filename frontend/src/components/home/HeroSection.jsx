@@ -301,6 +301,7 @@ export default function HeroSection({ onBookConsultation }) {
           </div>
         </div>
       </div>
+
       {/* Intent confirmation modal: fires before routing to employer or candidate portal */}
       <IntentModal
         intent={activeIntent}
