@@ -16,11 +16,15 @@ only honoured while the account is still PENDING_VERIFICATION.
 Tokens expire after ``settings.email_verification_token_expiry`` hours (24 by
 default), so send this when you're ready for people to act on it.
 
-Run from inside the API container. ALWAYS dry-run first:
+Run from inside the API container, ALWAYS dry-run first. Use ``-m`` (module
+mode, not a bare file path) — the working directory there is ``/app``, and
+``-m`` puts that on ``sys.path`` so ``app.core.email`` etc. resolve; running
+the .py file directly only puts ``scripts/`` on the path and fails with
+``ModuleNotFoundError: No module named 'app'``:
 
-    python scripts/send_verification_reminders.py --dry-run
-    python scripts/send_verification_reminders.py --role EMPLOYER --limit 3
-    python scripts/send_verification_reminders.py
+    python -m scripts.send_verification_reminders --dry-run
+    python -m scripts.send_verification_reminders --role EMPLOYER --limit 3
+    python -m scripts.send_verification_reminders
 """
 
 import argparse
@@ -30,6 +34,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import app.core.model_registry  # noqa: F401 — ensures all mappers are registered before any DB use
 from app.core.config import settings
 from app.core.email import get_email_service
 from app.modules.auth.service import AuthService
