@@ -10,9 +10,13 @@ Answers two questions before any email goes out:
    on the homepage by mistake land here, so this is the best proxy we have
    for the size of the wrong-role problem.
 
-Run from inside the API container:
-    python scripts/audit_signups.py
-    python scripts/audit_signups.py --csv /tmp/signups.csv
+Run from inside the API container. Use ``-m`` (module mode, not a bare file
+path) — the working directory there is ``/app``, and ``-m`` puts that on
+``sys.path`` so ``app.core.config`` resolves; running the .py file directly
+only puts ``scripts/`` on the path and fails with
+``ModuleNotFoundError: No module named 'app'``:
+    python -m scripts.audit_signups
+    python -m scripts.audit_signups --csv /tmp/signups.csv
 """
 
 import argparse
@@ -23,6 +27,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import app.core.model_registry  # noqa: F401 — ensures all mappers are registered before any DB use
 from app.core.config import settings
 from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import Organization, User
