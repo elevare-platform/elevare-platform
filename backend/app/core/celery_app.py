@@ -51,6 +51,7 @@ celery = Celery(
         "app.modules.ingestion.tasks",  # candidate ingestion
         "app.modules.introductions.tasks",  # introduction request emails
         "app.modules.interviews.tasks",  # AI video interview invite emails
+        "app.modules.users.tasks",  # role-switch self-heal backstop
     ],
 )
 
@@ -135,6 +136,15 @@ celery.conf.update(
             "task": "app.modules.interviews.tasks.reap_stale_interviews_task",
             "schedule": 60 * 30,  # every 30 minutes
             "options": {"expires": 60 * 29},
+        },
+        "heal-role-switch-profiles": {
+            "task": "app.modules.users.tasks.heal_role_switch_profiles_task",
+            # Backstop, not a primary trigger. Should almost never find
+            # anything (see the task's docstring). Running it every 6 hours
+            # balances catching a user-facing 500 reasonably quickly against
+            # a sweep that's expected to no-op almost every time it fires.
+            "schedule": 60 * 60 * 6,
+            "options": {"expires": 60 * 60 * 5},
         },
     },
 )

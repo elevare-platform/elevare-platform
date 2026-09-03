@@ -333,10 +333,10 @@ class AuthService:
         ``switch_role`` lets a user correct a role they picked by mistake at
         signup ("I meant to sign up as a job seeker, not an employer") straight
         from the verification email, without needing to log in first. It is only
-        honoured while the account is still PENDING_VERIFICATION — i.e. it has
-        never been used, so there are no jobs, applications, or organization
-        data to orphan by flipping the role. Possession of the single-use
-        verification token is the authentication.
+        honoured while the account is still PENDING_VERIFICATION. That means
+        it has never been used, so there are no jobs, applications, or
+        organization data to orphan by flipping the role. Possession of the
+        single-use verification token is the authentication.
         """
         token_record = await self.get_verification_token(token)
 
@@ -366,6 +366,23 @@ class AuthService:
                 user.role = target
                 role_changed = True
 
+                # A role isn't just a string on User. CANDIDATE implies a
+                # CandidateProfile row (every candidate-only endpoint looks
+                # one up and 500s if it's missing), and EMPLOYER implies an
+                # Organization. Provision whichever the new role needs, the
+                # same way fresh registration does, so the account isn't
+                # left half-migrated.
+                if target == UserRole.CANDIDATE.value:
+                    from app.modules.candidates.repository import CandidateRepository
+
+                    existing_profile = await CandidateRepository(
+                        self._db
+                    ).get_by_user_id(user.id)
+                    if not existing_profile:
+                        await self._user_repo.provision_candidate_profile(user)
+                elif target == UserRole.EMPLOYER.value and not user.organization_id:
+                    await self._user_repo.provision_organization(user)
+
         user.account_status = AccountStatus.ACTIVE.value
         user.email_verified = True
         user.email_verified_at = datetime.now(UTC)
@@ -374,7 +391,7 @@ class AuthService:
 
         if role_changed:
             return MessageResponse(
-                message=f"Email verified — your account is now a {user.role.lower()} account"
+                message=f"Email verified. Your account is now a {user.role.lower()} account"
             )
         return MessageResponse(message="Email verified successfully")
 
