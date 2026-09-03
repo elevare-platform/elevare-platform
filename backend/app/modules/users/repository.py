@@ -86,40 +86,95 @@ class UserRepository:
                 user.organization_id = organization_id
                 user.organization_role = OrganizationRole.MEMBER.value
                 user.joined_organization_at = datetime.now(UTC)
+                await self._db.flush()
             else:
                 # Brand-new employer — creates and owns a fresh organization.
-                organization = Organization(
-                    created_by=user.id, is_profile_complete=False
-                )
-                self._db.add(organization)
-                await self._db.flush()
-                user.organization_id = organization.id
-                user.organization_role = OrganizationRole.OWNER.value
-                user.joined_organization_at = datetime.now(UTC)
-            await self._db.flush()
+                await self.provision_organization(user)
         elif user.role == UserRole.CANDIDATE.value:
-            candidate_profile = CandidateProfile(
-                user_id=user.id,
-                cv_sharing_consent=data.get("cv_sharing_consent", False),
+            await self.provision_candidate_profile(
+                user, cv_sharing_consent=data.get("cv_sharing_consent", False)
             )
-            self._db.add(candidate_profile)
-            await self._db.flush()
-
-            # Auto-enroll self-registered candidates in the talent pipeline
-            from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
-            from app.modules.talent_pool.models import TalentPoolProfiles
-
-            pool_entry = TalentPoolProfiles(
-                candidate_profile_id=candidate_profile.id,
-                added_by=user.id,  # candidate added themselves via registration
-                source=SourceType.OTHER.value,
-                status=TalentPoolStatus.NEW.value,
-            )
-            self._db.add(pool_entry)
-            await self._db.flush()
 
         await self._db.refresh(user)
         return user
+
+    async def provision_candidate_profile(
+        self, user: User, cv_sharing_consent: bool = False
+    ) -> CandidateProfile:
+        """Create this user's CandidateProfile and enroll them in the talent pipeline.
+
+        Shared by fresh CANDIDATE registration and by a role correction that
+        flips an existing user's role to CANDIDATE. Both need the same
+        follow-on state, not just the ``role`` string updated, or the account
+        is left half-provisioned (has a CANDIDATE role but no profile any
+        candidate-only endpoint can look up).
+        """
+        candidate_profile = CandidateProfile(
+            user_id=user.id,
+            cv_sharing_consent=cv_sharing_consent,
+        )
+        self._db.add(candidate_profile)
+        await self._db.flush()
+
+        from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
+        from app.modules.talent_pool.models import TalentPoolProfiles
+
+        pool_entry = TalentPoolProfiles(
+            candidate_profile_id=candidate_profile.id,
+            added_by=user.id,  # self-added, whether at registration or role switch
+            source=SourceType.OTHER.value,
+            status=TalentPoolStatus.NEW.value,
+        )
+        self._db.add(pool_entry)
+        await self._db.flush()
+        return candidate_profile
+
+    async def list_candidates_missing_profile(self) -> list[User]:
+        """role=CANDIDATE accounts with no CandidateProfile row.
+
+        Should be empty in steady state. Every path that sets a user's role
+        to CANDIDATE (fresh registration, or the verify-email role switch)
+        also provisions the profile. Exists as a safety net for that
+        invariant, used by ``scripts/backfill_role_switch_profiles.py`` and
+        the periodic ``heal_role_switch_profiles_task``.
+        """
+        has_profile = (
+            select(CandidateProfile.id)
+            .where(CandidateProfile.user_id == User.id)
+            .exists()
+        )
+        stmt = select(User).where(
+            User.role == UserRole.CANDIDATE.value,
+            ~has_profile,
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_employers_missing_organization(self) -> list[User]:
+        """role=EMPLOYER accounts with no Organization. See ``list_candidates_missing_profile``."""
+        stmt = select(User).where(
+            User.role == UserRole.EMPLOYER.value,
+            User.organization_id.is_(None),
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def provision_organization(self, user: User) -> Organization:
+        """Create a fresh Organization owned by this user.
+
+        Shared by fresh EMPLOYER registration and by a role correction that
+        flips an existing user's role to EMPLOYER. See
+        ``provision_candidate_profile`` for why this can't just set the role
+        string alone.
+        """
+        organization = Organization(created_by=user.id, is_profile_complete=False)
+        self._db.add(organization)
+        await self._db.flush()
+        user.organization_id = organization.id
+        user.organization_role = OrganizationRole.OWNER.value
+        user.joined_organization_at = datetime.now(UTC)
+        await self._db.flush()
+        return organization
 
     async def get_employer_profile(self, user_id: UUID) -> Organization | None:
         """Return the Organization for a given user, or None."""

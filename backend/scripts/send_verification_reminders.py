@@ -1,12 +1,23 @@
 """One-off campaign: email everyone whose account is still unverified.
 
+Idempotent by design: a user is skipped if they already have a live
+(unused, unexpired) verification token. That means they were already
+reminded recently and haven't clicked yet. So the exact same command can be
+re-run safely at any time, for example in batches to stay under an email
+provider's rate limit, without re-emailing anyone who was just sent one.
+``--limit`` is a batch-size cap, not an offset or page number. It does not
+need to change between runs, since each run naturally picks up wherever the
+live-token set left off. Do not add a ``--skip``/offset flag here instead:
+the recipient pool shrinks as people verify, so an offset would silently
+skip people who were never emailed once the earlier ones start verifying.
+
 Each recipient gets a *fresh* verification token (creating one invalidates
 their old unused tokens, so only the newest link works) and an email that:
 
-- for EMPLOYER accounts, offers two doors — "confirm as an employer" or
-  "switch me to a job seeker account". Both verify the email; the second also
-  flips the role. This is the recovery path for people who clicked "Hire
-  Talent" on the homepage when they meant "Find a Role".
+- for EMPLOYER accounts, offers two doors: "confirm as an employer" or
+  "switch me to a job seeker account". Both verify the email, and the second
+  also flips the role. This is the recovery path for people who clicked
+  "Hire Talent" on the homepage when they meant "Find a Role".
 - for CANDIDATE accounts, is a plain verification nudge, with the reverse
   switch link as a secondary option.
 
@@ -17,8 +28,8 @@ Tokens expire after ``settings.email_verification_token_expiry`` hours (24 by
 default), so send this when you're ready for people to act on it.
 
 Run from inside the API container, ALWAYS dry-run first. Use ``-m`` (module
-mode, not a bare file path) — the working directory there is ``/app``, and
-``-m`` puts that on ``sys.path`` so ``app.core.email`` etc. resolve; running
+mode, not a bare file path). The working directory there is ``/app``, and
+``-m`` puts that on ``sys.path`` so ``app.core.email`` etc. resolve. Running
 the .py file directly only puts ``scripts/`` on the path and fails with
 ``ModuleNotFoundError: No module named 'app'``:
 
@@ -30,13 +41,15 @@ the .py file directly only puts ``scripts/`` on the path and fails with
 import argparse
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import app.core.model_registry  # noqa: F401 — ensures all mappers are registered before any DB use
+import app.core.model_registry  # noqa: F401, ensures all mappers are registered before any DB use
 from app.core.config import settings
 from app.core.email import get_email_service
+from app.modules.auth.models import EmailVerificationToken
 from app.modules.auth.service import AuthService
 from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import User
@@ -44,18 +57,34 @@ from app.modules.users.models import User
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("reminders")
 
-# Resend's default rate limit is 2 requests/second — stay comfortably under it.
+# Resend's default rate limit is 2 requests per second. Stay comfortably under it.
 SEND_INTERVAL_SECONDS = 0.6
 
 
 async def load_recipients(db, role: str | None, limit: int | None) -> list[User]:
-    """Fetch unverified, non-admin accounts, oldest first."""
+    """Fetch unverified, non-admin accounts with no live reminder outstanding, oldest first.
+
+    "No live reminder outstanding" (no unused, unexpired EmailVerificationToken)
+    is what makes re-running this script safe: someone already reminded in an
+    earlier run is excluded until their token is used or expires, so the same
+    command can be split across multiple runs without duplicate sends.
+    """
+    has_live_token = (
+        select(EmailVerificationToken.id)
+        .where(
+            EmailVerificationToken.user_id == User.id,
+            EmailVerificationToken.is_used.is_(False),
+            EmailVerificationToken.expires_at > datetime.now(UTC),
+        )
+        .exists()
+    )
     stmt = (
         select(User)
         .where(
             User.account_status == AccountStatus.PENDING_VERIFICATION.value,
             User.email_verified.is_(False),
             User.role != UserRole.ADMIN.value,
+            ~has_live_token,
         )
         .order_by(User.created_at)
     )
@@ -96,7 +125,7 @@ async def main() -> None:
                 return
 
             if args.dry_run:
-                logger.info("\nDRY RUN — nothing sent, no tokens created:\n")
+                logger.info("\nDRY RUN, nothing sent, no tokens created:\n")
                 for user in recipients:
                     logger.info(
                         "  %-38s %-10s created %s",
@@ -135,7 +164,7 @@ async def main() -> None:
 
             logger.info("\nDone. %d sent, %d failed.", sent, len(failed))
             for email, err in failed:
-                logger.info("  failed: %s — %s", email, err)
+                logger.info("  failed: %s: %s", email, err)
     finally:
         await engine.dispose()
 

@@ -3,7 +3,7 @@
 Answers two questions before any email goes out:
 
 1. Who never clicked their verification link (account_status is still
-   PENDING_VERIFICATION), split by role — these are the accounts
+   PENDING_VERIFICATION), split by role. These are the accounts
    ``send_verification_reminders.py`` targets.
 2. Which EMPLOYER accounts have no company attached (no organization, or an
    organization with no company_name). Job seekers who clicked "Hire Talent"
@@ -11,8 +11,8 @@ Answers two questions before any email goes out:
    for the size of the wrong-role problem.
 
 Run from inside the API container. Use ``-m`` (module mode, not a bare file
-path) — the working directory there is ``/app``, and ``-m`` puts that on
-``sys.path`` so ``app.core.config`` resolves; running the .py file directly
+path). The working directory there is ``/app``, and ``-m`` puts that on
+``sys.path`` so ``app.core.config`` resolves. Running the .py file directly
 only puts ``scripts/`` on the path and fails with
 ``ModuleNotFoundError: No module named 'app'``:
     python -m scripts.audit_signups
@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import app.core.model_registry  # noqa: F401 — ensures all mappers are registered before any DB use
+import app.core.model_registry  # noqa: F401, ensures all mappers are registered before any DB use
 from app.core.config import settings
 from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import Organization, User
@@ -72,7 +72,7 @@ def report(rows: list[dict]) -> None:
     candidates = [r for r in rows if r["role"] == UserRole.CANDIDATE.value]
 
     print(f"\n{'=' * 68}")
-    print(f"  Sign-up audit — {len(rows)} non-admin accounts")
+    print(f"  Sign-up audit: {len(rows)} non-admin accounts")
     print(f"{'=' * 68}\n")
 
     print(f"  Employers                     {len(employers):>4}")

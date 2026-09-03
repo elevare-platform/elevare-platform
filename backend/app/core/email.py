@@ -58,6 +58,16 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
+    async def send_role_switch_corrected(
+        self,
+        email: str,
+        first_name: str,
+        role: str,
+    ) -> None:
+        """Tell a user a role-switch account bug on their profile has been fixed."""
+        ...
+
+    @abstractmethod
     async def send_job_moderation_status(
         self,
         employer_email: str,
@@ -597,8 +607,8 @@ class ResendEmailService(EmailService):
 
         For accounts sitting on the EMPLOYER role this doubles as a role
         correction: a sizeable share of them are job seekers who clicked the
-        wrong CTA on the homepage, so the email offers two doors — confirm as
-        an employer, or switch to a job seeker account — and either one also
+        wrong CTA on the homepage, so the email offers two doors: confirm as
+        an employer, or switch to a job seeker account. Either one also
         verifies the address. Both links carry the same single-use token, so
         whichever they click is the one that takes effect.
         """
@@ -616,17 +626,17 @@ class ResendEmailService(EmailService):
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">One click left to finish your Elevare account</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{greeting}</p>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You started signing up on Elevare but never confirmed your email address, so your account isn't active yet.</p>
-        <p style="margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your account was created as an <strong>employer</strong> account — for posting jobs and hiring. Pick the one that's actually you:</p>
+        <p style="margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your account was created as an <strong>employer</strong> account, for posting jobs and hiring. Pick the one that's actually you:</p>
 
-        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #0F172A; font-weight: 600;">I'm hiring — I want to post jobs and review applicants</p>
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #0F172A; font-weight: 600;">I'm hiring, and I want to post jobs and review applicants</p>
         {_render_button("Confirm as an employer", employer_link)}
 
-        <p style="margin: 8px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #0F172A; font-weight: 600;">I'm looking for a job — I want to build a profile and apply to roles</p>
+        <p style="margin: 8px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #0F172A; font-weight: 600;">I'm looking for a job, and I want to build a profile and apply to roles</p>
         {_render_button("Switch me to a job seeker account", candidate_link, is_primary=False)}
 
-        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Either link also verifies your email — you only need to click one.</p>
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Either link also verifies your email. You only need to click one.</p>
         """
-            subject = "Finish your Elevare sign-up — employer or job seeker?"
+            subject = "Finish your Elevare sign-up: employer or job seeker?"
             preheader = "Confirm your email and pick the right account type."
         else:
             body_content_html = f"""
@@ -639,7 +649,7 @@ class ResendEmailService(EmailService):
         <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Signed up to hire rather than to find a role?</p>
         {_render_button("Switch me to an employer account", employer_link, is_primary=False)}
         """
-            subject = "Finish your Elevare sign-up — verify your email"
+            subject = "Finish your Elevare sign-up: verify your email"
             preheader = "Verify your email to activate your Elevare account."
 
         html_body = _render_email_layout(
@@ -1168,6 +1178,49 @@ class ResendEmailService(EmailService):
             html_body=html_body,
         )
 
+    async def send_role_switch_corrected(
+        self,
+        email: str,
+        first_name: str,
+        role: str,
+    ) -> None:
+        """Tell a user a role-switch account bug on their profile has been fixed.
+
+        Covers the account-type correction flow (see ``send_verification_reminder``):
+        switching roles from the verification email used to leave the account
+        half-migrated (role changed, but the matching candidate/employer
+        profile never created), which surfaced as an error when the person
+        tried to use their account. This confirms it's fixed and safe to log
+        back in.
+        """
+        login_link = f"{settings.app_url}/login"
+        greeting = f"Hi {first_name}," if first_name else "Hi,"
+        role_label = "job seeker" if role.upper() == "CANDIDATE" else "employer"
+
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your account is ready</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{greeting}</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">When you switched your Elevare account to a <strong>{role_label}</strong> account, a bug on our end meant the switch didn't fully complete. This may have shown you an error when you tried to use it.</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've found and fixed the issue. Your account is now fully set up as a {role_label} account and ready to use.</p>
+
+        {_render_button("Log in to Elevare", login_link)}
+
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Sorry for the inconvenience. If anything still looks off after logging in, just reply to this email and we'll sort it out.</p>
+        """
+
+        html_body = _render_email_layout(
+            title="Your Elevare account is ready",
+            preheader="We fixed an issue with your account. You're all set.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because an account was corrected on Elevare following a report of an error.",
+        )
+
+        await self._send_html(
+            subject="Your Elevare account is ready, sorry for the trouble",
+            recipients=[email],
+            html_body=html_body,
+        )
+
 
 class StubEmailService(EmailService):
     """Concrete implementation that logs to stdout — used in tests and CI."""
@@ -1463,6 +1516,21 @@ class StubEmailService(EmailService):
             email,
             company_name,
             invite_link,
+        )
+
+    async def send_role_switch_corrected(
+        self,
+        email: str,
+        first_name: str,
+        role: str,
+    ) -> None:
+        """Log a stub role-switch-corrected notification."""
+        logger.info(
+            "STUB ROLE SWITCH CORRECTED to %s (%s), now a %s account. Login: %s/login",
+            email,
+            first_name,
+            role,
+            settings.app_url,
         )
 
 
