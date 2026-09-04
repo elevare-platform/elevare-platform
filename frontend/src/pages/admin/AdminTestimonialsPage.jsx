@@ -3,10 +3,22 @@ import AdminLayout from '@/components/admin/AdminLayout'
 import { AdminTable, Th, Td } from '@/components/admin/AdminTable'
 import StatusBadge from '@/components/admin/StatusBadge'
 import ConfirmModal from '@/components/admin/ConfirmModal'
+import TestimonialDetailDrawer from '@/components/admin/TestimonialDetailDrawer'
 import { useToast } from '@/components/admin/Toast'
 import { useAdmin } from '@/hooks/useAdmin'
 
 const STATUS_FILTERS = ['', 'pending', 'approved', 'rejected']
+
+const CONFIRM_COPY = {
+  approved: { label: 'Approve this testimonial?', confirmLabel: 'Approve', danger: false },
+  rejected: {
+    label: 'Reject this testimonial?',
+    description: 'The submitter will not be notified.',
+    confirmLabel: 'Reject',
+    danger: true,
+  },
+  pending: { label: 'Reset to pending?', confirmLabel: 'Reset', danger: false },
+}
 
 export default function AdminTestimonialsPage() {
   const { listTestimonials, moderateTestimonial, loading } = useAdmin()
@@ -14,6 +26,8 @@ export default function AdminTestimonialsPage() {
   const [testimonials, setTestimonials] = useState([])
   const [statusFilter, setStatusFilter] = useState('')
   const [confirm, setConfirm] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+  const selectedTestimonial = testimonials.find((t) => t.id === selectedId) ?? null
 
   const load = useCallback(async () => {
     try {
@@ -37,9 +51,21 @@ export default function AdminTestimonialsPage() {
     setConfirm(null)
   }
 
+  const requestModerate = (t, status) => {
+    setConfirm({ ...CONFIRM_COPY[status], onConfirm: () => handleModerate(t.id, status) })
+  }
+
   return (
     <AdminLayout>
       <ToastContainer />
+
+      {selectedTestimonial && (
+        <TestimonialDetailDrawer
+          testimonial={selectedTestimonial}
+          onClose={() => setSelectedId(null)}
+          onRequestModerate={requestModerate}
+        />
+      )}
 
       {confirm && (
         <ConfirmModal
@@ -85,7 +111,10 @@ export default function AdminTestimonialsPage() {
           {testimonials.map((t) => (
             <tr key={t.id} className="hover:bg-surface-muted/50">
               <Td>
-                <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setSelectedId(t.id)}
+                  className="flex items-center gap-3 text-left"
+                >
                   {t.image_url ? (
                     <img src={t.image_url} alt={t.full_name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                   ) : (
@@ -93,8 +122,8 @@ export default function AdminTestimonialsPage() {
                       {t.full_name.charAt(0)}
                     </div>
                   )}
-                  <span className="font-medium text-text">{t.full_name}</span>
-                </div>
+                  <span className="font-medium text-brand-blue hover:underline">{t.full_name}</span>
+                </button>
               </Td>
               <Td className="text-text-muted text-xs">
                 {[t.position, t.company].filter(Boolean).join(', ') || ' - '}
@@ -108,14 +137,15 @@ export default function AdminTestimonialsPage() {
               <Td className="text-text-muted text-xs">{new Date(t.created_at).toLocaleDateString()}</Td>
               <Td>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedId(t.id)}
+                    className="text-xs text-text-muted hover:text-brand-blue hover:underline"
+                  >
+                    View
+                  </button>
                   {t.status !== 'approved' && (
                     <button
-                      onClick={() => setConfirm({
-                        label: 'Approve this testimonial?',
-                        confirmLabel: 'Approve',
-                        danger: false,
-                        onConfirm: () => handleModerate(t.id, 'approved'),
-                      })}
+                      onClick={() => requestModerate(t, 'approved')}
                       className="text-xs text-green-700 hover:underline"
                     >
                       Approve
@@ -123,13 +153,7 @@ export default function AdminTestimonialsPage() {
                   )}
                   {t.status !== 'rejected' && (
                     <button
-                      onClick={() => setConfirm({
-                        label: 'Reject this testimonial?',
-                        description: 'The submitter will not be notified.',
-                        confirmLabel: 'Reject',
-                        danger: true,
-                        onConfirm: () => handleModerate(t.id, 'rejected'),
-                      })}
+                      onClick={() => requestModerate(t, 'rejected')}
                       className="text-xs text-red-600 hover:underline"
                     >
                       Reject
@@ -137,12 +161,7 @@ export default function AdminTestimonialsPage() {
                   )}
                   {t.status !== 'pending' && (
                     <button
-                      onClick={() => setConfirm({
-                        label: 'Reset to pending?',
-                        confirmLabel: 'Reset',
-                        danger: false,
-                        onConfirm: () => handleModerate(t.id, 'pending'),
-                      })}
+                      onClick={() => requestModerate(t, 'pending')}
                       className="text-xs text-text-muted hover:underline"
                     >
                       Reset
