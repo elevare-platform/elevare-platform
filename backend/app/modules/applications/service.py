@@ -28,7 +28,7 @@ from app.modules.applications.schema import (
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.interview_list.repository import InterviewListRepository
 from app.modules.jobs.repository import JobRepository
-from app.modules.jobs.schemas import build_full_description
+from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME, build_full_description
 from app.modules.users.enums import UserRole
 from app.modules.users.repository import UserRepository
 
@@ -139,16 +139,23 @@ class ApplicationService:
 
         # Queue emails — these fire after the response is returned.
         # Failures are logged but do not affect the application record.
+        job_employer = job.employer
+        job_employer_profile = (
+            getattr(job_employer, "organization", None) if job_employer else None
+        )
+        if job_employer_profile and job_employer_profile.company_name:
+            confirmation_company_name = job_employer_profile.company_name
+        elif job_employer and job_employer.role == "ADMIN":
+            confirmation_company_name = PLATFORM_COMPANY_NAME
+        else:
+            confirmation_company_name = ""
+
         email_service = get_email_service()
         background_tasks.add_task(
             email_service.send_application_confirmation,
             candidate.user.email,
             job.title,
-            (
-                job.employer.organization.company_name
-                if job.employer and job.employer.organization
-                else ""
-            ),
+            confirmation_company_name,
         )
         background_tasks.add_task(
             email_service.send_employer_notification,

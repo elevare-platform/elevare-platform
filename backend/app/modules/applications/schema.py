@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.applications.enums import ApplicationStatus
+from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME
 
 
 class ApplicationResponse(BaseModel):
@@ -73,6 +74,12 @@ class ApplicationResponse(BaseModel):
         employer_profile = (
             getattr(employer, "organization", None) if employer else None
         )
+        if employer_profile and employer_profile.company_name:
+            company_name = employer_profile.company_name
+        elif employer and getattr(employer, "role", None) == "ADMIN":
+            company_name = PLATFORM_COMPANY_NAME
+        else:
+            company_name = None
 
         candidate = getattr(application, "candidate", None)
         candidate_profile = (
@@ -93,7 +100,7 @@ class ApplicationResponse(BaseModel):
             status_updated_at=application.status_updated_at,
             job_title=application.job.title if application.job else None,
             job_status=application.job.status if application.job else None,
-            company_name=employer_profile.company_name if employer_profile else None,
+            company_name=company_name,
             company_logo=(
                 employer_profile.company_logo_url if employer_profile else None
             ),

@@ -237,7 +237,7 @@ class JobResponse(BaseModel):
         if employer and employer.organization:
             profile = employer.organization
 
-        if profile:
+        if profile and profile.company_name:
             company_name = profile.company_name
         elif employer and employer.role == "ADMIN":
             company_name = PLATFORM_COMPANY_NAME
