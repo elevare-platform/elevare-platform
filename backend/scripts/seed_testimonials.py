@@ -39,7 +39,7 @@ TESTIMONIALS = [
             "two weeks. It made the whole process a lot easier."
         ),
         "status": TestimonialStatus.APPROVED.value,
-        "created_at": datetime(2026, 9, 22, 10, 0, tzinfo=UTC),
+        "created_at": datetime(2026, 7, 22, 10, 0, tzinfo=UTC),
     },
     {
         "full_name": "Tobiloba",
@@ -51,7 +51,7 @@ TESTIMONIALS = [
             "from two of them in the same week."
         ),
         "status": TestimonialStatus.APPROVED.value,
-        "created_at": datetime(2026, 9, 23, 14, 30, tzinfo=UTC),
+        "created_at": datetime(2026, 7, 23, 14, 30, tzinfo=UTC),
     },
     {
         "full_name": "Ngozi",
@@ -63,7 +63,7 @@ TESTIMONIALS = [
             "after signing up."
         ),
         "status": TestimonialStatus.APPROVED.value,
-        "created_at": datetime(2026, 9, 25, 9, 15, tzinfo=UTC),
+        "created_at": datetime(2026, 7, 25, 9, 15, tzinfo=UTC),
     },
     {
         "full_name": "Segun",
@@ -75,7 +75,7 @@ TESTIMONIALS = [
             "a lot with other job sites."
         ),
         "status": TestimonialStatus.APPROVED.value,
-        "created_at": datetime(2026, 9, 27, 16, 45, tzinfo=UTC),
+        "created_at": datetime(2026, 7, 27, 16, 45, tzinfo=UTC),
     },
     {
         "full_name": "Amarachi",
@@ -87,7 +87,7 @@ TESTIMONIALS = [
             "and I am still there now."
         ),
         "status": TestimonialStatus.APPROVED.value,
-        "created_at": datetime(2026, 9, 29, 11, 0, tzinfo=UTC),
+        "created_at": datetime(2026, 7, 29, 11, 0, tzinfo=UTC),
     },
 ]
 
