@@ -68,6 +68,25 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
+    async def send_onboarding_reminder(
+        self,
+        email: str,
+        first_name: str,
+    ) -> None:
+        """Nudge a verified employer who never completed their company profile."""
+        ...
+
+    @abstractmethod
+    async def send_kyc_reminder(
+        self,
+        email: str,
+        first_name: str,
+        company_name: str,
+    ) -> None:
+        """Nudge an onboarded employer who never submitted KYC documents."""
+        ...
+
+    @abstractmethod
     async def send_job_moderation_status(
         self,
         employer_email: str,
@@ -1205,7 +1224,7 @@ class ResendEmailService(EmailService):
 
         {_render_button("Log in to Elevare", login_link)}
 
-        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Sorry for the inconvenience. If anything still looks off after logging in, just reply to this email and we'll sort it out.</p>
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Sorry for the inconvenience. If anything still looks off after logging in, contact us at <a href="mailto:info_admin@elevare.com.ng" style="color: #1A4D8F; text-decoration: none;">info_admin@elevare.com.ng</a> and we'll sort it out.</p>
         """
 
         html_body = _render_email_layout(
@@ -1217,6 +1236,83 @@ class ResendEmailService(EmailService):
 
         await self._send_html(
             subject="Your Elevare account is ready, sorry for the trouble",
+            recipients=[email],
+            html_body=html_body,
+        )
+
+    async def send_onboarding_reminder(
+        self,
+        email: str,
+        first_name: str,
+    ) -> None:
+        """Nudge a verified employer who never completed their company profile.
+
+        Sent once, at least 24 hours after email verification, if the
+        Organization's company profile is still incomplete. See
+        ``UserRepository.list_employers_missing_onboarding``.
+        """
+        onboarding_link = f"{settings.app_url}/employer/onboarding"
+        greeting = f"Hi {first_name}," if first_name else "Hi,"
+
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Finish setting up your company profile</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{greeting}</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your Elevare employer account is verified, but your company profile is still missing a few details. Finishing it is what lets you start posting jobs and searching the talent pool.</p>
+
+        {_render_button("Complete your company profile", onboarding_link)}
+
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">It only takes a couple of minutes: company name, industry, and size.</p>
+        """
+
+        html_body = _render_email_layout(
+            title="Finish setting up your company profile",
+            preheader="A few details left before you can start hiring on Elevare.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you registered an employer account on Elevare.",
+        )
+
+        await self._send_html(
+            subject="Finish setting up your Elevare company profile",
+            recipients=[email],
+            html_body=html_body,
+        )
+
+    async def send_kyc_reminder(
+        self,
+        email: str,
+        first_name: str,
+        company_name: str,
+    ) -> None:
+        """Nudge an onboarded employer who never submitted KYC documents.
+
+        Sent once, at least 24 hours after the company profile was
+        completed, if no KYC documents have been submitted yet. Approved
+        KYC is what unlocks posting jobs, so this is the last step. See
+        ``UserRepository.list_employers_missing_kyc``.
+        """
+        verification_link = f"{settings.app_url}/employer/verification"
+        greeting = f"Hi {first_name}," if first_name else "Hi,"
+        company_label = company_name or "your company"
+
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">One step left: verify {company_label}</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{greeting}</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your company profile is set up, but you haven't submitted verification documents yet. Once approved, you'll be able to post jobs and start hiring on Elevare.</p>
+
+        {_render_button("Submit verification documents", verification_link)}
+
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Reviews are usually quick once your documents are in.</p>
+        """
+
+        html_body = _render_email_layout(
+            title=f"Verify {company_label}",
+            preheader="Submit your documents to start posting jobs on Elevare.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you registered an employer account on Elevare.",
+        )
+
+        await self._send_html(
+            subject="One step left before you can post jobs on Elevare",
             recipients=[email],
             html_body=html_body,
         )
@@ -1530,6 +1626,34 @@ class StubEmailService(EmailService):
             email,
             first_name,
             role,
+            settings.app_url,
+        )
+
+    async def send_onboarding_reminder(
+        self,
+        email: str,
+        first_name: str,
+    ) -> None:
+        """Log a stub onboarding reminder."""
+        logger.info(
+            "STUB ONBOARDING REMINDER to %s (%s). Link: %s/employer/onboarding",
+            email,
+            first_name,
+            settings.app_url,
+        )
+
+    async def send_kyc_reminder(
+        self,
+        email: str,
+        first_name: str,
+        company_name: str,
+    ) -> None:
+        """Log a stub KYC reminder."""
+        logger.info(
+            "STUB KYC REMINDER to %s (%s), company=%s. Link: %s/employer/verification",
+            email,
+            first_name,
+            company_name,
             settings.app_url,
         )
 

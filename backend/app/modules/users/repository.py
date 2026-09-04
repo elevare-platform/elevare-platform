@@ -1,14 +1,15 @@
 """Data-access layer for user records."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.modules.candidates.models import CandidateProfile
-from app.modules.employer.enums import OrganizationRole
-from app.modules.users.enums import UserRole
+from app.modules.employer.enums import KYCStatus, OrganizationRole
+from app.modules.notifications.models import Notification
+from app.modules.users.enums import AccountStatus, UserRole
 from app.modules.users.models import Organization, User, UserProfile
 from app.modules.users.schemas import EmployerProfileUpdateRequest
 
@@ -155,6 +156,95 @@ class UserRepository:
         stmt = select(User).where(
             User.role == UserRole.EMPLOYER.value,
             User.organization_id.is_(None),
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    def _not_already_notified(self, notification_type: str):
+        """NOT EXISTS subquery: has this user already received a reminder of this type.
+
+        Shared by the three list_* methods below so a reminder is only ever
+        sent once per user per issue. Reuses the existing Notification table
+        as the record of "already reminded" rather than a new column, since
+        Notification.type is a free-text field with no migration needed for
+        a new value.
+        """
+        return (
+            select(Notification.id)
+            .where(
+                Notification.recipient_id == User.id,
+                Notification.type == notification_type,
+            )
+            .exists()
+        )
+
+    async def list_unverified_users(self, min_age: timedelta) -> list[User]:
+        """Candidates and employers who never verified their email, old enough to nudge.
+
+        Feeds the daily ``send_account_setup_reminders_task``. Excludes
+        anyone already sent a VERIFICATION_REMINDER notification, so this is
+        safe to call on every run.
+        """
+        cutoff = datetime.now(UTC) - min_age
+        stmt = select(User).where(
+            User.account_status == AccountStatus.PENDING_VERIFICATION.value,
+            User.email_verified.is_(False),
+            User.role != UserRole.ADMIN.value,
+            User.created_at <= cutoff,
+            ~self._not_already_notified("VERIFICATION_REMINDER"),
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_employers_missing_onboarding(self, min_age: timedelta) -> list[User]:
+        """Employer owners who verified their email but never completed onboarding.
+
+        Only the organization OWNER is targeted, not invited teammates, since
+        they don't control the company profile. "Completed onboarding" is
+        Organization.is_profile_complete, the same flag
+        ``upsert_employer_profile`` flips once company_name/industry/
+        company_size are all set.
+        """
+        cutoff = datetime.now(UTC) - min_age
+        stmt = (
+            select(User)
+            .join(Organization, User.organization_id == Organization.id)
+            .where(
+                User.role == UserRole.EMPLOYER.value,
+                User.organization_role == OrganizationRole.OWNER.value,
+                User.email_verified.is_(True),
+                User.email_verified_at <= cutoff,
+                Organization.is_profile_complete.is_(False),
+                ~self._not_already_notified("ONBOARDING_REMINDER"),
+            )
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_employers_missing_kyc(self, min_age: timedelta) -> list[User]:
+        """Employer owners who onboarded but never submitted KYC documents.
+
+        Mutually exclusive with ``list_employers_missing_onboarding`` on
+        Organization.is_profile_complete, so an employer stuck on both only
+        ever appears in the onboarding list. There is no "onboarding
+        completed at" timestamp, so Organization.updated_at is used as the
+        grace-period reference instead. It is only ever touched by
+        ``upsert_employer_profile``, the same call that flips
+        is_profile_complete.
+        """
+        cutoff = datetime.now(UTC) - min_age
+        stmt = (
+            select(User)
+            .join(Organization, User.organization_id == Organization.id)
+            .options(selectinload(User.organization))
+            .where(
+                User.role == UserRole.EMPLOYER.value,
+                User.organization_role == OrganizationRole.OWNER.value,
+                Organization.is_profile_complete.is_(True),
+                Organization.kyc_status == KYCStatus.NOT_SUBMITTED.value,
+                Organization.updated_at <= cutoff,
+                ~self._not_already_notified("KYC_REMINDER"),
+            )
         )
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
