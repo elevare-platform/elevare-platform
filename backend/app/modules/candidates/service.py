@@ -40,6 +40,7 @@ from app.modules.candidates.schema import (
     WorkExperienceResponse,
 )
 from app.modules.jobs.enums import SeniorityLevel
+from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME
 from app.modules.users.enums import UserRole
 from app.modules.users.models import User
 
@@ -518,16 +519,19 @@ class CandidateService:
 
         items = []
         for view in paginated["items"]:
-            employer_profile = getattr(
-                getattr(view, "employer", None), "organization", None
-            )
+            employer = getattr(view, "employer", None)
+            employer_profile = getattr(employer, "organization", None)
+            if employer_profile and employer_profile.company_name:
+                company_name = employer_profile.company_name
+            elif employer and employer.role == "ADMIN":
+                company_name = PLATFORM_COMPANY_NAME
+            else:
+                company_name = None
             items.append(
                 {
                     "id": view.id,
                     "viewed_at": view.viewed_at,
-                    "company_name": (
-                        employer_profile.company_name if employer_profile else None
-                    ),
+                    "company_name": company_name,
                     "company_logo_url": (
                         employer_profile.company_logo_url if employer_profile else None
                     ),
