@@ -51,7 +51,7 @@ celery = Celery(
         "app.modules.ingestion.tasks",  # candidate ingestion
         "app.modules.introductions.tasks",  # introduction request emails
         "app.modules.interviews.tasks",  # AI video interview invite emails
-        "app.modules.users.tasks",  # role-switch self-heal backstop
+        "app.modules.users.tasks",  # role-switch self-heal, account setup reminders
     ],
 )
 
@@ -145,6 +145,14 @@ celery.conf.update(
             # a sweep that's expected to no-op almost every time it fires.
             "schedule": 60 * 60 * 6,
             "options": {"expires": 60 * 60 * 5},
+        },
+        "send-account-setup-reminders": {
+            "task": "app.modules.users.tasks.send_account_setup_reminders_task",
+            # Daily, matching the task's 24 hour grace period, so a newly
+            # stuck account is naturally picked up on the next run after
+            # crossing that threshold.
+            "schedule": 60 * 60 * 24,
+            "options": {"expires": 60 * 60 * 23},
         },
     },
 )
