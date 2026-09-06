@@ -178,32 +178,46 @@ class UserRepository:
             .exists()
         )
 
-    async def list_unverified_users(self, min_age: timedelta) -> list[User]:
+    async def list_unverified_users(
+        self, min_age: timedelta, limit: int | None = None
+    ) -> list[User]:
         """Candidates and employers who never verified their email, old enough to nudge.
 
         Feeds the daily ``send_account_setup_reminders_task``. Excludes
         anyone already sent a VERIFICATION_REMINDER notification, so this is
-        safe to call on every run.
+        safe to call on every run. Ordered oldest signup first, so a caller
+        that passes ``limit`` (to stay under a daily email quota) always
+        covers the most overdue accounts first rather than an arbitrary
+        subset.
         """
         cutoff = datetime.now(UTC) - min_age
-        stmt = select(User).where(
-            User.account_status == AccountStatus.PENDING_VERIFICATION.value,
-            User.email_verified.is_(False),
-            User.role != UserRole.ADMIN.value,
-            User.created_at <= cutoff,
-            ~self._not_already_notified("VERIFICATION_REMINDER"),
+        stmt = (
+            select(User)
+            .where(
+                User.account_status == AccountStatus.PENDING_VERIFICATION.value,
+                User.email_verified.is_(False),
+                User.role != UserRole.ADMIN.value,
+                User.created_at <= cutoff,
+                ~self._not_already_notified("VERIFICATION_REMINDER"),
+            )
+            .order_by(User.created_at)
         )
+        if limit:
+            stmt = stmt.limit(limit)
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
 
-    async def list_employers_missing_onboarding(self, min_age: timedelta) -> list[User]:
+    async def list_employers_missing_onboarding(
+        self, min_age: timedelta, limit: int | None = None
+    ) -> list[User]:
         """Employer owners who verified their email but never completed onboarding.
 
         Only the organization OWNER is targeted, not invited teammates, since
         they don't control the company profile. "Completed onboarding" is
         Organization.is_profile_complete, the same flag
         ``upsert_employer_profile`` flips once company_name/industry/
-        company_size are all set.
+        company_size are all set. Ordered oldest-verified first, same reason
+        as ``list_unverified_users``.
         """
         cutoff = datetime.now(UTC) - min_age
         stmt = (
@@ -217,11 +231,16 @@ class UserRepository:
                 Organization.is_profile_complete.is_(False),
                 ~self._not_already_notified("ONBOARDING_REMINDER"),
             )
+            .order_by(User.email_verified_at)
         )
+        if limit:
+            stmt = stmt.limit(limit)
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
 
-    async def list_employers_missing_kyc(self, min_age: timedelta) -> list[User]:
+    async def list_employers_missing_kyc(
+        self, min_age: timedelta, limit: int | None = None
+    ) -> list[User]:
         """Employer owners who onboarded but never submitted KYC documents.
 
         Mutually exclusive with ``list_employers_missing_onboarding`` on
@@ -230,7 +249,8 @@ class UserRepository:
         completed at" timestamp, so Organization.updated_at is used as the
         grace-period reference instead. It is only ever touched by
         ``upsert_employer_profile``, the same call that flips
-        is_profile_complete.
+        is_profile_complete. Ordered oldest-onboarded first, same reason as
+        ``list_unverified_users``.
         """
         cutoff = datetime.now(UTC) - min_age
         stmt = (
@@ -245,7 +265,10 @@ class UserRepository:
                 Organization.updated_at <= cutoff,
                 ~self._not_already_notified("KYC_REMINDER"),
             )
+            .order_by(Organization.updated_at)
         )
+        if limit:
+            stmt = stmt.limit(limit)
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
 
