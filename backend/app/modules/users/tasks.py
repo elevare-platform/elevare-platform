@@ -25,6 +25,22 @@ logger = logging.getLogger(__name__)
 # filling things in.
 REMINDER_GRACE_PERIOD = timedelta(hours=24)
 
+# Resend's free tier caps at 100 emails/day for the whole account, shared
+# with every transactional email the platform sends (registration
+# verification, KYC results, application confirmations, ...). This sweep
+# can find hundreds of stuck accounts at once, so it must never be allowed
+# to spend the whole daily budget itself, or a real person registering
+# later that same day gets no verification email at all. Capping well
+# under 100 always leaves headroom for transactional traffic regardless of
+# what this sweep does or when it runs. Raise this once Resend is on a
+# paid tier with real headroom; until then, keep it conservative.
+REMINDER_DAILY_BUDGET = 40
+
+# Resend's default rate limit is 2 requests per second. Stay comfortably
+# under it, matching the same delay already used in
+# scripts/send_verification_reminders.py.
+SEND_INTERVAL_SECONDS = 0.6
+
 
 @celery.task(time_limit=60 * 5, soft_time_limit=60 * 4)
 def heal_role_switch_profiles_task():
@@ -106,6 +122,14 @@ def send_account_setup_reminders_task():
     "Already reminded" is tracked via a Notification row of the matching
     type, created only after the email send succeeds, so a failed send
     doesn't get marked as done and is retried on the next run.
+
+    Capped at REMINDER_DAILY_BUDGET sends total per run, so this sweep can
+    never consume the whole daily Resend quota and starve real transactional
+    email (registration, KYC results, ...) later the same day. Unverified
+    accounts are filled first (they can't do anything at all until
+    verified), then onboarding, then KYC (an employer stuck there already
+    has a working account, just can't post jobs yet). Anyone left over past
+    the budget is simply picked up on tomorrow's run, oldest first.
     """
     asyncio.run(_run_reminders_async())
 
@@ -117,21 +141,45 @@ async def _run_reminders_async() -> None:
     try:
         async with SessionLocal() as db:
             repo = UserRepository(db)
-            unverified = await repo.list_unverified_users(REMINDER_GRACE_PERIOD)
-            missing_onboarding = await repo.list_employers_missing_onboarding(
-                REMINDER_GRACE_PERIOD
+
+            # Fetch in priority order, each one's limit shrunk by how many
+            # the previous category already claimed, so the combined total
+            # never exceeds REMINDER_DAILY_BUDGET regardless of how the
+            # backlog is split across the three categories.
+            remaining_budget = REMINDER_DAILY_BUDGET
+
+            unverified = await repo.list_unverified_users(
+                REMINDER_GRACE_PERIOD, limit=remaining_budget
             )
-            missing_kyc = await repo.list_employers_missing_kyc(REMINDER_GRACE_PERIOD)
+            remaining_budget -= len(unverified)
+
+            missing_onboarding = (
+                await repo.list_employers_missing_onboarding(
+                    REMINDER_GRACE_PERIOD, limit=remaining_budget
+                )
+                if remaining_budget > 0
+                else []
+            )
+            remaining_budget -= len(missing_onboarding)
+
+            missing_kyc = (
+                await repo.list_employers_missing_kyc(
+                    REMINDER_GRACE_PERIOD, limit=remaining_budget
+                )
+                if remaining_budget > 0
+                else []
+            )
 
             if not unverified and not missing_onboarding and not missing_kyc:
                 return
 
             logger.info(
                 "send_account_setup_reminders_task: %d unverified, %d missing "
-                "onboarding, %d missing KYC.",
+                "onboarding, %d missing KYC (budget %d/day).",
                 len(unverified),
                 len(missing_onboarding),
                 len(missing_kyc),
+                REMINDER_DAILY_BUDGET,
             )
 
             email_service = get_email_service()
@@ -162,6 +210,7 @@ async def _run_reminders_async() -> None:
                         "(unverified)",
                         u.email,
                     )
+                await asyncio.sleep(SEND_INTERVAL_SECONDS)
 
             for u in missing_onboarding:
                 try:
@@ -182,6 +231,7 @@ async def _run_reminders_async() -> None:
                         "(onboarding)",
                         u.email,
                     )
+                await asyncio.sleep(SEND_INTERVAL_SECONDS)
 
             for u in missing_kyc:
                 try:
@@ -205,6 +255,7 @@ async def _run_reminders_async() -> None:
                         "(KYC)",
                         u.email,
                     )
+                await asyncio.sleep(SEND_INTERVAL_SECONDS)
 
             logger.info(
                 "send_account_setup_reminders_task: sent %d reminder(s).", sent
