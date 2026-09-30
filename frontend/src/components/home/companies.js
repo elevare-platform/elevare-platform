@@ -29,8 +29,6 @@ export const COMPANIES = [
   { name: 'Miramore Consulting Ltd', logo: 'https://media.licdn.com/dms/image/v2/D4D0BAQGjkM8rz-fbtg/img-crop_100/img-crop_100/0/1728773710191?e=2147483647&v=beta&t=a05MuaGGNdNg7EBnVM2YUKVezvWmCnyafbkCpzABRWs' },
   { name: 'Starium Detergents FZE', logo: null },
   { name: 'Beiersdorf', logo: beiersdorfLogo },
-  // Logo not yet sourced - renders as text until an official file is supplied
-  { name: 'Eucerin', logo: null },
   { name: 'Ivy Hotel', logo: ivyHotelLogo },
   { name: 'Aotel', logo: aotelLogo },
   { name: 'Grandex', logo: grandexLogo },
