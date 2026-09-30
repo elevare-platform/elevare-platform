@@ -1,5 +1,6 @@
 // Shared company/partner list - single source of truth for SocialProofBar and PartnersSection
 import GourmetTwistLogo from './GourmetTwistLogo'
+import beiersdorfLogo from '@/assets/beiersdorf-logo.png'
 
 export { GourmetTwistLogo }
 
@@ -24,4 +25,10 @@ export const COMPANIES = [
   { name: 'FCMB', logo: 'https://www.fcmb.com/assets/images/logo.png' },
   { name: 'Miramore Consulting Ltd', logo: 'https://media.licdn.com/dms/image/v2/D4D0BAQGjkM8rz-fbtg/img-crop_100/img-crop_100/0/1728773710191?e=2147483647&v=beta&t=a05MuaGGNdNg7EBnVM2YUKVezvWmCnyafbkCpzABRWs' },
   { name: 'Starium Detergents FZE', logo: null },
+  { name: 'Beiersdorf', logo: beiersdorfLogo },
+  // Logos not yet sourced - render as text until official files are supplied
+  { name: 'Eucerin', logo: null },
+  { name: 'Ivy Hotel', logo: null },
+  { name: 'Aotel', logo: null },
+  { name: 'Grandex', logo: null },
 ]
