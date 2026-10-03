@@ -42,6 +42,11 @@ class PublicApplicantsItem(BaseModel):
     cv_snippet: str | None = None
     cv_download_url: str | None = None
     source: str = "applicant"  # "applicant" (registered) | "external" (uploaded CV)
+    # When the application was made / the external CV was added, and when the
+    # score was computed. Shown as "Added 3d ago" on the shared page so a new
+    # batch stands out in a score-sorted list. Optional: older clients ignore them.
+    created_at: datetime | None = None
+    ai_score_computed_at: datetime | None = None
 
 
 class PublicApplicantsResponse(BaseModel):

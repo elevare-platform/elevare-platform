@@ -335,6 +335,9 @@ class TalentPoolService:
         cursor: str | None,
         limit: int,
         current_user,
+        sort: str | None = None,
+        min_score: int | None = None,
+        added_within_days: int | None = None,
     ) -> dict:
         """Return paginated talent pool profiles, enriched with parsed CV data."""
         is_admin = current_user.role == UserRole.ADMIN.value
@@ -359,6 +362,9 @@ class TalentPoolService:
             limit=limit,
             viewer_id=current_user.id,
             is_admin=is_admin,
+            sort=sort,
+            min_score=min_score,
+            added_within_days=added_within_days,
         )
         if capped:
             result["items"] = result["items"][:STARTER_TALENT_POOL_VISIBLE_LIMIT]

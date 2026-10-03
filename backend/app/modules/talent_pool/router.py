@@ -1,6 +1,7 @@
 """HTTP endpoints for the talent pool module."""
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,12 +112,23 @@ async def list_talent_pool(
     job_id: uuid.UUID | None = Query(default=None),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
+    sort: Literal["score", "newest"] | None = Query(default=None),
+    min_score: int | None = Query(default=None, ge=0, le=100),
+    added_within_days: int | None = Query(default=None, ge=1, le=365),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> dict:
     """List talent pool profiles with optional filters."""
     return await service.list_profiles(
-        status, source, job_id, cursor, limit, current_user
+        status,
+        source,
+        job_id,
+        cursor,
+        limit,
+        current_user,
+        sort=sort,
+        min_score=min_score,
+        added_within_days=added_within_days,
     )
 
 

@@ -29,6 +29,14 @@ export function timeAgo(dateString) {
   return `${Math.floor(months / 12)}y ago`
 }
 
+// ageInDays returns how many days ago a date was, as a fraction. Returns null
+// when the input is null/undefined. Lives here, not in a component, because
+// reading the clock during render is flagged by the react-hooks/purity rule.
+export function ageInDays(dateString) {
+  if (!dateString) return null
+  return (Date.now() - new Date(dateString).getTime()) / 86_400_000
+}
+
 export function formatSalary(value) {
   if (value == null) return ''
   return `₦${value.toLocaleString('en-NG')}`

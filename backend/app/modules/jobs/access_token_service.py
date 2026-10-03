@@ -237,6 +237,8 @@ class AccessTokenService:
                     cv_snippet=cv_snippet,
                     cv_download_url=cv_download_url,
                     source="applicant",
+                    created_at=application.created_at,
+                    ai_score_computed_at=application.ai_score_computed_at,
                 )
             )
 
@@ -302,6 +304,8 @@ class AccessTokenService:
                     cv_snippet=cv_snippet,
                     cv_download_url=cv_download_url,
                     source="external",
+                    created_at=profile.created_at,
+                    ai_score_computed_at=profile.ai_score_computed_at,
                 )
             )
 

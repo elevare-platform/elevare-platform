@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy import select, text
@@ -113,19 +114,17 @@ class TalentPoolRepository:
         limit: int = 20,
         viewer_id: uuid.UUID | None = None,
         is_admin: bool = False,
+        added_within_days: int | None = None,
+        min_score: int | None = None,
+        sort: str | None = None,
     ) -> dict:
         """Return paginated talent pool profiles with optional filters.
 
         Non-admins only see entries they uploaded or entries added by admins.
         When ``job_id`` is provided, results are ordered by ai_score descending.
         """
-        order_by = (
-            TalentPoolProfiles.ai_score.desc().nulls_last()
-            if job_id
-            else TalentPoolProfiles.created_at.desc()
-        )
 
-        stmt = select(TalentPoolProfiles).order_by(order_by)
+        stmt = select(TalentPoolProfiles)
 
         # Non-admins only see their own uploads OR platform-wide entries (added by admins)
         # Admins see everything
@@ -156,8 +155,17 @@ class TalentPoolRepository:
             stmt = stmt.where(TalentPoolProfiles.source == source)
         if job_id:
             stmt = stmt.where(TalentPoolProfiles.sourced_for_job_id == job_id)
+        if added_within_days:
+            cutoff = datetime.now(UTC) - timedelta(days=added_within_days)
+            stmt = stmt.where(TalentPoolProfiles.created_at >= cutoff)
+        if min_score is not None:
+            stmt = stmt.where(TalentPoolProfiles.ai_score >= min_score)
 
-        return await paginate_cursor(stmt, self._db, cursor, limit)
+        use_score = (sort or ("score" if job_id else "newest")) == "score"
+        sort_column = "ai_score" if use_score else None
+        return await paginate_cursor(
+            stmt, self._db, cursor, limit, sort_column=sort_column
+        )
 
     async def update(
         self, profile_id: uuid.UUID, data: dict

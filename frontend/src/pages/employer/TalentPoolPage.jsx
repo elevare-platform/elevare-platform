@@ -16,6 +16,8 @@ import api from '@/lib/api'
 import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
+import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
+import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
 import { matchScoreBand } from '@/lib/matchScore'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -455,6 +457,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
                 : `Added ${new Date(profile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`)
             }
           </p>
+          <AgeLabel profile={profile} />
         </div>
 
         {/* Score */}
@@ -579,6 +582,7 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
               <><span className="text-border">·</span><span className="truncate max-w-[140px]">{profile.source_note.replace(/(Gmail|Zoho) import-  /, '').replace(/ · message .+$/, '')}</span></>
             )}
           </p>
+          <AgeLabel profile={profile} />
         </div>
 
         {/* Unscored indicator */}
@@ -753,6 +757,8 @@ export default function TalentPoolPage() {
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') ?? '')
   const [sourceFilter, setSourceFilter] = useState(() => searchParams.get('source') ?? '')
   const [search, setSearch] = useState('')
+  const filters = useTalentPoolFilters()
+  const { toParams } = filters
 
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -768,6 +774,7 @@ export default function TalentPoolPage() {
       if (statusFilter) params.status = statusFilter
       if (sourceFilter) params.source = sourceFilter
       if (activeJob) params.job_id = activeJob
+      Object.assign(params, toParams(Boolean(activeJob)))
       if (!reset && cursor) params.cursor = cursor
       const { data } = await api.get('/api/v1/talent-pool', { params })
       const items = data.items ?? []
@@ -778,9 +785,9 @@ export default function TalentPoolPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, sourceFilter, activeJob, cursor])
+  }, [statusFilter, sourceFilter, activeJob, toParams, cursor])
 
-  useEffect(() => { loadProfiles(true) }, [statusFilter, sourceFilter, activeJob])
+  useEffect(() => { loadProfiles(true) }, [statusFilter, sourceFilter, activeJob, toParams])
 
   useEffect(() => {
     api.get('/api/v1/jobs/mine', { params: { limit: 100 } })
@@ -818,6 +825,12 @@ export default function TalentPoolPage() {
   })
 
   const activeJobTitle = jobs.find(j => j.id === activeJob)?.title
+  const hasActiveFilters = Boolean(statusFilter || sourceFilter || filters.isFiltered(mode === 'job'))
+  const clearFilters = () => {
+    setStatusFilter('')
+    setSourceFilter('')
+    filters.clear()
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-muted">
@@ -869,7 +882,7 @@ export default function TalentPoolPage() {
               </div>
               {mode === 'job' && (
                 <span className="text-xs text-brand-blue bg-brand-blue/10 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-                  <TrendingUp size={11} /> Ranked by AI score
+                  <TrendingUp size={11} /> {filters.sortBy === 'score' ? 'Ranked by AI score' : 'Newest first'}
                 </span>
               )}
               {mode === 'pipeline' && (
@@ -891,8 +904,9 @@ export default function TalentPoolPage() {
                 placeholder="Search profiles…"
                 className="w-full text-sm rounded-lg border border-border pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-blue" />
             </div>
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
               <Filter size={14} className="text-text-muted" />
+              <TalentPoolFilterControls filters={filters} hasJob={mode === 'job'} />
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
                 className="text-sm rounded-lg border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-blue">
                 <option value="">All statuses</option>
@@ -910,6 +924,8 @@ export default function TalentPoolPage() {
             </div>
           </div>
 
+          <MinScoreNote filters={filters} hasJob={mode === 'job'} />
+
           {/* Content */}
           {loading && profiles.length === 0 ? (
             <div className="space-y-3">
@@ -922,15 +938,23 @@ export default function TalentPoolPage() {
               <div className="w-14 h-14 rounded-xl bg-surface-muted flex items-center justify-center mx-auto mb-3">
                 <Users size={24} className="text-text-muted" />
               </div>
-              <p className="font-semibold text-text mb-1">No profiles found</p>
-              <p className="text-sm text-text-muted mb-4">
-                {mode === 'job'
-                  ? 'Upload CVs with this job attached, or click "Score all" to rank existing pipeline profiles.'
-                  : 'Start building your pipeline by uploading a CV.'}
+              <p className="font-semibold text-text mb-1">
+                {hasActiveFilters ? 'No profiles match these filters' : 'No profiles found'}
               </p>
-              <Button size="sm" onClick={() => setDrawerOpen(true)}>
-                <Upload size={13} className="mr-1.5" /> Add first CV
-              </Button>
+              <p className="text-sm text-text-muted mb-4">
+                {hasActiveFilters
+                  ? 'Try a wider date range or a lower minimum score.'
+                  : mode === 'job'
+                    ? 'Upload CVs with this job attached, or click "Score all" to rank existing pipeline profiles.'
+                    : 'Start building your pipeline by uploading a CV.'}
+              </p>
+              {hasActiveFilters ? (
+                <Button size="sm" variant="outline" onClick={clearFilters}>Clear filters</Button>
+              ) : (
+                <Button size="sm" onClick={() => setDrawerOpen(true)}>
+                  <Upload size={13} className="mr-1.5" /> Add first CV
+                </Button>
+              )}
             </div>
           ) : mode === 'job' ? (
             <div className="space-y-3">
