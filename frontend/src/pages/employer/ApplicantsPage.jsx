@@ -20,6 +20,8 @@ import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
 import TalentMatchCard from '@/components/employer/TalentMatchCard'
+import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
+import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
 import SaveHeartButton from '@/components/employer/SaveHeartButton'
 import InterviewListButton from '@/components/employer/InterviewListButton'
 import InterviewBriefSetupModal from '@/components/employer/InterviewBriefSetupModal'
@@ -785,7 +787,11 @@ function TalentPoolProfilePanel({ profile, onClose }) {
 
 // ─── Pipeline Tab (Item 2) ────────────────────────────────────────────────────
 
-function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh, interviewList }) {
+function PipelineTab({
+  profiles, loading, error, total, hasMore, filters, jobId,
+  onProfileClick, onRefresh, onLoadMore, interviewList,
+}) {
+  const filtered = filters.isFiltered(true)
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -803,28 +809,61 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh, inte
         </div>
       </div>
 
-      {loading && (
+      <div className="flex flex-wrap items-center gap-2">
+        <TalentPoolFilterControls filters={filters} hasJob />
+        {total != null && (
+          <span className="ml-auto text-xs text-text-muted">
+            Showing {profiles.length} of {total}
+          </span>
+        )}
+      </div>
+      <MinScoreNote filters={filters} hasJob />
+
+      {loading && profiles.length === 0 && (
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl bg-white border border-border animate-pulse" />)}
         </div>
       )}
 
-      {!loading && profiles.length === 0 && (
-        <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
-          <Users size={28} className="mx-auto text-text-muted mb-3" />
-          <p className="font-medium text-text text-sm mb-1">No pipeline profiles yet</p>
-          <p className="text-xs text-text-muted mb-4">Upload CVs from the Talent Pool to score them against this job.</p>
-          <Link
-            to={`/employer/talent-pool?job_id=${jobId}`}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-blue px-3 py-1.5 rounded-lg hover:bg-brand-blue-dark transition-colors"
-          >
-            <Upload size={12} /> Upload CVs
-          </Link>
+      {/* A failed load must never look like "no profiles". */}
+      {!loading && error && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={onRefresh} className="text-xs font-semibold underline">Try again</button>
         </div>
       )}
 
-      {!loading && profiles.length > 0 && (
-        <div className="space-y-2">
+      {!loading && !error && profiles.length === 0 && (
+        <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+          <Users size={28} className="mx-auto text-text-muted mb-3" />
+          <p className="font-medium text-text text-sm mb-1">
+            {filtered ? 'No pipeline profiles match these filters' : 'No pipeline profiles yet'}
+          </p>
+          <p className="text-xs text-text-muted mb-4">
+            {filtered
+              ? 'Try a wider date range or a lower minimum score.'
+              : 'Upload CVs from the Talent Pool to score them against this job.'}
+          </p>
+          {filtered ? (
+            <button
+              onClick={filters.clear}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-blue border border-brand-blue/30 px-3 py-1.5 rounded-lg hover:bg-brand-blue/5 transition-colors"
+            >
+              Clear filters
+            </button>
+          ) : (
+            <Link
+              to={`/employer/talent-pool?job_id=${jobId}`}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-blue px-3 py-1.5 rounded-lg hover:bg-brand-blue-dark transition-colors"
+            >
+              <Upload size={12} /> Upload CVs
+            </Link>
+          )}
+        </div>
+      )}
+
+      {profiles.length > 0 && (
+        <div className={cn('space-y-2 transition-opacity', loading && 'opacity-60')}>
           {profiles.map((p, i) => (
             <div
               key={p.id}
@@ -836,7 +875,8 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh, inte
                 className="flex items-center gap-4 flex-1 min-w-0 text-left"
               >
                 <span className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold flex items-center justify-center flex-shrink-0">
-                  {i + 1}
+                  {/* A rank only means something when sorted by score */}
+                  {filters.sortBy === 'score' ? i + 1 : '·'}
                 </span>
                 <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
                   <Users size={15} className="text-brand-blue" />
@@ -848,6 +888,7 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh, inte
                   <p className="text-xs text-text-muted truncate">
                     {[p.candidate_current_title, p.candidate_email].filter(Boolean).join(' · ') || 'No details yet'}
                   </p>
+                  <AgeLabel profile={p} />
                 </div>
                 <div
                   className={cn(
@@ -878,6 +919,14 @@ function PipelineTab({ profiles, loading, jobId, onProfileClick, onRefresh, inte
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {hasMore && (
+        <div className="flex justify-center pt-2">
+          <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loading}>
+            {loading ? 'Loading…' : 'Load more'}
+          </Button>
         </div>
       )}
     </div>
@@ -1330,6 +1379,11 @@ export default function ApplicantsPage() {
   }) // 'applicants' | 'pipeline' | 'ai-matches' | 'interview-list'
   const [pipeline, setPipeline] = useState([])
   const [pipelineLoading, setPipelineLoading] = useState(false)
+  const [pipelineError, setPipelineError] = useState(null)
+  const [pipelineCursor, setPipelineCursor] = useState(null)
+  const [pipelineTotal, setPipelineTotal] = useState(null)
+  const pipelineFilters = useTalentPoolFilters()
+  const { toParams: pipelineParams } = pipelineFilters
   const [selectedProfile, setSelectedProfile] = useState(null) // for detail panel
 
   // AI Talent Matches tab
@@ -1407,15 +1461,32 @@ export default function ApplicantsPage() {
     fetchApplicants(activeTab, null, true)
   }, [activeTab, sortBy, fetchApplicants])
 
-  // Load pipeline profiles when Pipeline tab is activated
+  // Pages through the pipeline (50 at a time). The old single fetch capped the
+  // tab at 100 profiles sorted by score, so on a big pool the newest,
+  // lower-scoring CVs were silently never shown.
+  const loadPipeline = useCallback(async (reset = true, cursor = null) => {
+    setPipelineLoading(true)
+    setPipelineError(null)
+    try {
+      const params = { job_id: jobId, limit: 50, ...pipelineParams(true) }
+      if (cursor) params.cursor = cursor
+      const { data } = await api.get('/api/v1/talent-pool', { params })
+      const items = data.items ?? []
+      setPipeline((prev) => (reset ? items : [...prev, ...items]))
+      setPipelineCursor(data.next_cursor ?? null)
+      setPipelineTotal(data.total ?? null)
+    } catch {
+      setPipelineError('Failed to load the talent pipeline. Please try again.')
+    } finally {
+      setPipelineLoading(false)
+    }
+  }, [jobId, pipelineParams])
+
+  // Load pipeline profiles when the Pipeline tab is activated or a filter changes
   useEffect(() => {
     if (mainTab !== 'pipeline') return
-    setPipelineLoading(true)
-    api.get('/api/v1/talent-pool', { params: { job_id: jobId, limit: 100 } })
-      .then(({ data }) => setPipeline(data.items ?? []))
-      .catch(() => {})
-      .finally(() => setPipelineLoading(false))
-  }, [mainTab, jobId])
+    loadPipeline(true)
+  }, [mainTab, loadPipeline])
 
   // Load AI talent matches when that tab is activated
   useEffect(() => {
@@ -1485,16 +1556,15 @@ export default function ApplicantsPage() {
             <PipelineTab
               profiles={pipeline}
               loading={pipelineLoading}
+              error={pipelineError}
+              total={pipelineTotal}
+              hasMore={Boolean(pipelineCursor)}
+              filters={pipelineFilters}
               jobId={jobId}
               onProfileClick={setSelectedProfile}
               interviewList={interviewList}
-              onRefresh={() => {
-                setPipelineLoading(true)
-                api.get('/api/v1/talent-pool', { params: { job_id: jobId, limit: 100 } })
-                  .then(({ data }) => setPipeline(data.items ?? []))
-                  .catch(() => {})
-                  .finally(() => setPipelineLoading(false))
-              }}
+              onRefresh={() => loadPipeline(true)}
+              onLoadMore={() => loadPipeline(false, pipelineCursor)}
             />
           ) : mainTab === 'ai-matches' ? (
             <AiMatchesTab

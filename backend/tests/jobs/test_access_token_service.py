@@ -297,3 +297,41 @@ async def test_public_applicants_cv_snippet_still_populated(db_session):
     result = await service.get_public_applicants(token_str)
 
     assert result.applicants[0].cv_snippet == "A great candidate summary."
+
+
+@pytest.mark.asyncio
+async def test_public_applicants_include_added_and_scored_dates(db_session):
+    """Platform applicants and external CVs both carry the dates the shared page
+    shows as "Added 3d ago · Scored 1d ago"."""
+    from datetime import UTC, datetime
+
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+
+    job = make_job(employer.id)
+    db_session.add(job)
+    await db_session.flush()
+
+    added = datetime(2026, 9, 1, 9, 0, tzinfo=UTC)
+    scored = datetime(2026, 9, 2, 9, 0, tzinfo=UTC)
+
+    _, application, _ = await _make_platform_applicant(
+        db_session, job, cv_sharing_consent=True
+    )
+    application.created_at = added
+    application.ai_score_computed_at = scored
+    profile, _ = await _make_external_profile(db_session, job, employer.id)
+    profile.created_at = added
+    profile.ai_score_computed_at = scored
+    await db_session.flush()
+
+    token_str = await _create_token(db_session, job, employer)
+
+    service = AccessTokenService(db_session)
+    result = await service.get_public_applicants(token_str)
+
+    assert {a.source for a in result.applicants} == {"applicant", "external"}
+    for item in result.applicants:
+        assert item.created_at == added
+        assert item.ai_score_computed_at == scored

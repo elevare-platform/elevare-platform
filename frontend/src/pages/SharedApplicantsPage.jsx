@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Download, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { AgeLabel } from '@/components/employer/TalentPoolFilters'
 
 function scoreColour(score) {
   if (score == null) return 'bg-gray-100 text-gray-500'
@@ -42,6 +43,8 @@ function ApplicantCard({ applicant, rank }) {
           {applicant.cv_snippet && (
             <p className="text-xs text-text-muted mt-0.5 line-clamp-1">{applicant.cv_snippet}</p>
           )}
+          {/* The list is sorted by score, so show when each candidate arrived. */}
+          <AgeLabel profile={applicant} verb={applicant.source === 'external' ? 'Added' : 'Applied'} />
         </div>
 
         {/* AI score */}

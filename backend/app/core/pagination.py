@@ -103,6 +103,9 @@ async def paginate_cursor(
                 query = query.where(
                     or_(
                         sort_col < last_sort_value,
+                        # NULLS LAST: unscored rows are all still ahead of a
+                        # cursor that sits inside the scored rows.
+                        sort_col.is_(None),
                         and_(
                             sort_col == last_sort_value,
                             tuple_(created_at_col, id_col) < tuple_(created_at, last_id),
