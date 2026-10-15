@@ -80,6 +80,12 @@ EXPERIENCE SECTION:
 EDUCATION SECTION:
 {education_text}
 
+The two sections above were cut out automatically and may be empty or
+incomplete. The full CV text below is the source of truth.
+
+FULL CV TEXT:
+{full_text}
+
 Return JSON using this schema:
 
 {schema}
@@ -129,11 +135,13 @@ def build_user_prompt(
     already_extracted: dict,
     experience_text: str,
     education_text: str,
+    full_text: str = "",
 ) -> str:
     """Build the user-turn prompt for CV extraction with already-extracted context."""
     return CV_EXTRACTION_USER_PROMPT.format(
         already_extracted=json.dumps(already_extracted, indent=2),
         experience_text=experience_text or "",
         education_text=education_text or "",
+        full_text=full_text or "",
         schema=json.dumps(CV_EXTRACTION_SCHEMA, indent=2),
     )

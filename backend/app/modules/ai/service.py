@@ -86,8 +86,13 @@ class AIService(ABC):
         sections: DetectedSections,
         already_extracted: dict,
         model: str | None = None,
+        full_text: str = "",
     ) -> LLMExtractionResult:
-        """Extract structured data from CV sections using AI."""
+        """Extract structured data from a CV using AI.
+
+        `sections` are hints cut out by header matching and may be empty or
+        incomplete; `full_text` is the whole CV and the source of truth.
+        """
         ...
 
     @abstractmethod
@@ -167,6 +172,7 @@ class KeywordAIService(AIService):
         sections,
         already_extracted: dict,
         model: str | None = None,
+        full_text: str = "",
     ) -> "LLMExtractionResult":
         """Return an empty extraction result (keyword service does not parse CVs)."""
         from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
@@ -235,6 +241,7 @@ class MockAIService(AIService):
         sections: DetectedSections,
         already_extracted: dict,
         model: str | None = None,
+        full_text: str = "",
     ) -> LLMExtractionResult:
         """Return an empty extraction result for test purposes."""
         return LLMExtractionResult()
@@ -308,12 +315,17 @@ class AnthropicCVExtractionService(AIService):
         sections: DetectedSections,
         already_extracted: dict,
         model: str | None = None,
+        full_text: str = "",
     ) -> LLMExtractionResult:
         """Extract structured CV data by calling the Claude API.
 
         `model` defaults to the fast tiering model — pass
         `settings.anthropic_model` explicitly to force the deep model
         (e.g. when re-running an extraction that the fast model got wrong).
+
+        `full_text` is the whole CV. The sections are cut out by exact header
+        matching and come back empty for a CV with unusual headings, so the
+        model must be able to read the full text instead.
         """
         from app.modules.ai.prompts.cv_extraction import (
             CV_EXTRACTION_SYSTEM_PROMPT,
@@ -326,6 +338,7 @@ class AnthropicCVExtractionService(AIService):
             already_extracted=already_extracted,
             experience_text=sections.experience or "",
             education_text=sections.education or "",
+            full_text=full_text,
         )
 
         raw = ""
@@ -713,7 +726,9 @@ class EmbeddingAIService(AIService):
             computed_at=datetime.now(UTC),
         )
 
-    async def extract_cv_data(self, sections, already_extracted, model=None):
+    async def extract_cv_data(
+        self, sections, already_extracted, model=None, full_text=""
+    ):
         """Not implemented — EmbeddingAIService does not extract CV data."""
         raise NotImplementedError("EmbeddingAIService does not extract CV data.")
 
