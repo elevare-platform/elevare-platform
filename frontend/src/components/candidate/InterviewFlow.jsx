@@ -1,29 +1,37 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Mic, Video, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react'
+import { Mic, Video, AlertCircle, ArrowLeft, CheckCircle2, Headphones, Wifi } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { MAX_ATTEMPTS, uploadRecording, withRetry } from '@/lib/interviewUpload'
+import {
+  END_AFTER_AUDIO_MS,
+  END_AUDIO_FALLBACK_MS,
+  canAiEndNow,
+  findEndInterviewCall,
+  interviewTimeThresholds,
+  tooEarlyToEndEvents,
+} from '@/lib/interviewEnding'
 
 const REALTIME_URL = 'https://api.openai.com/v1/realtime/calls'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+// Returns a WebM type this browser can record, or null when it cannot record
+// WebM at all (e.g. an older Safari). The backend stores and plays WebM only.
 function pickRecorderMimeType() {
+  if (typeof MediaRecorder === 'undefined') return null
   const candidates = [
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm',
   ]
-  return candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) ?? 'video/webm'
+  return candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) ?? null
 }
 
 function formatTime(totalSeconds) {
   const m = Math.floor(totalSeconds / 60)
   const s = totalSeconds % 60
   return `${m}:${String(s).padStart(2, '0')}`
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max)
 }
 
 // Sums matching numeric keys across two token_details objects (either may
@@ -72,8 +80,15 @@ export default function InterviewFlow({
   doneAction = null,
   sessionStartCount = 0,
 }) {
-  // 'consent' | 'connecting' | 'active' | 'ending' | 'uploading' | 'done' | 'error'
+  // 'consent' | 'connecting' | 'active' | 'ending' | 'uploading' | 'upload_error' | 'done' | 'error'
+  // 'upload_error' means the interview itself is over and only the recording
+  // still has to reach us; the candidate retries that without a new session.
   const [phase, setPhase] = useState('consent')
+  const [uploadProgress, setUploadProgress] = useState(0)
+  // 'sending' while the file goes up, then 'confirming' while we tell the server
+  // it has arrived. Both count as "do not leave yet".
+  const [uploadStep, setUploadStep] = useState('sending')
+  const [uploadNote, setUploadNote] = useState(null)
   const [error, setError] = useState(null)
   const [errorCode, setErrorCode] = useState(null)
   const [resetRequestState, setResetRequestState] = useState('idle') // 'idle' | 'sending' | 'sent' | 'already_sent' | 'error'
@@ -86,6 +101,12 @@ export default function InterviewFlow({
   const dataChannelRef = useRef(null)
   const recorderRef = useRef(null)
   const chunksRef = useRef([])
+  // The finished recording, kept in memory until the server confirms it has it,
+  // so a failed upload can be retried without redoing the interview.
+  const recordingBlobRef = useRef(null)
+  // True once the file itself has reached storage, so a retry that only needs
+  // to confirm completion does not upload the whole recording again.
+  const fileUploadedRef = useRef(false)
   const audioCtxRef = useRef(null)
   const transcriptRef = useRef([]) // [{ role: 'AI' | 'Candidate', text }] in arrival order
   // Accumulated Realtime API usage across the whole session - summed across
@@ -105,8 +126,25 @@ export default function InterviewFlow({
   const checkinsFiredRef = useRef(0)
   const warnFiredRef = useRef(false)
   const closingFiredRef = useRef(false)
+  // Set once the interviewer has asked to end; the interview closes when its
+  // goodbye finishes playing (or after a fallback delay), not at once.
+  const aiEndPendingRef = useRef(false)
+  const aiEndTimerRef = useRef(null)
 
   useEffect(() => () => cleanup(), [])
+
+  // From the moment the interview starts until the server has the recording, a
+  // reload or closed tab loses it for good. Ask the browser to confirm first.
+  const guardAgainstLeaving = ['active', 'ending', 'uploading', 'upload_error'].includes(phase)
+  useEffect(() => {
+    if (!guardAgainstLeaving) return undefined
+    const warn = (event) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [guardAgainstLeaving])
 
   useEffect(() => {
     if (phase === 'active' && videoRef.current && streamRef.current) {
@@ -116,6 +154,7 @@ export default function InterviewFlow({
 
   function cleanup() {
     if (timerRef.current) clearInterval(timerRef.current)
+    if (aiEndTimerRef.current) clearTimeout(aiEndTimerRef.current)
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
       try { recorderRef.current.stop() } catch { /* already stopped */ }
     }
@@ -141,10 +180,58 @@ export default function InterviewFlow({
       .join('\n\n')
   }
 
+  // Gets the recording to the server and confirms it. Safe to call again after a
+  // failure: it keeps the recording in memory, skips the upload if the file
+  // already arrived, and never starts a new interview session.
+  const submitRecording = useCallback(async () => {
+    setError(null)
+    setUploadNote(null)
+    setUploadStep('sending')
+    setUploadProgress(fileUploadedRef.current ? 100 : 0)
+    setPhase('uploading')
+    try {
+      if (!fileUploadedRef.current) {
+        await uploadRecording({
+          requestUploadUrl,
+          blob: recordingBlobRef.current,
+          contentType: 'video/webm',
+          onProgress: setUploadProgress,
+          onRetry: (attempt) => setUploadNote(
+            `Your connection was interrupted. Trying again (attempt ${attempt + 1} of ${MAX_ATTEMPTS})…`
+          ),
+        })
+        fileUploadedRef.current = true
+      }
+      // The file is in. Confirming it with the server is a separate, short
+      // step; the screen says so, so nobody leaves at 100%.
+      setUploadNote(null)
+      setUploadProgress(100)
+      setUploadStep('confirming')
+      // Completing is safe to repeat: the server ignores a second call.
+      await withRetry(() => completeUpload({
+        transcript: formatTranscript(),
+        realtimeUsage: usageRef.current,
+      }))
+      recordingBlobRef.current = null
+      setPhase('done')
+    } catch (err) {
+      // The server says the file never reached storage: send it again.
+      if (err?.response?.data?.code === 'RECORDING_NOT_RECEIVED') {
+        fileUploadedRef.current = false
+      }
+      setError(
+        err?.response?.data?.message
+        || 'We could not upload your recording. Your connection may have dropped.'
+      )
+      setPhase('upload_error')
+    }
+  }, [requestUploadUrl, completeUpload])
+
   const endInterview = useCallback(async () => {
     if (endingRef.current) return
     endingRef.current = true
     if (timerRef.current) clearInterval(timerRef.current)
+    if (aiEndTimerRef.current) clearTimeout(aiEndTimerRef.current)
     setPhase('ending')
 
     const recorder = recorderRef.current
@@ -162,33 +249,62 @@ export default function InterviewFlow({
       streamRef.current.getTracks().forEach((t) => t.stop())
     }
 
-    setPhase('uploading')
-    try {
-      const blob = new Blob(chunksRef.current, { type: pickRecorderMimeType() })
+    recordingBlobRef.current = new Blob(chunksRef.current, {
+      type: recorder?.mimeType || 'video/webm',
+    })
+    fileUploadedRef.current = false
+    await submitRecording()
+  }, [submitRecording])
 
-      const uploadInfo = await requestUploadUrl()
+  // The interviewer decided the brief is covered and called end_interview.
+  const handleAiEndRequest = useCallback((call) => {
+    if (aiEndPendingRef.current) return
 
-      const putResponse = await fetch(uploadInfo.upload_url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'video/webm' },
-        body: blob,
-      })
-      if (!putResponse.ok) {
-        throw new Error('Upload failed. Please try again.')
+    const { totalSeconds } = thresholdsRef.current
+    const remaining = Math.max(0, Math.round((expiresAtMsRef.current - Date.now()) / 1000))
+    const elapsed = totalSeconds ? totalSeconds - remaining : 0
+    if (!canAiEndNow(elapsed)) {
+      // Too early: a premature call must not cost the candidate their interview.
+      // Answer the call and tell the interviewer to carry on.
+      if (dataChannelRef.current?.readyState === 'open') {
+        for (const event of tooEarlyToEndEvents(call.call_id)) {
+          dataChannelRef.current.send(JSON.stringify(event))
+        }
       }
-
-      await completeUpload({ transcript: formatTranscript(), realtimeUsage: usageRef.current })
-      setPhase('done')
-    } catch (err) {
-      setError(err?.response?.data?.message || err.message || 'Failed to upload your recording.')
-      setPhase('error')
+      return
     }
-  }, [requestUploadUrl, completeUpload])
+
+    // Let the goodbye finish playing. If the browser never reports that, end anyway.
+    aiEndPendingRef.current = true
+    aiEndTimerRef.current = setTimeout(() => endInterview(), END_AUDIO_FALLBACK_MS)
+  }, [endInterview])
+
+  const handleAiAudioStopped = useCallback(() => {
+    if (!aiEndPendingRef.current) return
+    if (aiEndTimerRef.current) clearTimeout(aiEndTimerRef.current)
+    aiEndTimerRef.current = setTimeout(() => endInterview(), END_AFTER_AUDIO_MS)
+  }, [endInterview])
 
   const startInterview = useCallback(async () => {
     setError(null)
     setErrorCode(null)
     setResetRequestState('idle')
+    recordingBlobRef.current = null
+    fileUploadedRef.current = false
+    aiEndPendingRef.current = false
+
+    // Checked before startSession(): minting a session uses one of the
+    // candidate's two attempts, so a browser that cannot record has to be
+    // turned away before that happens, not after.
+    if (!pickRecorderMimeType() || !navigator.mediaDevices?.getUserMedia) {
+      setError(
+        "This browser can't record the interview. Please open this link in the latest "
+        + 'Chrome, Edge or Firefox, on a laptop or an Android phone.'
+      )
+      setPhase('error')
+      return
+    }
+
     setPhase('connecting')
 
     try {
@@ -259,6 +375,13 @@ export default function InterviewFlow({
               ),
             }
           }
+
+          // The interviewer has covered the brief and says goodbye by calling
+          // end_interview. Not part of the chain above: the same response.done
+          // that carries the call also carries usage, which still has to be summed.
+          const endCall = findEndInterviewCall(msg)
+          if (endCall) handleAiEndRequest(endCall)
+          if (msg.type === 'output_audio_buffer.stopped') handleAiAudioStopped()
         } catch {
           /* not a JSON event we care about */
         }
@@ -301,12 +424,7 @@ export default function InterviewFlow({
       // is the only way the countdown can't drift past what the token
       // actually allows.
       expiresAtMsRef.current = new Date(session.expires_at).getTime()
-      thresholdsRef.current = {
-        totalSeconds,
-        warn: clamp(totalSeconds * 0.2, 15, 60),
-        closing: clamp(totalSeconds * 0.05, 5, 10),
-        checkinInterval: clamp(totalSeconds * 0.25, 60, 180),
-      }
+      thresholdsRef.current = interviewTimeThresholds(totalSeconds)
       checkinsFiredRef.current = 0
       warnFiredRef.current = false
       closingFiredRef.current = false
@@ -328,7 +446,8 @@ export default function InterviewFlow({
           sendSystemMessage(
             dataChannelRef.current,
             `Time check: about ${formatTime(remaining)} left in this interview. `
-            + 'Keep the conversation moving so you can cover the remaining topics in the brief.'
+            + 'If you have already covered everything in the brief, close the interview now. '
+            + 'Do not ask more questions just to use the time.'
           )
         }
 
@@ -336,7 +455,8 @@ export default function InterviewFlow({
           warnFiredRef.current = true
           sendSystemMessage(
             dataChannelRef.current,
-            'Only a few minutes remain in this interview. Begin wrapping up your current line of questioning.'
+            'Time is running short. Finish the current topic, skip anything not essential, '
+            + 'and move toward closing the interview.'
           )
         }
 
@@ -344,7 +464,8 @@ export default function InterviewFlow({
           closingFiredRef.current = true
           sendSystemMessage(
             dataChannelRef.current,
-            'Time is almost up. Give a brief one-sentence thank-you and conclude the interview now.'
+            'Time is almost up. Say a short, warm goodbye now: thank the candidate and tell '
+            + 'them the employer will be in touch. Then end the interview.'
           )
           if (dataChannelRef.current?.readyState === 'open') {
             dataChannelRef.current.send(JSON.stringify({ type: 'response.create' }))
@@ -367,7 +488,7 @@ export default function InterviewFlow({
       setErrorCode(err?.response?.data?.code ?? null)
       setPhase('error')
     }
-  }, [startSession, endInterview])
+  }, [startSession, endInterview, handleAiEndRequest, handleAiAudioStopped])
 
   const notifyEmployer = useCallback(async () => {
     if (!requestReset) return
@@ -485,6 +606,28 @@ export default function InterviewFlow({
               </div>
             )}
 
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3.5 space-y-2.5">
+              <p className="text-sm font-semibold text-blue-900">Before you start</p>
+              <ul className="text-sm text-blue-900 space-y-2">
+                <li className="flex items-start gap-2">
+                  <Headphones size={16} className="mt-0.5 flex-shrink-0" />
+                  <span>
+                    <strong>Use earphones or headphones</strong> for the best quality. Without them,
+                    the interviewer's voice can echo back into your microphone and spoil the
+                    recording.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Wifi size={16} className="mt-0.5 flex-shrink-0" />
+                  <span>
+                    <strong>Be somewhere with a good, stable internet connection.</strong> The interview
+                    is live, and your recording is sent to the employer when it ends. Wi-Fi is best.
+                    Choose a quiet place too.
+                  </span>
+                </li>
+              </ul>
+            </div>
+
             <p className="text-sm text-text-muted leading-relaxed">
               You'll be speaking with an <strong>AI interviewer</strong>, not a human.
               It will ask you questions and follow up based on what you say, the same
@@ -578,9 +721,66 @@ export default function InterviewFlow({
         )}
 
         {phase === 'uploading' && (
-          <div className="rounded-xl border border-border bg-surface p-10 text-center space-y-3">
-            <div className="w-8 h-8 border-2 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-sm text-text-muted">Uploading your recording…</p>
+          <div className="rounded-xl border border-border bg-surface p-8 text-center space-y-5">
+            <div>
+              <p className="font-semibold text-text">Your interview is finished.</p>
+              <p className="text-sm text-text-muted mt-1">
+                {uploadStep === 'confirming'
+                  ? 'Almost done. Confirming your submission…'
+                  : 'Now sending your recording to the employer.'}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-text">{uploadProgress}%</p>
+              <div
+                className="h-3 w-full rounded-full bg-gray-200 overflow-hidden"
+                role="progressbar"
+                aria-label="Recording upload progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={uploadProgress}
+              >
+                <div
+                  className="h-full bg-brand-blue transition-all"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+
+            {uploadNote && (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                {uploadNote}
+              </p>
+            )}
+
+            <div className="flex items-start gap-2.5 rounded-lg border border-red-300 bg-red-50 p-3.5 text-left">
+              <AlertCircle size={18} className="text-red-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-red-800 leading-relaxed">
+                <strong>Do not close, reload or leave this page</strong> until you see{' '}
+                &ldquo;Interview submitted&rdquo;. If you leave now, your recording will be lost.
+                On a slow connection this can take a few minutes.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {phase === 'upload_error' && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-6 text-center space-y-4">
+            <AlertCircle size={32} className="text-amber-600 mx-auto" />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-amber-900">
+                Your interview is finished, but the recording hasn&apos;t uploaded yet.
+              </p>
+              <p className="text-sm text-amber-800">{error}</p>
+            </div>
+            <p className="text-xs text-amber-800">
+              Your recording is safe on this device. Check your internet connection, then try
+              again. Please don&apos;t close or reload this page, or the recording will be lost.
+            </p>
+            <Button onClick={submitRecording} className="w-full">
+              Retry upload
+            </Button>
           </div>
         )}
 
@@ -591,6 +791,7 @@ export default function InterviewFlow({
               <p className="font-semibold text-text">Interview submitted</p>
               <p className="text-sm text-text-muted mt-1">
                 The employer will review your recording along with your application.
+                You can now safely close this page.
               </p>
             </div>
             {doneAction && (

@@ -153,6 +153,30 @@ class InterviewListRepository:
         )
         return {row[0] for row in result.all()}
 
+    async def list_all_for_job(self, job_id: uuid.UUID) -> list[InterviewListEntry]:
+        """Every entry on a job's interview list, whoever added it.
+
+        For callers that have already established the caller may manage the
+        job. Like is_profile_invited, this needs no employer_id filter: an entry
+        can only exist under the job's owner, since add() verifies ownership.
+        """
+        result = await self._db.execute(
+            select(InterviewListEntry)
+            .where(InterviewListEntry.job_id == job_id)
+            .options(
+                selectinload(InterviewListEntry.talent_pool_profile)
+                .selectinload(TalentPoolProfiles.candidate_profile)
+                .selectinload(CandidateProfile.user),
+                selectinload(InterviewListEntry.talent_pool_profile).selectinload(
+                    TalentPoolProfiles.parsed_submission
+                ),
+            )
+            # Oldest first, so a bulk send that hits a daily cap invites the
+            # candidates who were added first.
+            .order_by(InterviewListEntry.created_at.asc())
+        )
+        return list(result.scalars().all())
+
     async def list_for_job(
         self, employer_id: uuid.UUID, job_id: uuid.UUID
     ) -> list[InterviewListEntry]:

@@ -22,13 +22,15 @@ from app.core.email import get_email_service
 from app.core.exceptions import PlanUpgradeRequiredException
 from app.core.storage import get_storage_service
 from app.modules.ai.service import AnthropicCVExtractionService
-from app.modules.billing.service import BillingService
 from app.modules.interviews.enums import (
     STALE_INTERVIEW_TIMEOUT,
     InterviewCostComponent,
     InterviewStatus,
+    TranscriptCheckStatus,
 )
 from app.modules.interviews.repository import InterviewRepository
+from app.modules.interviews.scoring_access import assert_can_score_interviews
+from app.modules.interviews.transcript_check import compare_transcripts
 from app.modules.notifications.repository import NotificationRepository
 from app.modules.talent_pool.service import resolve_match_display_fields
 
@@ -78,6 +80,71 @@ async def _extract_audio_for_whisper(video_bytes: bytes) -> bytes:
             )
 
         return out_path.read_bytes()
+
+
+# Shown to the scoring model ahead of a recording-derived transcript, which,
+# unlike the browser's, cannot tell the interviewer from the candidate.
+_UNLABELLED_TRANSCRIPT_NOTE = (
+    "[This is an automatic transcript of the recording. It has no speaker "
+    "labels: the AI interviewer's questions and the candidate's answers are "
+    "mixed together. Only credit the candidate for what a candidate would be "
+    "answering, not for the interviewer's own words.]\n\n"
+)
+
+
+async def _transcribe_recording(r2_key: str) -> tuple[str, float]:
+    """Transcribe an interview recording on the server.
+
+    Downloads the video from R2, extracts a small mono audio track with ffmpeg
+    (Whisper rejects files over 25 MB) and transcribes it. Returns the text
+    and the audio duration in seconds, which per-minute pricing needs.
+    """
+    video_bytes = await get_storage_service().download_file(r2_key)
+    logger.info(
+        "transcribe_recording: downloaded %d bytes (%s) — extracting audio",
+        len(video_bytes),
+        r2_key,
+    )
+    audio_bytes = await _extract_audio_for_whisper(video_bytes)
+    logger.info(
+        "transcribe_recording: extracted %d bytes of audio from %d bytes of video",
+        len(audio_bytes),
+        len(video_bytes),
+    )
+
+    openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    try:
+        # verbose_json is what makes `.duration` available — whisper-1's
+        # default response format doesn't return usage/duration data, and
+        # per-minute Whisper pricing needs the audio duration.
+        response = await openai_client.audio.transcriptions.create(
+            file=("recording.mp3", audio_bytes),
+            model=settings.transcription_model,
+            response_format="verbose_json",
+        )
+    finally:
+        await openai_client.close()
+
+    return response.text, response.duration
+
+
+async def _record_scoring_cost(repo, interview_id, result) -> None:
+    """Write the scoring cost row for a call that was actually billed,
+    including failed attempts (a response we could not parse still cost tokens)."""
+    if not (result.input_tokens or result.output_tokens):
+        return
+    await repo.create_cost_row(
+        interview_id=interview_id,
+        component=InterviewCostComponent.SCORING.value,
+        model=settings.anthropic_model,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        cost_usd=compute_anthropic_cost_usd(
+            settings.anthropic_model,
+            result.input_tokens,
+            result.output_tokens,
+        ),
+    )
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
@@ -162,13 +229,19 @@ def send_interview_restart_request_email(
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def transcribe_and_score_interview_task(self, interview_id: str) -> None:
+def transcribe_and_score_interview_task(
+    self, interview_id: str, notify: bool = True
+) -> None:
     """Transcribe an uploaded interview recording and score it against the job's brief.
 
     Transcription always runs and always saves, regardless of plan tier.
     Scoring (the LLM call) is gated to Professional+ orgs, mirroring how
     AI Talent Match CV scoring is gated — Starter interviews still end up
     SCORED with a transcript, just with no ai_score.
+
+    Also used to score an interview that finished unscored (for example on the
+    Starter plan) once the owner can have it scored. That run passes
+    ``notify=False``, because the employer was already told it was completed.
     """
     logger.info(
         "transcribe_and_score_interview_task: received interview_id=%s (celery task_id=%s, "
@@ -181,13 +254,13 @@ def transcribe_and_score_interview_task(self, interview_id: str) -> None:
     is_final_attempt = self.request.retries >= self.max_retries
     asyncio.run(
         _transcribe_and_score_interview_async(
-            interview_id, mark_failed_on_error=is_final_attempt
+            interview_id, mark_failed_on_error=is_final_attempt, notify=notify
         )
     )
 
 
 async def _transcribe_and_score_interview_async(
-    interview_id_str: str, mark_failed_on_error: bool = True
+    interview_id_str: str, mark_failed_on_error: bool = True, notify: bool = True
 ) -> None:
     interview_id = uuid.UUID(interview_id_str)
     logger.info(
@@ -223,75 +296,86 @@ async def _transcribe_and_score_interview_async(
                 )
                 return
 
-            if interview.transcript:
-                # Already captured client-side from Realtime API transcript
-                # events during the live session (diarized, both speakers)
-                # — skip the R2 download + Whisper call entirely.
-                transcript = interview.transcript
+            # The transcript the browser submitted (diarized, both speakers) is
+            # captured on the candidate's own device, so it is checked against
+            # a server-side transcription of the recording. A check already on
+            # file means an earlier attempt did this; do not pay for Whisper twice.
+            check = await repo.get_transcript_check(interview.id)
+            # No recording left (retention expired) means nothing to cross-check
+            # against; score the transcript we have rather than fail on a missing file.
+            needs_server_transcript = not interview.transcript or (
+                settings.interview_transcript_crosscheck_enabled
+                and check is None
+                and bool(interview.r2_key)
+            )
+
+            if needs_server_transcript:
                 logger.info(
-                    "transcribe_and_score_interview: interview %s already has a "
-                    "Realtime-captured transcript (%d chars) — skipping download/Whisper",
+                    "transcribe_and_score_interview: transcribing the recording for "
+                    "interview %s (submitted transcript present: %s, r2_key=%s)",
                     interview_id,
-                    len(transcript),
-                )
-            else:
-                logger.info(
-                    "transcribe_and_score_interview: no transcript captured for "
-                    "interview %s — falling back to downloading recording "
-                    "(r2_key=%s)",
-                    interview_id,
+                    bool(interview.transcript),
                     interview.r2_key,
                 )
-                video_bytes = await get_storage_service().download_file(interview.r2_key)
-                logger.info(
-                    "transcribe_and_score_interview: downloaded %d bytes for interview %s — "
-                    "extracting audio via ffmpeg before transcribing via %s",
-                    len(video_bytes),
-                    interview_id,
-                    settings.transcription_model,
-                )
-
-                audio_bytes = await _extract_audio_for_whisper(video_bytes)
-                logger.info(
-                    "transcribe_and_score_interview: extracted %d bytes of audio "
-                    "(from %d bytes of video) for interview %s",
-                    len(audio_bytes),
-                    len(video_bytes),
-                    interview_id,
-                )
-
-                openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
                 try:
-                    # verbose_json is what makes `.duration` available —
-                    # whisper-1's default response format doesn't return
-                    # usage/duration data, and per-minute Whisper pricing
-                    # needs the audio duration regardless of model.
-                    transcript_resp = await openai_client.audio.transcriptions.create(
-                        file=("recording.mp3", audio_bytes),
-                        model=settings.transcription_model,
-                        response_format="verbose_json",
+                    server_text, audio_seconds = await _transcribe_recording(
+                        interview.r2_key
                     )
-                finally:
-                    await openai_client.close()
-
-                transcript = transcript_resp.text
-                logger.info(
-                    "transcribe_and_score_interview: transcription complete for interview %s "
-                    "(%d chars, %.1fs audio) — saving transcript",
-                    interview_id,
-                    len(transcript),
-                    transcript_resp.duration,
-                )
-                interview = await repo.update(interview.id, {"transcript": transcript})
-                await repo.create_cost_row(
-                    interview_id=interview.id,
-                    component=InterviewCostComponent.TRANSCRIPTION.value,
-                    model=settings.transcription_model,
-                    duration_seconds=transcript_resp.duration,
-                    cost_usd=compute_transcription_cost_usd(
-                        settings.transcription_model, transcript_resp.duration
-                    ),
-                )
+                except Exception:
+                    # With no submitted transcript there is nothing to fall back
+                    # on, so fail (and retry) as before. With one, retry while
+                    # attempts remain, then continue unverified rather than
+                    # lose the interview over a failed cross-check.
+                    if not interview.transcript or not mark_failed_on_error:
+                        raise
+                    logger.exception(
+                        "transcribe_and_score_interview: cross-check transcription "
+                        "failed for interview %s on the final attempt — continuing "
+                        "with the submitted transcript, unverified",
+                        interview_id,
+                    )
+                    await repo.create_transcript_check(
+                        interview.id, TranscriptCheckStatus.UNAVAILABLE.value
+                    )
+                else:
+                    await repo.create_cost_row(
+                        interview_id=interview.id,
+                        component=InterviewCostComponent.TRANSCRIPTION.value,
+                        model=settings.transcription_model,
+                        duration_seconds=audio_seconds,
+                        cost_usd=compute_transcription_cost_usd(
+                            settings.transcription_model, audio_seconds
+                        ),
+                    )
+                    if not interview.transcript:
+                        # No submitted transcript: the recording's own
+                        # transcript becomes the transcript (no speaker labels).
+                        await repo.update(interview.id, {"transcript": server_text})
+                        # Recorded so a retry of a later step does not
+                        # transcribe (and pay for) the same recording again.
+                        await repo.create_transcript_check(
+                            interview.id, TranscriptCheckStatus.SERVER_ONLY.value
+                        )
+                    else:
+                        outcome = compare_transcripts(
+                            interview.transcript,
+                            server_text,
+                            settings.interview_transcript_match_threshold,
+                        )
+                        await repo.create_transcript_check(
+                            interview.id,
+                            outcome.status,
+                            match_score=outcome.match_score,
+                            server_transcript=server_text,
+                        )
+                        logger.info(
+                            "transcribe_and_score_interview: transcript check for "
+                            "interview %s -> %s (match_score=%s, threshold=%s)",
+                            interview_id,
+                            outcome.status,
+                            outcome.match_score,
+                            settings.interview_transcript_match_threshold,
+                        )
                 await db.commit()
                 # repo.update() ends with session.refresh(), which expires the
                 # job/employer/organization relationships that its own internal
@@ -300,13 +384,23 @@ async def _transcribe_and_score_interview_async(
                 # reliably perform outside an explicit awaited call. Re-fetch
                 # to guarantee those relationships are loaded before use.
                 interview = await repo.get_by_id(interview.id)
+                check = await repo.get_transcript_check(interview.id)
+
+            if (
+                check is not None
+                and check.status == TranscriptCheckStatus.MISMATCH.value
+                and check.server_transcript
+            ):
+                # The submitted transcript does not match the recording, so it
+                # is not scored. Score the recording's own transcript instead.
+                transcript = _UNLABELLED_TRANSCRIPT_NOTE + check.server_transcript
+            else:
+                transcript = interview.transcript
 
             # Scoring is gated to Professional+ — transcript already saved above
             # regardless of plan tier.
             try:
-                await BillingService(db).assert_professional_or_above(
-                    interview.job.employer.organization_id
-                )
+                await assert_can_score_interviews(db, interview.job)
             except PlanUpgradeRequiredException:
                 logger.info(
                     "transcribe_and_score_interview: Interview %s on Starter plan — "
@@ -345,56 +439,65 @@ async def _transcribe_and_score_interview_async(
                 finally:
                     await ai_service._client.close()
 
-                logger.info(
-                    "transcribe_and_score_interview: scored interview %s -> %s/100",
-                    interview_id,
-                    result.score,
-                )
-
-                rationale_parts = [result.summary]
-                if result.strengths:
-                    rationale_parts.append(
-                        "Strengths:\n"
-                        + "\n".join(f"- {s}" for s in result.strengths)
+                if result.failed:
+                    # A failed call is not a score of 0. Never store it as
+                    # one: an employer would read it as "performed terribly".
+                    # Retry while attempts remain; on the last attempt leave
+                    # the interview unscored so the recording and transcript
+                    # stay reviewable.
+                    await _record_scoring_cost(repo, interview.id, result)
+                    await db.commit()
+                    if not mark_failed_on_error:
+                        raise RuntimeError(
+                            f"Interview scoring failed for {interview_id}; retrying"
+                        )
+                    logger.error(
+                        "transcribe_and_score_interview: scoring failed for "
+                        "interview %s on the final attempt — leaving it unscored "
+                        "(recording and transcript remain available)",
+                        interview_id,
                     )
-                if result.weaknesses:
-                    rationale_parts.append(
-                        "Weaknesses:\n"
-                        + "\n".join(f"- {w}" for w in result.weaknesses)
-                    )
-                if result.missing_evidence:
-                    rationale_parts.append(
-                        "Not covered in this interview:\n"
-                        + "\n".join(f"- {m}" for m in result.missing_evidence)
-                    )
-                if result.contradictions:
-                    rationale_parts.append(
-                        "Contradictions:\n"
-                        + "\n".join(f"- {c}" for c in result.contradictions)
+                else:
+                    logger.info(
+                        "transcribe_and_score_interview: scored interview %s -> %s/100",
+                        interview_id,
+                        result.score,
                     )
 
-                await repo.update(
-                    interview.id,
-                    {
-                        "ai_score": result.score,
-                        "ai_rationale": "\n\n".join(p for p in rationale_parts if p),
-                        "ai_scored_at": datetime.now(UTC),
-                    },
-                )
-                if result.input_tokens or result.output_tokens:
-                    await repo.create_cost_row(
-                        interview_id=interview.id,
-                        component=InterviewCostComponent.SCORING.value,
-                        model=settings.anthropic_model,
-                        input_tokens=result.input_tokens,
-                        output_tokens=result.output_tokens,
-                        cost_usd=compute_anthropic_cost_usd(
-                            settings.anthropic_model,
-                            result.input_tokens,
-                            result.output_tokens,
-                        ),
+                    rationale_parts = [result.summary]
+                    if result.strengths:
+                        rationale_parts.append(
+                            "Strengths:\n"
+                            + "\n".join(f"- {s}" for s in result.strengths)
+                        )
+                    if result.weaknesses:
+                        rationale_parts.append(
+                            "Weaknesses:\n"
+                            + "\n".join(f"- {w}" for w in result.weaknesses)
+                        )
+                    if result.missing_evidence:
+                        rationale_parts.append(
+                            "Not covered in this interview:\n"
+                            + "\n".join(f"- {m}" for m in result.missing_evidence)
+                        )
+                    if result.contradictions:
+                        rationale_parts.append(
+                            "Contradictions:\n"
+                            + "\n".join(f"- {c}" for c in result.contradictions)
+                        )
+
+                    await repo.update(
+                        interview.id,
+                        {
+                            "ai_score": result.score,
+                            "ai_rationale": "\n\n".join(
+                                p for p in rationale_parts if p
+                            ),
+                            "ai_scored_at": datetime.now(UTC),
+                        },
                     )
-                await db.commit()
+                    await _record_scoring_cost(repo, interview.id, result)
+                    await db.commit()
 
             await repo.update(interview.id, {"status": InterviewStatus.SCORED.value})
             await db.commit()
@@ -402,30 +505,33 @@ async def _transcribe_and_score_interview_async(
             # Notification failure must never undo a transcript/score that
             # already committed successfully above — this is a courtesy
             # side-effect, not part of the pipeline's success criteria.
-            try:
-                fields = await resolve_match_display_fields(
-                    db, interview.talent_pool_profile, interview.job.employer_id
-                )
-                candidate_label = fields.get("name") or "A candidate"
-                await NotificationRepository(db).create(
-                    recipient_id=interview.job.employer_id,
-                    type="AI_INTERVIEW_COMPLETED",
-                    title=f"{candidate_label} completed their AI interview",
-                    body=(
-                        f"for {interview.job.title}. Open the Interview List to "
-                        "review the transcript, score, and recording."
-                    ),
-                    entity_type="JOB",
-                    entity_id=interview.job_id,
-                )
-                await db.commit()
-            except Exception:
-                logger.exception(
-                    "transcribe_and_score_interview: failed to create completion "
-                    "notification for interview %s — scoring itself already "
-                    "succeeded and is unaffected",
-                    interview_id,
-                )
+            # Skipped when an already-completed interview is only being scored
+            # later: the employer was told it was completed the first time.
+            if notify:
+                try:
+                    fields = await resolve_match_display_fields(
+                        db, interview.talent_pool_profile, interview.job.employer_id
+                    )
+                    candidate_label = fields.get("name") or "A candidate"
+                    await NotificationRepository(db).create(
+                        recipient_id=interview.job.employer_id,
+                        type="AI_INTERVIEW_COMPLETED",
+                        title=f"{candidate_label} completed their AI interview",
+                        body=(
+                            f"for {interview.job.title}. Open the Interview List to "
+                            "review the transcript, score, and recording."
+                        ),
+                        entity_type="JOB",
+                        entity_id=interview.job_id,
+                    )
+                    await db.commit()
+                except Exception:
+                    logger.exception(
+                        "transcribe_and_score_interview: failed to create completion "
+                        "notification for interview %s — scoring itself already "
+                        "succeeded and is unaffected",
+                        interview_id,
+                    )
 
             logger.info(
                 "transcribe_and_score_interview: finished interview %s", interview_id

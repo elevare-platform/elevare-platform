@@ -77,7 +77,12 @@ class FitReasoningResult:
 
 @dataclass
 class InterviewScoringResult:
-    """Structured output from the LLM interview-scoring step."""
+    """Structured output from the LLM interview-scoring step.
+
+    ``failed`` is True when the call errored, was cut off, or returned no
+    usable score. ``score`` is then meaningless: callers must not store it,
+    because 0 is also a legitimate score for a genuinely poor interview.
+    """
 
     score: int = 0
     summary: str = ""
@@ -87,6 +92,7 @@ class InterviewScoringResult:
     contradictions: list[str] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
+    failed: bool = False
 
 
 class JobContext(BaseModel):

@@ -1,5 +1,6 @@
 """Interview service — business logic for AI video interviews."""
 
+import logging
 import secrets
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -16,11 +17,16 @@ from app.core.exceptions import (
     PermissionDeniedException,
     ValidationException,
 )
+from app.core.ownership import can_manage_job
 from app.core.storage import get_storage_service
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.interview_list.repository import InterviewListRepository
-from app.modules.interviews.enums import InterviewCostComponent, InterviewStatus
+from app.modules.interviews.enums import (
+    InterviewCostComponent,
+    InterviewStatus,
+    TranscriptCheckStatus,
+)
 from app.modules.interviews.models import Interview
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.schema import (
@@ -30,6 +36,7 @@ from app.modules.interviews.schema import (
     InterviewUploadUrlResponse,
     RealtimeUsageDetail,
 )
+from app.modules.interviews.scoring_access import assert_can_score_interviews
 from app.modules.interviews.tasks import (
     send_ai_interview_invite_email,
     send_interview_restart_request_email,
@@ -37,6 +44,13 @@ from app.modules.interviews.tasks import (
 )
 from app.modules.jobs.models import Job
 from app.modules.talent_pool.repository import TalentPoolRepository
+from app.modules.users.models import User
+
+logger = logging.getLogger(__name__)
+
+# An interview that has been "being scored" for longer than this is stuck (the
+# worker died mid-run), so scoring may be requested again.
+_SCORING_STUCK_AFTER = timedelta(minutes=15)
 
 _UPLOAD_URL_EXPIRES_SECONDS = 60 * 30
 _VIDEO_CONTENT_TYPE = "video/webm"
@@ -53,18 +67,62 @@ _BASE_INTERVIEWER_INSTRUCTIONS = (
 )
 
 
-def _build_instructions(interview_brief: str, max_duration_minutes: int) -> str:
+END_INTERVIEW_TOOL_NAME = "end_interview"
+
+# Lets the interviewer finish the session itself once the brief is covered. The
+# browser watches for this call, waits for the goodbye to finish playing, then
+# ends the interview, so the candidate is not left waiting for the timer.
+_END_INTERVIEW_TOOL = {
+    "type": "function",
+    "name": END_INTERVIEW_TOOL_NAME,
+    "description": (
+        "Ends the interview. Call it only after the topics in the brief have "
+        "been covered and you have thanked the candidate and said goodbye out "
+        "loud, in that same turn. Never call it before saying goodbye."
+    ),
+    "parameters": {"type": "object", "properties": {}, "required": []},
+}
+
+
+def _build_instructions(
+    interview_brief: str,
+    max_duration_minutes: int,
+    can_end_interview: bool = True,
+) -> str:
     """Compose the realtime session's system instructions from the job's interview brief."""
-    pacing = (
-        f"You have approximately {max_duration_minutes} minutes for this "
-        "conversation. Budget your time across the topics in the brief "
-        "below — don't let one answer consume the whole interview. If a "
-        "candidate goes into excessive detail on one topic, politely "
-        "acknowledge what they've shared and steer to the next question "
-        "so you can cover everything in the time available."
+    length = (
+        f"The interview can last up to {max_duration_minutes} minutes, but that "
+        "is a ceiling, not a target. Do not try to fill the time. Most "
+        "interviews should finish well before it.\n"
+        "- Work through the topics in the brief once, in a natural order.\n"
+        "- Ask a follow-up question only when an answer is vague, gives no "
+        "concrete example, or leaves the question unanswered. Ask at most two "
+        "follow-ups on any one topic. Once you have a reasonably clear picture "
+        "of the candidate on a topic, move on, even if you could ask more.\n"
+        "- Never invent extra questions just to use up the time.\n"
+        "- If a candidate goes into long detail on one topic, politely "
+        "acknowledge what they have shared and move to the next question, so "
+        "every topic in the brief gets covered."
     )
+    closing = (
+        "When every topic in the brief has been covered well enough, close the "
+        "interview. Thank the candidate, tell them the employer will review the "
+        "interview and be in touch, and say goodbye. Keep the closing to two or "
+        "three sentences and ask no more questions after it. If you are told "
+        "that time is nearly up, skip any topics you have not reached and close "
+        "in the same way right away."
+    )
+    if can_end_interview:
+        closing += (
+            f" Right after you have said goodbye, in that same turn, call the "
+            f"{END_INTERVIEW_TOOL_NAME} function. Never call it before saying "
+            "goodbye, and never in the first minutes of the interview."
+        )
+    else:
+        closing += " After saying goodbye, stop speaking and wait."
     return (
-        f"{_BASE_INTERVIEWER_INSTRUCTIONS}\n\n{pacing}"
+        f"{_BASE_INTERVIEWER_INSTRUCTIONS}\n\nHOW LONG THE INTERVIEW SHOULD LAST\n"
+        f"{length}\n\nHOW TO CLOSE\n{closing}"
         f"\n\nInterview brief:\n{interview_brief}"
     )
 
@@ -350,6 +408,8 @@ class InterviewService:
     # ------------------------------------------------------------------
 
     async def _start_session(self, interview: Interview) -> InterviewSessionResponse:
+        self._assert_interviews_enabled()
+
         if interview.status in (
             InterviewStatus.UPLOADED.value,
             InterviewStatus.SCORED.value,
@@ -370,32 +430,40 @@ class InterviewService:
 
         job = interview.job
         max_duration_minutes = settings.interview_max_duration_minutes
+        can_end_early = settings.interview_ai_can_end_early
+        session_config: dict = {
+            "type": "realtime",
+            "model": settings.realtime_model,
+            "instructions": _build_instructions(
+                job.interview_brief, max_duration_minutes, can_end_early
+            ),
+            "audio": {
+                "input": {
+                    "turn_detection": {
+                        "type": "semantic_vad",
+                        "eagerness": "low",
+                        "create_response": True,
+                        "interrupt_response": True,
+                    },
+                    "noise_reduction": {"type": "far_field"},
+                    # Transcribes the candidate's own speech server-side
+                    # so the frontend can capture a diarized transcript
+                    # from Realtime events directly, instead of relying
+                    # on Whisper against the (one-sided) recording.
+                    "transcription": {"model": settings.transcription_model},
+                },
+            },
+        }
+        if can_end_early:
+            session_config["tools"] = [_END_INTERVIEW_TOOL]
+            session_config["tool_choice"] = "auto"
+
         secret = await self._get_client().realtime.client_secrets.create(
             expires_after={
                 "anchor": "created_at",
                 "seconds": min(max_duration_minutes * 60, 7200),
             },
-            session={
-                "type": "realtime",
-                "model": settings.realtime_model,
-                "instructions": _build_instructions(job.interview_brief, max_duration_minutes),
-                "audio": {
-                    "input": {
-                        "turn_detection": {
-                            "type": "semantic_vad",
-                            "eagerness": "low",
-                            "create_response": True,
-                            "interrupt_response": True,
-                        },
-                        "noise_reduction": {"type": "far_field"},
-                        # Transcribes the candidate's own speech server-side
-                        # so the frontend can capture a diarized transcript
-                        # from Realtime events directly, instead of relying
-                        # on Whisper against the (one-sided) recording.
-                        "transcription": {"model": settings.transcription_model},
-                    },
-                },
-            },
+            session=session_config,
         )
 
         update_data: dict = {
@@ -506,14 +574,61 @@ class InterviewService:
             expires_in_seconds=_UPLOAD_URL_EXPIRES_SECONDS,
         )
 
+    async def _assert_recording_uploaded(self, r2_key: str) -> None:
+        """Refuse to complete an interview whose recording never arrived.
+
+        r2_key is set when the upload URL is *issued*, so it proves nothing
+        about a file existing. Only a definitive "missing or empty" blocks;
+        if storage itself cannot be asked (network, permissions) we let the
+        candidate through rather than lose a real interview to an outage.
+        """
+        try:
+            size = await get_storage_service().get_object_size(r2_key)
+        except Exception:
+            logger.warning(
+                "Could not verify the uploaded recording at %s; allowing completion",
+                r2_key,
+                exc_info=True,
+            )
+            return
+        if not size:
+            raise ValidationException(
+                "We did not receive your recording. Please try uploading again.",
+                code="RECORDING_NOT_RECEIVED",
+            )
+
     async def _complete_upload(
         self,
         interview: Interview,
         transcript: str | None = None,
         realtime_usage: RealtimeUsageDetail | None = None,
     ):
+        # Lock the row and read the status the database holds now, not the one
+        # this request loaded earlier. Two completes arriving together both load
+        # IN_PROGRESS; the lock makes the second wait for the first to commit
+        # and then see UPLOADED, so scoring is queued exactly once.
+        status = await self._repo.lock_status(interview.id)
+
+        if status in (
+            InterviewStatus.UPLOADED.value,
+            InterviewStatus.SCORED.value,
+        ):
+            # Already completed. A retried or replayed request must not reset
+            # the status, re-queue scoring (more LLM cost) or overwrite the
+            # saved transcript, so treat it as a successful no-op.
+            await self._db.refresh(interview)
+            return interview
+        if status not in (
+            InterviewStatus.PENDING.value,
+            InterviewStatus.IN_PROGRESS.value,
+        ):
+            raise ValidationException(
+                "This interview can no longer accept a recording"
+            )
+
         if not interview.r2_key:
             raise ValidationException("No upload was started for this interview")
+        await self._assert_recording_uploaded(interview.r2_key)
 
         now = datetime.now(UTC)
         update_data: dict = {
@@ -549,6 +664,34 @@ class InterviewService:
         transcribe_and_score_interview_task.delay(str(interview.id))
         return interview
 
+    def _assert_interviews_enabled(self) -> None:
+        """Refuse to start new interview work while the off switch is engaged.
+
+        Deliberately not applied to uploading, completing or scoring, so a
+        candidate who is already mid-interview can still finish.
+        """
+        if not settings.interview_enabled:
+            raise ValidationException(
+                "AI interviews are temporarily unavailable. Please try again later.",
+                code="AI_INTERVIEWS_DISABLED",
+                status_code=503,
+            )
+
+    async def _daily_invite_limit_reached(self, job: Job) -> bool:
+        """Whether this job's organization has used up its first-time invites
+        for the last 24 hours. A soft limit: two simultaneous bulk sends can
+        overshoot it by a few, which is acceptable for a cost guard."""
+        limit = settings.interview_daily_invite_limit
+        if limit <= 0:
+            return False
+        employer = job.employer
+        used = await self._repo.count_created_since(
+            datetime.now(UTC) - timedelta(hours=24),
+            organization_id=employer.organization_id if employer else None,
+            employer_id=job.employer_id,
+        )
+        return used >= limit
+
     async def _send_invite_for_profile(self, job: Job, talent_pool_profile_id: uuid.UUID) -> dict:
         """
         Shared per-candidate send/resend logic used by send_invite and send_invites_to_all.
@@ -572,6 +715,17 @@ class InterviewService:
         is_first_invite = (
             await self._repo.get_by_job_and_profile(job.id, talent_pool_profile_id)
         ) is None
+
+        # Only a first invite can start a new live session worth paying for;
+        # a resend reuses the existing interview, so it is not counted.
+        if is_first_invite and await self._daily_invite_limit_reached(job):
+            return {
+                "sent": False,
+                "reason": (
+                    "Daily AI interview invite limit reached. Please try again "
+                    "tomorrow or contact support to raise it."
+                ),
+            }
 
         invite = await self.create_invite(job, talent_pool_profile_id)
         if invite is None:
@@ -621,37 +775,44 @@ class InterviewService:
 
     async def send_invite(
         self,
-        employer_id: uuid.UUID,
+        user: User,
         job_id: uuid.UUID,
         talent_pool_profile_id: uuid.UUID,
     ) -> dict:
         """Explicit send/resend for one candidate."""
-        from app.core.exceptions import JobNotFoundError, PermissionDeniedException
+        from app.core.exceptions import JobNotFoundError
         from app.modules.jobs.repository import JobRepository
+
+        self._assert_interviews_enabled()
 
         job = await JobRepository(self._db).get_by_id(job_id)
         if job is None:
             raise JobNotFoundError()
 
-        if job.employer_id != employer_id:
-            raise PermissionDeniedException("You do not own this job")
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
 
         return await self._send_invite_for_profile(job, talent_pool_profile_id)
 
-    async def send_invites_to_all(self, employer_id: uuid.UUID, job_id: uuid.UUID) -> dict:
+    async def send_invites_to_all(self, user: User, job_id: uuid.UUID) -> dict:
         """Bulk send/resend to everyone on this job's interview list."""
-        from app.core.exceptions import JobNotFoundError, PermissionDeniedException
+        from app.core.exceptions import JobNotFoundError
         from app.modules.interview_list.repository import InterviewListRepository
         from app.modules.jobs.repository import JobRepository
+
+        self._assert_interviews_enabled()
 
         job = await JobRepository(self._db).get_by_id(job_id)
         if job is None:
             raise JobNotFoundError()
 
-        if job.employer_id != employer_id:
-            raise PermissionDeniedException("You do not own this job")
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
 
-        entries = await InterviewListRepository(self._db).list_for_job(employer_id, job_id)
+        # Everyone on the job's list, not only the entries this user added:
+        # the job belongs to the organization, and a teammate may have added
+        # the candidates.
+        entries = await InterviewListRepository(self._db).list_all_for_job(job_id)
 
         sent = 0
         skipped = []
@@ -668,6 +829,71 @@ class InterviewService:
                 skipped.append({"talent_pool_profile_id": profile_id, "reason": result["reason"]})
 
         return {"sent": sent, "skipped": skipped}
+
+    async def request_scoring(
+        self,
+        user: User,
+        job_id: uuid.UUID,
+        talent_pool_profile_id: uuid.UUID,
+    ) -> dict:
+        """Queue AI scoring for a finished interview that has no score yet.
+
+        The usual case: the interview was taken while the organization was on
+        the Starter plan, so the transcript was saved but not scored. Everything
+        scoring needs is already stored (the transcript and the job's brief), so
+        this only re-runs the scoring step: the interview goes back to UPLOADED,
+        which is the state the scoring task picks up, and the task (which is safe
+        to run again) does the rest without telling the employer a second time
+        that the interview completed.
+        """
+        from app.modules.jobs.repository import JobRepository
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+
+        interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
+        if interview is None:
+            raise InterviewNotFound()
+
+        # Plan check first, so a Starter organization gets the upgrade message
+        # instead of a silent no-op.
+        await assert_can_score_interviews(self._db, job)
+
+        # Lock, then re-read: two clicks (or a click racing the task) must not
+        # both queue scoring. The second sees the interview already processing.
+        await self._repo.lock_status(interview.id)
+        await self._db.refresh(interview)
+
+        if interview.status == InterviewStatus.UPLOADED.value:
+            # Normally being scored right now. Only if it has sat there for a
+            # long time (a worker died mid-run) is it safe to queue it again.
+            if interview.updated_at > datetime.now(UTC) - _SCORING_STUCK_AFTER:
+                raise ValidationException(
+                    "This interview is still being processed. Please check back in a minute.",
+                    code="INTERVIEW_PROCESSING",
+                )
+        elif interview.status != InterviewStatus.SCORED.value:
+            raise ValidationException(
+                "This interview has not been completed yet.",
+                code="INTERVIEW_NOT_COMPLETED",
+            )
+        elif interview.ai_score is not None:
+            raise ValidationException(
+                "This interview already has an AI score.",
+                code="INTERVIEW_ALREADY_SCORED",
+            )
+
+        if not interview.transcript:
+            raise ValidationException(
+                "There is no transcript to score for this interview.",
+                code="INTERVIEW_NO_TRANSCRIPT",
+            )
+
+        await self._repo.update(interview.id, {"status": InterviewStatus.UPLOADED.value})
+        await self._db.commit()
+        transcribe_and_score_interview_task.delay(str(interview.id), notify=False)
+        return {"queued": True}
 
     async def get_monthly_cost_summary(self) -> dict:
         """Return the current month's interview cost, broken down by component
@@ -763,7 +989,7 @@ class InterviewService:
 
     async def get_detail_for_employer(
         self,
-        employer_id: uuid.UUID,
+        user: User,
         job_id: uuid.UUID,
         talent_pool_profile_id: uuid.UUID,
     ) -> InterviewDetailResponse:
@@ -774,8 +1000,8 @@ class InterviewService:
         job = await JobRepository(self._db).get_by_id(job_id)
         if job is None:
             raise JobNotFoundError()
-        if job.employer_id != employer_id:
-            raise PermissionDeniedException("You do not own this job")
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
 
         interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
         if interview is None or interview.status not in (
@@ -794,9 +1020,22 @@ class InterviewService:
             await self._resolve_cv_assessment(interview, job)
         )
 
+        # A transcript that did not match the recording is not shown: the
+        # employer sees the recording's own transcript, which is also what
+        # the score was based on.
+        check = await self._repo.get_transcript_check(interview.id)
+        transcript = interview.transcript
+        if (
+            check is not None
+            and check.status == TranscriptCheckStatus.MISMATCH.value
+            and check.server_transcript
+        ):
+            transcript = check.server_transcript
+
         return InterviewDetailResponse(
             status=interview.status,
-            transcript=interview.transcript,
+            transcript=transcript,
+            transcript_check=check.status if check else None,
             ai_score=interview.ai_score,
             ai_rationale=interview.ai_rationale,
             ai_scored_at=interview.ai_scored_at,

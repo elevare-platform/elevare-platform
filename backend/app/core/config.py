@@ -133,6 +133,30 @@ class Settings(BaseSettings):
     transcription_model: str
     interview_max_duration_minutes: int
     interview_video_retention_days: int
+    # Off switch for AI interviews. When false, no new invites are sent and no
+    # new live session can start. Interviews already in progress can still
+    # upload and be scored, so a candidate mid-interview is never cut off.
+    interview_enabled: bool = True
+    # Lets the AI interviewer end the session itself once it has covered the
+    # brief, instead of running to the time limit. When false the interviewer is
+    # only told to wrap up and the candidate presses End. The "time is a ceiling,
+    # not a target" instructions apply either way.
+    interview_ai_can_end_early: bool = True
+    # Most first-time invites one organization (or one account that has no
+    # organization) can send in any rolling 24 hours. Each invite can become a
+    # live OpenAI Realtime session, the largest cost of the feature, so this
+    # bounds the spend. Resends are not counted. 0 means no limit.
+    interview_daily_invite_limit: int = 30
+    # After an interview, transcribe the recording on the server and compare it
+    # with the transcript the candidate's browser submitted. Costs one Whisper
+    # call per interview (about $0.006 per audio minute). Set to false to fall
+    # back to trusting the submitted transcript, without a deploy.
+    interview_transcript_crosscheck_enabled: bool = True
+    # Minimum share (0.0-1.0) of the submitted transcript's word pairs that must
+    # also appear in the recording's own transcript. An unmeasured starting
+    # point: calibrate it against real interviews via the match_score stored in
+    # interview_transcript_checks.
+    interview_transcript_match_threshold: float = 0.40
 
     # Sentry
     sentry_dsn: str | None = None

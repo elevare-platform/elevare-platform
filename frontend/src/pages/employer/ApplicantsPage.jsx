@@ -4,7 +4,7 @@ import {
   User, ArrowLeft, ChevronDown, X,
   Share2, Link as LinkIcon, Copy, Check as CheckIcon,
   Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3, Sparkles, Coins,
-  Eye, FileText, CalendarCheck, Send, PlayCircle,
+  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -28,6 +28,7 @@ import InterviewBriefSetupModal from '@/components/employer/InterviewBriefSetupM
 import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import { isPlanLimitMessage } from '@/lib/planErrors'
+import { interviewUnavailableMessage } from '@/lib/interviewErrors'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -412,8 +413,8 @@ function SendInterviewInvitePrompt({
       } else {
         setError(data.reason)
       }
-    } catch {
-      setError('Something went wrong')
+    } catch (err) {
+      setError(interviewUnavailableMessage(err) ?? 'Something went wrong')
     } finally {
       setSending(false)
     }
@@ -1098,8 +1099,8 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
       } else {
         setSendError(data.reason)
       }
-    } catch {
-      setSendError('Something went wrong')
+    } catch (err) {
+      setSendError(interviewUnavailableMessage(err) ?? 'Something went wrong')
     } finally {
       setSending(false)
     }
@@ -1271,14 +1272,17 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
         params: { job_id: jobId },
       })
       const skippedCount = data.skipped?.length ?? 0
+      // Many candidates are often skipped for the same reason (e.g. the daily
+      // limit), so list each distinct reason once.
+      const reasons = [...new Set((data.skipped ?? []).map((s) => s.reason))]
       setBulkSummary(
         skippedCount > 0
-          ? `Sent to ${data.sent}, skipped ${skippedCount} (${data.skipped.map((s) => s.reason).join(', ')})`
+          ? `Sent to ${data.sent}, skipped ${skippedCount} (${reasons.join(', ')})`
           : `Sent to ${data.sent}`
       )
       load()
-    } catch {
-      setBulkSummary('Failed to send invites. Please try again.')
+    } catch (err) {
+      setBulkSummary(interviewUnavailableMessage(err) ?? 'Failed to send invites. Please try again.')
     } finally {
       setSendingAll(false)
     }
@@ -1292,14 +1296,43 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
     )
   }
 
+  // Shown whether or not anyone is on the list yet, so the brief can be changed
+  // before the first invite goes out.
+  const editBriefButton = hasInterviewBrief && (
+    <button
+      type="button"
+      onClick={() => setShowBriefModal(true)}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
+    >
+      <Pencil size={13} />
+      Edit interview brief
+    </button>
+  )
+
+  const briefModal = showBriefModal && (
+    <InterviewBriefSetupModal
+      jobId={jobId}
+      initialBrief={job?.interview_brief ?? ''}
+      onClose={() => setShowBriefModal(false)}
+      onSaved={(updatedJob) => {
+        onJobUpdated?.(updatedJob)
+        setShowBriefModal(false)
+      }}
+    />
+  )
+
   if (items.length === 0) {
     return (
-      <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
-        <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
-        <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
-        <p className="text-xs text-text-muted">
-          Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above.
-        </p>
+      <div className="space-y-3">
+        {editBriefButton && <div className="flex justify-end">{editBriefButton}</div>}
+        {briefModal}
+        <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+          <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
+          <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
+          <p className="text-xs text-text-muted">
+            Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above.
+          </p>
+        </div>
       </div>
     )
   }
@@ -1308,15 +1341,18 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
     <div className="space-y-3">
       {hasInterviewBrief ? (
         <div className="flex flex-col items-end gap-1">
-          <button
-            type="button"
-            onClick={handleSendAll}
-            disabled={sendingAll}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors disabled:opacity-50"
-          >
-            <Send size={13} />
-            {sendingAll ? 'Sending…' : 'Send interview link to all'}
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            {editBriefButton}
+            <button
+              type="button"
+              onClick={handleSendAll}
+              disabled={sendingAll}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors disabled:opacity-50"
+            >
+              <Send size={13} />
+              {sendingAll ? 'Sending…' : 'Send interview link to all'}
+            </button>
+          </div>
           {bulkSummary && <span className="text-[11px] text-text-muted">{bulkSummary}</span>}
         </div>
       ) : (
@@ -1330,16 +1366,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           </button>
         </div>
       )}
-      {showBriefModal && (
-        <InterviewBriefSetupModal
-          jobId={jobId}
-          onClose={() => setShowBriefModal(false)}
-          onSaved={(updatedJob) => {
-            onJobUpdated?.(updatedJob)
-            setShowBriefModal(false)
-          }}
-        />
-      )}
+      {briefModal}
       {items.map((item) => (
         <InterviewListRow
           key={item.id}

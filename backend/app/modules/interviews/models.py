@@ -138,6 +138,35 @@ class Interview(BaseModel):
     )
 
 
+class InterviewTranscriptCheck(BaseModel):
+    """Server-side verification of an interview's candidate-device transcript.
+
+    The transcript the scoring step reads is assembled in the candidate's
+    browser, so it cannot be trusted on its own. After the interview we
+    transcribe the recording ourselves and compare the two; this row keeps
+    that second transcript and the outcome. Kept in its own table, not as
+    columns on ``Interview``, so the bulky text stays out of every interview
+    query and the table can be added without touching the live interview schema.
+    """
+
+    __tablename__ = "interview_transcript_checks"
+
+    __table_args__ = (
+        UniqueConstraint("interview_id", name="uq_interview_transcript_checks_interview"),
+    )
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # A TranscriptCheckStatus value.
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Share of the submitted transcript's word pairs found in the recording's
+    # own transcript, 0.0 to 1.0. None when no comparison could be made.
+    match_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    server_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class InterviewCost(BaseModel):
     """Records the billed cost of one external API call tied to an interview.
 
