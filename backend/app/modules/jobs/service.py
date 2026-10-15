@@ -36,6 +36,24 @@ _VALID_TRANSITIONS: dict[JobStatus, list[JobStatus]] = {
 }
 
 
+def _changed_fields(job, update_data: dict) -> set[str]:
+    """Names of the sent fields whose value really differs from the job's current one.
+
+    The Edit Job page sends every field on every save, so "which fields were
+    sent" says nothing about what the employer actually changed. A value that
+    cannot be compared reliably counts as changed: the worst outcome of a
+    wrong "changed" is an extra review, never an unreviewed edit.
+    """
+    changed: set[str] = set()
+    for key, new_value in update_data.items():
+        try:
+            if getattr(job, key) != new_value:
+                changed.add(key)
+        except Exception:
+            changed.add(key)
+    return changed
+
+
 class JobService:
     """Business logic for job listing lifecycle management."""
 
@@ -227,13 +245,20 @@ class JobService:
 
         update_data = data.model_dump(exclude_unset=True)
 
+        # Worked out now, while the job still holds its old values. The private
+        # AI interview brief is not public listing content, so changing it alone
+        # does not send a live job back for review; admins are told instead (below).
+        changed = _changed_fields(job, update_data)
+        needs_review = bool(changed - {"interview_brief"})
+        brief_changed = "interview_brief" in changed
+
         # REJECTED is a terminal state the employer must explicitly resubmit
         # from (see resubmit_job) — editing no longer silently clears it, so
         # the rejection and its reason stay visible until the employer
         # deliberately asks for another review.
         if (
             current_user.role != "ADMIN"
-            and update_data
+            and needs_review
             and job.status == JobStatus.ACTIVE.value
             and job.moderation_status == ModerationStatus.APPROVED.value
         ):
@@ -243,6 +268,9 @@ class JobService:
             # since the admin is the one who'd be reviewing it anyway.
             job.status = JobStatus.DRAFT.value
             job.moderation_status = ModerationStatus.PENDING.value
+            was_sent_for_review = True
+        else:
+            was_sent_for_review = False
 
         # Detect whether any scoring-relevant fields are changing
         scoring_fields = {
@@ -259,6 +287,14 @@ class JobService:
 
         job = await self._repo.update(job, data)
         await self._db.commit()
+
+        if (
+            brief_changed
+            and not was_sent_for_review
+            and current_user.role != "ADMIN"
+            and job.status == JobStatus.ACTIVE.value
+        ):
+            await self._notify_admins_brief_changed(job)
 
         # Re-generate embedding if embedding-relevant fields changed
         embedding_fields = {
@@ -292,6 +328,43 @@ class JobService:
                 )
 
         return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
+
+    async def _notify_admins_brief_changed(self, job) -> None:
+        """Tell every admin that a live job's private interview brief changed.
+
+        The brief steers what the AI asks real candidates but does not need a
+        review round, so this is the safeguard: admins can look at it. In-app
+        only (no email, to protect the daily email quota), and the brief text
+        is not copied into the notification. Runs after the edit is committed
+        and never raises, so a notification problem cannot undo an edit.
+        """
+        from app.modules.employer.repository import EmployerRepository
+        from app.modules.notifications.repository import NotificationRepository
+
+        try:
+            organization = job.employer.organization if job.employer else None
+            company = (
+                organization.company_name
+                if organization and organization.company_name
+                else "An employer"
+            )
+            notification_repo = NotificationRepository(self._db)
+            for admin in await EmployerRepository(self._db).list_admin_users():
+                await notification_repo.create(
+                    recipient_id=admin.id,
+                    type="JOB_BRIEF_CHANGED",
+                    title=f"{company} changed the AI interview brief for {job.title}",
+                    body="The job stays live. Open it to check the new brief.",
+                    entity_type="JOB",
+                    entity_id=job.id,
+                )
+            await self._db.commit()
+        except Exception:
+            await self._db.rollback()
+            logger.exception(
+                "update_job: could not notify admins of the brief change on job %s",
+                job.id,
+            )
 
     async def get_job_by_id(
         self, job_id: UUID, requesting_user: User | None

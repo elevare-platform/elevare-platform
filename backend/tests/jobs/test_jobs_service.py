@@ -328,6 +328,151 @@ async def test_update_job_pulls_live_approved_job_offline_for_review(db_session)
     assert result.moderation_status == "PENDING"
 
 
+async def _brief_notifications(db_session, job_id):
+    from sqlalchemy import select
+
+    from app.modules.notifications.models import Notification
+
+    result = await db_session.execute(
+        select(Notification).where(
+            Notification.type == "JOB_BRIEF_CHANGED", Notification.entity_id == job_id
+        )
+    )
+    return list(result.scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_update_job_brief_only_edit_keeps_live_job_live_and_tells_admins(
+    db_session,
+):
+    """The private AI interview brief is not public listing content: changing only
+    it must not pull a live job offline. Every admin gets an in-app notice."""
+    from tests.conftest import make_admin, make_employer, make_job
+
+    employer = make_employer()
+    admin = make_admin()
+    db_session.add_all([employer, admin])
+    await db_session.flush()
+
+    job = make_job(employer.id, status="ACTIVE", moderation_status="APPROVED")
+    db_session.add(job)
+    await db_session.flush()
+
+    service = JobService(db_session)
+    result = await service.update_job(
+        job.id, JobUpdateRequest(interview_brief="New brief"), current_user=employer
+    )
+
+    assert result.interview_brief == "New brief"
+    assert result.status == "ACTIVE"
+    assert result.moderation_status == "APPROVED"
+    recipients = {n.recipient_id for n in await _brief_notifications(db_session, job.id)}
+    assert admin.id in recipients
+
+
+@pytest.mark.asyncio
+async def test_update_job_brief_with_a_real_change_still_goes_to_review(db_session):
+    """A brief edit together with a genuine listing change is reviewed as before,
+    and the admin sees the whole job in the review queue, so no separate notice."""
+    from tests.conftest import make_admin, make_employer, make_job
+
+    employer = make_employer()
+    admin = make_admin()
+    db_session.add_all([employer, admin])
+    await db_session.flush()
+
+    job = make_job(employer.id, status="ACTIVE", moderation_status="APPROVED")
+    db_session.add(job)
+    await db_session.flush()
+
+    service = JobService(db_session)
+    result = await service.update_job(
+        job.id,
+        JobUpdateRequest(interview_brief="New brief", title="A different title"),
+        current_user=employer,
+    )
+
+    assert result.status == "DRAFT"
+    assert result.moderation_status == "PENDING"
+    assert await _brief_notifications(db_session, job.id) == []
+
+
+@pytest.mark.asyncio
+async def test_update_job_full_form_save_where_only_the_brief_differs_stays_live(
+    db_session,
+):
+    """The Edit Job page sends every field on every save. Fields that are sent
+    but unchanged must not count as an edit."""
+    from tests.conftest import make_employer, make_job
+
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+
+    job = make_job(employer.id, status="ACTIVE", moderation_status="APPROVED")
+    db_session.add(job)
+    await db_session.flush()
+
+    service = JobService(db_session)
+    result = await service.update_job(
+        job.id,
+        JobUpdateRequest(
+            title=job.title,
+            required_skills=job.required_skills,
+            interview_brief="New brief",
+        ),
+        current_user=employer,
+    )
+
+    assert result.status == "ACTIVE"
+    assert result.moderation_status == "APPROVED"
+
+
+@pytest.mark.asyncio
+async def test_update_job_save_with_no_change_keeps_live_job_live_and_is_silent(
+    db_session,
+):
+    from tests.conftest import make_employer, make_job
+
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+
+    job = make_job(employer.id, status="ACTIVE", moderation_status="APPROVED")
+    db_session.add(job)
+    await db_session.flush()
+
+    service = JobService(db_session)
+    result = await service.update_job(
+        job.id, JobUpdateRequest(title=job.title), current_user=employer
+    )
+
+    assert result.status == "ACTIVE"
+    assert result.moderation_status == "APPROVED"
+    assert await _brief_notifications(db_session, job.id) == []
+
+
+@pytest.mark.asyncio
+async def test_update_job_brief_edit_by_an_admin_sends_no_notice(db_session):
+    from tests.conftest import make_admin, make_employer, make_job
+
+    employer = make_employer()
+    admin = make_admin()
+    db_session.add_all([employer, admin])
+    await db_session.flush()
+
+    job = make_job(employer.id, status="ACTIVE", moderation_status="APPROVED")
+    db_session.add(job)
+    await db_session.flush()
+
+    service = JobService(db_session)
+    await service.update_job(
+        job.id, JobUpdateRequest(interview_brief="Admin wrote this"), current_user=admin
+    )
+
+    assert await _brief_notifications(db_session, job.id) == []
+
+
 @pytest.mark.asyncio
 async def test_update_job_by_admin_does_not_pull_offline(db_session):
     """Admin edits to a live, approved job don't trigger re-review — admin is the reviewer."""
