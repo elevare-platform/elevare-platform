@@ -10,7 +10,11 @@ from sqlalchemy.orm import selectinload
 
 from app.modules.candidates.models import CandidateProfile
 from app.modules.interviews.enums import InterviewStatus, compute_display_status
-from app.modules.interviews.models import Interview, InterviewCost
+from app.modules.interviews.models import (
+    Interview,
+    InterviewCost,
+    InterviewTranscriptCheck,
+)
 from app.modules.jobs.models import Job
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.users.models import User
@@ -177,6 +181,76 @@ class InterviewRepository:
         await self._db.flush()
         await self._db.refresh(interview)
         return interview
+
+    async def lock_status(self, interview_id: uuid.UUID) -> str:
+        """Lock the interview row until the transaction ends and return the
+        status the database holds right now (not a possibly stale loaded copy).
+
+        Serialises operations that must not run twice at once, such as
+        completing an upload. Must be called inside the transaction that will
+        make the change, so the lock is held until it commits.
+        """
+        result = await self._db.execute(
+            select(Interview.status)
+            .where(Interview.id == interview_id)
+            .with_for_update()
+        )
+        return result.scalar_one()
+
+    async def count_created_since(
+        self,
+        since: datetime,
+        *,
+        organization_id: uuid.UUID | None,
+        employer_id: uuid.UUID,
+    ) -> int:
+        """Count interviews created since ``since`` for one paying party.
+
+        The party is the job owner's organization or, for an account that has
+        no organization (e.g. an Elevare admin), that account alone.
+        """
+        stmt = (
+            select(func.count(Interview.id))
+            .join(Job, Job.id == Interview.job_id)
+            .join(User, User.id == Job.employer_id)
+            .where(Interview.created_at >= since)
+        )
+        if organization_id is not None:
+            stmt = stmt.where(User.organization_id == organization_id)
+        else:
+            stmt = stmt.where(Job.employer_id == employer_id)
+        result = await self._db.execute(stmt)
+        return result.scalar_one()
+
+    async def get_transcript_check(
+        self, interview_id: uuid.UUID
+    ) -> InterviewTranscriptCheck | None:
+        """Return the transcript check for an interview, or None if it has none."""
+        result = await self._db.execute(
+            select(InterviewTranscriptCheck).where(
+                InterviewTranscriptCheck.interview_id == interview_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def create_transcript_check(
+        self,
+        interview_id: uuid.UUID,
+        status: str,
+        *,
+        match_score: float | None = None,
+        server_transcript: str | None = None,
+    ) -> InterviewTranscriptCheck:
+        """Persist the transcript check for an interview (one per interview)."""
+        check = InterviewTranscriptCheck(
+            interview_id=interview_id,
+            status=status,
+            match_score=match_score,
+            server_transcript=server_transcript,
+        )
+        self._db.add(check)
+        await self._db.flush()
+        return check
 
     async def create_cost_row(
         self,

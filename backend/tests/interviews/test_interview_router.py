@@ -200,6 +200,103 @@ async def test_public_token_endpoint_works_with_no_authorization_header(
 
 
 @pytest.mark.asyncio
+async def test_score_endpoint_queues_scoring_for_the_owner(
+    client, db_session, monkeypatch
+):
+    from unittest.mock import Mock
+
+    from app.core.config import settings
+    from app.modules.interviews import service as interview_service_module
+    from app.modules.interviews.enums import InterviewStatus
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", False)
+    mock_task = Mock()
+    monkeypatch.setattr(
+        interview_service_module, "transcribe_and_score_interview_task", mock_task
+    )
+    token, owner = await register_and_promote(client, db_session, "EMPLOYER")
+    job = make_job(owner.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    profile = await make_talent_pool_profile(db_session, added_by_id=owner.id)
+    await make_interview(
+        db_session,
+        job.id,
+        profile.id,
+        status=InterviewStatus.SCORED.value,
+        transcript="AI: Hi\n\nCandidate: Hello",
+    )
+
+    resp = await client.post(
+        "/api/v1/interviews/score",
+        params={"job_id": str(job.id), "talent_pool_profile_id": str(profile.id)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 202
+    assert resp.json() == {"queued": True}
+    mock_task.delay.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_score_endpoint_is_closed_to_other_employers_and_candidates(
+    client, db_session
+):
+    _owner_token, owner = await register_and_promote(client, db_session, "EMPLOYER")
+    outsider_token, _ = await register_and_promote(client, db_session, "EMPLOYER")
+    candidate_token, _ = await register_and_promote(client, db_session, "CANDIDATE")
+    job = make_job(owner.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    params = {"job_id": str(job.id), "talent_pool_profile_id": str(uuid4())}
+
+    outsider = await client.post(
+        "/api/v1/interviews/score",
+        params=params,
+        headers={"Authorization": f"Bearer {outsider_token}"},
+    )
+    candidate = await client.post(
+        "/api/v1/interviews/score",
+        params=params,
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    anonymous = await client.post("/api/v1/interviews/score", params=params)
+
+    assert outsider.status_code == 403
+    assert candidate.status_code == 403
+    assert anonymous.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_complete_rejects_an_oversized_transcript(client):
+    """The transcript is typed by the candidate's browser and goes into the
+    scoring prompt, so it is size-bounded at the API edge (422), before any
+    token lookup or LLM cost."""
+    from app.modules.interviews.schema import MAX_TRANSCRIPT_CHARS
+
+    resp = await client.post(
+        "/api/v1/public/interviews/any-token/complete",
+        json={"transcript": "x" * (MAX_TRANSCRIPT_CHARS + 1)},
+    )
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_complete_accepts_a_transcript_at_the_limit(client):
+    """At the limit the request passes validation (and then fails on the
+    unknown token), so a long but real interview is never rejected as too big."""
+    from app.modules.interviews.schema import MAX_TRANSCRIPT_CHARS
+
+    resp = await client.post(
+        "/api/v1/public/interviews/any-token/complete",
+        json={"transcript": "x" * MAX_TRANSCRIPT_CHARS},
+    )
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_public_info_endpoint_is_rate_limited(client, db_session):
     """The public token routes have no login barrier at all, so they need
     their own rate limit — proves @limiter.limit is actually wired on the
@@ -269,6 +366,7 @@ async def test_costs_endpoint_breaks_down_by_component_current_month_only(
     baseline = baseline_resp.json()["by_component"]
     baseline_realtime_calls = baseline.get("realtime", {}).get("total_calls", 0)
     baseline_scoring_calls = baseline.get("scoring", {}).get("total_calls", 0)
+    baseline_transcription_calls = baseline.get("transcription", {}).get("total_calls", 0)
 
     employer = make_employer()
     db_session.add(employer)
@@ -321,4 +419,9 @@ async def test_costs_endpoint_breaks_down_by_component_current_month_only(
 
     assert data["by_component"]["realtime"]["total_calls"] == baseline_realtime_calls + 1
     assert data["by_component"]["scoring"]["total_calls"] == baseline_scoring_calls + 1
-    assert "transcription" not in data["by_component"]
+    # This test adds no transcription cost. A dev database that has run real
+    # interviews already holds some, so compare with the baseline, not with zero.
+    assert (
+        data["by_component"].get("transcription", {}).get("total_calls", 0)
+        == baseline_transcription_calls
+    )

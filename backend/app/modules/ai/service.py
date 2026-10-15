@@ -523,27 +523,41 @@ class AnthropicCVExtractionService(AIService):
         )
 
         raw = ""
+        input_tokens = 0
+        output_tokens = 0
 
         try:
             response = await self._client.messages.create(
                 model=settings.anthropic_model,
-                max_tokens=3072,
+                max_tokens=4096,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
             )
+            # A response that arrived was billed even if we can't use it.
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+
+            if response.stop_reason == "max_tokens":
+                raise ValueError("response was cut off at max_tokens")
 
             raw = response.content[0].text
             data = self._parse_response(raw)
 
+            # _parse_response returns a non-dict fallback when the JSON is
+            # unusable, and a dict without "score" is just as unusable. Both
+            # must read as a failure, never as a score of 0.
+            if not isinstance(data, dict) or data.get("score") is None:
+                raise ValueError("response contained no usable score")
+
             return InterviewScoringResult(
-                score=max(0, min(100, int(data.get("score", 0)))),
+                score=max(0, min(100, int(data["score"]))),
                 summary=data.get("summary", ""),
                 strengths=data.get("strengths", []),
                 weaknesses=data.get("weaknesses", []),
                 missing_evidence=data.get("missing_evidence", []),
                 contradictions=data.get("contradictions", []),
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
         except Exception as e:
             logger.error(
@@ -552,7 +566,9 @@ class AnthropicCVExtractionService(AIService):
                 len(user_prompt),
                 interview_brief[:300],
             )
-            return InterviewScoringResult(score=0)
+            return InterviewScoringResult(
+                failed=True, input_tokens=input_tokens, output_tokens=output_tokens
+            )
 
     async def generate_embedding(self, text: str) -> list[float]:
         """Generate a 1536-dim embedding vector for the given text."""

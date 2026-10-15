@@ -3,14 +3,25 @@ import { X } from 'lucide-react'
 import api from '@/lib/api'
 
 /**
- * InterviewBriefSetupModal - lets an employer add a job's AI interview brief
- * inline, without leaving the Applicants page, so the "Send interview link"
- * flow doesn't need a separate trip to Edit Job.
+ * InterviewBriefSetupModal - lets an employer set, or later edit, a job's AI
+ * interview brief inline, without leaving the Applicants page, so the "Send
+ * interview link" flow doesn't need a separate trip to Edit Job.
+ *
+ * Pass `initialBrief` to edit the existing brief. Saving the brief never takes
+ * a live job offline; the platform's admins are notified of the change instead.
  */
-export default function InterviewBriefSetupModal({ jobId, onClose, onSaved }) {
-  const [brief, setBrief] = useState('')
+export default function InterviewBriefSetupModal({
+  jobId,
+  initialBrief = '',
+  onClose,
+  onSaved,
+}) {
+  const isEditing = initialBrief.trim() !== ''
+  const [brief, setBrief] = useState(initialBrief)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  const unchanged = isEditing && brief.trim() === initialBrief.trim()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -18,6 +29,7 @@ export default function InterviewBriefSetupModal({ jobId, onClose, onSaved }) {
       setError('Enter a brief for the AI interviewer to work from.')
       return
     }
+    if (unchanged) return
     setLoading(true)
     setError(null)
     try {
@@ -41,7 +53,9 @@ export default function InterviewBriefSetupModal({ jobId, onClose, onSaved }) {
       <div className="w-full max-w-lg rounded-xl border border-border bg-white p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-text">Set up AI interview</h2>
+            <h2 className="text-lg font-bold text-text">
+              {isEditing ? 'Edit AI interview brief' : 'Set up AI interview'}
+            </h2>
             <p className="text-sm text-text-muted mt-1">
               This brief tells the AI interviewer what to ask about. It is never shown to
               candidates directly.
@@ -56,6 +70,13 @@ export default function InterviewBriefSetupModal({ jobId, onClose, onSaved }) {
             <X size={18} />
           </button>
         </div>
+
+        {isEditing && (
+          <p className="text-xs text-text-muted bg-surface-muted rounded-lg p-2.5">
+            Candidates who have already started or finished their interview were asked using the
+            previous version. Your changes apply to interviews that start from now on.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <textarea
@@ -76,10 +97,10 @@ export default function InterviewBriefSetupModal({ jobId, onClose, onSaved }) {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || unchanged}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors disabled:opacity-50"
             >
-              {loading ? 'Saving…' : 'Save and enable'}
+              {loading ? 'Saving…' : isEditing ? 'Save changes' : 'Save and enable'}
             </button>
           </div>
         </form>

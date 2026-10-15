@@ -3,7 +3,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+MAX_TRANSCRIPT_CHARS = 150_000
 
 
 class InterviewSessionResponse(BaseModel):
@@ -51,7 +53,10 @@ class InterviewCompleteRequest(BaseModel):
     session — see ``RealtimeUsageDetail``.
     """
 
-    transcript: str | None = None
+    # The transcript is typed by the candidate's browser, not by us, and goes
+    # straight into the scoring prompt, so its size is bounded. 150k characters
+    # is roughly 3 hours of speech; a real interview is a small fraction of it.
+    transcript: str | None = Field(default=None, max_length=MAX_TRANSCRIPT_CHARS)
     realtime_usage: RealtimeUsageDetail | None = None
 
 
@@ -87,6 +92,11 @@ class InterviewDetailResponse(BaseModel):
 
     status: str
     transcript: str | None
+    # How the transcript compares with the recording: VERIFIED, MISMATCH
+    # (``transcript`` then holds the recording's own transcript, without
+    # speaker labels, and the score is based on it), UNAVAILABLE, SERVER_ONLY,
+    # or None for interviews that were never checked.
+    transcript_check: str | None = None
     ai_score: int | None
     ai_rationale: str | None
     ai_scored_at: datetime | None
@@ -108,6 +118,12 @@ class InterviewPublicInfoResponse(BaseModel):
     # Surfaced so the consent screen can warn a returning candidate that
     # they've already used their one free restart — see _start_session.
     session_start_count: int
+
+
+class InterviewScoreRequestResponse(BaseModel):
+    """Result of asking for a finished interview to be AI-scored."""
+
+    queued: bool
 
 
 class InterviewResetRequestResponse(BaseModel):

@@ -25,6 +25,16 @@ class InterviewStatus(str, Enum):
     EXPIRED = "EXPIRED"
 
 
+class TranscriptCheckStatus(str, Enum):
+    """Outcome of comparing the candidate-device transcript with a server-side
+    transcription of the recording."""
+
+    VERIFIED = "VERIFIED"  # the two agree closely enough
+    MISMATCH = "MISMATCH"  # they clearly disagree; the server transcript is trusted
+    UNAVAILABLE = "UNAVAILABLE"  # could not be checked (transcription failed, too little text)
+    SERVER_ONLY = "SERVER_ONLY"  # no submitted transcript; the recording's own is the transcript
+
+
 class InterviewCostComponent(str, Enum):
     """Which billed external call an InterviewCost row is for."""
 

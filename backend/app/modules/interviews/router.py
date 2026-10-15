@@ -17,6 +17,7 @@ from app.modules.interviews.schema import (
     InterviewPublicInfoResponse,
     InterviewResetRequestResponse,
     InterviewResponse,
+    InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
 )
@@ -146,7 +147,7 @@ async def send_interview_invite(
     """Explicitly send (or resend) an AI interview invite to one candidate."""
     service = InterviewService(db)
     try:
-        return await service.send_invite(current_user.id, job_id, talent_pool_profile_id)
+        return await service.send_invite(current_user, job_id, talent_pool_profile_id)
     finally:
         await service.close()
 
@@ -160,7 +161,26 @@ async def send_interview_invites_to_all(
     """Explicitly send (or resend) AI interview invites to everyone on this job's interview list."""
     service = InterviewService(db)
     try:
-        return await service.send_invites_to_all(current_user.id, job_id)
+        return await service.send_invites_to_all(current_user, job_id)
+    finally:
+        await service.close()
+
+
+@router.post("/score", response_model=InterviewScoreRequestResponse, status_code=202)
+async def request_interview_scoring(
+    job_id: uuid.UUID = Query(...),
+    talent_pool_profile_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Score a finished interview that has no AI score yet (for example one taken
+    on the Starter plan). Runs in the background; the interview detail shows the
+    score when it is ready."""
+    service = InterviewService(db)
+    try:
+        return await service.request_scoring(
+            current_user, job_id, talent_pool_profile_id
+        )
     finally:
         await service.close()
 
@@ -176,7 +196,7 @@ async def get_interview_detail(
     service = InterviewService(db)
     try:
         return await service.get_detail_for_employer(
-            current_user.id, job_id, talent_pool_profile_id
+            current_user, job_id, talent_pool_profile_id
         )
     finally:
         await service.close()

@@ -30,6 +30,22 @@ from .conftest import (
     make_talent_pool_profile,
 )
 
+
+@pytest.fixture(autouse=True)
+def _recording_exists_in_storage(monkeypatch):
+    """_complete_upload now checks the recording exists in storage. Default every
+    test in this file to 'present'; tests of the guard itself override it with
+    _patch_recording_size, and never touch real R2."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.modules.interviews import service as interview_service_module
+
+    storage = MagicMock()
+    storage.get_object_size = AsyncMock(return_value=1024)
+    monkeypatch.setattr(
+        interview_service_module, "get_storage_service", lambda: storage
+    )
+
 # ---------------------------------------------------------------------------
 # create_invite
 # ---------------------------------------------------------------------------
@@ -339,7 +355,7 @@ async def test_send_invite_rejects_non_owning_employer(db_session):
     service = InterviewService(db_session)
     try:
         with pytest.raises(PermissionDeniedException):
-            await service.send_invite(intruder.id, job.id, tp_profile.id)
+            await service.send_invite(intruder, job.id, tp_profile.id)
     finally:
         await service.close()
 
@@ -353,7 +369,7 @@ async def test_send_invite_raises_for_unknown_job(db_session):
     service = InterviewService(db_session)
     try:
         with pytest.raises(JobNotFoundError):
-            await service.send_invite(employer.id, uuid4(), uuid4())
+            await service.send_invite(employer, uuid4(), uuid4())
     finally:
         await service.close()
 
@@ -371,7 +387,7 @@ async def test_send_invites_to_all_rejects_non_owning_employer(db_session):
     service = InterviewService(db_session)
     try:
         with pytest.raises(PermissionDeniedException):
-            await service.send_invites_to_all(intruder.id, job.id)
+            await service.send_invites_to_all(intruder, job.id)
     finally:
         await service.close()
 
@@ -386,7 +402,7 @@ async def test_send_invites_to_all_raises_for_unknown_job(db_session):
     service = InterviewService(db_session)
     try:
         with pytest.raises(JobNotFoundError):
-            await service.send_invites_to_all(employer.id, uuid4())
+            await service.send_invites_to_all(employer, uuid4())
     finally:
         await service.close()
 
@@ -404,7 +420,7 @@ async def test_send_invite_skips_without_raising_when_no_email(db_session):
 
     service = InterviewService(db_session)
     try:
-        result = await service.send_invite(employer.id, job.id, tp_profile.id)
+        result = await service.send_invite(employer, job.id, tp_profile.id)
     finally:
         await service.close()
 
@@ -437,8 +453,8 @@ async def test_send_invite_resend_reuses_same_interview_row(db_session, monkeypa
 
     service = InterviewService(db_session)
     try:
-        first = await service.send_invite(employer.id, job.id, tp_profile.id)
-        second = await service.send_invite(employer.id, job.id, tp_profile.id)
+        first = await service.send_invite(employer, job.id, tp_profile.id)
+        second = await service.send_invite(employer, job.id, tp_profile.id)
     finally:
         await service.close()
 
@@ -737,6 +753,821 @@ async def test_complete_upload_skips_realtime_cost_when_no_usage(db_session, mon
 
 
 # ---------------------------------------------------------------------------
+# complete_upload guards — status, and the recording must really exist
+# ---------------------------------------------------------------------------
+
+
+def _patch_recording_size(monkeypatch, size=None, error=None):
+    """Make the storage check report `size` bytes (None = object missing), or
+    raise `error` when storage itself cannot be asked."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.modules.interviews import service as interview_service_module
+
+    storage = MagicMock()
+    storage.get_object_size = AsyncMock(return_value=size, side_effect=error)
+    monkeypatch.setattr(
+        interview_service_module, "get_storage_service", lambda: storage
+    )
+    return storage
+
+
+def _patch_scoring_task(monkeypatch):
+    from unittest.mock import Mock
+
+    from app.modules.interviews import service as interview_service_module
+
+    mock_task = Mock()
+    mock_task.delay = Mock()
+    monkeypatch.setattr(
+        interview_service_module, "transcribe_and_score_interview_task", mock_task
+    )
+    return mock_task
+
+
+async def _make_interview_in_status(db_session, status, **overrides):
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    job = make_job(employer.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    tp_profile = await make_talent_pool_profile(db_session, added_by_id=employer.id)
+    return await make_interview(
+        db_session,
+        job.id,
+        tp_profile.id,
+        status=status,
+        r2_key="interviews/test/recording.webm",
+        **overrides,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status", [InterviewStatus.UPLOADED.value, InterviewStatus.SCORED.value]
+)
+async def test_complete_upload_is_a_noop_when_already_completed(
+    db_session, monkeypatch, status
+):
+    """A replayed or retried 'complete' must not reset the status, re-queue
+    scoring, or let a later request overwrite the saved transcript and score."""
+    mock_task = _patch_scoring_task(monkeypatch)
+    _patch_recording_size(monkeypatch, size=1024)
+    interview = await _make_interview_in_status(
+        db_session,
+        status,
+        transcript="original transcript",
+        ai_score=80,
+    )
+
+    service = InterviewService(db_session)
+    try:
+        result = await service._complete_upload(interview, transcript="forged text")
+    finally:
+        await service.close()
+
+    mock_task.delay.assert_not_called()
+    assert result.status == status
+    assert result.transcript == "original transcript"
+    assert result.ai_score == 80
+
+
+@pytest.mark.asyncio
+async def test_complete_upload_sees_a_concurrent_completion_through_a_stale_copy(
+    db_session, monkeypatch
+):
+    """Two 'complete' calls arriving together both load IN_PROGRESS. Once the
+    first has committed, the second must read the real status from the database
+    and do nothing, instead of trusting its stale copy and queueing a second
+    scoring run."""
+    from sqlalchemy import update
+
+    mock_task = _patch_scoring_task(monkeypatch)
+    _patch_recording_size(monkeypatch, size=1024)
+    interview = await _make_interview_in_status(
+        db_session, InterviewStatus.IN_PROGRESS.value
+    )
+    assert interview.status == InterviewStatus.IN_PROGRESS.value  # the stale copy
+
+    # The other request finishes: the database now says UPLOADED, while this
+    # request's loaded copy still says IN_PROGRESS.
+    await db_session.execute(
+        update(Interview)
+        .where(Interview.id == interview.id)
+        .values(status=InterviewStatus.UPLOADED.value)
+        .execution_options(synchronize_session=False)
+    )
+    assert interview.status == InterviewStatus.IN_PROGRESS.value
+
+    service = InterviewService(db_session)
+    try:
+        result = await service._complete_upload(interview, transcript="second call")
+    finally:
+        await service.close()
+
+    mock_task.delay.assert_not_called()
+    assert result.status == InterviewStatus.UPLOADED.value
+    assert result.transcript is None
+
+
+@pytest.mark.asyncio
+async def test_complete_upload_locks_the_interview_row(db_session, monkeypatch):
+    """The lock is what makes a simultaneous second call wait for the first."""
+    from sqlalchemy import event
+
+    _patch_scoring_task(monkeypatch)
+    _patch_recording_size(monkeypatch, size=1024)
+    interview = await _make_interview_in_status(
+        db_session, InterviewStatus.IN_PROGRESS.value
+    )
+
+    statements: list[str] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    connection = (await db_session.connection()).sync_connection
+    event.listen(connection, "before_cursor_execute", capture)
+    try:
+        service = InterviewService(db_session)
+        try:
+            await service._complete_upload(interview)
+        finally:
+            await service.close()
+    finally:
+        event.remove(connection, "before_cursor_execute", capture)
+
+    assert any(
+        "FROM interviews" in s and "FOR UPDATE" in s for s in statements
+    ), "completing an upload must lock the interview row"
+
+
+@pytest.mark.asyncio
+async def test_complete_upload_rejects_failed_interview(db_session, monkeypatch):
+    mock_task = _patch_scoring_task(monkeypatch)
+    _patch_recording_size(monkeypatch, size=1024)
+    interview = await _make_interview_in_status(
+        db_session, InterviewStatus.FAILED.value
+    )
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException):
+            await service._complete_upload(interview)
+    finally:
+        await service.close()
+
+    mock_task.delay.assert_not_called()
+    assert interview.status == InterviewStatus.FAILED.value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [None, 0])
+async def test_complete_upload_rejects_missing_or_empty_recording(
+    db_session, monkeypatch, size
+):
+    """r2_key is set when the upload URL is issued, so it proves nothing. A
+    candidate who never uploaded (or uploaded 0 bytes) must not become UPLOADED."""
+    mock_task = _patch_scoring_task(monkeypatch)
+    _patch_recording_size(monkeypatch, size=size)
+    interview = await _make_interview_in_status(
+        db_session, InterviewStatus.IN_PROGRESS.value
+    )
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException) as exc_info:
+            await service._complete_upload(interview, transcript="AI: Hi")
+    finally:
+        await service.close()
+
+    # A specific code lets the candidate page re-upload instead of just retrying.
+    assert exc_info.value.code == "RECORDING_NOT_RECEIVED"
+    mock_task.delay.assert_not_called()
+    assert interview.status == InterviewStatus.IN_PROGRESS.value
+    assert interview.transcript is None
+
+
+@pytest.mark.asyncio
+async def test_complete_upload_allows_completion_when_storage_cannot_be_checked(
+    db_session, monkeypatch
+):
+    """An R2 outage or a missing HEAD permission must not cost a real
+    candidate their interview: only a definitive 'missing' blocks."""
+    mock_task = _patch_scoring_task(monkeypatch)
+    _patch_recording_size(monkeypatch, error=RuntimeError("storage unreachable"))
+    interview = await _make_interview_in_status(
+        db_session, InterviewStatus.IN_PROGRESS.value
+    )
+
+    service = InterviewService(db_session)
+    try:
+        result = await service._complete_upload(interview, transcript="AI: Hi")
+    finally:
+        await service.close()
+
+    assert result.status == InterviewStatus.UPLOADED.value
+    mock_task.delay.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Organization-level ownership: teammates act on each other's jobs
+# ---------------------------------------------------------------------------
+
+
+async def _job_with_teammate(db_session, profile_count=1):
+    """A creator and a teammate in one organization, plus a job the creator
+    owns whose interview list the creator filled."""
+    from app.modules.employer.enums import OrganizationRole
+    from tests.conftest import make_organization_for
+
+    creator = make_employer()
+    db_session.add(creator)
+    await db_session.flush()
+    organization = await make_organization_for(db_session, creator)
+
+    teammate = make_employer()
+    teammate.organization_id = organization.id
+    teammate.organization_role = OrganizationRole.MEMBER.value
+    db_session.add(teammate)
+    await db_session.flush()
+
+    job = make_job(creator.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    profiles = []
+    for i in range(profile_count):
+        profile = await make_talent_pool_profile(
+            db_session,
+            added_by_id=creator.id,
+            override_email=f"candidate{i}@example.com",
+        )
+        await make_interview_list_entry(db_session, creator.id, profile.id, job.id)
+        profiles.append(profile)
+    return creator, teammate, job, profiles
+
+
+@pytest.mark.asyncio
+async def test_a_teammate_can_send_an_invite_for_a_colleagues_job(
+    db_session, monkeypatch
+):
+    mock_email_task = _patch_invite_email(monkeypatch)
+    _, teammate, job, (profile,) = await _job_with_teammate(db_session)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invite(teammate, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] is True
+    mock_email_task.delay.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_bulk_send_by_a_teammate_covers_candidates_the_creator_added(
+    db_session, monkeypatch
+):
+    mock_email_task = _patch_invite_email(monkeypatch)
+    _, teammate, job, _profiles = await _job_with_teammate(db_session, profile_count=2)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invites_to_all(teammate, job.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] == 2
+    assert mock_email_task.delay.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_teammate_can_open_a_colleagues_interview_detail(db_session):
+    _, teammate, job, (profile,) = await _job_with_teammate(db_session)
+    await make_interview(
+        db_session,
+        job.id,
+        profile.id,
+        status=InterviewStatus.SCORED.value,
+        transcript="Candidate: hello",
+    )
+
+    service = InterviewService(db_session)
+    try:
+        detail = await service.get_detail_for_employer(teammate, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert detail.transcript == "Candidate: hello"
+
+
+@pytest.mark.asyncio
+async def test_someone_from_another_organization_is_refused_everywhere(
+    db_session, monkeypatch
+):
+    from tests.conftest import make_organization_for
+
+    mock_email_task = _patch_invite_email(monkeypatch)
+    _, _, job, (profile,) = await _job_with_teammate(db_session)
+    await make_interview(
+        db_session, job.id, profile.id, status=InterviewStatus.SCORED.value
+    )
+    outsider = make_employer()
+    db_session.add(outsider)
+    await db_session.flush()
+    await make_organization_for(db_session, outsider)
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(PermissionDeniedException):
+            await service.send_invite(outsider, job.id, profile.id)
+        with pytest.raises(PermissionDeniedException):
+            await service.send_invites_to_all(outsider, job.id)
+        with pytest.raises(PermissionDeniedException):
+            await service.get_detail_for_employer(outsider, job.id, profile.id)
+    finally:
+        await service.close()
+
+    mock_email_task.delay.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Scoring an interview that finished without a score (e.g. taken on Starter)
+# ---------------------------------------------------------------------------
+
+
+async def _unscored_interview(db_session, plan_code="professional", **interview_fields):
+    """An organization on `plan_code` (None = no subscription = Starter) with a
+    finished interview that has a transcript but no AI score."""
+    from tests.conftest import make_organization_for, make_subscription_for
+
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    organization = await make_organization_for(db_session, employer)
+    if plan_code:
+        await make_subscription_for(db_session, organization, plan_code=plan_code)
+    job = make_job(employer.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    profile = await make_talent_pool_profile(db_session, added_by_id=employer.id)
+    fields = {
+        "status": InterviewStatus.SCORED.value,
+        "transcript": "AI: Hi\n\nCandidate: Hello",
+    }
+    fields.update(interview_fields)
+    interview = await make_interview(db_session, job.id, profile.id, **fields)
+    return employer, job, profile, interview
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_queues_an_unscored_interview(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, interview = await _unscored_interview(db_session)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result == {"queued": True}
+    # Back to the state the scoring task picks up, and told not to notify again.
+    assert interview.status == InterviewStatus.UPLOADED.value
+    mock_task.delay.assert_called_once_with(str(interview.id), notify=False)
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_on_the_starter_plan_asks_for_an_upgrade(
+    db_session, monkeypatch
+):
+    from app.core.exceptions import PlanUpgradeRequiredException
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, interview = await _unscored_interview(
+        db_session, plan_code=None
+    )
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(PlanUpgradeRequiredException):
+            await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    mock_task.delay.assert_not_called()
+    assert interview.status == InterviewStatus.SCORED.value
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_works_for_an_admin_owned_job(db_session, monkeypatch):
+    """Admins have no organization and so no plan; they are never gated."""
+    from tests.conftest import make_admin
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    admin = make_admin()
+    db_session.add(admin)
+    await db_session.flush()
+    job = make_job(admin.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    profile = await make_talent_pool_profile(db_session, added_by_id=admin.id)
+    await make_interview(
+        db_session,
+        job.id,
+        profile.id,
+        status=InterviewStatus.SCORED.value,
+        transcript="AI: Hi\n\nCandidate: Hello",
+    )
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.request_scoring(admin, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result == {"queued": True}
+    mock_task.delay.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fields, code",
+    [
+        ({"ai_score": 80}, "INTERVIEW_ALREADY_SCORED"),
+        ({"status": InterviewStatus.IN_PROGRESS.value}, "INTERVIEW_NOT_COMPLETED"),
+        ({"status": InterviewStatus.FAILED.value}, "INTERVIEW_NOT_COMPLETED"),
+        ({"status": InterviewStatus.UPLOADED.value}, "INTERVIEW_PROCESSING"),
+        ({"transcript": None}, "INTERVIEW_NO_TRANSCRIPT"),
+    ],
+)
+async def test_request_scoring_refuses_an_interview_that_cannot_be_scored(
+    db_session, monkeypatch, fields, code
+):
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, _ = await _unscored_interview(db_session, **fields)
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException) as exc_info:
+            await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert exc_info.value.code == code
+    mock_task.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_second_click_does_not_queue_scoring_twice(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, _ = await _unscored_interview(db_session)
+
+    service = InterviewService(db_session)
+    try:
+        await service.request_scoring(employer, job.id, profile.id)
+        with pytest.raises(ValidationException) as exc_info:
+            await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert exc_info.value.code == "INTERVIEW_PROCESSING"
+    assert mock_task.delay.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_retries_an_interview_stuck_processing(
+    db_session, monkeypatch
+):
+    """If a worker died mid-run the interview sits in UPLOADED for ever; after a
+    while it may be queued again instead of staying stuck."""
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, _ = await _unscored_interview(
+        db_session,
+        status=InterviewStatus.UPLOADED.value,
+        updated_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result == {"queued": True}
+    mock_task.delay.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_is_refused_for_someone_elses_job(db_session, monkeypatch):
+    from tests.conftest import make_organization_for
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    _, job, profile, _ = await _unscored_interview(db_session)
+    outsider = make_employer()
+    db_session.add(outsider)
+    await db_session.flush()
+    await make_organization_for(db_session, outsider)
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(PermissionDeniedException):
+            await service.request_scoring(outsider, job.id, profile.id)
+    finally:
+        await service.close()
+
+    mock_task.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_for_an_unknown_interview(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "plan_gates_enabled", False)
+    employer, job, _, _ = await _unscored_interview(db_session)
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(InterviewNotFound):
+            await service.request_scoring(employer, job.id, uuid4())
+    finally:
+        await service.close()
+
+
+# ---------------------------------------------------------------------------
+# Off switch and daily invite limit
+# ---------------------------------------------------------------------------
+
+
+def _patch_invite_email(monkeypatch):
+    from unittest.mock import Mock
+
+    from app.modules.interviews import service as interview_service_module
+
+    mock_email_task = Mock()
+    mock_email_task.delay = Mock()
+    monkeypatch.setattr(
+        interview_service_module, "send_ai_interview_invite_email", mock_email_task
+    )
+    return mock_email_task
+
+
+async def _employer_job_and_profiles(db_session, profile_count=1):
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    job = make_job(employer.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    profiles = [
+        await make_talent_pool_profile(
+            db_session,
+            added_by_id=employer.id,
+            override_email=f"candidate{i}@example.com",
+        )
+        for i in range(profile_count)
+    ]
+    return employer, job, profiles
+
+
+@pytest.mark.asyncio
+async def test_off_switch_blocks_new_invites(db_session, monkeypatch):
+    mock_email_task = _patch_invite_email(monkeypatch)
+    monkeypatch.setattr(settings, "interview_enabled", False)
+    employer, job, (profile,) = await _employer_job_and_profiles(db_session)
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException) as exc_info:
+            await service.send_invite(employer, job.id, profile.id)
+        with pytest.raises(ValidationException):
+            await service.send_invites_to_all(employer, job.id)
+    finally:
+        await service.close()
+
+    assert exc_info.value.code == "AI_INTERVIEWS_DISABLED"
+    assert exc_info.value.status_code == 503
+    mock_email_task.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_off_switch_blocks_starting_a_live_session(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "interview_enabled", False)
+    _, job, (profile,) = await _employer_job_and_profiles(db_session)
+    interview = await make_interview(
+        db_session, job.id, profile.id, status=InterviewStatus.PENDING.value
+    )
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException) as exc_info:
+            await service._start_session(interview)
+    finally:
+        await service.close()
+
+    assert exc_info.value.code == "AI_INTERVIEWS_DISABLED"
+    assert interview.session_start_count == 0
+
+
+@pytest.mark.asyncio
+async def test_off_switch_does_not_cut_off_an_interview_already_in_progress(
+    db_session, monkeypatch
+):
+    """Flipping the switch must not lose a candidate who is mid-interview."""
+    monkeypatch.setattr(settings, "interview_enabled", False)
+    mock_task = _patch_scoring_task(monkeypatch)
+    _patch_recording_size(monkeypatch, size=1024)
+    interview = await _make_interview_in_status(
+        db_session, InterviewStatus.IN_PROGRESS.value
+    )
+
+    service = InterviewService(db_session)
+    try:
+        result = await service._complete_upload(interview, transcript="AI: Hi")
+    finally:
+        await service.close()
+
+    assert result.status == InterviewStatus.UPLOADED.value
+    mock_task.delay.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_daily_invite_limit_stops_new_invites_but_not_resends(
+    db_session, monkeypatch
+):
+    mock_email_task = _patch_invite_email(monkeypatch)
+    monkeypatch.setattr(settings, "interview_daily_invite_limit", 2)
+    employer, job, profiles = await _employer_job_and_profiles(
+        db_session, profile_count=3
+    )
+
+    service = InterviewService(db_session)
+    try:
+        first = await service.send_invite(employer, job.id, profiles[0].id)
+        second = await service.send_invite(employer, job.id, profiles[1].id)
+        third = await service.send_invite(employer, job.id, profiles[2].id)
+        resend = await service.send_invite(employer, job.id, profiles[0].id)
+    finally:
+        await service.close()
+
+    assert first["sent"] is True
+    assert second["sent"] is True
+    assert third["sent"] is False
+    assert "limit" in third["reason"].lower()
+    assert resend["sent"] is True  # a resend is not a new interview
+    assert mock_email_task.delay.call_count == 3
+
+    third_row = await InterviewRepository(db_session).get_by_job_and_profile(
+        job.id, profiles[2].id
+    )
+    assert third_row is None
+
+
+@pytest.mark.asyncio
+async def test_daily_invite_limit_bulk_send_sends_up_to_the_limit(
+    db_session, monkeypatch
+):
+    _patch_invite_email(monkeypatch)
+    monkeypatch.setattr(settings, "interview_daily_invite_limit", 2)
+    employer, job, profiles = await _employer_job_and_profiles(
+        db_session, profile_count=3
+    )
+    for profile in profiles:
+        await make_interview_list_entry(db_session, employer.id, profile.id, job.id)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invites_to_all(employer, job.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] == 2
+    assert len(result["skipped"]) == 1
+    assert "limit" in result["skipped"][0]["reason"].lower()
+
+
+@pytest.mark.asyncio
+async def test_daily_invite_limit_ignores_old_interviews_and_other_organizations(
+    db_session, monkeypatch
+):
+    _patch_invite_email(monkeypatch)
+    monkeypatch.setattr(settings, "interview_daily_invite_limit", 1)
+    employer, job, (profile,) = await _employer_job_and_profiles(db_session)
+
+    # An old interview for this employer, and a fresh one for someone else.
+    old_profile = await make_talent_pool_profile(db_session, added_by_id=employer.id)
+    await make_interview(
+        db_session,
+        job.id,
+        old_profile.id,
+        created_at=datetime.now(UTC) - timedelta(days=2),
+    )
+    other_employer, other_job, (other_profile,) = await _employer_job_and_profiles(
+        db_session
+    )
+    await make_interview(db_session, other_job.id, other_profile.id)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invite(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] is True
+
+
+@pytest.mark.asyncio
+async def test_daily_invite_limit_of_zero_means_unlimited(db_session, monkeypatch):
+    _patch_invite_email(monkeypatch)
+    monkeypatch.setattr(settings, "interview_daily_invite_limit", 0)
+    employer, job, profiles = await _employer_job_and_profiles(
+        db_session, profile_count=3
+    )
+
+    service = InterviewService(db_session)
+    try:
+        results = [
+            await service.send_invite(employer, job.id, p.id) for p in profiles
+        ]
+    finally:
+        await service.close()
+
+    assert all(r["sent"] for r in results)
+
+
+# ---------------------------------------------------------------------------
+# Employer detail: what the transcript check changes
+# ---------------------------------------------------------------------------
+
+
+async def _scored_interview_with_check(db_session, check_status, server_text=None):
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    job = make_job(employer.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    tp_profile = await make_talent_pool_profile(db_session, added_by_id=employer.id)
+    interview = await make_interview(
+        db_session,
+        job.id,
+        tp_profile.id,
+        status=InterviewStatus.SCORED.value,
+        transcript="Candidate: what the browser sent",
+    )
+    if check_status is not None:
+        await InterviewRepository(db_session).create_transcript_check(
+            interview.id, check_status, match_score=0.1, server_transcript=server_text
+        )
+    return employer, job, tp_profile
+
+
+@pytest.mark.asyncio
+async def test_detail_shows_the_recordings_transcript_on_a_mismatch(db_session):
+    employer, job, tp_profile = await _scored_interview_with_check(
+        db_session, "MISMATCH", server_text="what the recording actually says"
+    )
+
+    service = InterviewService(db_session)
+    try:
+        detail = await service.get_detail_for_employer(
+            employer, job.id, tp_profile.id
+        )
+    finally:
+        await service.close()
+
+    assert detail.transcript == "what the recording actually says"
+    assert detail.transcript_check == "MISMATCH"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("check_status", ["VERIFIED", "UNAVAILABLE", None])
+async def test_detail_shows_the_submitted_transcript_otherwise(
+    db_session, check_status
+):
+    employer, job, tp_profile = await _scored_interview_with_check(
+        db_session, check_status, server_text="recording transcript"
+    )
+
+    service = InterviewService(db_session)
+    try:
+        detail = await service.get_detail_for_employer(
+            employer, job.id, tp_profile.id
+        )
+    finally:
+        await service.close()
+
+    assert detail.transcript == "Candidate: what the browser sent"
+    assert detail.transcript_check == check_status
+
+
+# ---------------------------------------------------------------------------
 # _start_session — restart lock (see AskUserQuestion: 1 free restart, then blocked)
 # ---------------------------------------------------------------------------
 
@@ -781,6 +1612,66 @@ async def test_start_session_first_call_succeeds_and_increments_count(db_session
     refreshed = await InterviewRepository(db_session).get_by_id(interview.id)
     assert refreshed.session_start_count == 1
     assert refreshed.status == InterviewStatus.IN_PROGRESS.value
+
+
+def test_instructions_make_the_time_limit_a_ceiling_and_describe_a_clean_close():
+    from app.modules.interviews.service import _build_instructions
+
+    text = " ".join(
+        _build_instructions("Ask about scaling.", 15, can_end_interview=True).split()
+    )
+
+    assert "ceiling, not a target" in text
+    assert "at most two follow-ups" in text.lower()
+    assert "Never invent extra questions" in text
+    assert "HOW TO CLOSE" in text
+    assert "call the end_interview function" in text
+    assert text.endswith("Interview brief: Ask about scaling.")
+
+
+def test_instructions_without_the_end_tool_never_mention_it():
+    from app.modules.interviews.service import _build_instructions
+
+    text = _build_instructions("Ask about scaling.", 15, can_end_interview=False)
+
+    assert "end_interview" not in text
+    assert "ceiling, not a target" in text  # the pacing guidance still applies
+    assert "stop speaking and wait" in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_start_session_offers_the_end_tool_only_when_enabled(
+    db_session, monkeypatch, enabled
+):
+    monkeypatch.setattr(settings, "interview_ai_can_end_early", enabled)
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    job = make_job(employer.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    tp_profile = await make_talent_pool_profile(db_session, added_by_id=employer.id)
+    interview = await make_interview(db_session, job.id, tp_profile.id)
+
+    service = InterviewService(db_session)
+    service._client = _mock_realtime_client_secret()
+    try:
+        interview = await InterviewRepository(db_session).get_by_id(interview.id)
+        await service._start_session(interview)
+        session = service._client.realtime.client_secrets.create.await_args.kwargs[
+            "session"
+        ]
+    finally:
+        await service.close()
+
+    if enabled:
+        assert [t["name"] for t in session["tools"]] == ["end_interview"]
+        assert session["tool_choice"] == "auto"
+        assert "end_interview" in session["instructions"]
+    else:
+        assert "tools" not in session
+        assert "end_interview" not in session["instructions"]
 
 
 @pytest.mark.asyncio

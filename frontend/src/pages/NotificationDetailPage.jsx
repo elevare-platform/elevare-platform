@@ -37,6 +37,9 @@ function resolveAction(notification) {
       to: `/employer/jobs/${notification.entity_id}/applicants?tab=interview-list`,
     }
   }
+  if (notification.type === 'JOB_BRIEF_CHANGED' && notification.entity_type === 'JOB') {
+    return { label: 'Review job', to: '/admin/jobs' }
+  }
   if (notification.type === 'KYC_SUBMITTED' && notification.entity_type === 'ORGANIZATION') {
     return { label: 'Review submission', to: '/admin/kyc' }
   }

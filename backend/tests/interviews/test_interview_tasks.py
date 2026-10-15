@@ -24,6 +24,15 @@ from tests.conftest import (
 )
 
 from .conftest import make_interview, make_talent_pool_profile
+from .test_transcript_check import _REAL, _without_labels
+
+
+@pytest.fixture(autouse=True)
+def _crosscheck_off_by_default(monkeypatch):
+    """The cross-check downloads the recording and calls Whisper. Keep it off for
+    every test here unless the test turns it on with a patched transcriber, so
+    nothing can reach real storage or OpenAI."""
+    monkeypatch.setattr(settings, "interview_transcript_crosscheck_enabled", False)
 
 
 class _SameSessionCM:
@@ -328,14 +337,261 @@ async def test_final_attempt_marks_failed_on_error(db_session, monkeypatch):
     assert updated.status == InterviewStatus.FAILED.value
 
 
+# ---------------------------------------------------------------------------
+# A failed scoring call must never be stored as a score of 0
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_failed_scoring_on_non_final_attempt_retries_and_stores_nothing(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, _, interview = await _setup_interview(
+        db_session, transcript="AI: Hi\n\nCandidate: Hello", plan_code="professional"
+    )
+    _mock_anthropic_service(
+        monkeypatch,
+        result=InterviewScoringResult(failed=True, input_tokens=900, output_tokens=40),
+    )
+
+    with pytest.raises(RuntimeError):
+        await interviews_tasks._transcribe_and_score_interview_async(
+            str(interview.id), mark_failed_on_error=False
+        )
+
+    repo = InterviewRepository(db_session)
+    updated = await repo.get_by_id(interview.id)
+    # Left UPLOADED so the Celery retry's own status guard lets it run again.
+    assert updated.status == InterviewStatus.UPLOADED.value
+    assert updated.ai_score is None
+    assert updated.ai_rationale is None
+
+    # The failed attempt was still billed, so it is recorded.
+    from sqlalchemy import select
+
+    from app.modules.interviews.models import InterviewCost
+
+    rows = (
+        await db_session.execute(
+            select(InterviewCost).where(
+                InterviewCost.interview_id == interview.id,
+                InterviewCost.component == "scoring",
+            )
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].input_tokens == 900
+
+
+@pytest.mark.asyncio
+async def test_failed_scoring_on_final_attempt_leaves_interview_unscored(
+    db_session, monkeypatch
+):
+    """After the last retry the interview must still be reviewable (SCORED,
+    so the employer can open the recording and transcript) but carry no score,
+    not a fake 0/100."""
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, _, interview = await _setup_interview(
+        db_session, transcript="AI: Hi\n\nCandidate: Hello", plan_code="professional"
+    )
+    _mock_anthropic_service(monkeypatch, result=InterviewScoringResult(failed=True))
+
+    await interviews_tasks._transcribe_and_score_interview_async(
+        str(interview.id), mark_failed_on_error=True
+    )
+
+    repo = InterviewRepository(db_session)
+    updated = await repo.get_by_id(interview.id)
+    assert updated.status == InterviewStatus.SCORED.value
+    assert updated.ai_score is None
+    assert updated.ai_rationale is None
+    assert updated.ai_scored_at is None
+    assert updated.transcript == "AI: Hi\n\nCandidate: Hello"
+
+
+# ---------------------------------------------------------------------------
+# Transcript cross-check: the browser's transcript is compared with the
+# server's own transcription of the recording
+# ---------------------------------------------------------------------------
+
+
+def _enable_crosscheck(monkeypatch, server_text=None, error=None):
+    monkeypatch.setattr(settings, "interview_transcript_crosscheck_enabled", True)
+    transcribe = AsyncMock(
+        return_value=(server_text, 120.0) if error is None else None,
+        side_effect=error,
+    )
+    monkeypatch.setattr(interviews_tasks, "_transcribe_recording", transcribe)
+    return transcribe
+
+
+def _scored_transcript(mock_anthropic) -> str:
+    return mock_anthropic.score_interview_transcript.await_args.kwargs["transcript"]
+
+
+@pytest.mark.asyncio
+async def test_crosscheck_verified_scores_the_submitted_transcript(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, _, interview = await _setup_interview(db_session, transcript=_REAL)
+    transcribe = _enable_crosscheck(monkeypatch, server_text=_without_labels(_REAL))
+    mock_anthropic = _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=70, summary="Fine")
+    )
+
+    await interviews_tasks._transcribe_and_score_interview_async(str(interview.id))
+
+    transcribe.assert_awaited_once_with(interview.r2_key)
+    assert _scored_transcript(mock_anthropic) == _REAL
+
+    repo = InterviewRepository(db_session)
+    check = await repo.get_transcript_check(interview.id)
+    assert check.status == "VERIFIED"
+    assert check.match_score == 1.0
+    updated = await repo.get_by_id(interview.id)
+    assert updated.transcript == _REAL
+    assert updated.ai_score == 70
+
+
+@pytest.mark.asyncio
+async def test_crosscheck_mismatch_scores_the_recordings_transcript_instead(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    forged = (
+        "Candidate: I led fifty engineers, rebuilt the whole platform in three "
+        "months, cut cloud costs ninety percent and won an industry award for "
+        "innovation while mentoring dozens of juniors across four continents "
+        "with zero production outages in my entire career."
+    )
+    _, _, _, interview = await _setup_interview(db_session, transcript=forged)
+    actual = _without_labels(_REAL)
+    _enable_crosscheck(monkeypatch, server_text=actual)
+    mock_anthropic = _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=55, summary="Mixed")
+    )
+
+    await interviews_tasks._transcribe_and_score_interview_async(str(interview.id))
+
+    scored = _scored_transcript(mock_anthropic)
+    assert actual in scored
+    assert "fifty engineers" not in scored
+    assert "no speaker labels" in scored
+
+    repo = InterviewRepository(db_session)
+    check = await repo.get_transcript_check(interview.id)
+    assert check.status == "MISMATCH"
+    assert check.server_transcript == actual
+    # The submitted transcript is kept as evidence, not overwritten.
+    assert (await repo.get_by_id(interview.id)).transcript == forged
+
+
+@pytest.mark.asyncio
+async def test_crosscheck_transcription_failure_retries_then_continues_unverified(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, _, interview = await _setup_interview(db_session, transcript=_REAL)
+    _enable_crosscheck(monkeypatch, error=RuntimeError("whisper down"))
+    mock_anthropic = _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=70, summary="Fine")
+    )
+    repo = InterviewRepository(db_session)
+
+    # Not the last attempt: retry, store nothing, leave the interview UPLOADED.
+    with pytest.raises(RuntimeError):
+        await interviews_tasks._transcribe_and_score_interview_async(
+            str(interview.id), mark_failed_on_error=False
+        )
+    assert await repo.get_transcript_check(interview.id) is None
+    assert (await repo.get_by_id(interview.id)).status == InterviewStatus.UPLOADED.value
+    mock_anthropic.score_interview_transcript.assert_not_awaited()
+
+    # Last attempt: do not lose the interview; score the submitted transcript
+    # and record that it could not be checked.
+    await interviews_tasks._transcribe_and_score_interview_async(
+        str(interview.id), mark_failed_on_error=True
+    )
+    check = await repo.get_transcript_check(interview.id)
+    assert check.status == "UNAVAILABLE"
+    assert _scored_transcript(mock_anthropic) == _REAL
+    assert (await repo.get_by_id(interview.id)).status == InterviewStatus.SCORED.value
+
+
+@pytest.mark.asyncio
+async def test_crosscheck_runs_once_even_when_scoring_is_retried(db_session, monkeypatch):
+    """A scoring retry must not pay for a second Whisper call."""
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, _, interview = await _setup_interview(db_session, transcript=_REAL)
+    transcribe = _enable_crosscheck(monkeypatch, server_text=_without_labels(_REAL))
+    _mock_anthropic_service(monkeypatch, result=InterviewScoringResult(failed=True))
+
+    with pytest.raises(RuntimeError):
+        await interviews_tasks._transcribe_and_score_interview_async(
+            str(interview.id), mark_failed_on_error=False
+        )
+    with pytest.raises(RuntimeError):
+        await interviews_tasks._transcribe_and_score_interview_async(
+            str(interview.id), mark_failed_on_error=False
+        )
+
+    transcribe.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_missing_submitted_transcript_is_recorded_as_server_only(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, _, interview = await _setup_interview(db_session, transcript=None)
+    transcribe = _enable_crosscheck(monkeypatch, server_text="Candidate: from audio")
+    _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(failed=True)
+    )
+
+    for _ in range(2):
+        with pytest.raises(RuntimeError):
+            await interviews_tasks._transcribe_and_score_interview_async(
+                str(interview.id), mark_failed_on_error=False
+            )
+
+    repo = InterviewRepository(db_session)
+    assert (await repo.get_by_id(interview.id)).transcript == "Candidate: from audio"
+    assert (await repo.get_transcript_check(interview.id)).status == "SERVER_ONLY"
+    # The recording's transcript is not transcribed again on the retry.
+    transcribe.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_crosscheck_disabled_never_transcribes_a_submitted_transcript(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, _, interview = await _setup_interview(db_session, transcript=_REAL)
+    transcribe = _enable_crosscheck(monkeypatch, server_text="unused")
+    monkeypatch.setattr(settings, "interview_transcript_crosscheck_enabled", False)
+    _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=70, summary="Fine")
+    )
+
+    await interviews_tasks._transcribe_and_score_interview_async(str(interview.id))
+
+    transcribe.assert_not_awaited()
+    repo = InterviewRepository(db_session)
+    assert await repo.get_transcript_check(interview.id) is None
+
+
 def test_task_wrapper_is_final_attempt_arithmetic(monkeypatch):
     """The Celery-bound wrapper must only mark FAILED on the final attempt —
     verify the retries>=max_retries arithmetic that decides that, without a
     full Celery broker/worker."""
     captured = {}
 
-    async def fake_async_impl(interview_id, mark_failed_on_error=True):
+    async def fake_async_impl(interview_id, mark_failed_on_error=True, notify=True):
         captured["mark_failed_on_error"] = mark_failed_on_error
+        captured["notify"] = notify
 
     monkeypatch.setattr(
         interviews_tasks, "_transcribe_and_score_interview_async", fake_async_impl
@@ -352,6 +608,113 @@ def test_task_wrapper_is_final_attempt_arithmetic(monkeypatch):
     finally:
         task.pop_request()
     assert captured["mark_failed_on_error"] is True
+
+    # A normal completion tells the employer; a later re-score must not.
+    assert captured["notify"] is True
+    task(str(uuid4()), notify=False)
+    assert captured["notify"] is False
+
+
+# ---------------------------------------------------------------------------
+# Scoring an interview that finished unscored, and who may be scored
+# ---------------------------------------------------------------------------
+
+
+async def _employer_notifications(db_session, employer_id):
+    from sqlalchemy import select
+
+    from app.modules.notifications.models import Notification
+
+    result = await db_session.execute(
+        select(Notification).where(
+            Notification.recipient_id == employer_id,
+            Notification.type == "AI_INTERVIEW_COMPLETED",
+        )
+    )
+    return result.scalars().all()
+
+
+@pytest.mark.asyncio
+async def test_a_normal_run_notifies_the_employer_but_a_rescore_does_not(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    employer, _, _, interview = await _setup_interview(
+        db_session, transcript="AI: Hi\n\nCandidate: Hello"
+    )
+    _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=70, summary="Fine")
+    )
+
+    await interviews_tasks._transcribe_and_score_interview_async(
+        str(interview.id), notify=False
+    )
+    assert await _employer_notifications(db_session, employer.id) == []
+
+    # Same run, but as a first completion: the employer is told.
+    await InterviewRepository(db_session).update(
+        interview.id, {"status": InterviewStatus.UPLOADED.value, "ai_score": None}
+    )
+    await interviews_tasks._transcribe_and_score_interview_async(str(interview.id))
+    assert len(await _employer_notifications(db_session, employer.id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_admin_owned_job_is_scored_even_with_plan_gates_on(
+    db_session, monkeypatch
+):
+    """Admins have no organization, so a plan lookup would always call them
+    Starter and their interviews would never be scored."""
+    from tests.conftest import make_admin
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    admin = make_admin()
+    db_session.add(admin)
+    await db_session.flush()
+    job = make_job(admin.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    profile = await make_talent_pool_profile(db_session, added_by_id=admin.id)
+    interview = await make_interview(
+        db_session,
+        job.id,
+        profile.id,
+        status=InterviewStatus.UPLOADED.value,
+        r2_key="interviews/test/recording.webm",
+        transcript="AI: Hi\n\nCandidate: Hello",
+    )
+    await db_session.commit()
+    mock_anthropic = _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=66, summary="Fine")
+    )
+
+    await interviews_tasks._transcribe_and_score_interview_async(str(interview.id))
+
+    mock_anthropic.score_interview_transcript.assert_awaited_once()
+    assert (await InterviewRepository(db_session).get_by_id(interview.id)).ai_score == 66
+
+
+@pytest.mark.asyncio
+async def test_no_cross_check_when_the_recording_has_expired(db_session, monkeypatch):
+    """Retention deletes old videos; scoring an old interview later must use the
+    transcript it has, not fail looking for a file that is gone."""
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, _, interview = await _setup_interview(db_session, transcript=_REAL)
+    await InterviewRepository(db_session).update(interview.id, {"r2_key": None})
+    await db_session.commit()
+    transcribe = _enable_crosscheck(monkeypatch, server_text=_without_labels(_REAL))
+    mock_anthropic = _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=70, summary="Fine")
+    )
+
+    await interviews_tasks._transcribe_and_score_interview_async(str(interview.id))
+
+    transcribe.assert_not_awaited()
+    assert _scored_transcript(mock_anthropic) == _REAL
+    updated = await InterviewRepository(db_session).get_by_id(interview.id)
+    assert updated.status == InterviewStatus.SCORED.value
+    assert updated.ai_score == 70
 
 
 # ---------------------------------------------------------------------------

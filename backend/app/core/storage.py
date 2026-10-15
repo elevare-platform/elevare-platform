@@ -7,6 +7,7 @@ and MockStorageService (in-memory, for tests). Wire via get_storage_service().
 from abc import ABC, abstractmethod
 
 import aioboto3
+from botocore.exceptions import ClientError
 
 from app.core.config import settings
 
@@ -27,6 +28,11 @@ class StorageService(ABC):
     @abstractmethod
     async def delete_file(self, key: str) -> None:
         """Delete a file by its key."""
+        ...
+
+    @abstractmethod
+    async def get_object_size(self, key: str) -> int | None:
+        """Return the stored size in bytes, or None if no such object exists."""
         ...
 
     @abstractmethod
@@ -63,6 +69,12 @@ class MockStorageService(StorageService):
     async def delete_file(self, key: str) -> None:
         """Remove a file from the in-memory store."""
         self._store.pop(key, None)
+
+    async def get_object_size(self, key: str) -> int | None:
+        """Return the stored size in bytes, or None if the key is absent."""
+        if key not in self._store:
+            return None
+        return len(self._store[key])
 
     async def generate_presigned_url(self, key: str, expires_seconds: int) -> str:
         """Return a mock URL for the given key."""
@@ -123,6 +135,23 @@ class R2StorageService(StorageService):
         """Delete an object from R2 by its key."""
         async with self._session.client("s3", endpoint_url=self._endpoint_url) as s3:
             await s3.delete_object(Bucket=self._bucket, Key=key)
+
+    async def get_object_size(self, key: str) -> int | None:
+        """Return an R2 object's size in bytes, or None if it does not exist.
+
+        Only a definitive "not found" returns None. Any other error (network,
+        permissions) is raised so the caller can decide how to treat an
+        answer it could not get.
+        """
+        async with self._session.client("s3", endpoint_url=self._endpoint_url) as s3:
+            try:
+                response = await s3.head_object(Bucket=self._bucket, Key=key)
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code", "")
+                if code in ("404", "NoSuchKey", "NotFound"):
+                    return None
+                raise
+            return response["ContentLength"]
 
     async def generate_presigned_url(self, key: str, expires_seconds: int) -> str:
         """Generate a pre-signed GET URL for a private R2 object."""
