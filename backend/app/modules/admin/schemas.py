@@ -3,8 +3,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.modules.auth.schemas import validate_phone_digits
 from app.modules.employer.schemas import KYCDocumentResponse
 from app.modules.users.enums import AccountStatus, UserRole
 
@@ -192,6 +193,37 @@ class AdminKYCEmployerResponse(BaseModel):
                 KYCDocumentResponse.model_validate(d) for d in profile.kyc_documents
             ],
         )
+
+
+class ProvisionEmployerRequest(BaseModel):
+    """Payload for creating a client's employer account with a temporary password.
+
+    Names are limited to 30 characters because that is the size of the database
+    columns; a longer name is refused here instead of failing deeper down.
+    """
+
+    email: EmailStr
+    first_name: str = Field(..., min_length=1, max_length=30)
+    last_name: str = Field(..., min_length=1, max_length=30)
+    phone_number: str | None = None
+    company_name: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, v: str | None) -> str | None:
+        """Normalise an optional phone number to E.164, or refuse it."""
+        if v is None or not v.strip():
+            return None
+        return validate_phone_digits(v)
+
+
+class ProvisionEmployerResponse(BaseModel):
+    """The new account, including its temporary password, shown ONCE."""
+
+    user_id: UUID
+    organization_id: UUID
+    email: EmailStr
+    temporary_password: str
 
 
 class CreditGrantRequest(BaseModel):
