@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { interviewPricingNote } from './interviewPricing'
+import { interviewPricingNote, interviewsForCredits } from './interviewPricing'
+
+describe('interviewsForCredits', () => {
+  const pricing = { credits_per_interview: 10, balance: 0, charged: true }
+
+  it('says how many whole interviews a number of credits buys', () => {
+    expect(interviewsForCredits(10, pricing)).toBe(1)
+    expect(interviewsForCredits(50, pricing)).toBe(5)
+    expect(interviewsForCredits(150, pricing)).toBe(15)
+    expect(interviewsForCredits(19, pricing)).toBe(1)
+    expect(interviewsForCredits(9, pricing)).toBe(0)
+  })
+
+  it('has no answer when interviews are not charged for this account, or pricing is missing', () => {
+    expect(interviewsForCredits(50, { credits_per_interview: 10, balance: null, charged: false })).toBeNull()
+    expect(interviewsForCredits(50, null)).toBeNull()
+    expect(interviewsForCredits(50, { credits_per_interview: 0, balance: 5, charged: true })).toBeNull()
+  })
+})
 
 describe('interviewPricingNote', () => {
   it('says what an interview costs, when it is charged, and the balance', () => {

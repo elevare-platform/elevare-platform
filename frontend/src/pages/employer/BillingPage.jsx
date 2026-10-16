@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { useBilling } from '@/hooks/useBilling'
 import { useCredits } from '@/hooks/useCredits'
+import { useInterviewPricing } from '@/hooks/useInterviewPricing'
+import { interviewsForCredits } from '@/lib/interviewPricing'
 import { cn } from '@/lib/utils'
 
 function formatPrice(priceKobo, currency = 'NGN') {
@@ -58,6 +60,7 @@ export default function BillingPage() {
     cancelSubscription,
   } = useBilling()
   const { balance, loading: balanceLoading } = useCredits()
+  const interviewPricing = useInterviewPricing()
 
   const [subscription, setSubscription] = useState(null)
   const [plans, setPlans] = useState([])
@@ -242,7 +245,11 @@ export default function BillingPage() {
                   <h2 className="font-semibold text-text text-sm">Credits</h2>
                 </div>
                 <p className="text-sm text-text-muted mb-4">
-                  Balance: <span className="font-semibold text-text">{balanceLoading ? '…' : balance ?? 0}</span> credits. Used when requesting candidate introductions.
+                  Balance: <span className="font-semibold text-text">{balanceLoading ? '…' : balance ?? 0}</span> credits.
+                  {' '}A candidate introduction costs 1 credit
+                  {interviewPricing?.charged
+                    ? `, and an AI interview costs ${interviewPricing.credits_per_interview} credits (taken when you first send it, and returned if the link expires unused).`
+                    : '.'}
                 </p>
 
                 {canManage ? (
@@ -251,6 +258,12 @@ export default function BillingPage() {
                       <div key={pkg.code} className="rounded-lg border border-border p-4 text-center">
                         <p className="font-semibold text-text text-sm">{pkg.name}</p>
                         <p className="text-xs text-text-muted mt-0.5">{pkg.credits} credits</p>
+                        {interviewsForCredits(pkg.credits, interviewPricing) > 0 && (
+                          <p className="text-[11px] text-text-muted">
+                            about {interviewsForCredits(pkg.credits, interviewPricing)} AI interview
+                            {interviewsForCredits(pkg.credits, interviewPricing) === 1 ? '' : 's'}
+                          </p>
+                        )}
                         <p className="text-lg font-bold text-text mt-2">{formatPrice(pkg.price_kobo, pkg.currency)}</p>
                         <Button
                           size="sm"
