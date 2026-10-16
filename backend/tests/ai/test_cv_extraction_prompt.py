@@ -33,12 +33,7 @@ CV_TEXT = (
 
 
 def test_prompt_contains_full_text_when_sections_are_empty():
-    prompt = build_user_prompt(
-        already_extracted={},
-        experience_text="",
-        education_text="",
-        full_text=CV_TEXT,
-    )
+    prompt = build_user_prompt(already_extracted={}, full_text=CV_TEXT)
 
     assert "Regional Sales Manager at Unilever Nigeria" in prompt
     assert "Grew distributor network from 12 to 40 partners." in prompt
@@ -47,7 +42,7 @@ def test_prompt_contains_full_text_when_sections_are_empty():
 def test_text_within_the_cap_is_sent_untouched():
     text = "A" * MAX_FULL_TEXT_CHARS
 
-    prompt = build_user_prompt({}, "", "", full_text=text)
+    prompt = build_user_prompt({}, full_text=text)
 
     assert text in prompt
     assert "[CV text truncated]" not in prompt
@@ -56,7 +51,7 @@ def test_text_within_the_cap_is_sent_untouched():
 def test_text_over_the_cap_loses_its_tail_and_says_so():
     text = "A" * MAX_FULL_TEXT_CHARS + "TAILMARKER"
 
-    prompt = build_user_prompt({}, "", "", full_text=text)
+    prompt = build_user_prompt({}, full_text=text)
 
     assert "A" * MAX_FULL_TEXT_CHARS in prompt
     assert "TAILMARKER" not in prompt
@@ -131,3 +126,35 @@ async def test_anthropic_service_sends_full_text_to_the_model():
 
     sent_prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
     assert "Regional Sales Manager at Unilever Nigeria" in sent_prompt
+
+
+@pytest.mark.asyncio
+async def test_text_already_in_the_sections_is_not_sent_twice():
+    """The full text contains the sections, so sending both only costs tokens."""
+    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
+    response = MagicMock()
+    response.content = [
+        MagicMock(text=json.dumps({"skills": [], "field_confidence": {}}))
+    ]
+    response.usage = MagicMock(input_tokens=10, output_tokens=10)
+    client = AsyncMock()
+    client.messages.create = AsyncMock(return_value=response)
+    service._client = client
+
+    job_line = "Regional Sales Manager at Unilever Nigeria, 2015 to 2022."
+    sections = DetectedSections(
+        summary=None,
+        experience=job_line,
+        education="BSc Marketing, University of Lagos, 2012.",
+        skills=None,
+        certifications=None,
+        projects=None,
+        references=None,
+        unclassified="",
+    )
+
+    await service.extract_cv_data(sections, {}, full_text=CV_TEXT)
+
+    sent_prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert sent_prompt.count(job_line) == 1
+    assert "BSc Marketing" not in sent_prompt

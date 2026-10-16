@@ -344,8 +344,6 @@ class AnthropicCVExtractionService(AIService):
 
         user_prompt = build_user_prompt(
             already_extracted=already_extracted,
-            experience_text=sections.experience or "",
-            education_text=sections.education or "",
             full_text=full_text,
         )
 

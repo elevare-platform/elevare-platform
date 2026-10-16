@@ -26,9 +26,15 @@ Rules:
     - "Polytechnic" institutions are valid — do not discard them.
     - Nigerian phone numbers start with +234 or 0 followed by 7, 8, or 9.
 
-12. If the CV text is too short, garbled, or unreadable to extract meaningful information,
-    return the schema with all fields null and all confidence values set to "low".
+12. If the CV text itself is too short, garbled, or unreadable to extract meaningful
+    information, return empty lists for skills, work_history and education, null for
+    every other field, and "low" for every confidence value.
     Do not attempt to invent content.
+
+13. CVs use many different headings, or none ("Career Summary", "Employment Record",
+    "Professional Experience & Achievements", and so on). Find work history, education
+    and skills by what the text says, wherever it appears, not by its heading.
+    If the text describes jobs the person held, work_history must not be empty.
 
 Fields already extracted by deterministic and NLP layers will be provided.
 Do not repeat those fields. Focus only on information not already extracted.
@@ -74,16 +80,7 @@ Already extracted fields:
 
 Extract only missing information.
 
-EXPERIENCE SECTION:
-{experience_text}
-
-EDUCATION SECTION:
-{education_text}
-
-The two sections above were cut out automatically and may be empty or
-incomplete. The full CV text below is the source of truth.
-
-FULL CV TEXT:
+CV TEXT:
 {full_text}
 
 Return JSON using this schema:
@@ -146,17 +143,15 @@ def limit_full_text(text: str) -> str:
     return text[:MAX_FULL_TEXT_CHARS] + TRUNCATION_MARKER
 
 
-def build_user_prompt(
-    already_extracted: dict,
-    experience_text: str,
-    education_text: str,
-    full_text: str = "",
-) -> str:
-    """Build the user-turn prompt for CV extraction with already-extracted context."""
+def build_user_prompt(already_extracted: dict, full_text: str) -> str:
+    """Build the user-turn prompt for CV extraction with already-extracted context.
+
+    The model reads the whole CV and finds the work history, education and skills
+    itself; the header-matched sections are no longer sent (they only repeated the
+    same text, and were empty for a CV with unusual headings).
+    """
     return CV_EXTRACTION_USER_PROMPT.format(
         already_extracted=json.dumps(already_extracted, indent=2),
-        experience_text=experience_text or "",
-        education_text=education_text or "",
         full_text=limit_full_text(full_text or ""),
         schema=json.dumps(CV_EXTRACTION_SCHEMA, indent=2),
     )
