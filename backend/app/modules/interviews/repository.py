@@ -161,13 +161,20 @@ class InterviewRepository:
         job_id: uuid.UUID,
         talent_pool_profile_id: uuid.UUID,
         application_id: uuid.UUID | None = None,
+        interview_id: uuid.UUID | None = None,
     ) -> Interview:
-        """Persist a new interview record and return it."""
+        """Persist a new interview record and return it.
+
+        ``interview_id`` lets a caller decide the id first, so it can charge the
+        interview's credits before anything is saved.
+        """
         interview = Interview(
             job_id=job_id,
             talent_pool_profile_id=talent_pool_profile_id,
             application_id=application_id,
         )
+        if interview_id is not None:
+            interview.id = interview_id
         self._db.add(interview)
         await self._db.flush()
         await self._db.refresh(interview)

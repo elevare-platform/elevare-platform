@@ -3,6 +3,8 @@
 The client logs in, is forced to choose their own password, and their company
 verification stays unapproved (documents are only needed to post a public job)."""
 
+from uuid import UUID
+
 import pytest
 from sqlalchemy import select
 
@@ -125,10 +127,14 @@ async def test_the_password_is_never_written_to_the_audit_log(client, db_session
     admin, response = await _provision(client, db_session)
     body = response.json()
 
+    # Only this account's entry: the dev database may hold others from real use.
     entries = (
         (
             await db_session.execute(
-                select(AuditLog).where(AuditLog.action == "PROVISION_EMPLOYER")
+                select(AuditLog).where(
+                    AuditLog.action == "PROVISION_EMPLOYER",
+                    AuditLog.target_id == UUID(body["user_id"]),
+                )
             )
         )
         .scalars()
@@ -137,7 +143,6 @@ async def test_the_password_is_never_written_to_the_audit_log(client, db_session
     assert len(entries) == 1
     entry = entries[0]
     assert entry.admin_id == admin.id
-    assert str(entry.target_id) == body["user_id"]
     assert entry.log_metadata["email"] == body["email"]
     assert entry.log_metadata["company_name"] == "Colton Group"
     assert body["temporary_password"] not in str(entry.log_metadata)
@@ -170,7 +175,8 @@ async def test_an_existing_email_is_refused_and_nothing_is_created(client, db_se
         .scalars()
         .all()
     )
-    assert entries == []
+    # None for this email (the dev database may hold entries for other accounts).
+    assert [e for e in entries if e.log_metadata.get("email") == existing.email] == []
 
 
 @pytest.mark.asyncio

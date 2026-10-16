@@ -147,7 +147,12 @@ async def test_employer_cannot_get_an_interview_link_for_a_job_they_do_not_own(
 
 @pytest.mark.asyncio
 async def test_owner_gets_an_interview_link_back(client, db_session):
+    from app.modules.credits.service import CreditsService
+
     owner_token, owner_user = await register_and_promote(client, db_session, "EMPLOYER")
+    # A new link costs credits (see test_interview_credits.py); this test is about
+    # the route handing it back.
+    await CreditsService(db_session).grant(owner_user.organization_id, 100)
     job = make_job(owner_user.id, interview_brief="Ask about distributed systems.")
     db_session.add(job)
     await db_session.flush()

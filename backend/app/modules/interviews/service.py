@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.cost_trend import effective_month_bounds, month_range
 from app.core.exceptions import (
     ApplicationNotFound,
+    InsufficientCreditsException,
     InterviewNotFound,
     PermissionDeniedException,
     ValidationException,
@@ -21,6 +22,7 @@ from app.core.ownership import can_manage_job
 from app.core.storage import get_storage_service
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.candidates.repository import CandidateRepository
+from app.modules.credits.service import CreditsService
 from app.modules.interview_list.repository import InterviewListRepository
 from app.modules.interviews.enums import (
     InterviewCostComponent,
@@ -44,6 +46,7 @@ from app.modules.interviews.tasks import (
 )
 from app.modules.jobs.models import Job
 from app.modules.talent_pool.repository import TalentPoolRepository
+from app.modules.users.enums import UserRole
 from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -203,6 +206,11 @@ class InterviewService:
             job.id, talent_pool_profile_id
         )
         if interview is None:
+            # Charge before anything is saved: the id is decided first, so when
+            # the credits are short nothing exists to clean up, and the charge and
+            # the interview are committed together below or not at all.
+            new_interview_id = uuid.uuid4()
+            await self._charge_for_invite(job, new_interview_id)
             application_id = await self._find_matching_application_id(
                 job.id, talent_pool_profile_id
             )
@@ -210,6 +218,7 @@ class InterviewService:
                 job_id=job.id,
                 talent_pool_profile_id=talent_pool_profile_id,
                 application_id=application_id,
+                interview_id=new_interview_id,
             )
         elif interview.status in (
             InterviewStatus.UPLOADED.value,
@@ -217,6 +226,12 @@ class InterviewService:
         ):
             # Already completed — nothing new to invite them to.
             return None
+        else:
+            # A resend or a re-invite. Free while the interview is still paid; an
+            # interview whose credits were refunded (the invite expired unused) is
+            # charged again. Short on credits: this raises before anything below
+            # changes the existing interview.
+            await self._charge_for_invite(job, interview.id)
 
         token = secrets.token_urlsafe(32)
         update_data: dict = {
@@ -677,6 +692,28 @@ class InterviewService:
                 status_code=503,
             )
 
+    async def _charge_for_invite(self, job: Job, interview_id: uuid.UUID) -> None:
+        """Take the interview's credits from the organization that owns the job,
+        unless the interview is already paid.
+
+        Never charged: Elevare's own admin-owned jobs, a job whose owner has no
+        organization (there is no wallet to take from), and a price of 0.
+        Raises InsufficientCreditsException when the credits are short. Does not
+        commit: the invite's own commit saves the charge with the interview.
+        """
+        cost = settings.interview_credit_cost
+        employer = job.employer
+        if (
+            cost <= 0
+            or employer is None
+            or employer.role == UserRole.ADMIN.value
+            or employer.organization_id is None
+        ):
+            return
+        await CreditsService(self._db).charge_interview(
+            employer.organization_id, interview_id, cost
+        )
+
     async def _daily_invite_limit_reached(self, job: Job) -> bool:
         """Whether this job's organization has used up its first-time invites
         for the last 24 hours. A soft limit: two simultaneous bulk sends can
@@ -727,7 +764,10 @@ class InterviewService:
                 ),
             }
 
-        invite = await self.create_invite(job, talent_pool_profile_id)
+        try:
+            invite = await self.create_invite(job, talent_pool_profile_id)
+        except InsufficientCreditsException as exc:
+            return {"sent": False, "reason": exc.message}
         if invite is None:
             return {"sent": False, "reason": "Interview already completed or not configured"}
 

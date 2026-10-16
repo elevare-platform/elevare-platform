@@ -4,11 +4,14 @@ The client has not uploaded company documents, so they cannot post a job
 themselves. A draft stays off the public board, and the client writes the AI
 interview brief and runs the interviews from it."""
 
+from uuid import UUID
+
 import pytest
 from sqlalchemy import select
 
 from app.modules.admin.models import AuditLog
 from app.modules.auth.jwt_handler import create_token_pair
+from app.modules.credits.service import CreditsService
 from app.modules.interviews.service import InterviewService
 from app.modules.jobs.models import Job
 from tests.conftest import make_admin, make_employer, make_organization_for, make_user
@@ -149,6 +152,8 @@ async def test_an_interview_can_be_run_from_the_draft(client, db_session):
         headers=_bearer(client_user),
     )
     profile = await make_talent_pool_profile(db_session, added_by_id=client_user.id)
+    # An interview costs credits; the client has bought some.
+    await CreditsService(db_session).grant(client_user.organization_id, 100)
 
     service = InterviewService(db_session)
     try:
@@ -209,13 +214,16 @@ async def test_the_same_title_twice_is_refused(client, db_session):
 async def test_an_audit_entry_records_who_created_which_job(client, db_session):
     admin, client_user, response = await _create(client, db_session)
 
+    # Only this job's entry: the dev database may hold others from real use.
     entry = (
         await db_session.execute(
-            select(AuditLog).where(AuditLog.action == "CREATE_CLIENT_JOB")
+            select(AuditLog).where(
+                AuditLog.action == "CREATE_CLIENT_JOB",
+                AuditLog.target_id == UUID(response.json()["id"]),
+            )
         )
     ).scalar_one()
     assert entry.admin_id == admin.id
-    assert str(entry.target_id) == response.json()["id"]
     assert entry.log_metadata["employer_id"] == str(client_user.id)
     assert entry.log_metadata["title"] == "National Sales Manager"
 

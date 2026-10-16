@@ -1194,6 +1194,7 @@ async def test_complete_upload_allows_completion_when_storage_cannot_be_checked(
 async def _job_with_teammate(db_session, profile_count=1):
     """A creator and a teammate in one organization, plus a job the creator
     owns whose interview list the creator filled."""
+    from app.modules.credits.service import CreditsService
     from app.modules.employer.enums import OrganizationRole
     from tests.conftest import make_organization_for
 
@@ -1201,6 +1202,8 @@ async def _job_with_teammate(db_session, profile_count=1):
     db_session.add(creator)
     await db_session.flush()
     organization = await make_organization_for(db_session, creator)
+    # An invite costs credits; these tests are about who may invite, not about money.
+    await CreditsService(db_session).grant(organization.id, 1000)
 
     teammate = make_employer()
     teammate.organization_id = organization.id
