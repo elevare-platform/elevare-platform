@@ -102,3 +102,78 @@ describe('TalentPoolPage filters', () => {
     expect(lastListParams().min_score).toBeUndefined()
   })
 })
+
+describe('TalentPoolPage jobs to attach CVs to', () => {
+  const DRAFT = { id: 'job-9', title: 'National Sales Manager' }
+
+  function renderAt(url) {
+    return render(
+      <MemoryRouter initialEntries={[url]}>
+        <TalentPoolPage />
+      </MemoryRouter>
+    )
+  }
+
+  function mockApi({ mine = [], byId = {} } = {}) {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/api/v1/jobs/mine') return { data: { items: mine } }
+      const job = Object.entries(byId).find(([id]) => url === `/api/v1/jobs/${id}`)
+      if (job) return { data: job[1] }
+      if (url.startsWith('/api/v1/jobs/')) throw { response: { status: 404 } }
+      return { data: { items: [], next_cursor: null } }
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    AUTH.user = { role: 'EMPLOYER' }
+  })
+
+  it('asks for all of the user\'s jobs, not only the active ones, so a draft can be chosen', async () => {
+    mockApi({ mine: [DRAFT] })
+    renderAt('/')
+
+    await screen.findByRole('option', { name: 'National Sales Manager' })
+    const call = api.get.mock.calls.find(([url]) => url === '/api/v1/jobs/mine')
+    expect(call[1].params).toMatchObject({ filter: 'all', limit: 100 })
+  })
+
+  it('shows a job from the address that is not one of the user\'s own, such as an admin working on a client\'s job', async () => {
+    AUTH.user = { role: 'ADMIN' }
+    mockApi({ mine: [], byId: { 'job-9': DRAFT } })
+    renderAt('/?job_id=job-9')
+
+    expect(await screen.findByRole('option', { name: 'National Sales Manager' })).toBeInTheDocument()
+    expect(await screen.findByText(/ranked against National Sales Manager/)).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/api/v1/jobs/job-9')
+  })
+
+  it('does not fetch the job separately when it is already one of the user\'s own', async () => {
+    mockApi({ mine: [DRAFT] })
+    renderAt('/?job_id=job-9')
+
+    await screen.findByRole('option', { name: 'National Sales Manager' })
+    expect(api.get).not.toHaveBeenCalledWith('/api/v1/jobs/job-9')
+  })
+
+  it('copes with a job in the address that this user cannot open', async () => {
+    mockApi({ mine: [], byId: {} })
+    renderAt('/?job_id=job-404')
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/jobs/job-404'))
+    expect(screen.queryByRole('option', { name: /job-404/ })).not.toBeInTheDocument()
+  })
+
+  it('opens the Add CV drawer with the job from the address already chosen', async () => {
+    mockApi({ mine: [DRAFT] })
+    renderAt('/?job_id=job-9')
+    await screen.findByRole('option', { name: 'National Sales Manager' })
+
+    fireEvent.click(screen.getByRole('button', { name: /add cv/i }))
+
+    // The drawer's "Attach to Job" dropdown is the one whose first option is "No job".
+    const noJob = await screen.findByRole('option', { name: /no job \(add to pipeline only\)/i })
+    expect(noJob.closest('select')).toHaveValue('job-9')
+    expect(screen.getByText(/AI scoring will run automatically after parsing/)).toBeInTheDocument()
+  })
+})

@@ -70,12 +70,15 @@ function StatusBadge({ status }) {
 
 // ─── Upload Drawer ────────────────────────────────────────────────────────────
 
-function UploadDrawer({ open, onClose, onUploaded, jobs }) {
+function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
   const dropRef = useRef(null)
   const [files, setFiles] = useState([])
   const [source, setSource] = useState('other')
   const [sourceNote, setSourceNote] = useState('')
-  const [jobId, setJobId] = useState('')
+  // null until the user picks one; until then the page's own job (the one in the
+  // address or chosen above the list) is the default.
+  const [chosenJobId, setChosenJobId] = useState(null)
+  const jobId = chosenJobId ?? defaultJobId ?? ''
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [results, setResults] = useState([])
@@ -83,7 +86,7 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
   const [error, setError] = useState(null)
 
   const reset = () => {
-    setFiles([]); setSourceNote(''); setJobId('')
+    setFiles([]); setSourceNote(''); setChosenJobId(null)
     setError(null); setResults([]); setProgress(null)
   }
 
@@ -303,7 +306,7 @@ function UploadDrawer({ open, onClose, onUploaded, jobs }) {
               Attach to Job <span className="normal-case font-normal">(optional: enables immediate scoring)</span>
             </label>
             <div className="relative">
-              <select value={jobId} onChange={e => setJobId(e.target.value)}
+              <select value={jobId} onChange={e => setChosenJobId(e.target.value)}
                 className="w-full text-sm rounded-lg border border-border px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-blue bg-white">
                 <option value="">No job (add to pipeline only)</option>
                 {(jobs ?? []).map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
@@ -790,10 +793,28 @@ export default function TalentPoolPage() {
   useEffect(() => { loadProfiles(true) }, [statusFilter, sourceFilter, activeJob, toParams])
 
   useEffect(() => {
-    api.get('/api/v1/jobs/mine', { params: { limit: 100 } })
-      .then(({ data }) => setJobs(data.items ?? []))
+    let cancelled = false
+    // "all", because the default bucket is "active" and would hide a draft: an
+    // interview-only job, or one still awaiting approval, can have CVs attached too.
+    api.get('/api/v1/jobs/mine', { params: { limit: 100, filter: 'all' } })
+      .then(async ({ data }) => {
+        let items = data.items ?? []
+        // The job in the address may not be one of this user's own (an admin
+        // working on a client's job), so fetch it by id and include it.
+        const wanted = searchParams.get('job_id')
+        if (wanted && !items.some((j) => j.id === wanted)) {
+          try {
+            const { data: job } = await api.get(`/api/v1/jobs/${wanted}`)
+            items = [job, ...items]
+          } catch {
+            // Not available to this user: leave it out of the list.
+          }
+        }
+        if (!cancelled) setJobs(items)
+      })
       .catch(() => {})
-  }, [])
+    return () => { cancelled = true }
+  }, [searchParams])
 
   const handleStatusChange = async (profileId, newStatus) => {
     try {
@@ -999,6 +1020,7 @@ export default function TalentPoolPage() {
         onClose={() => setDrawerOpen(false)}
         onUploaded={() => loadProfiles(true)}
         jobs={jobs}
+        defaultJobId={activeJob}
       />
 
       {promoteId && (
