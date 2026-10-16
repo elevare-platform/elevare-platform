@@ -169,6 +169,35 @@ async def test_owner_gets_an_interview_link_back(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_an_employer_can_see_what_an_interview_costs_and_their_balance(
+    client, db_session
+):
+    from app.modules.credits.service import CreditsService
+
+    token, user = await register_and_promote(client, db_session, "EMPLOYER")
+    await CreditsService(db_session).grant(user.organization_id, 35)
+
+    resp = await client.get(
+        "/api/v1/interviews/pricing", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"credits_per_interview": 10, "balance": 35, "charged": True}
+
+
+@pytest.mark.asyncio
+async def test_pricing_is_for_employers_and_admins_only(client, db_session):
+    candidate_token, _ = await register_and_promote(client, db_session, "CANDIDATE")
+
+    assert (await client.get("/api/v1/interviews/pricing")).status_code == 401
+    refused = await client.get(
+        "/api/v1/interviews/pricing",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    assert refused.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_employer_cannot_send_invites_to_all_for_job_they_do_not_own(
     client, db_session
 ):

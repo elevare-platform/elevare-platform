@@ -347,6 +347,64 @@ async def test_a_refused_resend_leaves_the_existing_interview_untouched(db_sessi
 
 
 @pytest.mark.asyncio
+async def test_pricing_tells_an_employer_the_cost_and_their_balance(db_session):
+    employer, _organization, _job = await _client(db_session, balance=42)
+
+    service = InterviewService(db_session)
+    try:
+        pricing = await service.get_pricing(employer)
+    finally:
+        await service.close()
+
+    assert pricing == {"credits_per_interview": 10, "balance": 42, "charged": True}
+
+
+@pytest.mark.asyncio
+async def test_pricing_says_an_admin_is_not_charged(db_session):
+    admin = make_admin()
+    db_session.add(admin)
+    await db_session.flush()
+
+    service = InterviewService(db_session)
+    try:
+        pricing = await service.get_pricing(admin)
+    finally:
+        await service.close()
+
+    assert pricing["charged"] is False
+    assert pricing["balance"] is None
+
+
+@pytest.mark.asyncio
+async def test_pricing_says_nothing_is_charged_when_the_price_is_zero(
+    db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "interview_credit_cost", 0)
+    employer, _organization, _job = await _client(db_session, balance=42)
+
+    service = InterviewService(db_session)
+    try:
+        pricing = await service.get_pricing(employer)
+    finally:
+        await service.close()
+
+    assert pricing["charged"] is False
+
+
+@pytest.mark.asyncio
+async def test_pricing_for_an_owner_with_no_organization_is_not_charged(db_session):
+    employer, _organization, _job = await _client(db_session, with_org=False)
+
+    service = InterviewService(db_session)
+    try:
+        pricing = await service.get_pricing(employer)
+    finally:
+        await service.close()
+
+    assert pricing["charged"] is False
+
+
+@pytest.mark.asyncio
 async def test_a_finished_interview_is_not_charged_again(db_session):
     employer, organization, job = await _client(db_session)
     profile = await _profile(db_session, employer)

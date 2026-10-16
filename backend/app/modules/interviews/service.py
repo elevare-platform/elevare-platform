@@ -841,6 +841,20 @@ class InterviewService:
 
         return await self._send_invite_for_profile(job, talent_pool_profile_id)
 
+    async def get_pricing(self, user: User) -> dict:
+        """What an AI interview costs the caller's organization, and its balance,
+        so the screen can show both before an invite is sent. Uses the same rules
+        as ``_charge_for_invite`` for who is never charged."""
+        cost = settings.interview_credit_cost
+        if (
+            cost <= 0
+            or user.role == UserRole.ADMIN.value
+            or user.organization_id is None
+        ):
+            return {"credits_per_interview": cost, "balance": None, "charged": False}
+        balance = await CreditsService(self._db).get_balance(user.organization_id)
+        return {"credits_per_interview": cost, "balance": balance, "charged": True}
+
     async def get_interview_link(
         self,
         user: User,

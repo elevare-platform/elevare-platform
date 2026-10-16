@@ -29,6 +29,7 @@ import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import { isPlanLimitMessage } from '@/lib/planErrors'
 import { interviewUnavailableMessage } from '@/lib/interviewErrors'
+import { interviewPricingNote } from '@/lib/interviewPricing'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -1047,7 +1048,7 @@ const INTERVIEW_STATUS_META = {
   FAILED: { button: 'Resend', badge: 'Scoring failed', badgeClass: 'text-red-600' },
 }
 
-function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
+function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited }) {
   const [showPanel, setShowPanel] = useState(false)
   const [showCvModal, setShowCvModal] = useState(false)
   const [showActionModal, setShowActionModal] = useState(false)
@@ -1100,6 +1101,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
       )
       if (data.sent) {
         setStatusOverride('PENDING')
+        onInvited?.()
       } else {
         setSendError(data.reason)
       }
@@ -1125,6 +1127,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
         null,
         { params: { job_id: jobId } }
       )
+      onInvited?.()
       try {
         await navigator.clipboard.writeText(data.interview_url)
         setLinkCopied(true)
@@ -1301,8 +1304,19 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
   const [sendingAll, setSendingAll] = useState(false)
   const [bulkSummary, setBulkSummary] = useState(null)
   const [showBriefModal, setShowBriefModal] = useState(false)
+  // What an interview costs and the balance, shown before anything is sent and
+  // refreshed after each send (a send takes credits).
+  const [pricing, setPricing] = useState(null)
 
   const hasInterviewBrief = !!job?.interview_brief
+
+  const loadPricing = useCallback(() => {
+    api.get('/api/v1/interviews/pricing')
+      .then(({ data }) => setPricing(data))
+      .catch(() => setPricing(null))
+  }, [])
+
+  useEffect(() => { loadPricing() }, [loadPricing])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -1336,6 +1350,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           : `Sent to ${data.sent}`
       )
       load()
+      loadPricing()
     } catch (err) {
       setBulkSummary(interviewUnavailableMessage(err) ?? 'Failed to send invites. Please try again.')
     } finally {
@@ -1392,8 +1407,18 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
     )
   }
 
+  const pricingNote = interviewPricingNote(pricing)
+
   return (
     <div className="space-y-3">
+      {pricingNote && (
+        <p className={cn('text-xs', pricingNote.short ? 'text-red-600' : 'text-text-muted')}>
+          {pricingNote.text}{' '}
+          {pricingNote.short && (
+            <Link to="/employer/billing" className="font-medium underline">Buy credits</Link>
+          )}
+        </p>
+      )}
       {hasInterviewBrief ? (
         <div className="flex flex-col items-end gap-1">
           <div className="flex flex-wrap justify-end gap-2">
@@ -1429,6 +1454,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           jobId={jobId}
           hasInterviewBrief={hasInterviewBrief}
           onRemoved={handleRemoved}
+          onInvited={loadPricing}
         />
       ))}
     </div>

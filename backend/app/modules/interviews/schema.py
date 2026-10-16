@@ -139,6 +139,18 @@ class InterviewInviteSendResponse(BaseModel):
     reason: str | None
 
 
+class InterviewPricingResponse(BaseModel):
+    """What an AI interview costs the caller's organization, and what it has left.
+
+    ``charged`` is false when nothing is taken for them (Elevare's own admin
+    accounts, an owner with no organization, or a price of 0); the screen then
+    shows no cost.
+    """
+    credits_per_interview: int
+    balance: int | None
+    charged: bool
+
+
 class InterviewLinkResponse(BaseModel):
     """The candidate's interview link, for an employer to share themselves."""
     interview_url: str
