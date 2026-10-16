@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationException
@@ -17,15 +18,36 @@ class CreditsRepository:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def get_or_create_balance(self, employer_id: uuid.UUID) -> EmployerCredits:
-        """Get or create an EmployerCredits row for the given employer."""
+    async def get_or_create_balance(
+        self, employer_id: uuid.UUID, *, lock: bool = False
+    ) -> EmployerCredits:
+        """Get or create an EmployerCredits row for the given employer.
+
+        With ``lock=True`` the row is locked (``SELECT ... FOR UPDATE``) until the
+        caller's transaction ends, so two requests changing the same balance at
+        the same moment run one after the other instead of both reading the same
+        number. Use it for anything that is about to change the balance.
+        """
         stmt = select(EmployerCredits).where(EmployerCredits.employer_id == employer_id)
+        if lock:
+            # populate_existing: never trust a copy loaded earlier in this
+            # session; the number in the database now is the one that counts.
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         result = await self._db.execute(stmt)
         balance = result.scalar_one_or_none()
         if balance is None:
-            balance = EmployerCredits(employer_id=employer_id)
-            self._db.add(balance)
-            await self._db.flush()
+            try:
+                # A savepoint, so losing the race below does not poison the
+                # caller's transaction.
+                async with self._db.begin_nested():
+                    balance = EmployerCredits(employer_id=employer_id)
+                    self._db.add(balance)
+                    await self._db.flush()
+            except IntegrityError:
+                # Another request created the row first (one row per
+                # organization): read, and lock, theirs.
+                result = await self._db.execute(stmt)
+                balance = result.scalar_one()
         return balance
 
     async def get_balance(self, employer_id: uuid.UUID) -> EmployerCredits:
@@ -49,7 +71,7 @@ class CreditsRepository:
         Raises ValueError if the resulting balance would go negative.
         Does NOT commit — caller owns the transaction.
         """
-        balance = await self.get_or_create_balance(employer_id)
+        balance = await self.get_or_create_balance(employer_id, lock=True)
         new_balance = balance.balance + delta
         if new_balance < 0:
             raise ValidationException(
