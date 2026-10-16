@@ -19,6 +19,7 @@ import CandidateActionModal from '@/components/employer/CandidateActionModal'
 import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
 import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
 import { matchScoreBand } from '@/lib/matchScore'
+import { groupJobsByStatus } from '@/lib/jobGroups'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -69,6 +70,16 @@ function StatusBadge({ status }) {
 }
 
 // ─── Upload Drawer ────────────────────────────────────────────────────────────
+
+// The options of a job picker, grouped (Active, Drafts) so a long list can be
+// scanned; closed jobs appear only when one is already chosen.
+function JobOptions({ jobs, selectedId }) {
+  return groupJobsByStatus(jobs, selectedId).map((group) => (
+    <optgroup key={group.label} label={group.label}>
+      {group.jobs.map((j) => <option key={j.id} value={j.id}>{j.title}</option>)}
+    </optgroup>
+  ))
+}
 
 function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
   const dropRef = useRef(null)
@@ -309,7 +320,7 @@ function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
               <select value={jobId} onChange={e => setChosenJobId(e.target.value)}
                 className="w-full text-sm rounded-lg border border-border px-3 py-2.5 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-blue bg-white">
                 <option value="">No job (add to pipeline only)</option>
-                {(jobs ?? []).map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+                <JobOptions jobs={jobs} selectedId={jobId} />
               </select>
               <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
             </div>
@@ -897,7 +908,7 @@ export default function TalentPoolPage() {
                 <select value={activeJob} onChange={e => setActiveJob(e.target.value)}
                   className="w-full text-sm rounded-lg border border-border px-3 py-2 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-blue bg-white">
                   <option value="">Pipeline view (no job selected)</option>
-                  {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+                  <JobOptions jobs={jobs} selectedId={activeJob} />
                 </select>
                 <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
               </div>

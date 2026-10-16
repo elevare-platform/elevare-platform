@@ -104,7 +104,7 @@ describe('TalentPoolPage filters', () => {
 })
 
 describe('TalentPoolPage jobs to attach CVs to', () => {
-  const DRAFT = { id: 'job-9', title: 'National Sales Manager' }
+  const DRAFT = { id: 'job-9', title: 'National Sales Manager', status: 'DRAFT' }
 
   function renderAt(url) {
     return render(
@@ -146,6 +146,32 @@ describe('TalentPoolPage jobs to attach CVs to', () => {
     expect(await screen.findByRole('option', { name: 'National Sales Manager' })).toBeInTheDocument()
     expect(await screen.findByText(/ranked against National Sales Manager/)).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/api/v1/jobs/job-9')
+  })
+
+  it('groups the picker into Active and Drafts, and leaves closed jobs out of it', async () => {
+    mockApi({
+      mine: [
+        { id: 'a', title: 'Accountant', status: 'ACTIVE' },
+        DRAFT,
+        { id: 'c', title: 'Old Role', status: 'CLOSED' },
+      ],
+    })
+    const { container } = renderAt('/')
+    await screen.findByRole('option', { name: 'Accountant' })
+
+    const optionsIn = (label) =>
+      [...container.querySelectorAll(`optgroup[label="${label}"] option`)].map((o) => o.textContent)
+    expect(optionsIn('Active')).toEqual(['Accountant'])
+    expect(optionsIn('Drafts (not yet published)')).toEqual(['National Sales Manager'])
+    expect(screen.queryByRole('option', { name: 'Old Role' })).not.toBeInTheDocument()
+  })
+
+  it('still shows a closed job that is named in the address, so the choice is not blank', async () => {
+    mockApi({ mine: [{ id: 'c', title: 'Old Role', status: 'CLOSED' }] })
+    const { container } = renderAt('/?job_id=c')
+
+    expect(await screen.findByRole('option', { name: 'Old Role' })).toBeInTheDocument()
+    expect(container.querySelector('optgroup[label="Closed"] option')).not.toBeNull()
   })
 
   it('does not fetch the job separately when it is already one of the user\'s own', async () => {
