@@ -139,6 +139,11 @@ class InterviewInviteSendResponse(BaseModel):
     reason: str | None
 
 
+class InterviewLinkResponse(BaseModel):
+    """The candidate's interview link, for an employer to share themselves."""
+    interview_url: str
+
+
 class InterviewInviteBulkSendResponse(BaseModel):
     """Result of a bulk invite send/resend across a job's interview list."""
     sent: int

@@ -478,6 +478,221 @@ async def test_send_invite_resend_reuses_same_interview_row(db_session, monkeypa
 
 
 # ---------------------------------------------------------------------------
+# get_interview_link (copy the link instead of emailing it)
+# ---------------------------------------------------------------------------
+
+
+async def _job_and_profile(db_session, **job_overrides):
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    job_fields = {"interview_brief": "Ask about distributed systems."}
+    job_fields.update(job_overrides)
+    job = make_job(employer.id, **job_fields)
+    db_session.add(job)
+    await db_session.flush()
+    profile = await make_talent_pool_profile(db_session, added_by_id=employer.id)
+    return employer, job, profile
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_works_with_no_email_and_sends_nothing(
+    db_session, monkeypatch
+):
+    from unittest.mock import Mock
+
+    from app.modules.interviews import service as interview_service_module
+
+    email_task = Mock()
+    monkeypatch.setattr(
+        interview_service_module, "send_ai_interview_invite_email", email_task
+    )
+    employer, job, profile = await _job_and_profile(db_session)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.get_interview_link(employer, job.id, profile.id)
+        interview = await InterviewRepository(db_session).get_by_job_and_profile(
+            job.id, profile.id
+        )
+    finally:
+        await service.close()
+
+    assert result["interview_url"] == f"{settings.app_url}/interview/{interview.token}"
+    email_task.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_twice_returns_the_same_link(db_session):
+    employer, job, profile = await _job_and_profile(db_session)
+
+    service = InterviewService(db_session)
+    try:
+        first = await service.get_interview_link(employer, job.id, profile.id)
+        second = await service.get_interview_link(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert first == second
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_does_not_disturb_a_candidate_mid_interview(
+    db_session,
+):
+    employer, job, profile = await _job_and_profile(db_session)
+    interview = await make_interview(
+        db_session,
+        job.id,
+        profile.id,
+        status=InterviewStatus.IN_PROGRESS.value,
+        token="live-token",
+        token_expires_at=datetime.now(UTC) + timedelta(days=3),
+        session_start_count=1,
+    )
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.get_interview_link(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    await db_session.refresh(interview)
+    assert result["interview_url"].endswith("/interview/live-token")
+    assert interview.token == "live-token"
+    assert interview.status == InterviewStatus.IN_PROGRESS.value
+    assert interview.session_start_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_reissues_an_expired_link(db_session):
+    employer, job, profile = await _job_and_profile(db_session)
+    interview = await make_interview(
+        db_session,
+        job.id,
+        profile.id,
+        token="old-token",
+        token_expires_at=datetime.now(UTC) - timedelta(days=1),
+    )
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.get_interview_link(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    await db_session.refresh(interview)
+    assert interview.token != "old-token"
+    assert result["interview_url"].endswith(f"/interview/{interview.token}")
+    assert interview.token_expires_at > datetime.now(UTC)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status", [InterviewStatus.UPLOADED.value, InterviewStatus.SCORED.value]
+)
+async def test_get_interview_link_refuses_a_finished_interview(db_session, status):
+    employer, job, profile = await _job_and_profile(db_session)
+    await make_interview(
+        db_session,
+        job.id,
+        profile.id,
+        status=status,
+        token="done-token",
+        token_expires_at=datetime.now(UTC) + timedelta(days=3),
+    )
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException):
+            await service.get_interview_link(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_requires_an_interview_brief(db_session):
+    employer, job, profile = await _job_and_profile(db_session, interview_brief=None)
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException):
+            await service.get_interview_link(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_refuses_someone_who_cannot_manage_the_job(
+    db_session,
+):
+    _owner, job, profile = await _job_and_profile(db_session)
+    outsider = make_employer()
+    db_session.add(outsider)
+    await db_session.flush()
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(PermissionDeniedException):
+            await service.get_interview_link(outsider, job.id, profile.id)
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_unknown_job(db_session):
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(JobNotFoundError):
+            await service.get_interview_link(employer, uuid4(), uuid4())
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_respects_the_off_switch(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "interview_enabled", False)
+    employer, job, profile = await _job_and_profile(db_session)
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException) as raised:
+            await service.get_interview_link(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert raised.value.code == "AI_INTERVIEWS_DISABLED"
+
+
+@pytest.mark.asyncio
+async def test_get_interview_link_respects_the_daily_invite_limit(
+    db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "interview_daily_invite_limit", 1)
+    employer, job, first_profile = await _job_and_profile(db_session)
+    second_profile = await make_talent_pool_profile(
+        db_session, added_by_id=employer.id
+    )
+
+    service = InterviewService(db_session)
+    try:
+        await service.get_interview_link(employer, job.id, first_profile.id)
+        with pytest.raises(ValidationException):
+            await service.get_interview_link(employer, job.id, second_profile.id)
+        # The profile that already has an interview is not a new invite, so it
+        # still gets its link back.
+        again = await service.get_interview_link(employer, job.id, first_profile.id)
+    finally:
+        await service.close()
+
+    assert again["interview_url"]
+
+
+# ---------------------------------------------------------------------------
 # _resolve_cv_assessment
 # ---------------------------------------------------------------------------
 

@@ -794,6 +794,63 @@ class InterviewService:
 
         return await self._send_invite_for_profile(job, talent_pool_profile_id)
 
+    async def get_interview_link(
+        self,
+        user: User,
+        job_id: uuid.UUID,
+        talent_pool_profile_id: uuid.UUID,
+    ) -> dict:
+        """The candidate's interview link, for an employer to share themselves
+        (the candidate may have no email on file, or the email may not arrive).
+
+        Unlike a resend, this never disturbs a candidate who may be using the
+        link right now: an unexpired link for an unfinished interview is returned
+        as it is, and only a missing or expired one is created. Nothing is emailed.
+        """
+        from app.core.exceptions import JobNotFoundError
+        from app.modules.jobs.repository import JobRepository
+
+        self._assert_interviews_enabled()
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError()
+
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+
+        if not job.interview_brief:
+            raise ValidationException("This job does not have an AI interview configured")
+
+        interview = await self._repo.get_by_job_and_profile(job.id, talent_pool_profile_id)
+        if interview is None:
+            # Same cost guard as a first email invite.
+            if await self._daily_invite_limit_reached(job):
+                raise ValidationException(
+                    "Daily AI interview invite limit reached. Please try again "
+                    "tomorrow or contact support to raise it."
+                )
+        elif interview.status in (
+            InterviewStatus.UPLOADED.value,
+            InterviewStatus.SCORED.value,
+        ):
+            raise ValidationException("This interview has already been completed")
+        elif (
+            interview.status
+            in (InterviewStatus.PENDING.value, InterviewStatus.IN_PROGRESS.value)
+            and interview.token
+            and interview.token_expires_at
+            and interview.token_expires_at > datetime.now(UTC)
+        ):
+            return {"interview_url": f"{settings.app_url}/interview/{interview.token}"}
+
+        invite = await self.create_invite(job, talent_pool_profile_id)
+        if invite is None:
+            raise ValidationException("This interview has already been completed")
+
+        _interview, interview_url = invite
+        return {"interview_url": interview_url}
+
     async def send_invites_to_all(self, user: User, job_id: uuid.UUID) -> dict:
         """Bulk send/resend to everyone on this job's interview list."""
         from app.core.exceptions import JobNotFoundError

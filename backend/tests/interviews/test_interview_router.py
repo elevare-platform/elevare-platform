@@ -126,6 +126,44 @@ async def test_employer_cannot_send_invite_for_job_they_do_not_own(client, db_se
 
 
 @pytest.mark.asyncio
+async def test_employer_cannot_get_an_interview_link_for_a_job_they_do_not_own(
+    client, db_session
+):
+    _owner_token, owner_user = await register_and_promote(client, db_session, "EMPLOYER")
+    intruder_token, _intruder_user = await register_and_promote(
+        client, db_session, "EMPLOYER"
+    )
+    job = make_job(owner_user.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+
+    resp = await client.post(
+        f"/api/v1/interviews/{uuid4()}/interview-link",
+        params={"job_id": str(job.id)},
+        headers={"Authorization": f"Bearer {intruder_token}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_owner_gets_an_interview_link_back(client, db_session):
+    owner_token, owner_user = await register_and_promote(client, db_session, "EMPLOYER")
+    job = make_job(owner_user.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    profile = await make_talent_pool_profile(db_session, added_by_id=owner_user.id)
+
+    resp = await client.post(
+        f"/api/v1/interviews/{profile.id}/interview-link",
+        params={"job_id": str(job.id)},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert resp.status_code == 200
+    assert "/interview/" in resp.json()["interview_url"]
+
+
+@pytest.mark.asyncio
 async def test_employer_cannot_send_invites_to_all_for_job_they_do_not_own(
     client, db_session
 ):
