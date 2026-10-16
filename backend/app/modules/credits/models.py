@@ -68,10 +68,10 @@ class CreditTransaction(BaseModel):
     delta: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # admin_grant | intro_request | intro_refund
+    )  # admin_grant | intro_request | intro_refund | interview_charge | interview_refund
     reference_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
-    )  # introduction_request.id or admin action id
+    )  # introduction_request.id, interview.id or admin action id
 
     organization: Mapped[Organization] = relationship(
         "Organization",

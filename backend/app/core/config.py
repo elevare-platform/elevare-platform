@@ -147,6 +147,11 @@ class Settings(BaseSettings):
     # live OpenAI Realtime session, the largest cost of the feature, so this
     # bounds the spend. Resends are not counted. 0 means no limit.
     interview_daily_invite_limit: int = 30
+    # Credits an AI interview costs the organization that owns the job, taken at
+    # the first invite (a resend is free) and given back if the invite expires
+    # unused or the interview fails on our side. Elevare's own admin-owned jobs
+    # are never charged. 0 switches charging off, without a deploy.
+    interview_credit_cost: int = 10
     # After an interview, transcribe the recording on the server and compare it
     # with the transcript the candidate's browser submitted. Costs one Whisper
     # call per interview (about $0.006 per audio minute). Set to false to fall

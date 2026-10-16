@@ -641,6 +641,21 @@ class PaymentVerificationException(PlatformError):
         super().__init__(message, code, status_code, details)
 
 
+class InsufficientCreditsException(PlatformError):
+    """Raised when an organization does not have enough credits for an action that
+    costs credits (402 Payment Required)."""
+
+    def __init__(
+        self,
+        message: str = "Not enough credits",
+        code: str = "INSUFFICIENT_CREDITS",
+        status_code: int = 402,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
 class PlanUpgradeRequiredException(PlatformError):
     """Raised when an organization's current plan doesn't include a feature."""
 

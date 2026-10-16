@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationException
 from app.modules.credits.models import CreditTransaction, EmployerCredits
+
+# Ledger reasons for AI interviews. The reference_id is the interview's id.
+INTERVIEW_CHARGE = "interview_charge"
+INTERVIEW_REFUND = "interview_refund"
 
 
 class CreditsRepository:
@@ -54,6 +58,42 @@ class CreditsRepository:
         """Get an EmployerCredits row for the given employer."""
         row = await self.get_or_create_balance(employer_id)
         return row.balance
+
+    async def has_outstanding_interview_charge(
+        self, organization_id: uuid.UUID, interview_id: uuid.UUID
+    ) -> bool:
+        """Whether an interview is paid: its charges outnumber its refunds."""
+        counts = (
+            await self._db.execute(
+                select(CreditTransaction.reason, func.count())
+                .where(
+                    CreditTransaction.employer_id == organization_id,
+                    CreditTransaction.reference_id == interview_id,
+                    CreditTransaction.reason.in_([INTERVIEW_CHARGE, INTERVIEW_REFUND]),
+                )
+                .group_by(CreditTransaction.reason)
+            )
+        ).all()
+        by_reason = dict(counts)
+        return by_reason.get(INTERVIEW_CHARGE, 0) > by_reason.get(INTERVIEW_REFUND, 0)
+
+    async def latest_interview_charge(
+        self, organization_id: uuid.UUID, interview_id: uuid.UUID
+    ) -> int | None:
+        """What the interview's most recent charge took (a positive number), or None."""
+        delta = (
+            await self._db.execute(
+                select(CreditTransaction.delta)
+                .where(
+                    CreditTransaction.employer_id == organization_id,
+                    CreditTransaction.reference_id == interview_id,
+                    CreditTransaction.reason == INTERVIEW_CHARGE,
+                )
+                .order_by(CreditTransaction.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return None if delta is None else abs(delta)
 
     async def apply_delta(
         self,

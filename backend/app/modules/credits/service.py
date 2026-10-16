@@ -6,7 +6,12 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.credits.repository import CreditsRepository
+from app.core.exceptions import InsufficientCreditsException
+from app.modules.credits.repository import (
+    INTERVIEW_CHARGE,
+    INTERVIEW_REFUND,
+    CreditsRepository,
+)
 
 
 class CreditsService:
@@ -67,6 +72,78 @@ class CreditsService:
             reference_id=reference_id,
         )
         return balance.balance
+
+    # ------------------------------------------------------------------
+    # AI interviews. One rule: an interview is PAID when its charges outnumber
+    # its refunds. See docs/11_PRICING_MODEL.md.
+    # ------------------------------------------------------------------
+
+    async def has_outstanding_interview_charge(
+        self, organization_id: uuid.UUID, interview_id: uuid.UUID
+    ) -> bool:
+        """Whether this interview is paid (charged and not refunded)."""
+        return await self._repo.has_outstanding_interview_charge(
+            organization_id, interview_id
+        )
+
+    async def charge_interview(
+        self, organization_id: uuid.UUID, interview_id: uuid.UUID, amount: int
+    ) -> bool:
+        """Take ``amount`` credits for an interview, unless it is already paid.
+
+        Returns True when credits were taken now, False when nothing was taken (a
+        price of 0, or the interview is already paid, as on a resend).
+
+        The organization's balance row is locked first, so everything touching
+        this organization's credits runs one at a time: "is it already paid?" and
+        "take the credits" cannot be split by another request.
+
+        Raises:
+            InsufficientCreditsException: If the balance is lower than ``amount``.
+
+        Does NOT commit: the caller owns the transaction.
+        """
+        if amount <= 0:
+            return False
+        balance = await self._repo.get_or_create_balance(organization_id, lock=True)
+        if await self._repo.has_outstanding_interview_charge(
+            organization_id, interview_id
+        ):
+            return False
+        if balance.balance < amount:
+            raise InsufficientCreditsException(
+                message=(
+                    f"Not enough credits. An AI interview costs {amount} credits "
+                    f"and your balance is {balance.balance}."
+                )
+            )
+        await self._repo.apply_delta(
+            organization_id, -amount, INTERVIEW_CHARGE, interview_id
+        )
+        return True
+
+    async def refund_interview(
+        self, organization_id: uuid.UUID, interview_id: uuid.UUID
+    ) -> int:
+        """Give back what an interview was charged, once. Returns the credits
+        returned, or 0 when there was nothing to return (never charged, or
+        already refunded).
+
+        The amount is what was actually charged, not today's price. Does NOT
+        commit: the caller owns the transaction.
+        """
+        await self._repo.get_or_create_balance(organization_id, lock=True)
+        if not await self._repo.has_outstanding_interview_charge(
+            organization_id, interview_id
+        ):
+            return 0
+        amount = await self._repo.latest_interview_charge(organization_id, interview_id)
+        if not amount:
+            return 0
+        await self._repo.apply_delta(
+            organization_id, amount, INTERVIEW_REFUND, interview_id
+        )
+        return amount
 
     async def refund(
         self,
