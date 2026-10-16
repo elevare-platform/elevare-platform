@@ -23,9 +23,11 @@ from app.core.exceptions import (
     AccountDeactivatedException,
     AccountSuspendedException,
     EmailVerificationRequiredException,
+    PasswordChangeRequiredException,
     PermissionDeniedException,
     UserNotFoundException,
 )
+from app.core.schemas import TokenPayload
 from app.modules.auth.jwt_handler import decode_access_token
 from app.modules.candidates.models import CandidateProfile
 from app.modules.users.enums import AccountStatus
@@ -48,16 +50,14 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """Decode the bearer token and return the authenticated user.
+async def _load_user_enforcing_status(
+    token: str, db: AsyncSession
+) -> tuple[User, TokenPayload]:
+    """Decode the bearer token, load the user and enforce account status.
 
-    Enforces account status — raises for PENDING_VERIFICATION, SUSPENDED,
-    BANNED, and DEACTIVATED. Use ``get_current_user_any_status`` on endpoints
-    that must work regardless of status (e.g. GET /me, resend-verification).
-
+    Raises for PENDING_VERIFICATION, SUSPENDED, BANNED, and DEACTIVATED. Returns
+    the user together with the token's payload, so a caller can also look at the
+    token's own claims.
     """
     payload = decode_access_token(token)
 
@@ -82,6 +82,37 @@ async def get_current_user(
     if status == AccountStatus.DEACTIVATED.value:
         raise AccountDeactivatedException()
 
+    return user, payload
+
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Decode the bearer token and return the authenticated user.
+
+    Enforces account status (see ``_load_user_enforcing_status``) and refuses a
+    token marked "must change password": an account provisioned with a temporary
+    password can do nothing but change it. Use ``get_current_user_any_status`` on
+    endpoints that must work regardless of status (e.g. GET /me,
+    resend-verification) and ``get_current_user_allowing_password_change`` for the
+    change-password and logout requests.
+
+    """
+    user, payload = await _load_user_enforcing_status(token, db)
+    if payload.must_change_password:
+        raise PasswordChangeRequiredException()
+    return user
+
+
+async def get_current_user_allowing_password_change(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Like ``get_current_user`` but also accepts a token marked "must change
+    password". Only for the requests such a user needs: changing the password and
+    logging out. Account status is still enforced."""
+    user, _payload = await _load_user_enforcing_status(token, db)
     return user
 
 
@@ -127,6 +158,11 @@ async def get_optional_user(
     try:
         payload = decode_access_token(token)
     except Exception:
+        return None
+
+    # A user who must change their password first is not "logged in" for
+    # anything else, including public pages that treat the owner differently.
+    if payload.must_change_password:
         return None
 
     result = await db.execute(

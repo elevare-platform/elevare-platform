@@ -181,6 +181,38 @@ class RegisterRequest(BaseModel):
         return self
 
 
+class ChangePasswordRequest(BaseModel):
+    """Payload for choosing a new password while logged in.
+
+    Attributes:
+        current_password: The password being replaced (for a provisioned account,
+            the temporary one).
+        new_password: Must pass the same strength rules as registration and
+            differ from the current password.
+        confirm_password: Must match ``new_password``.
+
+    """
+
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., exclude=True)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        """Apply the platform's password strength rules."""
+        return validate_password_strength(v)
+
+    @model_validator(mode="after")
+    def passwords_match_and_differ(self) -> "ChangePasswordRequest":
+        """The two new passwords must match, and must not repeat the old one."""
+        if self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        if self.new_password == self.current_password:
+            raise ValueError("The new password must be different from the current one")
+        return self
+
+
 class LoginRequest(BaseModel):
     """Payload for authenticating an existing user.
 
@@ -274,6 +306,9 @@ class UserResponse(BaseModel):
     account_status: str
     is_profile_complete: bool | None = None  # only populated for EMPLOYER role
     organization_role: str | None = None
+    # True for an account provisioned with a temporary password until its owner
+    # sets their own. The server refuses every other request meanwhile.
+    must_change_password: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -285,6 +320,7 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str
     verification_token: str | None = None  # only present in stub mode
+    must_change_password: bool = False
 
 
 class MessageResponse(BaseModel):

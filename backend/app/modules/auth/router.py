@@ -6,12 +6,19 @@ from fastapi import APIRouter, Cookie, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.dependencies import get_current_user, get_current_user_any_status, get_db
+from app.core.dependencies import (
+    get_current_user_allowing_password_change,
+    get_current_user_any_status,
+    get_db,
+    oauth2_scheme,
+)
 from app.core.exceptions import RefreshTokenMissing
 from app.core.limiter import limiter
+from app.modules.auth.jwt_handler import decode_access_token
 from app.modules.auth.schemas import (
     AcceptInviteRequest,
     AuthResponse,
+    ChangePasswordRequest,
     LoginRequest,
     MessageResponse,
     RegisterRequest,
@@ -65,9 +72,13 @@ async def logout(
     response: Response,
     refresh_token: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_allowing_password_change),
 ) -> MessageResponse:
-    """Revoke the refresh token and invalidate the session."""
+    """Revoke the refresh token and invalidate the session.
+
+    Also open to an account that still has to change its temporary password, so
+    it can sign out.
+    """
     if refresh_token is None:
         raise RefreshTokenMissing()
     await AuthService(db).revoke_refresh_token(refresh_token)
@@ -75,12 +86,34 @@ async def logout(
     return MessageResponse(message="Successfully logged out")
 
 
+@router.post("/change-password", response_model=AuthResponse, status_code=200)
+@limiter.limit("5/minute")
+async def change_password(
+    request: Request,
+    data: ChangePasswordRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_allowing_password_change),
+) -> AuthResponse:
+    """Choose a new password. Open to any logged-in user, and the only request
+    (besides logout) an account with a temporary password may make until done."""
+    return await AuthService(db).change_password(current_user, data, response)
+
+
 @router.get("/me", response_model=UserResponse, status_code=200)
 async def get_me(
+    token: str = Depends(oauth2_scheme),
     current_user: User = Depends(get_current_user_any_status),
 ) -> UserResponse:
-    """Retrieve the authenticated user's profile."""
-    return AuthService._build_user_response(current_user)
+    """Retrieve the authenticated user's profile.
+
+    ``must_change_password`` is read from the token, so a page reload still knows
+    the user has to choose a new password.
+    """
+    return AuthService._build_user_response(
+        current_user,
+        must_change_password=decode_access_token(token).must_change_password,
+    )
 
 
 @router.post("/verify-email", status_code=200, response_model=MessageResponse)

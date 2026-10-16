@@ -17,8 +17,12 @@ from app.core.config import settings
 from app.core.exceptions import TokenExpiredException, TokenInvalidException
 from app.core.schemas import TokenPayload
 
+# Present (and true) only in the access token of a user who must set a new
+# password first. The token is signed, so the holder cannot remove it.
+_MUST_CHANGE_PASSWORD_CLAIM = "pwc"
 
-def _create_access_token(data: dict) -> str:
+
+def _create_access_token(data: dict, must_change_password: bool = False) -> str:
     payload = data.copy()
     payload.update(
         {
@@ -27,6 +31,8 @@ def _create_access_token(data: dict) -> str:
             "type": "access",
         }
     )
+    if must_change_password:
+        payload[_MUST_CHANGE_PASSWORD_CLAIM] = True
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
@@ -76,6 +82,7 @@ def decode_access_token(token: str) -> TokenPayload:
         sub=payload["sub"],
         role=payload["role"],
         type=payload["type"],
+        must_change_password=bool(payload.get(_MUST_CHANGE_PASSWORD_CLAIM, False)),
     )
 
 
@@ -112,12 +119,17 @@ def decode_refresh_token(token: str) -> TokenPayload:
     )
 
 
-def create_token_pair(user_id: str, role: str) -> dict:
+def create_token_pair(
+    user_id: str, role: str, must_change_password: bool = False
+) -> dict:
     """Generate an access/refresh token pair for a user.
 
     Args:
         user_id: The user's UUID as a string — becomes the ``sub`` claim.
         role: The user's role string — embedded in both tokens.
+        must_change_password: Marks the access token (only) as usable for nothing
+            but changing the password. Refreshing re-reads the flag from the
+            database, so the refresh token does not carry it.
 
     Returns:
         A dict with ``access_token``, ``refresh_token``, and ``token_type``.
@@ -126,7 +138,7 @@ def create_token_pair(user_id: str, role: str) -> dict:
     data = {"sub": str(user_id), "role": role}
 
     return {
-        "access_token": _create_access_token(data),
+        "access_token": _create_access_token(data, must_change_password),
         "refresh_token": _create_refresh_token(data),
         "token_type": "bearer",
     }
