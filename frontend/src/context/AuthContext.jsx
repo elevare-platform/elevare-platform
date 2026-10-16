@@ -16,6 +16,14 @@ export function AuthProvider({ children }) {
         const me = await api.get('/api/v1/auth/me')
         const userData = me.data
 
+        // An account with a temporary password can do nothing but change it, so
+        // skip the profile lookups below (the server refuses them) and let the
+        // route guard send the user to /change-password.
+        if (userData.must_change_password) {
+          setUser(userData)
+          return
+        }
+
         // For employers, /me doesn't include is_profile_complete/kyc_status (they
         // live on employer_profile, not on the User model). Fetch separately so
         // the onboarding/verification redirects work correctly on every page load.
@@ -67,6 +75,12 @@ export function AuthProvider({ children }) {
     const { data } = await api.post('/api/v1/auth/login', { email, password })
     setAccessToken(data.access_token)
     const userData = data.user
+    // Temporary password: nothing else is allowed until it is changed, and the
+    // profile lookups below would be refused. See the bootstrap effect.
+    if (userData.must_change_password) {
+      setUser(userData)
+      return userData
+    }
     // Populate is_profile_complete/kyc_status for employers (not in login response)
     if (userData.role === 'EMPLOYER') {
       try {
@@ -79,6 +93,34 @@ export function AuthProvider({ children }) {
       }
     }
     // Same for candidates — see bootstrap effect above for why this is needed.
+    if (userData.role === 'CANDIDATE') {
+      try {
+        const { data: profile } = await api.get('/api/v1/candidates/me')
+        userData.is_profile_complete = profile.is_profile_complete ?? false
+      } catch {
+        userData.is_profile_complete = false
+      }
+    }
+    setUser(userData)
+    return userData
+  }, [])
+
+  // Called once POST /auth/change-password has succeeded. The server answers with
+  // a fresh session (new access token, refresh cookie already set) that no longer
+  // carries the "must change password" mark, so the user can carry on normally.
+  const completePasswordChange = useCallback(async (data) => {
+    setAccessToken(data.access_token)
+    const userData = { ...data.user, must_change_password: false }
+    if (userData.role === 'EMPLOYER') {
+      try {
+        const { data: profile } = await api.get('/api/v1/employer/profile')
+        userData.is_profile_complete = profile.is_profile_complete ?? false
+        userData.kyc_status = profile.kyc_status ?? 'NOT_SUBMITTED'
+      } catch {
+        userData.is_profile_complete = false
+        userData.kyc_status = 'NOT_SUBMITTED'
+      }
+    }
     if (userData.role === 'CANDIDATE') {
       try {
         const { data: profile } = await api.get('/api/v1/candidates/me')
@@ -112,7 +154,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, authReady, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, authReady, login, register, logout, updateUser, completePasswordChange }}>
       {children}
     </AuthContext.Provider>
   )
@@ -145,6 +187,8 @@ export function isAccountRestricted(user) {
 // PostJobPage covers anyone who never verified and later tries to post.
 export function getPostAuthRedirect(user) {
   if (!user) return '/login'
+  // A temporary password has to be replaced before anything else.
+  if (user.must_change_password) return '/change-password'
   if (user.role === 'EMPLOYER') {
     if (!user.is_profile_complete) return '/employer/onboarding'
     return '/dashboard'

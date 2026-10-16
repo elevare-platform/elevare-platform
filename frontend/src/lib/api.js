@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { ACCOUNT_STATUS_CODES } from '@/lib/accountStatus'
+import { isPasswordChangeRequired } from '@/lib/passwordChange'
 
 // In-memory token - never stored in localStorage or cookies
 let accessToken = null
@@ -38,6 +39,18 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
+
+    // Safety net: the server refuses everything except changing the password for
+    // an account that still has a temporary one. The route guard normally gets
+    // there first; if a request still slips through, send the user to the change
+    // screen (unless they are already on it, which would loop).
+    if (
+      isPasswordChangeRequired(error) &&
+      window.location.pathname !== '/change-password'
+    ) {
+      window.location.assign('/change-password')
+      return Promise.reject(error)
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Don't attempt refresh for auth endpoints themselves

@@ -26,6 +26,7 @@ const LoginPage = lazy(() => import('@/pages/auth/LoginPage'))
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'))
 const InviteAcceptPage = lazy(() => import('@/pages/auth/InviteAcceptPage'))
 const VerifyEmailPage = lazy(() => import('@/pages/auth/VerifyEmailPage'))
+const ChangePasswordPage = lazy(() => import('@/pages/auth/ChangePasswordPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const NotificationDetailPage = lazy(() => import('@/pages/NotificationDetailPage'))
 const UnauthorisedPage = lazy(() => import('@/pages/UnauthorisedPage'))
@@ -53,6 +54,7 @@ const InterviewInvitePage = lazy(() => import('@/pages/InterviewInvitePage'))
 
 const MailIngestionPage = lazy(() => import('@/pages/employer/MailIngestionPage'))
 const AdminInvitePage = lazy(() => import('@/pages/admin/AdminInvitePage'))
+const AdminClientsPage = lazy(() => import('@/pages/admin/AdminClientsPage'))
 const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboardPage'))
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'))
 const AdminJobsPage = lazy(() => import('@/pages/admin/AdminJobsPage'))
@@ -121,6 +123,9 @@ function AppRoutes() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/invite/accept" element={<InviteAcceptPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        {/* Not inside ProtectedRoute: that guard sends an account with a temporary
+            password here, and the page checks for a session itself. */}
+        <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/unauthorised" element={<UnauthorisedPage />} />
 
         {/* Public routes - no auth */}
@@ -156,6 +161,7 @@ function AppRoutes() {
         {/* Admin-only routes */}
         <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
           <Route path="/admin/invite" element={<AdminInvitePage />} />
+          <Route path="/admin/clients" element={<AdminClientsPage />} />
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
