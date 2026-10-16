@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.modules.auth.schemas import validate_phone_digits
 from app.modules.employer.schemas import KYCDocumentResponse
+from app.modules.jobs.schemas import JobCreateRequest
 from app.modules.users.enums import AccountStatus, UserRole
 
 
@@ -215,6 +216,23 @@ class ProvisionEmployerRequest(BaseModel):
         if v is None or not v.strip():
             return None
         return validate_phone_digits(v)
+
+
+class ClientJobCreateRequest(JobCreateRequest):
+    """An admin creating an interview-only draft job inside a client's account.
+
+    Everything a job needs is validated as for an employer posting one. The AI
+    interview brief is the one thing refused: the client writes it themselves, on
+    the Edit Job page (it also serves as the scoring rubric for their interviews).
+    """
+
+    @field_validator("interview_brief")
+    @classmethod
+    def brief_is_written_by_the_client(cls, v: str | None) -> None:
+        """Refuse an interview brief; blank counts as none."""
+        if v is not None and v.strip():
+            raise ValueError("The client writes the interview brief themselves")
+        return None
 
 
 class ProvisionEmployerResponse(BaseModel):

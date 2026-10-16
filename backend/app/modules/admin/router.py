@@ -11,6 +11,7 @@ from app.core.dependencies import get_db, require_role
 from app.core.schemas import SuccessResponse
 from app.core.storage import StorageService, get_storage_service
 from app.modules.auth.service import AuthService
+from app.modules.jobs.schemas import JobResponse
 from app.modules.testimonials.enums import TestimonialStatus
 from app.modules.testimonials.schemas import (
     TestimonialAdminRead,
@@ -23,6 +24,7 @@ from app.modules.users.models import User
 from .schemas import (
     BulkJobActionRequest,
     BulkUserActionRequest,
+    ClientJobCreateRequest,
     CreditGrantRequest,
     InviteRequest,
     JobModerationRequest,
@@ -82,6 +84,28 @@ async def provision_employer(
     result = await AdminService(db).provision_employer(admin_user.id, data)
     response.headers["Cache-Control"] = "no-store"
     return result
+
+
+@router.post(
+    "/employers/{employer_id}/jobs",
+    response_model=JobResponse,
+    status_code=201,
+)
+async def create_job_for_client(
+    data: ClientJobCreateRequest,
+    employer_id: UUID = Path(...),
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """Create an interview-only draft job inside a client's account.
+
+    The job belongs to the client, stays a draft (off the public board, no
+    verification or moderation needed) and has no interview brief: the client
+    writes that on the Edit Job page.
+    """
+    return await AdminService(db).create_job_for_client(
+        admin_user.id, employer_id, data
+    )
 
 
 @router.post("/employers/invite/{token}/resend", status_code=200)
