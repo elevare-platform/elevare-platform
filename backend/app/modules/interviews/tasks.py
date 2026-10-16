@@ -22,6 +22,7 @@ from app.core.email import get_email_service
 from app.core.exceptions import PlanUpgradeRequiredException
 from app.core.storage import get_storage_service
 from app.modules.ai.service import AnthropicCVExtractionService
+from app.modules.interviews.credits import refund_if_unused, refund_interview_credits
 from app.modules.interviews.enums import (
     STALE_INTERVIEW_TIMEOUT,
     InterviewCostComponent,
@@ -557,6 +558,27 @@ async def _transcribe_and_score_interview_async(
                         "as FAILED",
                         interview_id,
                     )
+                else:
+                    # The failure is ours, so the customer is not charged for it.
+                    # Kept apart from marking FAILED so a problem here can never
+                    # hide the original error or undo that status.
+                    try:
+                        returned = await refund_interview_credits(db, interview_id)
+                        await db.commit()
+                        if returned:
+                            logger.info(
+                                "transcribe_and_score_interview: refunded %d "
+                                "credit(s) for failed interview %s",
+                                returned,
+                                interview_id,
+                            )
+                    except Exception:
+                        logger.exception(
+                            "transcribe_and_score_interview: failed to refund "
+                            "credits for failed interview %s",
+                            interview_id,
+                        )
+                        await db.rollback()
             else:
                 logger.info(
                     "transcribe_and_score_interview: interview %s left as UPLOADED "
@@ -613,6 +635,57 @@ async def _expire_interview_videos_async() -> None:
             )
         finally:
             await engine.dispose()
+
+
+@celery.task
+def refund_unused_interviews_task() -> None:
+    """Celery Beat task — gives credits back for invites that expired unopened.
+
+    An interview is charged when it is first invited. If the link expires and the
+    candidate never started the interview, the employer got nothing, so the
+    credits are returned (a candidate who started and abandoned has already cost
+    realtime money, and a resend is free, so that is not refunded). Idempotent: a
+    refunded interview drops out of the query, and each refund re-checks under the
+    interview's own lock, so a rerun or a worker restart mid-sweep is harmless.
+    """
+    asyncio.run(_refund_unused_interviews_async())
+
+
+async def _refund_unused_interviews_async(limit: int = 200) -> int:
+    """One sweep. Returns how many interviews were refunded."""
+    engine = create_async_engine(
+        settings.database_url, pool_pre_ping=True, poolclass=NullPool
+    )
+    sessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+    refunded = 0
+    async with sessionLocal() as db:
+        try:
+            now = datetime.now(UTC)
+            interview_ids = await InterviewRepository(
+                db
+            ).get_unused_expired_paid_interview_ids(now, limit)
+            for interview_id in interview_ids:
+                try:
+                    returned = await refund_if_unused(db, interview_id, now)
+                    await db.commit()
+                    if returned:
+                        refunded += 1
+                except Exception:
+                    logger.exception(
+                        "refund_unused_interviews: failed to refund interview %s — "
+                        "will retry on the next sweep",
+                        interview_id,
+                    )
+                    await db.rollback()
+            logger.info(
+                "refund_unused_interviews: refunded %d of %d candidate(s) this sweep",
+                refunded,
+                len(interview_ids),
+            )
+        finally:
+            await engine.dispose()
+    return refunded
 
 
 @celery.task

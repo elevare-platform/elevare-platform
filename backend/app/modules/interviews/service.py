@@ -205,6 +205,13 @@ class InterviewService:
         interview = await self._repo.get_by_job_and_profile(
             job.id, talent_pool_profile_id
         )
+        if interview is not None:
+            # Take this interview's lock before deciding anything. The hourly sweep
+            # that refunds expired invites takes the same lock, so a resend and a
+            # refund always take turns: without it the sweep could refund the
+            # credits just as a resend hands out a live link, a free interview.
+            await self._repo.lock_status(interview.id)
+            await self._db.refresh(interview)
         if interview is None:
             # Charge before anything is saved: the id is decided first, so when
             # the credits are short nothing exists to clean up, and the charge and

@@ -132,6 +132,11 @@ celery.conf.update(
             "schedule": 60 * 60 * 6,  # every 6 hours
             "options": {"expires": 60 * 60 * 5},
         },
+        "refund-unused-interviews": {
+            "task": "app.modules.interviews.tasks.refund_unused_interviews_task",
+            "schedule": 60 * 60,  # every hour
+            "options": {"expires": 60 * 55},
+        },
         "reap-stale-interviews": {
             "task": "app.modules.interviews.tasks.reap_stale_interviews_task",
             "schedule": 60 * 30,  # every 30 minutes
