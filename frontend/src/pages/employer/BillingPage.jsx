@@ -249,7 +249,9 @@ export default function BillingPage() {
                   {' '}A candidate introduction costs 1 credit
                   {interviewPricing?.charged
                     ? `, and an AI interview costs ${interviewPricing.credits_per_interview} credits (taken when you first send it, and returned if the link expires unused).`
-                    : '.'}
+                    : interviewPricing?.included_in_plan
+                      ? ', and AI interviews are included in your plan.'
+                      : '.'}
                 </p>
 
                 {canManage ? (

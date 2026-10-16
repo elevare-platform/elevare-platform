@@ -21,6 +21,7 @@ from app.core.exceptions import (
 from app.core.ownership import can_manage_job
 from app.core.storage import get_storage_service
 from app.modules.applications.repository import ApplicationRepository
+from app.modules.billing.service import BillingService
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.credits.service import CreditsService
 from app.modules.interview_list.repository import InterviewListRepository
@@ -717,9 +718,25 @@ class InterviewService:
             or employer.organization_id is None
         ):
             return
+        if await self._interviews_included_in_plan(employer.organization_id):
+            return
         await CreditsService(self._db).charge_interview(
             employer.organization_id, interview_id, cost
         )
+
+    async def _interviews_included_in_plan(self, organization_id: uuid.UUID) -> bool:
+        """Whether the organization's plan covers AI interviews, so no credits are
+        taken for them: Professional and above.
+
+        Until plans bundle a monthly credit allowance (see docs/11_PRICING_MODEL.md
+        stage 3), a subscriber would otherwise pay the subscription and credits for
+        the same thing. Read through ``get_effective_plan``, the one place that
+        answers "what plan is this organization on right now": a lapsed
+        subscription counts as Starter, and the plan-gates testing switch makes
+        everyone Professional.
+        """
+        plan = await BillingService(self._db).get_effective_plan(organization_id)
+        return plan.code != "starter"
 
     async def _daily_invite_limit_reached(self, job: Job) -> bool:
         """Whether this job's organization has used up its first-time invites
@@ -851,9 +868,20 @@ class InterviewService:
             or user.role == UserRole.ADMIN.value
             or user.organization_id is None
         ):
-            return {"credits_per_interview": cost, "balance": None, "charged": False}
+            return {
+                "credits_per_interview": cost,
+                "balance": None,
+                "charged": False,
+                "included_in_plan": False,
+            }
         balance = await CreditsService(self._db).get_balance(user.organization_id)
-        return {"credits_per_interview": cost, "balance": balance, "charged": True}
+        included = await self._interviews_included_in_plan(user.organization_id)
+        return {
+            "credits_per_interview": cost,
+            "balance": balance,
+            "charged": not included,
+            "included_in_plan": included,
+        }
 
     async def get_interview_link(
         self,

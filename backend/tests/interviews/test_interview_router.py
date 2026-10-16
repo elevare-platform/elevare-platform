@@ -170,10 +170,14 @@ async def test_owner_gets_an_interview_link_back(client, db_session):
 
 @pytest.mark.asyncio
 async def test_an_employer_can_see_what_an_interview_costs_and_their_balance(
-    client, db_session
+    client, db_session, monkeypatch
 ):
+    from app.core.config import settings
     from app.modules.credits.service import CreditsService
 
+    # Plan gates off makes every organization Professional, for which interviews
+    # are included; this test is about the Starter case.
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
     token, user = await register_and_promote(client, db_session, "EMPLOYER")
     await CreditsService(db_session).grant(user.organization_id, 35)
 
@@ -182,7 +186,12 @@ async def test_an_employer_can_see_what_an_interview_costs_and_their_balance(
     )
 
     assert resp.status_code == 200
-    assert resp.json() == {"credits_per_interview": 10, "balance": 35, "charged": True}
+    assert resp.json() == {
+        "credits_per_interview": 10,
+        "balance": 35,
+        "charged": True,
+        "included_in_plan": False,
+    }
 
 
 @pytest.mark.asyncio

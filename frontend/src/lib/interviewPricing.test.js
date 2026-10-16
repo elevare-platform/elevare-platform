@@ -36,6 +36,19 @@ describe('interviewPricingNote', () => {
     expect(interviewPricingNote({ credits_per_interview: 10, balance: 0, charged: true }).short).toBe(true)
   })
 
+  it('says interviews are included when the plan covers them, with no nudge to buy credits', () => {
+    const note = interviewPricingNote({
+      credits_per_interview: 10,
+      balance: 0,
+      charged: false,
+      included_in_plan: true,
+    })
+
+    expect(note.text).toContain('included in your plan')
+    expect(note.text).toContain('no credits are taken')
+    expect(note.short).toBe(false)
+  })
+
   it('shows nothing when no charge applies to this account', () => {
     expect(interviewPricingNote({ credits_per_interview: 10, balance: null, charged: false })).toBeNull()
   })

@@ -17,7 +17,13 @@ from app.modules.interviews import service as interview_service_module
 from app.modules.interviews.enums import InterviewStatus
 from app.modules.interviews.models import Interview
 from app.modules.interviews.service import InterviewService
-from tests.conftest import make_admin, make_employer, make_job, make_organization_for
+from tests.conftest import (
+    make_admin,
+    make_employer,
+    make_job,
+    make_organization_for,
+    make_subscription_for,
+)
 
 from .conftest import (
     make_interview,
@@ -37,14 +43,24 @@ def invite_email(monkeypatch):
     return task
 
 
-async def _client(db_session, balance=100, with_org=True):
-    """An employer (owner of the job) in an organization holding ``balance`` credits."""
+@pytest.fixture(autouse=True)
+def plan_gates_on(monkeypatch):
+    """With plan gates off (the local testing escape hatch) every organization
+    resolves to Professional, which would hide the Starter behaviour tested here."""
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+
+
+async def _client(db_session, balance=100, with_org=True, plan_code=None):
+    """An employer (owner of the job) in an organization holding ``balance`` credits,
+    on ``plan_code`` (None = no subscription = Starter)."""
     employer = make_employer()
     db_session.add(employer)
     await db_session.flush()
     organization = None
     if with_org:
         organization = await make_organization_for(db_session, employer)
+        if plan_code:
+            await make_subscription_for(db_session, organization, plan_code=plan_code)
         if balance:
             await CreditsService(db_session).grant(organization.id, balance)
     job = make_job(employer.id, interview_brief=BRIEF)
@@ -347,6 +363,103 @@ async def test_a_refused_resend_leaves_the_existing_interview_untouched(db_sessi
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("plan_code", ["professional", "enterprise"])
+async def test_an_organization_on_a_paid_plan_is_not_charged_credits(
+    db_session, invite_email, plan_code
+):
+    """Until plans bundle monthly credits, a subscriber's plan covers interviews:
+    they must not pay the subscription and credits for the same thing."""
+    employer, organization, job = await _client(db_session, balance=0, plan_code=plan_code)
+    profile = await _profile(db_session, employer)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invite(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] is True
+    invite_email.delay.assert_called_once()
+    assert await _balance(db_session, organization) == 0
+    assert await _ledger(db_session, organization) == []
+
+
+@pytest.mark.asyncio
+async def test_copying_a_link_is_not_charged_on_a_paid_plan_either(db_session):
+    employer, organization, job = await _client(db_session, balance=0, plan_code="professional")
+    profile = await _profile(db_session, employer)
+
+    service = InterviewService(db_session)
+    try:
+        link = await service.get_interview_link(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert link["interview_url"]
+    assert await _ledger(db_session, organization) == []
+
+
+@pytest.mark.asyncio
+async def test_a_lapsed_subscription_is_charged_like_starter(db_session):
+    """An EXPIRED subscription no longer gives the plan, so credits apply."""
+    employer, organization, job = await _client(db_session, balance=4, plan_code="professional")
+    from sqlalchemy import update
+
+    from app.modules.billing.models import Subscription
+
+    await db_session.execute(
+        update(Subscription)
+        .where(Subscription.organization_id == organization.id)
+        .values(status="EXPIRED")
+    )
+    profile = await _profile(db_session, employer)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invite(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] is False
+    assert "Not enough credits" in result["reason"]
+
+
+@pytest.mark.asyncio
+async def test_with_plan_gates_off_nothing_is_charged(db_session, monkeypatch):
+    """The testing escape hatch makes every organization Professional (see
+    BillingService.get_effective_plan), so no credits are taken either."""
+    monkeypatch.setattr(settings, "plan_gates_enabled", False)
+    employer, organization, job = await _client(db_session, balance=0)
+    profile = await _profile(db_session, employer)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invite(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] is True
+
+
+@pytest.mark.asyncio
+async def test_pricing_says_an_interview_is_included_on_a_paid_plan(db_session):
+    employer, _organization, _job = await _client(db_session, balance=7, plan_code="professional")
+
+    service = InterviewService(db_session)
+    try:
+        pricing = await service.get_pricing(employer)
+    finally:
+        await service.close()
+
+    assert pricing == {
+        "credits_per_interview": 10,
+        "balance": 7,
+        "charged": False,
+        "included_in_plan": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_pricing_tells_an_employer_the_cost_and_their_balance(db_session):
     employer, _organization, _job = await _client(db_session, balance=42)
 
@@ -356,7 +469,12 @@ async def test_pricing_tells_an_employer_the_cost_and_their_balance(db_session):
     finally:
         await service.close()
 
-    assert pricing == {"credits_per_interview": 10, "balance": 42, "charged": True}
+    assert pricing == {
+        "credits_per_interview": 10,
+        "balance": 42,
+        "charged": True,
+        "included_in_plan": False,
+    }
 
 
 @pytest.mark.asyncio

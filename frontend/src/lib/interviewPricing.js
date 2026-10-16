@@ -11,6 +11,14 @@ export function interviewsForCredits(credits, pricing) {
 // nothing is charged for this account (Elevare's own admin accounts, an owner
 // with no organization, or a price of 0).
 export function interviewPricingNote(pricing) {
+  // A paid plan (Professional and above) covers interviews: say so, so the
+  // employer is not left wondering whether credits are being taken.
+  if (pricing?.included_in_plan) {
+    return {
+      text: 'AI interviews are included in your plan, so no credits are taken for them.',
+      short: false,
+    }
+  }
   if (!pricing || !pricing.charged) return null
   const { credits_per_interview: cost, balance } = pricing
   return {
