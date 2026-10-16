@@ -12,7 +12,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.cv_pipeline.layer3_sections import DetectedSections
-from app.modules.ai.prompts.cv_extraction import build_user_prompt
+from app.modules.ai.prompts.cv_extraction import (
+    MAX_FULL_TEXT_CHARS,
+    build_user_prompt,
+)
 from app.modules.ai.service import (
     AIService,
     AnthropicCVExtractionService,
@@ -39,6 +42,46 @@ def test_prompt_contains_full_text_when_sections_are_empty():
 
     assert "Regional Sales Manager at Unilever Nigeria" in prompt
     assert "Grew distributor network from 12 to 40 partners." in prompt
+
+
+def test_text_within_the_cap_is_sent_untouched():
+    text = "A" * MAX_FULL_TEXT_CHARS
+
+    prompt = build_user_prompt({}, "", "", full_text=text)
+
+    assert text in prompt
+    assert "[CV text truncated]" not in prompt
+
+
+def test_text_over_the_cap_loses_its_tail_and_says_so():
+    text = "A" * MAX_FULL_TEXT_CHARS + "TAILMARKER"
+
+    prompt = build_user_prompt({}, "", "", full_text=text)
+
+    assert "A" * MAX_FULL_TEXT_CHARS in prompt
+    assert "TAILMARKER" not in prompt
+    assert "[CV text truncated]" in prompt
+
+
+@pytest.mark.asyncio
+async def test_service_logs_a_warning_when_it_truncates(caplog):
+    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
+    response = MagicMock()
+    response.content = [
+        MagicMock(text=json.dumps({"skills": [], "field_confidence": {}}))
+    ]
+    response.usage = MagicMock(input_tokens=10, output_tokens=10)
+    client = AsyncMock()
+    client.messages.create = AsyncMock(return_value=response)
+    service._client = client
+    sections = DetectedSections(None, None, None, None, None, None, None, "")
+
+    with caplog.at_level("WARNING"):
+        await service.extract_cv_data(
+            sections, {}, full_text="A" * (MAX_FULL_TEXT_CHARS + 1)
+        )
+
+    assert "truncated" in caplog.text
 
 
 @pytest.mark.parametrize(

@@ -131,6 +131,21 @@ CV_EXTRACTION_SCHEMA = {
 }
 
 
+# About 7,500 tokens (roughly 4 characters per token). An ordinary 2-4 page CV is
+# 6,000-12,000 characters and is never touched; the cap only stops an abnormal
+# upload (a 60-page portfolio, pages of OCR junk) from making one call expensive.
+MAX_FULL_TEXT_CHARS = 30_000
+TRUNCATION_MARKER = "\n[CV text truncated]"
+
+
+def limit_full_text(text: str) -> str:
+    """Keep the start of an over-long CV (contact details and recent roles come
+    first) and mark the cut so the model does not read it as a finished CV."""
+    if len(text) <= MAX_FULL_TEXT_CHARS:
+        return text
+    return text[:MAX_FULL_TEXT_CHARS] + TRUNCATION_MARKER
+
+
 def build_user_prompt(
     already_extracted: dict,
     experience_text: str,
@@ -142,6 +157,6 @@ def build_user_prompt(
         already_extracted=json.dumps(already_extracted, indent=2),
         experience_text=experience_text or "",
         education_text=education_text or "",
-        full_text=full_text or "",
+        full_text=limit_full_text(full_text or ""),
         schema=json.dumps(CV_EXTRACTION_SCHEMA, indent=2),
     )

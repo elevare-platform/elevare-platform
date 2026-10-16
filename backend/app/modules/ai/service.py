@@ -329,10 +329,18 @@ class AnthropicCVExtractionService(AIService):
         """
         from app.modules.ai.prompts.cv_extraction import (
             CV_EXTRACTION_SYSTEM_PROMPT,
+            MAX_FULL_TEXT_CHARS,
             build_user_prompt,
         )
 
         model = model or settings.anthropic_model_fast
+
+        if len(full_text) > MAX_FULL_TEXT_CHARS:
+            logger.warning(
+                "CV extraction: full text truncated from %d to %d characters",
+                len(full_text),
+                MAX_FULL_TEXT_CHARS,
+            )
 
         user_prompt = build_user_prompt(
             already_extracted=already_extracted,
