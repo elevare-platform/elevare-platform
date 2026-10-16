@@ -1358,6 +1358,30 @@ async def test_request_scoring_queues_an_unscored_interview(db_session, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_request_scoring_works_on_the_starter_plan_for_a_paid_interview(
+    db_session, monkeypatch
+):
+    from app.modules.credits.service import CreditsService
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, interview = await _unscored_interview(
+        db_session, plan_code=None
+    )
+    credits = CreditsService(db_session)
+    await credits.grant(employer.organization_id, 100)
+    await credits.charge_interview(employer.organization_id, interview.id, 10)
+
+    service = InterviewService(db_session)
+    try:
+        await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    mock_task.delay.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_request_scoring_on_the_starter_plan_asks_for_an_upgrade(
     db_session, monkeypatch
 ):

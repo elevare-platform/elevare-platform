@@ -400,7 +400,7 @@ async def _transcribe_and_score_interview_async(
             # Scoring is gated to Professional+ — transcript already saved above
             # regardless of plan tier.
             try:
-                await assert_can_score_interviews(db, interview.job)
+                await assert_can_score_interviews(db, interview.job, interview.id)
             except PlanUpgradeRequiredException:
                 logger.info(
                     "transcribe_and_score_interview: Interview %s on Starter plan — "

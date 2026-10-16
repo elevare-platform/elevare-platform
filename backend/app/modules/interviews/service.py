@@ -955,7 +955,7 @@ class InterviewService:
 
         # Plan check first, so a Starter organization gets the upgrade message
         # instead of a silent no-op.
-        await assert_can_score_interviews(self._db, job)
+        await assert_can_score_interviews(self._db, job, interview.id)
 
         # Lock, then re-read: two clicks (or a click racing the task) must not
         # both queue scoring. The second sees the interview already processing.
