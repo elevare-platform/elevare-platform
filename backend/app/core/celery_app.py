@@ -117,6 +117,11 @@ celery.conf.update(
             "schedule": 60 * 30,  # every 30 minutes
             "options": {"expires": 60 * 29},
         },
+        "replay-unprocessed-webhooks": {
+            "task": "app.modules.billing.tasks.replay_unprocessed_webhooks_task",
+            "schedule": 60 * 10,  # every 10 minutes
+            "options": {"expires": 60 * 9},
+        },
         "reconcile-pending-payments": {
             "task": "app.modules.billing.tasks.reconcile_pending_payments_task",
             "schedule": 60 * 15,  # every 15 minutes

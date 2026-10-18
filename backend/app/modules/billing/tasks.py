@@ -26,6 +26,33 @@ STALE_PENDING_THRESHOLD = timedelta(minutes=30)
 
 
 @celery.task(time_limit=60 * 5, soft_time_limit=60 * 4)
+def replay_unprocessed_webhooks_task():
+    """Celery Beat task — retries payment webhooks that were recorded but never
+    processed (a renewal whose confirmation call timed out, a restart between
+    recording and processing). See BillingService.replay_unprocessed_webhooks.
+
+    The reconcile task below covers payments WE started (top-ups, a first
+    charge); a renewal is started by Paystack, so there is no pending payment to
+    reconcile and this replay is the only thing that recovers a failed one.
+    """
+    asyncio.run(_run_replay_async())
+
+
+async def _run_replay_async() -> None:
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
+    try:
+        async with SessionLocal() as db:
+            processed = await BillingService(db).replay_unprocessed_webhooks()
+            if processed:
+                logger.info(
+                    "replay_unprocessed_webhooks: processed %d event(s)", processed
+                )
+    finally:
+        await engine.dispose()
+
+
+@celery.task(time_limit=60 * 5, soft_time_limit=60 * 4)
 def reconcile_pending_payments_task():
     """Celery Beat task — actively resolves payments stuck PENDING.
 

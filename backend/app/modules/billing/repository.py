@@ -250,6 +250,79 @@ class BillingRepository:
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_webhook_event(
+        self, provider: str, provider_event_id: str
+    ) -> WebhookEvent | None:
+        """The stored event for a provider's own event id, if one was recorded."""
+        stmt = select(WebhookEvent).where(
+            WebhookEvent.provider == provider,
+            WebhookEvent.provider_event_id == provider_event_id,
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def lock_webhook_event(
+        self, event_id: uuid.UUID, *, skip_locked: bool
+    ) -> WebhookEvent | None:
+        """Lock one event row until the transaction ends, with its current values.
+
+        Whoever processes an event holds this lock, so a redelivery and a sweep
+        never process the same event at once. With ``skip_locked`` a row someone
+        else holds is simply not returned (None) instead of waited for.
+        """
+        stmt = (
+            select(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .with_for_update(skip_locked=skip_locked)
+            .execution_options(populate_existing=True)
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_replayable_webhook_event_ids(
+        self,
+        *,
+        not_touched_since: datetime,
+        received_after: datetime,
+        limit: int,
+    ) -> list[uuid.UUID]:
+        """Events that were recorded but never processed, oldest first.
+
+        ``not_touched_since``: only events whose last attempt (or arrival) is
+        older than this, so the sweep neither races the first delivery nor retries
+        an event it just tried. ``received_after``: only events young enough to
+        still be worth retrying.
+        """
+        stmt = (
+            select(WebhookEvent.id)
+            .where(
+                WebhookEvent.processed_at.is_(None),
+                WebhookEvent.updated_at < not_touched_since,
+                WebhookEvent.created_at > received_after,
+            )
+            .order_by(WebhookEvent.created_at)
+            .limit(limit)
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_webhook_events_just_abandoned(
+        self, *, older_than: datetime, newer_than: datetime
+    ) -> list[WebhookEvent]:
+        """Unprocessed events that crossed the give-up age within the window, so a
+        person can be told about each (a few times, not forever)."""
+        stmt = (
+            select(WebhookEvent)
+            .where(
+                WebhookEvent.processed_at.is_(None),
+                WebhookEvent.created_at < older_than,
+                WebhookEvent.created_at >= newer_than,
+            )
+            .order_by(WebhookEvent.created_at)
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
     # --- Credit packages ---
     async def list_active_credit_packages(self) -> list[CreditPackage]:
         stmt = (
