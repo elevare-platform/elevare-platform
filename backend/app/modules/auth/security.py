@@ -41,6 +41,36 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
+# Characters for a temporary password. No look-alikes (0/O, 1/l/I): it is read out
+# over the phone or typed from a message. Every symbol is one the platform's
+# strength rule accepts.
+_TEMP_LOWER = "abcdefghijkmnopqrstuvwxyz"
+_TEMP_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+_TEMP_DIGITS = "23456789"
+_TEMP_SYMBOLS = "!@#$%&*"
+_TEMP_LENGTH = 14
+
+
+def generate_temporary_password() -> str:
+    """Generate a random temporary password for an account an admin provisions.
+
+    Always contains a lowercase letter, an uppercase letter, a digit and a symbol,
+    so it passes the platform's own strength rule, and never contains look-alike
+    characters. Built from ``secrets`` (a cryptographic source), not ``random``.
+    """
+    required = [
+        secrets.choice(_TEMP_LOWER),
+        secrets.choice(_TEMP_UPPER),
+        secrets.choice(_TEMP_DIGITS),
+        secrets.choice(_TEMP_SYMBOLS),
+    ]
+    pool = _TEMP_LOWER + _TEMP_UPPER + _TEMP_DIGITS + _TEMP_SYMBOLS
+    rest = [secrets.choice(pool) for _ in range(_TEMP_LENGTH - len(required))]
+    characters = required + rest
+    secrets.SystemRandom().shuffle(characters)
+    return "".join(characters)
+
+
 def generate_token() -> str:
     """Generate a secure random token.
 

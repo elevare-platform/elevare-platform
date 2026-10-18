@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationException
 from app.modules.credits.models import CreditTransaction, EmployerCredits
+
+# Ledger reasons for AI interviews. The reference_id is the interview's id.
+INTERVIEW_CHARGE = "interview_charge"
+INTERVIEW_REFUND = "interview_refund"
 
 
 class CreditsRepository:
@@ -17,21 +22,78 @@ class CreditsRepository:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def get_or_create_balance(self, employer_id: uuid.UUID) -> EmployerCredits:
-        """Get or create an EmployerCredits row for the given employer."""
+    async def get_or_create_balance(
+        self, employer_id: uuid.UUID, *, lock: bool = False
+    ) -> EmployerCredits:
+        """Get or create an EmployerCredits row for the given employer.
+
+        With ``lock=True`` the row is locked (``SELECT ... FOR UPDATE``) until the
+        caller's transaction ends, so two requests changing the same balance at
+        the same moment run one after the other instead of both reading the same
+        number. Use it for anything that is about to change the balance.
+        """
         stmt = select(EmployerCredits).where(EmployerCredits.employer_id == employer_id)
+        if lock:
+            # populate_existing: never trust a copy loaded earlier in this
+            # session; the number in the database now is the one that counts.
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         result = await self._db.execute(stmt)
         balance = result.scalar_one_or_none()
         if balance is None:
-            balance = EmployerCredits(employer_id=employer_id)
-            self._db.add(balance)
-            await self._db.flush()
+            try:
+                # A savepoint, so losing the race below does not poison the
+                # caller's transaction.
+                async with self._db.begin_nested():
+                    balance = EmployerCredits(employer_id=employer_id)
+                    self._db.add(balance)
+                    await self._db.flush()
+            except IntegrityError:
+                # Another request created the row first (one row per
+                # organization): read, and lock, theirs.
+                result = await self._db.execute(stmt)
+                balance = result.scalar_one()
         return balance
 
     async def get_balance(self, employer_id: uuid.UUID) -> EmployerCredits:
         """Get an EmployerCredits row for the given employer."""
         row = await self.get_or_create_balance(employer_id)
         return row.balance
+
+    async def has_outstanding_interview_charge(
+        self, organization_id: uuid.UUID, interview_id: uuid.UUID
+    ) -> bool:
+        """Whether an interview is paid: its charges outnumber its refunds."""
+        counts = (
+            await self._db.execute(
+                select(CreditTransaction.reason, func.count())
+                .where(
+                    CreditTransaction.employer_id == organization_id,
+                    CreditTransaction.reference_id == interview_id,
+                    CreditTransaction.reason.in_([INTERVIEW_CHARGE, INTERVIEW_REFUND]),
+                )
+                .group_by(CreditTransaction.reason)
+            )
+        ).all()
+        by_reason = dict(counts)
+        return by_reason.get(INTERVIEW_CHARGE, 0) > by_reason.get(INTERVIEW_REFUND, 0)
+
+    async def latest_interview_charge(
+        self, organization_id: uuid.UUID, interview_id: uuid.UUID
+    ) -> int | None:
+        """What the interview's most recent charge took (a positive number), or None."""
+        delta = (
+            await self._db.execute(
+                select(CreditTransaction.delta)
+                .where(
+                    CreditTransaction.employer_id == organization_id,
+                    CreditTransaction.reference_id == interview_id,
+                    CreditTransaction.reason == INTERVIEW_CHARGE,
+                )
+                .order_by(CreditTransaction.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return None if delta is None else abs(delta)
 
     async def apply_delta(
         self,
@@ -49,7 +111,7 @@ class CreditsRepository:
         Raises ValueError if the resulting balance would go negative.
         Does NOT commit — caller owns the transaction.
         """
-        balance = await self.get_or_create_balance(employer_id)
+        balance = await self.get_or_create_balance(employer_id, lock=True)
         new_balance = balance.balance + delta
         if new_balance < 0:
             raise ValidationException(

@@ -10,12 +10,24 @@ and `test_interview_router.py`.
 
 from uuid import uuid4
 
+import pytest
+
+from app.core.config import settings
 from app.modules.applications.models import Application
 from app.modules.candidates.models import CandidateProfile
 from app.modules.interview_list.models import InterviewListEntry
 from app.modules.interviews.models import Interview
 from app.modules.talent_pool.models import TalentPoolProfiles
 from tests.conftest import make_user
+
+
+@pytest.fixture(autouse=True)
+def _interview_tests_never_reach_real_storage_or_openai(monkeypatch):
+    """The transcript cross-check downloads the recording and calls Whisper. With
+    it on, a task test whose interview has a recording key would reach the real
+    storage service. Off for every interviews test; a test of the cross-check turns
+    it on itself, with storage and OpenAI mocked."""
+    monkeypatch.setattr(settings, "interview_transcript_crosscheck_enabled", False)
 
 
 def make_candidate_user(**overrides) -> "object":

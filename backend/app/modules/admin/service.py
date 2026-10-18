@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
+    AlreadyExistsException,
     CannotModifyAdminException,
     DocumentNotFoundError,
     JobNotFoundError,
@@ -20,8 +22,11 @@ from app.modules.admin.repository import AdminRepository
 from app.modules.employer.enums import KYCStatus
 from app.modules.employer.tasks import send_kyc_approved_email, send_kyc_rejection_email
 from app.modules.jobs.enums import ModerationStatus
+from app.modules.jobs.schemas import JobResponse
 from app.modules.notifications.repository import NotificationRepository
-from app.modules.users.enums import UserRole
+from app.modules.users.enums import AccountStatus, UserRole
+
+from .schemas import ClientJobCreateRequest, ProvisionEmployerRequest
 
 _VALID_MODERATION_ACTIONS = {
     ModerationStatus.APPROVED.value,
@@ -46,6 +51,149 @@ class AdminService:
         self._db = db
         self._repo = AdminRepository(db)
         self._storage = storage
+
+    # -----------------------------------------------------------------------
+    # Provisioning
+    # -----------------------------------------------------------------------
+
+    async def provision_employer(
+        self, admin_id: UUID, data: ProvisionEmployerRequest
+    ) -> dict:
+        """Create a client's employer account with a temporary password.
+
+        Goes through the same ``create_user`` as a self-registration, so the
+        organization is created with the new user as its OWNER. The account is
+        active and email-verified (Elevare vouches for the client), the company
+        name is set, and company verification (KYC) is left untouched: documents
+        are only needed to post a public job. The user must change the temporary
+        password on first login (see ``auth/password_policy``).
+
+        The temporary password is returned once, here, and is never logged,
+        audited or stored: only its hash is. Commits.
+
+        Raises:
+            AlreadyExistsException: If the email or phone number is already taken.
+
+        """
+        from app.modules.auth.password_policy import set_must_change_password
+        from app.modules.auth.security import (
+            generate_temporary_password,
+            hash_password,
+        )
+        from app.modules.users.models import Organization
+        from app.modules.users.repository import UserRepository
+
+        user_repo = UserRepository(self._db)
+        if await user_repo.get_user_by_email(data.email):
+            raise AlreadyExistsException(
+                message="A user with this email already exists"
+            )
+        if data.phone_number and await user_repo.get_user_by_phone(data.phone_number):
+            raise AlreadyExistsException(
+                message="A user with this phone number already exists"
+            )
+
+        temporary_password = generate_temporary_password()
+        user = await user_repo.create_user(
+            {
+                "first_name": data.first_name,
+                "last_name": data.last_name,
+                "email": data.email,
+                "phone_number": data.phone_number,
+                "password_hash": hash_password(temporary_password),
+                "role": UserRole.EMPLOYER.value,
+                "account_status": AccountStatus.ACTIVE.value,
+                "email_verified": True,
+                "email_verified_at": datetime.now(UTC),
+                "invited_by_id": admin_id,
+            }
+        )
+        organization = await self._db.get(Organization, user.organization_id)
+        organization.company_name = data.company_name
+
+        await set_must_change_password(self._db, user.id, True)
+        await self._repo.write_audit_log(
+            admin_id=admin_id,
+            action="PROVISION_EMPLOYER",
+            target_type="employer",
+            target_id=user.id,
+            # Never the password: not here, not in any log.
+            log_metadata={
+                "email": data.email,
+                "company_name": data.company_name,
+                "organization_id": str(organization.id),
+            },
+        )
+        await self._db.commit()
+
+        return {
+            "user_id": user.id,
+            "organization_id": organization.id,
+            "email": data.email,
+            "temporary_password": temporary_password,
+        }
+
+    async def create_job_for_client(
+        self, admin_id: UUID, employer_id: UUID, data: ClientJobCreateRequest
+    ) -> JobResponse:
+        """Create an interview-only DRAFT job inside a client's account.
+
+        The job belongs to the client's user (so their organization can manage it),
+        not to the admin. It is a draft, so it never appears on the public job
+        board, needs no company verification and no moderation, and the client
+        cannot publish it without an admin approving it. The client writes the
+        interview brief themselves. Commits.
+
+        Raises:
+            UserNotFoundException: If there is no such user.
+            ValidationException: If the user is not an employer.
+            AlreadyExistsException: If the account already has a job with that title
+                (guards against a double click creating two).
+
+        """
+        from sqlalchemy import func, select
+
+        from app.modules.ai.tasks import generate_job_embedding_task
+        from app.modules.jobs.models import Job
+        from app.modules.jobs.repository import JobRepository
+        from app.modules.users.models import User
+
+        user = await self._db.get(User, employer_id)
+        if user is None:
+            raise UserNotFoundException()
+        if user.role != UserRole.EMPLOYER.value:
+            raise ValidationException("Jobs can only be created for an employer account")
+
+        duplicate = (
+            await self._db.execute(
+                select(Job.id).where(
+                    Job.employer_id == user.id,
+                    func.lower(Job.title) == data.title.lower(),
+                )
+            )
+        ).first()
+        if duplicate:
+            raise AlreadyExistsException(
+                message="This account already has a job with that title"
+            )
+
+        job = await JobRepository(self._db).create(data, employer_id=user.id)
+        await self._repo.write_audit_log(
+            admin_id=admin_id,
+            action="CREATE_CLIENT_JOB",
+            target_type="job",
+            target_id=job.id,
+            log_metadata={"employer_id": str(user.id), "title": data.title},
+        )
+        await self._db.commit()
+
+        # Every new job gets its matching embedding, as when an employer posts one;
+        # a later publish would otherwise find none.
+        generate_job_embedding_task.delay(str(job.id))
+
+        return JobResponse.from_job(
+            job, include_interview_brief=True, include_contact_info=True
+        )
 
     # -----------------------------------------------------------------------
     # Users

@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.candidates.models import CandidateProfile
+from app.modules.credits.models import CreditTransaction
+from app.modules.credits.repository import INTERVIEW_CHARGE, INTERVIEW_REFUND
 from app.modules.interviews.enums import InterviewStatus, compute_display_status
 from app.modules.interviews.models import (
     Interview,
@@ -156,18 +158,63 @@ class InterviewRepository:
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_unused_expired_paid_interview_ids(
+        self, now: datetime, limit: int = 200
+    ) -> list[uuid.UUID]:
+        """Ids of interviews whose invite expired and was never opened, and which
+        are still paid (charged and not refunded): the ones to give credits back
+        for. Oldest first.
+
+        An interview that was refunded stays PENDING and expired forever, so the
+        "still paid" condition is part of the query itself: otherwise those rows
+        would fill every batch and the sweep would never reach a newer one.
+        """
+
+        def count_of(reason: str):
+            return (
+                select(func.count())
+                .select_from(CreditTransaction)
+                .where(
+                    CreditTransaction.reason == reason,
+                    CreditTransaction.reference_id == Interview.id,
+                )
+                .correlate(Interview)
+                .scalar_subquery()
+            )
+
+        stmt = (
+            select(Interview.id)
+            .where(
+                Interview.status == InterviewStatus.PENDING.value,
+                Interview.token_expires_at < now,
+                Interview.session_start_count == 0,
+                count_of(INTERVIEW_CHARGE) > count_of(INTERVIEW_REFUND),
+            )
+            .order_by(Interview.token_expires_at)
+            .limit(limit)
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
     async def create(
         self,
         job_id: uuid.UUID,
         talent_pool_profile_id: uuid.UUID,
         application_id: uuid.UUID | None = None,
+        interview_id: uuid.UUID | None = None,
     ) -> Interview:
-        """Persist a new interview record and return it."""
+        """Persist a new interview record and return it.
+
+        ``interview_id`` lets a caller decide the id first, so it can charge the
+        interview's credits before anything is saved.
+        """
         interview = Interview(
             job_id=job_id,
             talent_pool_profile_id=talent_pool_profile_id,
             application_id=application_id,
         )
+        if interview_id is not None:
+            interview.id = interview_id
         self._db.add(interview)
         await self._db.flush()
         await self._db.refresh(interview)

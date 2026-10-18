@@ -16,6 +16,11 @@ export function ProtectedRoute({ allowedRoles }) {
   // Truly unauthenticated - no session at all
   if (!user) return <Navigate to="/login" replace />
 
+  // An account with a temporary password can do nothing but change it. The
+  // server refuses every other request anyway; this just stops a page from
+  // firing requests that are bound to fail.
+  if (user.must_change_password) return <Navigate to="/change-password" replace />
+
   // Authenticated but restricted (pending verification, suspended, etc.)
   // Show the banner above the page rather than redirecting to login.
   // The page itself is responsible for gracefully disabling restricted actions.

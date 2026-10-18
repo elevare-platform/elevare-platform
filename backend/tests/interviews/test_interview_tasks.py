@@ -237,6 +237,61 @@ async def test_starter_plan_saves_transcript_but_skips_scoring(db_session, monke
     assert updated.transcript == "AI: Hi\n\nCandidate: Hello"
 
 
+async def _pay_for_interview(db_session, employer, interview, *, refund=False):
+    """Charge the interview's credits to the employer's organization, as an invite
+    does (and give it back when ``refund`` is set, as an expired invite does)."""
+    from app.modules.credits.service import CreditsService
+
+    credits = CreditsService(db_session)
+    await credits.grant(employer.organization_id, 100)
+    await credits.charge_interview(employer.organization_id, interview.id, 10)
+    if refund:
+        await credits.refund_interview(employer.organization_id, interview.id)
+
+
+@pytest.mark.asyncio
+async def test_a_paid_interview_is_scored_even_on_the_starter_plan(
+    db_session, monkeypatch
+):
+    """The customer paid credits for this interview, so it must not then be left
+    unscored for want of a plan."""
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    employer, _, _, interview = await _setup_interview(
+        db_session, transcript="AI: Hi\n\nCandidate: Hello", plan_code=None
+    )
+    await _pay_for_interview(db_session, employer, interview)
+    mock_anthropic = _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=77, summary="Good.")
+    )
+
+    await interviews_tasks._transcribe_and_score_interview_async(str(interview.id))
+
+    mock_anthropic.score_interview_transcript.assert_awaited_once()
+    updated = await InterviewRepository(db_session).get_by_id(interview.id)
+    assert updated.status == InterviewStatus.SCORED.value
+    assert updated.ai_score == 77
+
+
+@pytest.mark.asyncio
+async def test_a_refunded_interview_is_not_scored_on_the_starter_plan(
+    db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    employer, _, _, interview = await _setup_interview(
+        db_session, transcript="AI: Hi\n\nCandidate: Hello", plan_code=None
+    )
+    await _pay_for_interview(db_session, employer, interview, refund=True)
+    mock_anthropic = _mock_anthropic_service(
+        monkeypatch, result=InterviewScoringResult(score=77)
+    )
+
+    await interviews_tasks._transcribe_and_score_interview_async(str(interview.id))
+
+    mock_anthropic.score_interview_transcript.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_professional_plan_saves_transcript_and_score(db_session, monkeypatch):
     from app.core.ai_pricing import ANTHROPIC_TOKEN_PRICES

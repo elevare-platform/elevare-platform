@@ -126,6 +126,87 @@ async def test_employer_cannot_send_invite_for_job_they_do_not_own(client, db_se
 
 
 @pytest.mark.asyncio
+async def test_employer_cannot_get_an_interview_link_for_a_job_they_do_not_own(
+    client, db_session
+):
+    _owner_token, owner_user = await register_and_promote(client, db_session, "EMPLOYER")
+    intruder_token, _intruder_user = await register_and_promote(
+        client, db_session, "EMPLOYER"
+    )
+    job = make_job(owner_user.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+
+    resp = await client.post(
+        f"/api/v1/interviews/{uuid4()}/interview-link",
+        params={"job_id": str(job.id)},
+        headers={"Authorization": f"Bearer {intruder_token}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_owner_gets_an_interview_link_back(client, db_session):
+    from app.modules.credits.service import CreditsService
+
+    owner_token, owner_user = await register_and_promote(client, db_session, "EMPLOYER")
+    # A new link costs credits (see test_interview_credits.py); this test is about
+    # the route handing it back.
+    await CreditsService(db_session).grant(owner_user.organization_id, 100)
+    job = make_job(owner_user.id, interview_brief="Ask about distributed systems.")
+    db_session.add(job)
+    await db_session.flush()
+    profile = await make_talent_pool_profile(db_session, added_by_id=owner_user.id)
+
+    resp = await client.post(
+        f"/api/v1/interviews/{profile.id}/interview-link",
+        params={"job_id": str(job.id)},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert resp.status_code == 200
+    assert "/interview/" in resp.json()["interview_url"]
+
+
+@pytest.mark.asyncio
+async def test_an_employer_can_see_what_an_interview_costs_and_their_balance(
+    client, db_session, monkeypatch
+):
+    from app.core.config import settings
+    from app.modules.credits.service import CreditsService
+
+    # Plan gates off makes every organization Professional, for which interviews
+    # are included; this test is about the Starter case.
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    token, user = await register_and_promote(client, db_session, "EMPLOYER")
+    await CreditsService(db_session).grant(user.organization_id, 35)
+
+    resp = await client.get(
+        "/api/v1/interviews/pricing", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "credits_per_interview": 10,
+        "balance": 35,
+        "charged": True,
+        "included_in_plan": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_pricing_is_for_employers_and_admins_only(client, db_session):
+    candidate_token, _ = await register_and_promote(client, db_session, "CANDIDATE")
+
+    assert (await client.get("/api/v1/interviews/pricing")).status_code == 401
+    refused = await client.get(
+        "/api/v1/interviews/pricing",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    assert refused.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_employer_cannot_send_invites_to_all_for_job_they_do_not_own(
     client, db_session
 ):

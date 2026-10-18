@@ -14,6 +14,7 @@ from app.core.exceptions import (
     AccountSuspendedException,
     AlreadyExistsException,
     InvalidCredentialsException,
+    InvalidCurrentPasswordException,
     RefreshTokenMissing,
     RevokedTokenException,
     TokenAlreadyUsedException,
@@ -26,9 +27,14 @@ from app.modules.auth.jwt_handler import (
     create_token_pair,
     decode_refresh_token,
 )
+from app.modules.auth.password_policy import (
+    must_change_password,
+    set_must_change_password,
+)
 from app.modules.auth.repository import AuthRepository
 from app.modules.auth.schemas import (
     AuthResponse,
+    ChangePasswordRequest,
     LoginRequest,
     MessageResponse,
     RegisterRequest,
@@ -56,12 +62,16 @@ class AuthService:
         self._auth_repo = AuthRepository(db)
 
     @staticmethod
-    def _build_user_response(user, organization=None) -> UserResponse:
+    def _build_user_response(
+        user, organization=None, must_change_password: bool = False
+    ) -> UserResponse:
         """Build a UserResponse, populating is_profile_complete for employers.
 
         organization must be passed explicitly when the relationship may
         not be loaded on the user object (e.g. immediately after create_user).
         When None is passed for an EMPLOYER, is_profile_complete defaults to False.
+        ``must_change_password`` comes from the caller (the flag is not a model
+        attribute, see ``password_policy``).
         """
         is_profile_complete = None
         if user.role == "EMPLOYER":
@@ -85,6 +95,7 @@ class AuthService:
             account_status=user.account_status,
             is_profile_complete=is_profile_complete,
             organization_role=user.organization_role,
+            must_change_password=must_change_password,
         )
 
     async def register_user(self, data: RegisterRequest, response: Response):
@@ -194,7 +205,10 @@ class AuthService:
 
         user.last_login_at = datetime.now(UTC)
 
-        token_pair = create_token_pair(user.id, user.role)
+        password_change_required = await must_change_password(self._db, user.id)
+        token_pair = create_token_pair(
+            user.id, user.role, must_change_password=password_change_required
+        )
 
         # set cookie
         response.set_cookie(
@@ -219,9 +233,56 @@ class AuthService:
             user=self._build_user_response(
                 user,
                 organization=getattr(user, "__dict__", {}).get("organization"),
+                must_change_password=password_change_required,
             ),
             access_token=token_pair["access_token"],
             token_type=token_pair["token_type"],
+            must_change_password=password_change_required,
+        )
+
+    async def change_password(
+        self, user, data: ChangePasswordRequest, response: Response
+    ) -> AuthResponse:
+        """Replace the user's password and start a fresh session.
+
+        Clears the must-change flag, revokes every refresh token issued before
+        (a session opened with the old password must not keep working), and
+        returns a new token pair that carries no "must change password" mark.
+
+        Raises:
+            InvalidCurrentPasswordException: If the current password is wrong.
+
+        """
+        if not verify_password(data.current_password, user.password_hash):
+            raise InvalidCurrentPasswordException()
+
+        user.password_hash = hash_password(data.new_password)
+        await set_must_change_password(self._db, user.id, False)
+        await self._auth_repo.revoke_all_refresh_tokens(user.id)
+
+        token_pair = create_token_pair(user.id, user.role)
+        response.set_cookie(
+            key="refresh_token",
+            value=token_pair["refresh_token"],
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite="lax",
+            max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        )
+        await self._auth_repo.create_refresh_token(
+            user.id,
+            token_pair["refresh_token"],
+            datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days),
+        )
+        await self._db.commit()
+
+        return AuthResponse(
+            user=self._build_user_response(
+                user, organization=getattr(user, "__dict__", {}).get("organization")
+            ),
+            access_token=token_pair["access_token"],
+            token_type=token_pair["token_type"],
+            must_change_password=False,
         )
 
     async def refresh_access_token(self, token: str) -> dict:
@@ -254,16 +315,20 @@ class AuthService:
         if not user:
             raise TokenInvalidException()
 
+        # Read the flag again, so refreshing never sheds the mark.
+        password_change_required = await must_change_password(self._db, user.id)
         new_access_token = _create_access_token(
             {
                 "sub": payload.sub,
                 "role": payload.role,
-            }
+            },
+            must_change_password=password_change_required,
         )
 
         return {
             "access_token": new_access_token,
             "token_type": "bearer",
+            "must_change_password": password_change_required,
         }
 
     async def revoke_refresh_token(self, token: str) -> None:

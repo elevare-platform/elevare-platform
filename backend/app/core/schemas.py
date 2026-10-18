@@ -46,12 +46,15 @@ class TokenPayload(BaseModel):
         sub: Subject — the user's UUID as a string.
         role: The user's role embedded at token creation time.
         type: Token type; must be ``"access"`` for access tokens.
+        must_change_password: True when the owner must set a new password before
+            anything else (an account provisioned with a temporary password).
 
     """
 
     sub: str
     role: str
     type: str
+    must_change_password: bool = False
 
 
 class SuccessResponse(BaseModel):

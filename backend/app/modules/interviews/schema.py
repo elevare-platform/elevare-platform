@@ -139,6 +139,25 @@ class InterviewInviteSendResponse(BaseModel):
     reason: str | None
 
 
+class InterviewPricingResponse(BaseModel):
+    """What an AI interview costs the caller's organization, and what it has left.
+
+    ``charged`` is false when nothing is taken for them. ``included_in_plan`` says
+    why when it is because their plan (Professional and above) covers interviews;
+    otherwise it is Elevare's own admin accounts, an owner with no organization, or
+    a price of 0, and the screen shows no cost at all.
+    """
+    credits_per_interview: int
+    balance: int | None
+    charged: bool
+    included_in_plan: bool = False
+
+
+class InterviewLinkResponse(BaseModel):
+    """The candidate's interview link, for an employer to share themselves."""
+    interview_url: str
+
+
 class InterviewInviteBulkSendResponse(BaseModel):
     """Result of a bulk invite send/resend across a job's interview list."""
     sent: int

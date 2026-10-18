@@ -29,6 +29,7 @@ import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import { isPlanLimitMessage } from '@/lib/planErrors'
 import { interviewUnavailableMessage } from '@/lib/interviewErrors'
+import { interviewPricingNote } from '@/lib/interviewPricing'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -1047,7 +1048,7 @@ const INTERVIEW_STATUS_META = {
   FAILED: { button: 'Resend', badge: 'Scoring failed', badgeClass: 'text-red-600' },
 }
 
-function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
+function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited }) {
   const [showPanel, setShowPanel] = useState(false)
   const [showCvModal, setShowCvModal] = useState(false)
   const [showActionModal, setShowActionModal] = useState(false)
@@ -1058,6 +1059,10 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
   const [statusOverride, setStatusOverride] = useState(null)
   const [emailInput, setEmailInput] = useState('')
   const [savingEmail, setSavingEmail] = useState(false)
+  const [copyingLink, setCopyingLink] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+  // Shown when the browser refuses clipboard access, so the link can be copied by hand.
+  const [manualLink, setManualLink] = useState(null)
 
   const isSelfRegistered = item.ownership === 'self_registered' && item.candidate_profile_id
   const canViewCv = item.has_cv_access
@@ -1096,6 +1101,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
       )
       if (data.sent) {
         setStatusOverride('PENDING')
+        onInvited?.()
       } else {
         setSendError(data.reason)
       }
@@ -1103,6 +1109,40 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
       setSendError(interviewUnavailableMessage(err) ?? 'Something went wrong')
     } finally {
       setSending(false)
+    }
+  }
+
+  // Gets the candidate's interview link without emailing it, so it can be shared
+  // another way (WhatsApp, a different email). A link already in use is returned
+  // unchanged by the server, so clicking this never breaks a candidate's session.
+  const handleCopyLink = async () => {
+    if (copyingLink) return
+    setCopyingLink(true)
+    setSendError(null)
+    setLinkCopied(false)
+    setManualLink(null)
+    try {
+      const { data } = await api.post(
+        `/api/v1/interviews/${item.talent_pool_profile_id}/interview-link`,
+        null,
+        { params: { job_id: jobId } }
+      )
+      onInvited?.()
+      try {
+        await navigator.clipboard.writeText(data.interview_url)
+        setLinkCopied(true)
+        setTimeout(() => setLinkCopied(false), 4000)
+      } catch {
+        setManualLink(data.interview_url)
+      }
+    } catch (err) {
+      const body = err.response?.data
+      const msg = body?.message ?? body?.detail
+      setSendError(
+        interviewUnavailableMessage(err) ?? (typeof msg === 'string' ? msg : 'Could not get the link')
+      )
+    } finally {
+      setCopyingLink(false)
     }
   }
 
@@ -1164,6 +1204,24 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved }) {
             <Send size={13} />
             {sending ? 'Sending…' : (statusMeta?.button ?? 'Send interview link')}
           </button>
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            disabled={copyingLink}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-text-muted hover:text-brand-blue transition-colors disabled:opacity-50"
+          >
+            {linkCopied ? <CheckIcon size={11} /> : <Copy size={11} />}
+            {copyingLink ? 'Getting link…' : linkCopied ? 'Link copied' : 'Copy link'}
+          </button>
+          {manualLink && (
+            <input
+              readOnly
+              value={manualLink}
+              onFocus={(e) => e.target.select()}
+              aria-label="Interview link"
+              className="w-56 text-[11px] rounded border border-border px-2 py-1"
+            />
+          )}
           {statusMeta && (
             <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
           )}
@@ -1246,8 +1304,19 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
   const [sendingAll, setSendingAll] = useState(false)
   const [bulkSummary, setBulkSummary] = useState(null)
   const [showBriefModal, setShowBriefModal] = useState(false)
+  // What an interview costs and the balance, shown before anything is sent and
+  // refreshed after each send (a send takes credits).
+  const [pricing, setPricing] = useState(null)
 
   const hasInterviewBrief = !!job?.interview_brief
+
+  const loadPricing = useCallback(() => {
+    api.get('/api/v1/interviews/pricing')
+      .then(({ data }) => setPricing(data))
+      .catch(() => setPricing(null))
+  }, [])
+
+  useEffect(() => { loadPricing() }, [loadPricing])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -1281,6 +1350,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           : `Sent to ${data.sent}`
       )
       load()
+      loadPricing()
     } catch (err) {
       setBulkSummary(interviewUnavailableMessage(err) ?? 'Failed to send invites. Please try again.')
     } finally {
@@ -1337,8 +1407,18 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
     )
   }
 
+  const pricingNote = interviewPricingNote(pricing)
+
   return (
     <div className="space-y-3">
+      {pricingNote && (
+        <p className={cn('text-xs', pricingNote.short ? 'text-red-600' : 'text-text-muted')}>
+          {pricingNote.text}{' '}
+          {pricingNote.short && (
+            <Link to="/employer/billing" className="font-medium underline">Buy credits</Link>
+          )}
+        </p>
+      )}
       {hasInterviewBrief ? (
         <div className="flex flex-col items-end gap-1">
           <div className="flex flex-wrap justify-end gap-2">
@@ -1374,6 +1454,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           jobId={jobId}
           hasInterviewBrief={hasInterviewBrief}
           onRemoved={handleRemoved}
+          onInvited={loadPricing}
         />
       ))}
     </div>

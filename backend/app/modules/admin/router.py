@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.core.dependencies import get_db, require_role
 from app.core.schemas import SuccessResponse
 from app.core.storage import StorageService, get_storage_service
 from app.modules.auth.service import AuthService
+from app.modules.jobs.schemas import JobResponse
 from app.modules.testimonials.enums import TestimonialStatus
 from app.modules.testimonials.schemas import (
     TestimonialAdminRead,
@@ -23,10 +24,13 @@ from app.modules.users.models import User
 from .schemas import (
     BulkJobActionRequest,
     BulkUserActionRequest,
+    ClientJobCreateRequest,
     CreditGrantRequest,
     InviteRequest,
     JobModerationRequest,
     KYCModerationRequest,
+    ProvisionEmployerRequest,
+    ProvisionEmployerResponse,
     UserStatusUpdateRequest,
 )
 from .service import AdminService
@@ -59,6 +63,49 @@ async def create_invite(
     if settings.email_stub_mode:
         return {"invite_token": raw_token}
     return SuccessResponse(message="Invite sent")
+
+
+@router.post(
+    "/employers/provision",
+    response_model=ProvisionEmployerResponse,
+    status_code=201,
+)
+async def provision_employer(
+    data: ProvisionEmployerRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """Create a client's employer account with a temporary password.
+
+    The temporary password is in this response only, once. It is never stored in
+    clear, logged or audited, and the response must not be cached.
+    """
+    result = await AdminService(db).provision_employer(admin_user.id, data)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post(
+    "/employers/{employer_id}/jobs",
+    response_model=JobResponse,
+    status_code=201,
+)
+async def create_job_for_client(
+    data: ClientJobCreateRequest,
+    employer_id: UUID = Path(...),
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """Create an interview-only draft job inside a client's account.
+
+    The job belongs to the client, stays a draft (off the public board, no
+    verification or moderation needed) and has no interview brief: the client
+    writes that on the Edit Job page.
+    """
+    return await AdminService(db).create_job_for_client(
+        admin_user.id, employer_id, data
+    )
 
 
 @router.post("/employers/invite/{token}/resend", status_code=200)

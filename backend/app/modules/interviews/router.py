@@ -14,6 +14,8 @@ from app.modules.interviews.schema import (
     InterviewDetailResponse,
     InterviewInviteBulkSendResponse,
     InterviewInviteSendResponse,
+    InterviewLinkResponse,
+    InterviewPricingResponse,
     InterviewPublicInfoResponse,
     InterviewResetRequestResponse,
     InterviewResponse,
@@ -148,6 +150,35 @@ async def send_interview_invite(
     service = InterviewService(db)
     try:
         return await service.send_invite(current_user, job_id, talent_pool_profile_id)
+    finally:
+        await service.close()
+
+
+@router.get("/pricing", response_model=InterviewPricingResponse, status_code=200)
+async def get_interview_pricing(
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """What an AI interview costs the caller's organization, and its credit balance."""
+    service = InterviewService(db)
+    try:
+        return await service.get_pricing(current_user)
+    finally:
+        await service.close()
+
+
+@router.post("/{talent_pool_profile_id}/interview-link", response_model=InterviewLinkResponse, status_code=200)
+async def get_interview_link(
+    talent_pool_profile_id: uuid.UUID,
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the candidate's interview link so the employer can share it
+    themselves. Nothing is emailed, and a link already in use is not changed."""
+    service = InterviewService(db)
+    try:
+        return await service.get_interview_link(current_user, job_id, talent_pool_profile_id)
     finally:
         await service.close()
 

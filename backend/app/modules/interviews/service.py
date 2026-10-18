@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.cost_trend import effective_month_bounds, month_range
 from app.core.exceptions import (
     ApplicationNotFound,
+    InsufficientCreditsException,
     InterviewNotFound,
     PermissionDeniedException,
     ValidationException,
@@ -20,7 +21,9 @@ from app.core.exceptions import (
 from app.core.ownership import can_manage_job
 from app.core.storage import get_storage_service
 from app.modules.applications.repository import ApplicationRepository
+from app.modules.billing.service import BillingService
 from app.modules.candidates.repository import CandidateRepository
+from app.modules.credits.service import CreditsService
 from app.modules.interview_list.repository import InterviewListRepository
 from app.modules.interviews.enums import (
     InterviewCostComponent,
@@ -44,6 +47,7 @@ from app.modules.interviews.tasks import (
 )
 from app.modules.jobs.models import Job
 from app.modules.talent_pool.repository import TalentPoolRepository
+from app.modules.users.enums import UserRole
 from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -202,7 +206,19 @@ class InterviewService:
         interview = await self._repo.get_by_job_and_profile(
             job.id, talent_pool_profile_id
         )
+        if interview is not None:
+            # Take this interview's lock before deciding anything. The hourly sweep
+            # that refunds expired invites takes the same lock, so a resend and a
+            # refund always take turns: without it the sweep could refund the
+            # credits just as a resend hands out a live link, a free interview.
+            await self._repo.lock_status(interview.id)
+            await self._db.refresh(interview)
         if interview is None:
+            # Charge before anything is saved: the id is decided first, so when
+            # the credits are short nothing exists to clean up, and the charge and
+            # the interview are committed together below or not at all.
+            new_interview_id = uuid.uuid4()
+            await self._charge_for_invite(job, new_interview_id)
             application_id = await self._find_matching_application_id(
                 job.id, talent_pool_profile_id
             )
@@ -210,6 +226,7 @@ class InterviewService:
                 job_id=job.id,
                 talent_pool_profile_id=talent_pool_profile_id,
                 application_id=application_id,
+                interview_id=new_interview_id,
             )
         elif interview.status in (
             InterviewStatus.UPLOADED.value,
@@ -217,6 +234,12 @@ class InterviewService:
         ):
             # Already completed — nothing new to invite them to.
             return None
+        else:
+            # A resend or a re-invite. Free while the interview is still paid; an
+            # interview whose credits were refunded (the invite expired unused) is
+            # charged again. Short on credits: this raises before anything below
+            # changes the existing interview.
+            await self._charge_for_invite(job, interview.id)
 
         token = secrets.token_urlsafe(32)
         update_data: dict = {
@@ -677,6 +700,44 @@ class InterviewService:
                 status_code=503,
             )
 
+    async def _charge_for_invite(self, job: Job, interview_id: uuid.UUID) -> None:
+        """Take the interview's credits from the organization that owns the job,
+        unless the interview is already paid.
+
+        Never charged: Elevare's own admin-owned jobs, a job whose owner has no
+        organization (there is no wallet to take from), and a price of 0.
+        Raises InsufficientCreditsException when the credits are short. Does not
+        commit: the invite's own commit saves the charge with the interview.
+        """
+        cost = settings.interview_credit_cost
+        employer = job.employer
+        if (
+            cost <= 0
+            or employer is None
+            or employer.role == UserRole.ADMIN.value
+            or employer.organization_id is None
+        ):
+            return
+        if await self._interviews_included_in_plan(employer.organization_id):
+            return
+        await CreditsService(self._db).charge_interview(
+            employer.organization_id, interview_id, cost
+        )
+
+    async def _interviews_included_in_plan(self, organization_id: uuid.UUID) -> bool:
+        """Whether the organization's plan covers AI interviews, so no credits are
+        taken for them: Professional and above.
+
+        Until plans bundle a monthly credit allowance (see docs/11_PRICING_MODEL.md
+        stage 3), a subscriber would otherwise pay the subscription and credits for
+        the same thing. Read through ``get_effective_plan``, the one place that
+        answers "what plan is this organization on right now": a lapsed
+        subscription counts as Starter, and the plan-gates testing switch makes
+        everyone Professional.
+        """
+        plan = await BillingService(self._db).get_effective_plan(organization_id)
+        return plan.code != "starter"
+
     async def _daily_invite_limit_reached(self, job: Job) -> bool:
         """Whether this job's organization has used up its first-time invites
         for the last 24 hours. A soft limit: two simultaneous bulk sends can
@@ -727,7 +788,10 @@ class InterviewService:
                 ),
             }
 
-        invite = await self.create_invite(job, talent_pool_profile_id)
+        try:
+            invite = await self.create_invite(job, talent_pool_profile_id)
+        except InsufficientCreditsException as exc:
+            return {"sent": False, "reason": exc.message}
         if invite is None:
             return {"sent": False, "reason": "Interview already completed or not configured"}
 
@@ -794,6 +858,88 @@ class InterviewService:
 
         return await self._send_invite_for_profile(job, talent_pool_profile_id)
 
+    async def get_pricing(self, user: User) -> dict:
+        """What an AI interview costs the caller's organization, and its balance,
+        so the screen can show both before an invite is sent. Uses the same rules
+        as ``_charge_for_invite`` for who is never charged."""
+        cost = settings.interview_credit_cost
+        if (
+            cost <= 0
+            or user.role == UserRole.ADMIN.value
+            or user.organization_id is None
+        ):
+            return {
+                "credits_per_interview": cost,
+                "balance": None,
+                "charged": False,
+                "included_in_plan": False,
+            }
+        balance = await CreditsService(self._db).get_balance(user.organization_id)
+        included = await self._interviews_included_in_plan(user.organization_id)
+        return {
+            "credits_per_interview": cost,
+            "balance": balance,
+            "charged": not included,
+            "included_in_plan": included,
+        }
+
+    async def get_interview_link(
+        self,
+        user: User,
+        job_id: uuid.UUID,
+        talent_pool_profile_id: uuid.UUID,
+    ) -> dict:
+        """The candidate's interview link, for an employer to share themselves
+        (the candidate may have no email on file, or the email may not arrive).
+
+        Unlike a resend, this never disturbs a candidate who may be using the
+        link right now: an unexpired link for an unfinished interview is returned
+        as it is, and only a missing or expired one is created. Nothing is emailed.
+        """
+        from app.core.exceptions import JobNotFoundError
+        from app.modules.jobs.repository import JobRepository
+
+        self._assert_interviews_enabled()
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError()
+
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+
+        if not job.interview_brief:
+            raise ValidationException("This job does not have an AI interview configured")
+
+        interview = await self._repo.get_by_job_and_profile(job.id, talent_pool_profile_id)
+        if interview is None:
+            # Same cost guard as a first email invite.
+            if await self._daily_invite_limit_reached(job):
+                raise ValidationException(
+                    "Daily AI interview invite limit reached. Please try again "
+                    "tomorrow or contact support to raise it."
+                )
+        elif interview.status in (
+            InterviewStatus.UPLOADED.value,
+            InterviewStatus.SCORED.value,
+        ):
+            raise ValidationException("This interview has already been completed")
+        elif (
+            interview.status
+            in (InterviewStatus.PENDING.value, InterviewStatus.IN_PROGRESS.value)
+            and interview.token
+            and interview.token_expires_at
+            and interview.token_expires_at > datetime.now(UTC)
+        ):
+            return {"interview_url": f"{settings.app_url}/interview/{interview.token}"}
+
+        invite = await self.create_invite(job, talent_pool_profile_id)
+        if invite is None:
+            raise ValidationException("This interview has already been completed")
+
+        _interview, interview_url = invite
+        return {"interview_url": interview_url}
+
     async def send_invites_to_all(self, user: User, job_id: uuid.UUID) -> dict:
         """Bulk send/resend to everyone on this job's interview list."""
         from app.core.exceptions import JobNotFoundError
@@ -858,7 +1004,7 @@ class InterviewService:
 
         # Plan check first, so a Starter organization gets the upgrade message
         # instead of a silent no-op.
-        await assert_can_score_interviews(self._db, job)
+        await assert_can_score_interviews(self._db, job, interview.id)
 
         # Lock, then re-read: two clicks (or a click racing the task) must not
         # both queue scoring. The second sees the interview already processing.

@@ -36,13 +36,15 @@ function SkeletonCard() {
  * Protected: EMPLOYER or ADMIN role (enforced via ProtectedRoute in App.jsx)
  * Requirements: 4.1–4.11
  */
+// "All" comes first and is what the page opens on, so a draft (an interview-only
+// job, or one not yet published) is on screen without hunting for its tab.
 const STATUS_FILTERS = [
+  { value: 'all',      label: 'All' },
   { value: 'active',   label: 'Active' },
   { value: 'approved', label: 'Ready to publish' },
   { value: 'pending',  label: 'Pending review' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'closed',   label: 'Closed' },
-  { value: 'all',      label: 'All' },
 ]
 
 const READY_BANNER_KEY = 'employerJobs.readyToPublish.dismissedAt'
@@ -50,7 +52,7 @@ const READY_BANNER_KEY = 'employerJobs.readyToPublish.dismissedAt'
 export default function EmployerJobsPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('active')
+  const [statusFilter, setStatusFilter] = useState('all')
 
   // Debounce - avoid firing a request on every keystroke
   useEffect(() => {
@@ -337,11 +339,14 @@ export default function EmployerJobsPage() {
             </div>
           )}
 
-          {!loading && jobs.length === 0 && !debouncedSearch && statusFilter === 'active' && (
+          {!loading && jobs.length === 0 && !debouncedSearch && (statusFilter === 'all' || statusFilter === 'active') && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <p className="text-xl font-semibold text-text mb-2">No active jobs</p>
+              <p className="text-xl font-semibold text-text mb-2">
+                {statusFilter === 'all' ? 'No jobs yet' : 'No active jobs'}
+              </p>
               <p className="text-text-muted mb-6">
-                Post your first job to start finding candidates, or check another tab above.
+                Post your first job to start finding candidates
+                {statusFilter === 'all' ? '.' : ', or check another tab above.'}
               </p>
               <Link to="/employer/jobs/new">
                 <Button>Post a job</Button>
@@ -349,13 +354,13 @@ export default function EmployerJobsPage() {
             </div>
           )}
 
-          {!loading && jobs.length === 0 && !debouncedSearch && statusFilter !== 'active' && (
+          {!loading && jobs.length === 0 && !debouncedSearch && statusFilter !== 'active' && statusFilter !== 'all' && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <p className="text-xl font-semibold text-text mb-2">
                 No {STATUS_FILTERS.find((f) => f.value === statusFilter)?.label.toLowerCase()} jobs
               </p>
               <p className="text-text-muted mb-6">Nothing to show under this filter yet.</p>
-              <Button variant="outline" onClick={() => setStatusFilter('active')}>Back to active</Button>
+              <Button variant="outline" onClick={() => setStatusFilter('all')}>Back to all</Button>
             </div>
           )}
 

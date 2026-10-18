@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import TokenInvalidException
@@ -62,6 +62,18 @@ class AuthRepository:
             token.used_at = datetime.now(UTC)
             return
         raise TokenInvalidException()
+
+    async def revoke_all_refresh_tokens(self, user_id: UUID) -> None:
+        """Revoke every still-active refresh token of a user.
+
+        Used when the password changes, so a session opened with the old
+        password cannot keep refreshing. Does not commit.
+        """
+        await self._db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id, RefreshToken.is_revoked.is_(False))
+            .values(is_revoked=True, used_at=datetime.now(UTC))
+        )
 
     async def create_verification_token(
         self, user_id: UUID, hashed_token: str, expires_at: datetime

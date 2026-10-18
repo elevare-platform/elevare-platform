@@ -192,6 +192,39 @@ class AccountSetupIncompleteException(PlatformError):
         super().__init__(message, code, status_code, details)
 
 
+class InvalidCurrentPasswordException(PlatformError):
+    """Raised when the current password given to change-password is wrong.
+
+    Deliberately not a 401: the frontend treats 401 as an expired session and
+    would log the user out in the middle of changing their password.
+    """
+
+    def __init__(
+        self,
+        message: str = "Current password is incorrect",
+        code: str = "INVALID_CURRENT_PASSWORD",
+        status_code: int = 400,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class PasswordChangeRequiredException(PlatformError):
+    """Raised when an account with a temporary password uses anything but the
+    change-password request."""
+
+    def __init__(
+        self,
+        message: str = "You must set a new password before continuing.",
+        code: str = "PASSWORD_CHANGE_REQUIRED",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
 class EmailVerificationRequiredException(PlatformError):
     """Raised when a user with PENDING_VERIFICATION status accesses a protected route."""
 
@@ -602,6 +635,21 @@ class PaymentVerificationException(PlatformError):
         message: str = "Payment verification failed",
         code: str = "PAYMENT_VERIFICATION_FAILED",
         status_code: int = 400,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class InsufficientCreditsException(PlatformError):
+    """Raised when an organization does not have enough credits for an action that
+    costs credits (402 Payment Required)."""
+
+    def __init__(
+        self,
+        message: str = "Not enough credits",
+        code: str = "INSUFFICIENT_CREDITS",
+        status_code: int = 402,
         details: list | None = None,
     ) -> None:
         """Initialise with platform error defaults."""
