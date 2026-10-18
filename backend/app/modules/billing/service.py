@@ -2,6 +2,7 @@
 Billing Service
 """
 
+import json
 import logging
 import uuid
 from dataclasses import dataclass
@@ -39,6 +40,13 @@ from .repository import BillingRepository
 
 _CHECKOUT_URL_TTL = timedelta(minutes=30)
 _WEBHOOK_SIGNATURE_HEADERS = {"paystack": "x-paystack-signature"}
+
+# A recorded-but-unprocessed webhook event is retried by the sweep once it has gone
+# this long without an attempt (so the sweep never races a delivery that is still
+# running), and for this long after it arrived, which is also Paystack's own
+# retry horizon. Past that it is reported, not retried.
+WEBHOOK_REPLAY_AFTER = timedelta(minutes=5)
+WEBHOOK_GIVE_UP_AFTER = timedelta(days=3)
 
 logger = logging.getLogger(__name__)
 
@@ -339,22 +347,128 @@ class BillingService:
                 payload=event.payload,
             )
             await self._db.commit()
+            event_id = recorded_event.id
         except IntegrityError:
             await self._db.rollback()
-            return  # duplicate delivery — already recorded, nothing more to do
+            # Already on file. That only means it was RECEIVED: if the first
+            # delivery failed to process it, this redelivery is the retry, so
+            # process it now unless it has been processed meanwhile.
+            existing = await self._repo.get_webhook_event(
+                provider.upper(), event.provider_event_id
+            )
+            if existing is None:
+                return
+            event_id = existing.id
 
+        await self._process_if_unprocessed(event_id, skip_locked=False)
+
+    async def _process_if_unprocessed(
+        self,
+        event_id: uuid.UUID,
+        *,
+        skip_locked: bool,
+        not_touched_since: datetime | None = None,
+    ) -> bool:
+        """Process a recorded webhook event once, unless it already was.
+
+        Locks the event row first and holds the lock until the outcome is saved, so
+        a redelivery and a sweep can never process the same event at the same time.
+        With ``skip_locked`` an event someone else holds is skipped, not waited for.
+        ``not_touched_since`` re-checks, under the lock, that no other attempt
+        touched the event after the caller listed it.
+
+        Returns True when the event was processed successfully now.
+        """
+        locked = await self._repo.lock_webhook_event(event_id, skip_locked=skip_locked)
+        if (
+            locked is None
+            or locked.processed_at is not None
+            or (
+                not_touched_since is not None
+                and locked.updated_at >= not_touched_since
+            )
+        ):
+            await self._db.commit()  # nothing to do: just release the lock
+            return False
+        return await self._run_locked_event(locked)
+
+    async def _run_locked_event(self, recorded_event: WebhookEvent) -> bool:
+        """Process an event whose row this transaction holds locked, and save the
+        outcome: processed, or the error (with a fresh updated_at, which is what the
+        sweep's retry delay is measured from). Returns True on success."""
+        event = self._adapter.parse_webhook_event(
+            json.dumps(recorded_event.payload).encode()
+        )
+        event_id = recorded_event.id
+        provider_event_id = recorded_event.provider_event_id
         try:
             await self._process_webhook_event(event, recorded_event)
             recorded_event.processed_at = datetime.now(UTC)
+            recorded_event.processing_error = None
             await self._db.commit()
+            return True
         except Exception as e:
             await self._db.rollback()
-            logger.exception(
-                "Failed to process webhook event %s", recorded_event.provider_event_id
-            )
-            fresh_event = await self._repo.get_webhook_event_by_id(recorded_event.id)
+            logger.exception("Failed to process webhook event %s", provider_event_id)
+            fresh_event = await self._repo.get_webhook_event_by_id(event_id)
             fresh_event.processing_error = str(e)
+            # Set explicitly: an identical error text would change nothing, and
+            # the sweep must still wait before trying again.
+            fresh_event.updated_at = datetime.now(UTC)
             await self._db.commit()
+            return False
+
+    async def replay_unprocessed_webhooks(self, *, limit: int = 50) -> int:
+        """Retry payment webhooks that were recorded but never processed.
+
+        A webhook can fail to process (Paystack's confirmation call times out, the
+        database blips) or be cut off by a restart after it was recorded. It was
+        saved as received and answered 200, so Paystack never resends it. Left
+        alone, a renewal that failed once means a customer who paid is later
+        dropped to Starter. This is the retry.
+
+        Only events at least WEBHOOK_REPLAY_AFTER since their last attempt are
+        tried (never racing a delivery still running), each in its own transaction
+        so one bad event cannot block the rest, and only for WEBHOOK_GIVE_UP_AFTER;
+        an event that stays unprocessed past that is reported loudly instead.
+        Returns how many events were processed successfully.
+        """
+        now = datetime.now(UTC)
+        not_touched_since = now - WEBHOOK_REPLAY_AFTER
+        event_ids = await self._repo.list_replayable_webhook_event_ids(
+            not_touched_since=not_touched_since,
+            received_after=now - WEBHOOK_GIVE_UP_AFTER,
+            limit=limit,
+        )
+        processed = 0
+        for event_id in event_ids:
+            try:
+                if await self._process_if_unprocessed(
+                    event_id, skip_locked=True, not_touched_since=not_touched_since
+                ):
+                    processed += 1
+            except Exception:
+                await self._db.rollback()
+                logger.exception(
+                    "replay_unprocessed_webhooks: could not replay event %s", event_id
+                )
+
+        abandoned = await self._repo.list_webhook_events_just_abandoned(
+            older_than=now - WEBHOOK_GIVE_UP_AFTER,
+            newer_than=now - WEBHOOK_GIVE_UP_AFTER - timedelta(hours=1),
+        )
+        for stuck in abandoned:
+            logger.error(
+                "replay_unprocessed_webhooks: giving up on webhook event %s (%s), "
+                "unprocessed for over %d days; last error: %s. A person must "
+                "reconcile it with Paystack.",
+                stuck.provider_event_id,
+                stuck.event_type,
+                WEBHOOK_GIVE_UP_AFTER.days,
+                stuck.processing_error,
+            )
+        await self._db.commit()
+        return processed
 
     async def _process_webhook_event(
         self, event: ParsedWebhookEvent, recorded_event: WebhookEvent
