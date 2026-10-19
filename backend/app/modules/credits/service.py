@@ -213,14 +213,13 @@ class CreditsService:
             organization_id, interview_id
         ):
             return 0
-        charge = await self._repo.latest_interview_charge(organization_id, interview_id)
+        charge = await self._repo.latest_charge(
+            organization_id, interview_id, INTERVIEW_CHARGE
+        )
         if charge is None or charge.delta == 0:
             return 0
         amount = abs(charge.delta)
-        plan_portion = charge.plan_portion
-        last_reset = await self._repo.latest_plan_reset_at(organization_id)
-        if last_reset is not None and last_reset > charge.created_at:
-            plan_portion = 0
+        plan_portion = await self._plan_part_still_returnable(organization_id, charge)
         await self._repo.apply_delta(
             organization_id,
             amount,
@@ -235,19 +234,44 @@ class CreditsService:
         employer_id: uuid.UUID,
         reference_id: uuid.UUID | None = None,
     ) -> int:
-        """Refund 1 credit (decline or expiry), as a bought credit. Returns the new
-        total.
+        """Refund 1 credit (decline or expiry). Returns the new total.
 
-        An introduction's credit is taken before the request exists, so it carries
-        no reference back to the pot it came from; a refunded credit therefore
-        always lands in the bought pot, which never expires.
+        The credit goes back to the pot it was taken from, found through the
+        introduction request's id (the charge is recorded with it). If the plan
+        credits were replaced or wiped since, or the request was charged before
+        charges carried an id, it comes back as a bought credit, which never
+        expires.
 
         Does NOT commit — caller owns the transaction.
         """
+        # Lock first, so "was the plan pot reset since the charge?" is answered
+        # about the same state the refund is applied to.
+        await self._repo.get_or_create_balance(employer_id, lock=True)
+        plan_portion = 0
+        if reference_id is not None:
+            charge = await self._repo.latest_charge(
+                employer_id, reference_id, "intro_request"
+            )
+            if charge is not None:
+                plan_portion = await self._plan_part_still_returnable(
+                    employer_id, charge
+                )
         row = await self._repo.apply_delta(
             employer_id=employer_id,
             delta=1,
             reason="intro_refund",
             reference_id=reference_id,
+            plan_portion=plan_portion,
         )
         return row.plan_balance + row.balance
+
+    async def _plan_part_still_returnable(
+        self, organization_id: uuid.UUID, charge
+    ) -> int:
+        """How much of a charge's plan part can still go back to the plan credits:
+        all of it, unless the plan credits were replaced or wiped since the charge
+        (then they no longer exist to return to, and it goes to bought credits)."""
+        last_reset = await self._repo.latest_plan_reset_at(organization_id)
+        if last_reset is not None and last_reset > charge.created_at:
+            return 0
+        return charge.plan_portion

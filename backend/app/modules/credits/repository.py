@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,18 +83,19 @@ class CreditsRepository:
         by_reason = dict(counts)
         return by_reason.get(INTERVIEW_CHARGE, 0) > by_reason.get(INTERVIEW_REFUND, 0)
 
-    async def latest_interview_charge(
-        self, organization_id: uuid.UUID, interview_id: uuid.UUID
+    async def latest_charge(
+        self, organization_id: uuid.UUID, reference_id: uuid.UUID, reason: str
     ) -> CreditTransaction | None:
-        """The interview's most recent charge row (what it took, and how much of
-        that came from plan credits), or None."""
+        """The most recent ledger row of ``reason`` for a thing that was charged
+        (an interview, an introduction request): what it took, and how much of
+        that came from plan credits. None when there is none."""
         return (
             await self._db.execute(
                 select(CreditTransaction)
                 .where(
                     CreditTransaction.employer_id == organization_id,
-                    CreditTransaction.reference_id == interview_id,
-                    CreditTransaction.reason == INTERVIEW_CHARGE,
+                    CreditTransaction.reference_id == reference_id,
+                    CreditTransaction.reason == reason,
                 )
                 .order_by(CreditTransaction.created_at.desc())
                 .limit(1)
@@ -122,6 +123,35 @@ class CreditsRepository:
                 )
             )
         ).scalar_one_or_none()
+
+    async def list_history(
+        self,
+        organization_id: uuid.UUID,
+        *,
+        limit: int,
+        before: tuple[datetime, uuid.UUID] | None = None,
+    ) -> list[CreditTransaction]:
+        """One page of an organization's credit movements, newest first.
+
+        Keyed on (created_at, id) rather than page numbers, so rows arriving while
+        someone is browsing never shift a page's contents. Rows that moved nothing
+        (the markers left when plan credits are replaced) are not history and are
+        left out. Fetches ``limit`` rows; the caller asks for one more than it will
+        show to learn whether another page exists.
+        """
+        statement = select(CreditTransaction).where(
+            CreditTransaction.employer_id == organization_id,
+            CreditTransaction.delta != 0,
+        )
+        if before is not None:
+            statement = statement.where(
+                tuple_(CreditTransaction.created_at, CreditTransaction.id)
+                < tuple_(before[0], before[1])
+            )
+        statement = statement.order_by(
+            CreditTransaction.created_at.desc(), CreditTransaction.id.desc()
+        ).limit(limit)
+        return list((await self._db.execute(statement)).scalars().all())
 
     async def has_plan_allowance_for(
         self, organization_id: uuid.UUID, payment_id: uuid.UUID

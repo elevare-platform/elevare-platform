@@ -162,7 +162,10 @@ class IntroductionService:
 
         # Deduct first — raises ValidationException if balance = 0
         organization_id = await self._resolve_organization_id(employer_id)
-        await self._credits.deduct(employer_id=organization_id)
+        # The request's id is chosen first so the credit is recorded against it:
+        # a refund can then find which pot (plan or bought credits) it came from.
+        intro_id = uuid.uuid4()
+        await self._credits.deduct(employer_id=organization_id, reference_id=intro_id)
 
         intro = await self._repo.create(
             employer_id=employer_id,
@@ -170,6 +173,7 @@ class IntroductionService:
             talent_pool_profile_id=talent_pool_profile_id,
             token=token,
             expires_at=expires_at,
+            intro_id=intro_id,
         )
 
         from app.core.config import settings

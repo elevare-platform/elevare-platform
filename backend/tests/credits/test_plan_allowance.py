@@ -297,7 +297,54 @@ async def test_a_refund_after_the_subscription_lapsed_does_not_revive_plan_credi
 
 
 @pytest.mark.asyncio
-async def test_a_refunded_introduction_credit_is_a_bought_credit(db_session):
+async def test_a_refunded_introduction_credit_returns_to_the_pot_it_came_from(
+    db_session,
+):
+    organization = await _org(db_session, plan=1, bought=5)
+    service = CreditsService(db_session)
+    request_id = uuid4()
+    await service.deduct(organization.id, reference_id=request_id)
+    assert await _pots(db_session, organization) == (0, 5)
+
+    total = await service.refund(organization.id, reference_id=request_id)
+
+    assert total == 6
+    assert await _pots(db_session, organization) == (1, 5)
+
+
+@pytest.mark.asyncio
+async def test_an_introduction_paid_with_bought_credits_is_refunded_to_them(
+    db_session,
+):
+    organization = await _org(db_session, bought=5)
+    service = CreditsService(db_session)
+    request_id = uuid4()
+    await service.deduct(organization.id, reference_id=request_id)
+
+    await service.refund(organization.id, reference_id=request_id)
+
+    assert await _pots(db_session, organization) == (0, 5)
+
+
+@pytest.mark.asyncio
+async def test_an_introduction_refund_after_a_renewal_is_a_bought_credit(db_session):
+    organization = await _org(db_session, plan=40)
+    service = CreditsService(db_session)
+    request_id = uuid4()
+    await service.deduct(organization.id, reference_id=request_id)
+
+    await service.reset_plan_allowance(organization.id, 40, uuid4())  # renewal
+    await service.refund(organization.id, reference_id=request_id)
+
+    assert await _pots(db_session, organization) == (40, 1)
+
+
+@pytest.mark.asyncio
+async def test_an_introduction_charged_without_a_reference_is_refunded_as_bought(
+    db_session,
+):
+    """Requests made before charges carried a reference cannot be traced to a pot;
+    the credit comes back as a bought one, which never expires."""
     organization = await _org(db_session, plan=1)
     service = CreditsService(db_session)
     await service.deduct(organization.id)
