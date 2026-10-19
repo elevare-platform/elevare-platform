@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,10 +11,13 @@ from app.core.exceptions import InsufficientCreditsException
 from app.modules.credits.repository import (
     INTERVIEW_CHARGE,
     INTERVIEW_REFUND,
+    INTRODUCTION_CREDIT_COST,
     PLAN_ALLOWANCE,
     PLAN_ALLOWANCE_EXPIRY,
     CreditsRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CreditsService:
@@ -138,7 +142,7 @@ class CreditsService:
         """
         balance = await self._repo.apply_delta(
             employer_id,
-            delta=-1,
+            delta=-INTRODUCTION_CREDIT_COST,
             reason="intro_request",
             reference_id=reference_id,
         )
@@ -242,11 +246,24 @@ class CreditsService:
         charges carried an id, it comes back as a bought credit, which never
         expires.
 
+        A request is refunded at most once: the expired link can be opened again,
+        the employer's list can notice the expiry too, and a double click can send
+        two declines at once, and each of those asks for a refund. Under the
+        balance lock, a request that already has a refund gets nothing more.
+
         Does NOT commit — caller owns the transaction.
         """
-        # Lock first, so "was the plan pot reset since the charge?" is answered
-        # about the same state the refund is applied to.
-        await self._repo.get_or_create_balance(employer_id, lock=True)
+        # Lock first, so "was the plan pot reset since the charge?" and "was it
+        # already refunded?" are answered about the state the refund is applied to.
+        balance = await self._repo.get_or_create_balance(employer_id, lock=True)
+        if reference_id is not None and await self._repo.has_refund_for(
+            employer_id, reference_id, "intro_refund"
+        ):
+            logger.info(
+                "Introduction %s was already refunded; not refunding it again",
+                reference_id,
+            )
+            return balance.plan_balance + balance.balance
         plan_portion = 0
         if reference_id is not None:
             charge = await self._repo.latest_charge(
@@ -258,7 +275,7 @@ class CreditsService:
                 )
         row = await self._repo.apply_delta(
             employer_id=employer_id,
-            delta=1,
+            delta=INTRODUCTION_CREDIT_COST,
             reason="intro_refund",
             reference_id=reference_id,
             plan_portion=plan_portion,

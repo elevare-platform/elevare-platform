@@ -51,6 +51,14 @@ class PaymentResponse(BaseModel):
         )
 
 
+class CreditCostsResponse(BaseModel):
+    """What things cost in credits, for the public pricing page. ``ai_interview``
+    is 0 when AI interviews are not charged for."""
+
+    introduction: int
+    ai_interview: int
+
+
 class CreditPackageSchema(BaseModel):
     """Credit package details response."""
 

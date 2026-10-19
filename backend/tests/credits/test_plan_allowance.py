@@ -355,6 +355,54 @@ async def test_an_introduction_charged_without_a_reference_is_refunded_as_bought
     assert await _pots(db_session, organization) == (0, 1)
 
 
+@pytest.mark.asyncio
+async def test_an_introduction_is_refunded_only_once(db_session):
+    organization = await _org(db_session, plan=1, bought=5)
+    service = CreditsService(db_session)
+    request_id = uuid4()
+    await service.deduct(organization.id, reference_id=request_id)
+
+    await service.refund(organization.id, reference_id=request_id)
+    total_after_second = await service.refund(organization.id, reference_id=request_id)
+    await service.refund(organization.id, reference_id=request_id)
+
+    assert total_after_second == 6
+    assert await _pots(db_session, organization) == (1, 5)
+    assert len(await _rows(db_session, organization.id, "intro_refund")) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_request_charged_before_references_existed_is_refunded_only_once(
+    db_session,
+):
+    """Its charge has no reference, but its refund always did, so a second refund
+    is still caught."""
+    organization = await _org(db_session, bought=3)
+    service = CreditsService(db_session)
+    request_id = uuid4()
+    await service.deduct(organization.id)  # no reference, as before this release
+
+    await service.refund(organization.id, reference_id=request_id)
+    await service.refund(organization.id, reference_id=request_id)
+
+    assert await _pots(db_session, organization) == (0, 3)
+
+
+@pytest.mark.asyncio
+async def test_different_requests_are_each_refunded_once(db_session):
+    organization = await _org(db_session, bought=5)
+    service = CreditsService(db_session)
+    first, second = uuid4(), uuid4()
+    await service.deduct(organization.id, reference_id=first)
+    await service.deduct(organization.id, reference_id=second)
+
+    await service.refund(organization.id, reference_id=first)
+    await service.refund(organization.id, reference_id=second)
+    await service.refund(organization.id, reference_id=first)
+
+    assert await _pots(db_session, organization) == (0, 5)
+
+
 # --- two requests at the same moment -------------------------------------------
 
 
@@ -401,6 +449,25 @@ async def test_two_deliveries_of_the_same_payment_deposit_once(
 
     assert sorted(results) == [False, True]
     assert await _read_pots(committed_org) == (40, 0)
+
+
+@pytest.mark.asyncio
+async def test_two_refunds_of_one_introduction_at_once_return_one_credit(
+    committed_org, two_sessions
+):
+    """A double click, or a list screen and a link click at the same moment: both
+    ask for the refund; the balance lock makes one wait, and it then sees the
+    first one's refund."""
+    request_id = uuid4()
+    await two_sessions.run(lambda s: s.grant(committed_org, 3))
+    await two_sessions.run(lambda s: s.deduct(committed_org, reference_id=request_id))
+
+    await asyncio.gather(
+        two_sessions.run(lambda s: s.refund(committed_org, reference_id=request_id)),
+        two_sessions.run(lambda s: s.refund(committed_org, reference_id=request_id)),
+    )
+
+    assert await _read_pots(committed_org) == (0, 3)
 
 
 @pytest.mark.asyncio

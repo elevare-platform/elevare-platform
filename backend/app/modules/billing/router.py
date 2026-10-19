@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.dependencies import get_db, require_org_role, require_role
 from app.modules.billing.repository import BillingRepository
 from app.modules.billing.schemas import (
     CheckoutResponse,
     CreditCheckoutRequest,
+    CreditCostsResponse,
     CreditPackageSchema,
     CurrentSubscriptionResponse,
     PaymentResponse,
@@ -14,6 +16,7 @@ from app.modules.billing.schemas import (
     SubscriptionCheckoutResponse,
 )
 from app.modules.billing.service import BillingService
+from app.modules.credits.repository import INTRODUCTION_CREDIT_COST
 from app.modules.users.models import User
 
 webhook_router = APIRouter()
@@ -50,6 +53,16 @@ async def list_credit_packages(db: AsyncSession = Depends(get_db)):
     """Purchasable credit bundles."""
     repo = BillingRepository(db)
     return await repo.list_active_credit_packages()
+
+
+@public_router.get("/credit-costs", response_model=CreditCostsResponse)
+async def get_credit_costs():
+    """What an introduction and an AI interview cost in credits: the same numbers
+    that are charged, so the pricing page never promises a different price."""
+    return CreditCostsResponse(
+        introduction=INTRODUCTION_CREDIT_COST,
+        ai_interview=max(settings.interview_credit_cost, 0),
+    )
 
 
 @router.get("/subscription", response_model=CurrentSubscriptionResponse)

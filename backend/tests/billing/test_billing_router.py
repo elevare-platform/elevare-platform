@@ -72,6 +72,32 @@ async def test_list_credit_packages_returns_seeded_packages(client):
     assert {"starter_pack", "growth_pack", "scale_pack"}.issubset(codes)
 
 
+@pytest.mark.asyncio
+async def test_credit_costs_are_public_and_match_what_is_charged(client, monkeypatch):
+    """No login: the pricing page reads it. It reports the setting that charges."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "interview_credit_cost", 12)
+
+    response = await client.get("/api/v1/billing/credit-costs")
+
+    assert response.status_code == 200
+    assert response.json() == {"introduction": 1, "ai_interview": 12}
+
+
+@pytest.mark.asyncio
+async def test_credit_costs_report_zero_when_interviews_are_not_charged(
+    client, monkeypatch
+):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "interview_credit_cost", 0)
+
+    response = await client.get("/api/v1/billing/credit-costs")
+
+    assert response.json()["ai_interview"] == 0
+
+
 # --- Checkout: org-role gate --------------------------------------------
 
 

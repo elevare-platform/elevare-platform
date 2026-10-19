@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ValidationException
 from app.modules.credits.models import CreditTransaction, EmployerCredits
 
+# What requesting a candidate introduction costs. The public pricing page shows it
+# (GET /billing/credit-costs), so it lives here rather than as a bare 1.
+INTRODUCTION_CREDIT_COST = 1
+
 # Ledger reasons for AI interviews. The reference_id is the interview's id.
 INTERVIEW_CHARGE = "interview_charge"
 INTERVIEW_REFUND = "interview_refund"
@@ -123,6 +127,24 @@ class CreditsRepository:
                 )
             )
         ).scalar_one_or_none()
+
+    async def has_refund_for(
+        self, organization_id: uuid.UUID, reference_id: uuid.UUID, reason: str
+    ) -> bool:
+        """Whether a ledger row of ``reason`` already exists for this reference:
+        used to give a request its credit back at most once."""
+        found = (
+            await self._db.execute(
+                select(CreditTransaction.id)
+                .where(
+                    CreditTransaction.employer_id == organization_id,
+                    CreditTransaction.reference_id == reference_id,
+                    CreditTransaction.reason == reason,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return found is not None
 
     async def list_history(
         self,
