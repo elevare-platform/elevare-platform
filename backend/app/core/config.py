@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     app_name: str = "Elevare API"
     app_version: str
     app_url: str
+    # The public URL of THIS API (for example https://api.example.com), without a
+    # trailing slash. Used for the one-click "List-Unsubscribe" header in emails:
+    # a mail client posts to it directly, so it must be the API's address, not the
+    # website's. Optional: when unset, emails still carry the Unsubscribe link in
+    # the footer, just not the mail client's own Unsubscribe button.
+    api_public_url: str | None = None
     debug: bool
     environment: str
 

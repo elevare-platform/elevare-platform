@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown, Menu, X, LogOut, LayoutDashboard } from 'lucide-react'
+import { ChevronDown, Menu, X, LogOut, LayoutDashboard, Mail } from 'lucide-react'
 import { useAuth, getPostAuthRedirect } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import NotificationBell from '@/components/layout/NotificationBell'
@@ -110,6 +110,17 @@ function AuthNav({ user, onLogout }) {
 
       {/* Divider */}
       <span className="w-px h-4 bg-border" aria-hidden="true" />
+
+      {/* Email settings: turn emails from Elevare off or on */}
+      <Link
+        to="/settings/email"
+        className="flex items-center gap-1 text-xs text-text-muted hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded px-1 py-1"
+        aria-label="Email settings"
+        title="Email settings"
+      >
+        <Mail size={14} />
+        <span className="hidden xl:inline">Email settings</span>
+      </Link>
 
       {/* Sign out */}
       <button
@@ -291,6 +302,12 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
                     className="flex items-center gap-2 w-full py-2 text-sm font-medium text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded"
                   >
                     <LayoutDashboard size={16} /> Dashboard
+                  </button>
+                  <button
+                    onClick={() => { onClose(); navigate('/settings/email') }}
+                    className="flex items-center gap-2 w-full py-2 text-sm font-medium text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded"
+                  >
+                    <Mail size={16} /> Email settings
                   </button>
                   <button
                     onClick={() => { onClose(); onLogout() }}

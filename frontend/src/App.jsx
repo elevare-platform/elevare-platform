@@ -30,6 +30,8 @@ const ChangePasswordPage = lazy(() => import('@/pages/auth/ChangePasswordPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const NotificationDetailPage = lazy(() => import('@/pages/NotificationDetailPage'))
 const UnauthorisedPage = lazy(() => import('@/pages/UnauthorisedPage'))
+const UnsubscribePage = lazy(() => import('@/pages/UnsubscribePage'))
+const EmailSettingsPage = lazy(() => import('@/pages/settings/EmailSettingsPage'))
 
 const JobBoardPage = lazy(() => import('@/pages/jobs/JobBoardPage'))
 const JobDetailPage = lazy(() => import('@/pages/jobs/JobDetailPage'))
@@ -127,6 +129,9 @@ function AppRoutes() {
             password here, and the page checks for a session itself. */}
         <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/unauthorised" element={<UnauthorisedPage />} />
+        {/* The link in every email: no login, and it only changes anything when the
+            person presses the button on the page. */}
+        <Route path="/unsubscribe" element={<UnsubscribePage />} />
 
         {/* Public routes - no auth */}
         <Route path="/jobs" element={<JobBoardPage />} />
@@ -138,6 +143,7 @@ function AppRoutes() {
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/notifications/:id" element={<NotificationDetailPage />} />
+          <Route path="/settings/email" element={<EmailSettingsPage />} />
         </Route>
 
         {/* Employer-only routes */}
