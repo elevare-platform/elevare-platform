@@ -33,6 +33,22 @@ def has_real_score(row) -> bool:
     return not (row.ai_score == 0 and not row.ai_fit_summary)
 
 
+def reset_fields() -> dict:
+    """The values that put a candidate back to "not scored yet", with no failure marker
+    and no hashes (so the next scoring run does not skip it as already done). Used when
+    a person asks for a rescore; never applied to a row that has a real score."""
+    return {
+        "ai_score_failure": None,
+        "ai_score": None,
+        "ai_strengths": None,
+        "ai_weaknesses": None,
+        "ai_fit_summary": None,
+        "ai_score_job_hash": None,
+        "ai_score_cv_hash": None,
+        "ai_score_computed_at": None,
+    }
+
+
 def failure_fields(row, reason: str) -> dict:
     """The values to save when a candidate could not be scored.
 
