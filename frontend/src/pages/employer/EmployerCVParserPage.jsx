@@ -7,6 +7,7 @@ import CVParseStatusBadge from '@/components/admin/CVParseStatusBadge'
 import { useToast } from '@/components/admin/Toast'
 import { useCVParser } from '@/hooks/useCVParser'
 import { useAuth } from '@/context/AuthContext'
+import { useReportStep } from '@/hooks/useOnboarding'
 
 const TERMINAL = ['completed', 'failed', 'flagged']
 const STATUSES = ['', 'pending', 'processing', 'completed', 'flagged', 'failed']
@@ -131,6 +132,8 @@ function Field({ label, value }) {
 // ─── Exported Inner Component ────────────────────────────────────────────────
 export function EmployerCVParser() {
   const { user } = useAuth()
+  // Shown inside the dashboard's CV Parser tab as well as on its own page.
+  useReportStep('cv_parser')
   const { submitBatch, listSubmissions, pollSubmission, downloadCV, loading } = useCVParser()
   const { show, ToastContainer } = useToast()
   const dropRef = useRef(null)

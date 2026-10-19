@@ -10,6 +10,7 @@ import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { useToast } from '@/components/admin/Toast'
 import { useAuth } from '@/context/AuthContext'
+import { useReportStep } from '@/hooks/useOnboarding'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
@@ -757,6 +758,7 @@ function StatsBar({ profiles }) {
 
 export default function TalentPoolPage() {
   const { user } = useAuth()
+  useReportStep('talent_pool')
   const { show, ToastContainer } = useToast()
   const isAdmin = user?.role === 'ADMIN'
   const [searchParams] = useSearchParams()

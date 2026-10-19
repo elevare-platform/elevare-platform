@@ -31,6 +31,7 @@ import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import { isPlanLimitMessage } from '@/lib/planErrors'
 import { interviewUnavailableMessage } from '@/lib/interviewErrors'
 import { interviewPricingNote } from '@/lib/interviewPricing'
+import { useReportStep } from '@/hooks/useOnboarding'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -1300,6 +1301,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
 }
 
 function InterviewListTab({ jobId, job, onJobUpdated }) {
+  useReportStep('interview_list')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [sendingAll, setSendingAll] = useState(false)

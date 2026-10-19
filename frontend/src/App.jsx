@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth, getPostAuthRedirect } from '@/context/AuthContext'
+import { OnboardingProvider } from '@/context/OnboardingContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { initAnalytics, trackPageview } from '@/lib/analytics'
 
@@ -215,7 +216,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <OnboardingProvider>
+          <AppRoutes />
+        </OnboardingProvider>
       </AuthProvider>
     </BrowserRouter>
   )

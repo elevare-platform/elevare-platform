@@ -4,7 +4,7 @@ import {
   LogOut, Briefcase, ArrowRight, MailCheck,
   Plus, TrendingUp, FileText, CheckCircle,
   Sparkles, Heart, Cpu, LayoutDashboard,
-  FileSearch, Send, User, Eye, Users, CreditCard
+  FileSearch, Send, User, Eye, Users, CreditCard, HelpCircle
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,8 @@ import { EmployerCVParser } from '@/pages/employer/EmployerCVParserPage'
 import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import SaveHeartButton from '@/components/employer/SaveHeartButton'
+import GetStartedChecklist from '@/components/onboarding/GetStartedChecklist'
+import { useDashboardTour } from '@/components/onboarding/useDashboardTour'
 
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
@@ -197,6 +199,12 @@ function EmployerDashboard({ user }) {
 
   const isProfileComplete = user?.is_profile_complete
 
+  // Starts by itself the first time, once the overview and its numbers are showing;
+  // the Help button runs it again.
+  const { start: startTour } = useDashboardTour({
+    autoStart: activeTab === 'overview' && !statsLoading && !jobsLoading,
+  })
+
   const tabs = [
     { id: 'overview', label: 'Console Overview', icon: LayoutDashboard },
     { id: 'talent-pipeline', label: 'Talent Pipeline', icon: Sparkles, badge: 'AI' },
@@ -210,23 +218,36 @@ function EmployerDashboard({ user }) {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text">Welcome Back, {user?.first_name}</h1>
           <p className="text-text-muted text-sm mt-1">
             {profile?.company_name ?? 'Your employer dashboard'}
           </p>
         </div>
-        <Link to="/employer/jobs/new">
-          <Button className="flex items-center gap-2">
-            <Plus size={16} /> Post a Job
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setActiveTab('overview')
+              window.setTimeout(startTour, 50)
+            }}
+            className="flex items-center gap-2"
+          >
+            <HelpCircle size={16} /> Take a tour
           </Button>
-        </Link>
+          <Link to="/employer/jobs/new" data-tour="post-job">
+            <Button className="flex items-center gap-2">
+              <Plus size={16} /> Post a Job
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Profile incomplete banner */}
       {!isProfileComplete && (
-        <div className="rounded-xl border border-brand-amber/30 bg-brand-amber/5 p-4 flex items-center justify-between gap-4">
+        <div data-tour="profile-banner" className="rounded-xl border border-brand-amber/30 bg-brand-amber/5 p-4 flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-amber-800">Your company profile is incomplete</p>
             <p className="text-xs text-amber-700 mt-0.5">Complete your profile to post jobs.</p>
@@ -250,6 +271,7 @@ function EmployerDashboard({ user }) {
             return (
               <button
                 key={tab.id}
+                data-tour={`tab-${tab.id}`}
                 onClick={() => setActiveTab(tab.id)}
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold transition-all text-left ${isActive
                     ? 'bg-brand-blue text-white shadow-md'
@@ -275,6 +297,8 @@ function EmployerDashboard({ user }) {
         <div className="lg:col-span-9 space-y-8">
           {activeTab === 'overview' && (
             <>
+              <GetStartedChecklist user={user} stats={stats} onShowTour={startTour} />
+
               {/* Stats */}
               <div className="flex flex-wrap gap-3">
                 <StatCard icon={Briefcase} label="Total jobs" value={stats?.total_jobs} colour="bg-brand-blue" loading={statsLoading} />
@@ -297,7 +321,7 @@ function EmployerDashboard({ user }) {
               </div>
 
               {/* Recent jobs */}
-              <div className="bg-white rounded-xl border border-border overflow-hidden">
+              <div data-tour="recent-jobs" className="bg-white rounded-xl border border-border overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-border">
                   <h2 className="font-semibold text-text text-sm">Recent Jobs</h2>
                   <Link to="/employer/jobs" className="text-brand-blue text-xs font-medium hover:underline">View all</Link>

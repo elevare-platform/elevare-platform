@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useSavedCandidates } from '@/hooks/useSavedCandidates'
+import { useReportStep } from '@/hooks/useOnboarding'
 import CandidateSearchResultCard from '@/components/employer/CandidateSearchResultCard'
 
 const SENIORITY_OPTIONS = ['JUNIOR', 'MID', 'SENIOR', 'LEAD', 'EXECUTIVE']
@@ -65,6 +66,7 @@ function toPayload(filters) {
 }
 
 export default function CandidateSearchPage() {
+  useReportStep('candidate_search')
   const { show, ToastContainer } = useToast()
   const savedCandidates = useSavedCandidates()
 
