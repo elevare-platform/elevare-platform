@@ -9,29 +9,25 @@ Extract structured information from a CV.
 
 Rules:
 
-1. Return ONLY valid JSON.
-2. No markdown.
-3. No explanations.
-4. No code fences.
-5. If information is missing, return null.
-6. Never hallucinate.
-7. Never invent employers, skills, education, certifications, locations or dates.
-8. Use only information explicitly supported by the CV.
-9. Self-report confidence for each extracted section.
-10. Confidence values must be: high, medium, or low.
+1. If a single fact is missing, return null for it. If a whole list (skills, work
+   history, education) has nothing in it, return an empty list.
+2. Never hallucinate.
+3. Never invent employers, skills, education, certifications, locations or dates.
+4. Use only information explicitly supported by the CV.
+5. Self-report confidence (high, medium or low) for each extracted section.
 
-11. Nigerian-specific handling:
+6. Nigerian-specific handling:
     - NYSC (National Youth Service Corps) is post-graduate mandatory national service — treat as work experience, not education.
     - OND and HND are valid Nigerian qualifications — treat as formal education equivalent to diploma/associate degree.
     - "Polytechnic" institutions are valid — do not discard them.
     - Nigerian phone numbers start with +234 or 0 followed by 7, 8, or 9.
 
-12. If the CV text itself is too short, garbled, or unreadable to extract meaningful
+7. If the CV text itself is too short, garbled, or unreadable to extract meaningful
     information, return empty lists for skills, work_history and education, null for
     every other field, and "low" for every confidence value.
     Do not attempt to invent content.
 
-13. CVs use many different headings, or none ("Career Summary", "Employment Record",
+8. CVs use many different headings, or none ("Career Summary", "Employment Record",
     "Professional Experience & Achievements", and so on). Find work history, education
     and skills by what the text says, wherever it appears, not by its heading.
     If the text describes jobs the person held, work_history must not be empty.
@@ -69,8 +65,6 @@ For profession:
 
 For seniority_level, only return one of: junior, mid, senior, lead, executive.
 Otherwise return null.
-
-Return JSON matching the supplied schema exactly.
 """
 
 CV_EXTRACTION_USER_PROMPT = """
@@ -82,51 +76,11 @@ Extract only missing information.
 
 CV TEXT:
 {full_text}
-
-Return JSON using this schema:
-
-{schema}
 """
 
-CV_EXTRACTION_SCHEMA = {
-    "skills": [],
-    "years_experience": None,
-    "current_title": None,
-    "profession": None,
-    "seniority_level": None,
-    "summary": None,
-    "work_history": [
-        {
-            "company": None,
-            "title": None,
-            "start_date": None,
-            "end_date": None,
-            "duration_months": None,
-            "description": None,
-            "is_current": False,
-        }
-    ],
-    "education": [
-        {
-            "institution": None,
-            "degree": None,
-            "field": None,
-            "graduation_year": None,
-            "qualification_type": None,
-        }
-    ],
-    "field_confidence": {
-        "skills": "low",
-        "years_experience": "low",
-        "current_title": "low",
-        "profession": "low",
-        "seniority_level": "low",
-        "summary": "low",
-        "work_history": "low",
-        "education": "low",
-    },
-}
-
+# The shape of the answer is no longer described in the prompt: it is enforced by
+# the API from CVExtractionOutput (ai/schema.py). The old example schema also held
+# one all-null work-history entry, which models copied into real answers.
 
 # About 7,500 tokens (roughly 4 characters per token). An ordinary 2-4 page CV is
 # 6,000-12,000 characters and is never touched; the cap only stops an abnormal
@@ -153,5 +107,4 @@ def build_user_prompt(already_extracted: dict, full_text: str) -> str:
     return CV_EXTRACTION_USER_PROMPT.format(
         already_extracted=json.dumps(already_extracted, indent=2),
         full_text=limit_full_text(full_text or ""),
-        schema=json.dumps(CV_EXTRACTION_SCHEMA, indent=2),
     )

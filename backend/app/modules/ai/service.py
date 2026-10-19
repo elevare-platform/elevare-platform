@@ -10,10 +10,15 @@ import numpy as np
 from openai import AsyncOpenAI
 
 from app.core.config import settings
-from app.core.cv_pipeline.layer3_sections import DetectedSections
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
 
-from .schema import FitReasoningResult, InterviewScoringResult, MatchResult
+from .schema import (
+    CVExtractionOutput,
+    FitReasoningResult,
+    InterviewScoringResult,
+    MatchResult,
+)
+from .structured import call_structured
 
 logger = logging.getLogger(__name__)
 
@@ -83,15 +88,14 @@ class AIService(ABC):
     @abstractmethod
     async def extract_cv_data(
         self,
-        sections: DetectedSections,
         already_extracted: dict,
         model: str | None = None,
         full_text: str = "",
     ) -> LLMExtractionResult:
         """Extract structured data from a CV using AI.
 
-        `sections` are hints cut out by header matching and may be empty or
-        incomplete; `full_text` is the whole CV and the source of truth.
+        `full_text` is the whole CV, and the only source the model reads;
+        `already_extracted` is what the deterministic and NLP layers found.
         """
         ...
 
@@ -169,7 +173,6 @@ class KeywordAIService(AIService):
 
     async def extract_cv_data(
         self,
-        sections,
         already_extracted: dict,
         model: str | None = None,
         full_text: str = "",
@@ -238,7 +241,6 @@ class MockAIService(AIService):
 
     async def extract_cv_data(
         self,
-        sections: DetectedSections,
         already_extracted: dict,
         model: str | None = None,
         full_text: str = "",
@@ -312,7 +314,6 @@ class AnthropicCVExtractionService(AIService):
 
     async def extract_cv_data(
         self,
-        sections: DetectedSections,
         already_extracted: dict,
         model: str | None = None,
         full_text: str = "",
@@ -323,9 +324,13 @@ class AnthropicCVExtractionService(AIService):
         `settings.anthropic_model` explicitly to force the deep model
         (e.g. when re-running an extraction that the fast model got wrong).
 
-        `full_text` is the whole CV. The sections are cut out by exact header
-        matching and come back empty for a CV with unusual headings, so the
-        model must be able to read the full text instead.
+        `full_text` is the whole CV, and all the model reads: the header-matched
+        sections used to be sent too, but they only repeated the same text and
+        came back empty for a CV with unusual headings.
+
+        The reply is requested as a CVExtractionOutput (a JSON schema enforced by
+        the API), so there is no hand parsing; a reply that cannot be used is
+        logged with its stop_reason and returns an empty extraction.
         """
         from app.modules.ai.prompts.cv_extraction import (
             CV_EXTRACTION_SYSTEM_PROMPT,
@@ -347,46 +352,56 @@ class AnthropicCVExtractionService(AIService):
             full_text=full_text,
         )
 
-        raw = ""
-
         try:
-            response = await self._client.messages.create(
+            result = await call_structured(
+                self._client,
                 model=model,
                 # 2048 was too tight for a detailed CV (long work history,
-                # many skills/education entries) — the structured JSON
-                # response could hit the cap mid-string, producing a
-                # JSONDecodeError ("Unterminated string...") that fell back
-                # to an empty, low-confidence extraction for that CV.
+                # many skills/education entries): the reply hit the cap
+                # mid-string and the CV fell back to an empty, low-confidence
+                # extraction. A reply cut off now says so (stop_reason).
                 max_tokens=5120,
                 system=CV_EXTRACTION_SYSTEM_PROMPT,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
-                ],
+                user=user_prompt,
+                output_type=CVExtractionOutput,
             )
+        except Exception as e:
+            # The API itself failed (network, authentication, rate limit): no
+            # reply, no tokens to record.
+            logger.error("LLM CV extraction failed: %s", e)
+            return LLMExtractionResult()
 
-            raw = response.content[0].text
-            data = self._parse_response(raw)
-
+        if not result.ok:
+            # A reply arrived but cannot be used (cut off, refused, wrong shape).
+            # Still an empty extraction for now (phase B of the CV fix changes
+            # what happens next), but the call cost money, so its tokens are kept.
+            logger.error(
+                "LLM CV extraction returned no usable answer: %s (model=%s, stop_reason=%s)",
+                result.error,
+                model,
+                result.stop_reason,
+            )
             return LLMExtractionResult(
                 model=model,
-                skills=data.get("skills", []),
-                years_experience=data.get("years_experience"),
-                current_title=data.get("current_title"),
-                profession=data.get("profession"),
-                seniority_level=data.get("seniority_level"),
-                summary=data.get("summary"),
-                work_history=data.get("work_history", []),
-                education=data.get("education", []),
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-                field_confidence=data.get("field_confidence", {}),
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
             )
-        except (KeyError, TypeError, Exception) as e:
-            logger.error("LLM CV extraction failed: %s", e, extra={"raw": raw[:500]})
-            return LLMExtractionResult()
+
+        data = result.parsed
+        return LLMExtractionResult(
+            model=model,
+            skills=data.skills,
+            years_experience=data.years_experience,
+            current_title=data.current_title,
+            profession=data.profession,
+            seniority_level=data.seniority_level,
+            summary=data.summary,
+            work_history=[entry.model_dump() for entry in data.work_history],
+            education=[entry.model_dump() for entry in data.education],
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            field_confidence=data.field_confidence.model_dump(),
+        )
 
     @staticmethod
     def _fallback_response() -> dict:
@@ -732,9 +747,7 @@ class EmbeddingAIService(AIService):
             computed_at=datetime.now(UTC),
         )
 
-    async def extract_cv_data(
-        self, sections, already_extracted, model=None, full_text=""
-    ):
+    async def extract_cv_data(self, already_extracted, model=None, full_text=""):
         """Not implemented — EmbeddingAIService does not extract CV data."""
         raise NotImplementedError("EmbeddingAIService does not extract CV data.")
 

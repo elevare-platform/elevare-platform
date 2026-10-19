@@ -154,10 +154,10 @@ async def run_extraction_pipeline(
         if settings.ai_tiering_enabled
         else settings.anthropic_model
     )
-    # The sections come from exact header matching and are empty for a CV with
-    # unusual headings, so the model is always given the whole text as well.
+    # The model reads the whole text, not the header-matched sections (which are
+    # empty for a CV with unusual headings).
     llm_result = await ai_service.extract_cv_data(
-        sections, already_extracted, model=first_model, full_text=text_result.text
+        already_extracted, model=first_model, full_text=text_result.text
     )
     llm_attempts = [llm_result]
 
@@ -168,7 +168,6 @@ async def run_extraction_pipeline(
             settings.anthropic_model,
         )
         llm_result = await ai_service.extract_cv_data(
-            sections,
             already_extracted,
             model=settings.anthropic_model,
             full_text=text_result.text,

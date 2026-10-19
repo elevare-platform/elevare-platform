@@ -10,6 +10,7 @@ import pytest
 
 from app.core.cv_pipeline import pipeline
 from app.core.cv_pipeline.layer1_extraction import TextExtractionResult
+from app.core.cv_pipeline.layer3_sections import detect_sections
 from app.core.cv_pipeline.layer6_nlp import NLPExtractionResult
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
 
@@ -61,12 +62,13 @@ async def test_first_call_receives_full_text_when_experience_section_is_empty(
 
     await pipeline.run_extraction_pipeline(b"%PDF", nlp=None, ai_service=ai_service)
 
-    sections = ai_service.extract_cv_data.await_args.args[0]
-    assert sections.experience is None
-    assert (
-        "Regional Sales Manager at Unilever Nigeria"
-        in ai_service.extract_cv_data.await_args.kwargs["full_text"]
-    )
+    # The section matcher finds no experience in this CV, yet the model still gets
+    # the whole text, and no sections are passed at all.
+    assert detect_sections(CV_TEXT).experience is None
+    call = ai_service.extract_cv_data.await_args
+    assert len(call.args) == 1  # just what the earlier layers found
+    assert "amaka@example.com" in call.args[0]["email"]
+    assert "Regional Sales Manager at Unilever Nigeria" in call.kwargs["full_text"]
 
 
 @pytest.mark.asyncio

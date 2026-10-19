@@ -1,4 +1,5 @@
-"""build_user_prompt must always carry the full CV text, never only the sections.
+"""The extraction prompt must always carry the full CV text, and nothing that
+describes the answer's shape (the API enforces that).
 
 A CV whose headings the section matcher does not recognise ("Career Summary",
 "Professional Work Experience", ...) produces empty experience and education
@@ -6,13 +7,11 @@ sections. The model then had nothing to read and returned an empty profile.
 """
 
 import inspect
-import json
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.core.cv_pipeline.layer3_sections import DetectedSections
 from app.modules.ai.prompts.cv_extraction import (
+    CV_EXTRACTION_SYSTEM_PROMPT,
     MAX_FULL_TEXT_CHARS,
     build_user_prompt,
 )
@@ -23,6 +22,8 @@ from app.modules.ai.service import (
     KeywordAIService,
     MockAIService,
 )
+
+from .anthropic_fakes import anthropic_service, fake_client
 
 CV_TEXT = (
     "Amaka Obi\n"
@@ -58,23 +59,26 @@ def test_text_over_the_cap_loses_its_tail_and_says_so():
     assert "[CV text truncated]" in prompt
 
 
+def test_the_prompts_no_longer_describe_the_json_shape():
+    """The reply shape is enforced by the API from CVExtractionOutput. A template
+    in the prompt costs tokens on every call, and the old one held an all-null
+    work-history entry that models copied into real answers."""
+    user_prompt = build_user_prompt({}, full_text=CV_TEXT)
+
+    for prompt in (user_prompt, CV_EXTRACTION_SYSTEM_PROMPT):
+        assert "schema" not in prompt.lower()
+        assert "ONLY valid JSON" not in prompt
+        assert "code fences" not in prompt
+        assert '"company": null' not in prompt
+        assert '"is_current"' not in prompt
+
+
 @pytest.mark.asyncio
 async def test_service_logs_a_warning_when_it_truncates(caplog):
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
-    response = MagicMock()
-    response.content = [
-        MagicMock(text=json.dumps({"skills": [], "field_confidence": {}}))
-    ]
-    response.usage = MagicMock(input_tokens=10, output_tokens=10)
-    client = AsyncMock()
-    client.messages.create = AsyncMock(return_value=response)
-    service._client = client
-    sections = DetectedSections(None, None, None, None, None, None, None, "")
+    service = anthropic_service(fake_client())
 
     with caplog.at_level("WARNING"):
-        await service.extract_cv_data(
-            sections, {}, full_text="A" * (MAX_FULL_TEXT_CHARS + 1)
-        )
+        await service.extract_cv_data({}, full_text="A" * (MAX_FULL_TEXT_CHARS + 1))
 
     assert "truncated" in caplog.text
 
@@ -89,72 +93,22 @@ async def test_service_logs_a_warning_when_it_truncates(caplog):
         EmbeddingAIService,
     ],
 )
-def test_every_extract_cv_data_accepts_full_text(service_class):
+def test_every_extract_cv_data_takes_the_same_arguments(service_class):
     """The pipeline holds an AIService and does not know which class it has, so
-    every implementation must accept full_text or one of them breaks the day it
-    is used."""
-    params = inspect.signature(service_class.extract_cv_data).parameters
+    every implementation must accept the same arguments or one of them breaks the
+    day it is used. The header-matched sections are not among them any more."""
+    params = list(inspect.signature(service_class.extract_cv_data).parameters)
 
-    assert "full_text" in params
+    assert params == ["self", "already_extracted", "model", "full_text"]
 
 
 @pytest.mark.asyncio
 async def test_anthropic_service_sends_full_text_to_the_model():
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
+    client = fake_client()
+    service = anthropic_service(client)
 
-    response = MagicMock()
-    response.content = [
-        MagicMock(text=json.dumps({"skills": [], "field_confidence": {}}))
-    ]
-    response.usage = MagicMock(input_tokens=10, output_tokens=10)
-    client = AsyncMock()
-    client.messages.create = AsyncMock(return_value=response)
-    service._client = client
-
-    empty_sections = DetectedSections(
-        summary=None,
-        experience=None,
-        education=None,
-        skills=None,
-        certifications=None,
-        projects=None,
-        references=None,
-        unclassified=CV_TEXT,
-    )
-
-    await service.extract_cv_data(empty_sections, {}, full_text=CV_TEXT)
+    await service.extract_cv_data({}, full_text=CV_TEXT)
 
     sent_prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
     assert "Regional Sales Manager at Unilever Nigeria" in sent_prompt
-
-
-@pytest.mark.asyncio
-async def test_text_already_in_the_sections_is_not_sent_twice():
-    """The full text contains the sections, so sending both only costs tokens."""
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
-    response = MagicMock()
-    response.content = [
-        MagicMock(text=json.dumps({"skills": [], "field_confidence": {}}))
-    ]
-    response.usage = MagicMock(input_tokens=10, output_tokens=10)
-    client = AsyncMock()
-    client.messages.create = AsyncMock(return_value=response)
-    service._client = client
-
-    job_line = "Regional Sales Manager at Unilever Nigeria, 2015 to 2022."
-    sections = DetectedSections(
-        summary=None,
-        experience=job_line,
-        education="BSc Marketing, University of Lagos, 2012.",
-        skills=None,
-        certifications=None,
-        projects=None,
-        references=None,
-        unclassified="",
-    )
-
-    await service.extract_cv_data(sections, {}, full_text=CV_TEXT)
-
-    sent_prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
-    assert sent_prompt.count(job_line) == 1
-    assert "BSc Marketing" not in sent_prompt
+    assert sent_prompt.count("Regional Sales Manager at Unilever Nigeria") == 1
