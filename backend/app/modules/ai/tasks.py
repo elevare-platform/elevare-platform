@@ -13,6 +13,11 @@ import app.core.model_registry  # noqa: F401 — ensures all mappers are registe
 from app.core.celery_app import celery
 from app.core.config import settings
 from app.core.cv_pipeline.usability import UNREADABLE_REASON, parsed_data_is_usable
+from app.core.quality_signals import (
+    CV_UNREADABLE_PARSE,
+    SCORE_NOT_SAVED,
+    report_quality_signal,
+)
 from app.modules.ai.enums import CVParsingStatus
 from app.modules.ai.repository import AIRepository
 from app.modules.ai.scoring_outcome import (
@@ -130,6 +135,13 @@ async def _save_unscored(db, repo, row, reason: str) -> None:
     fields = failure_fields(row, reason)
     if fields:
         await repo.update(row.id, fields)
+        # Only when something was recorded: a row that keeps its real score is not news.
+        report_quality_signal(
+            SCORE_NOT_SAVED,
+            reason=reason,
+            kind=type(row).__name__,
+            row_id=row.id,
+        )
     await db.commit()
 
 
@@ -262,6 +274,13 @@ async def _run_pipeline_async(
             # be saved as an ordinary completed parse that scored as a real 0.
             if not cv_result.usable:
                 flag_reasons.append(UNREADABLE_REASON)
+                report_quality_signal(
+                    CV_UNREADABLE_PARSE,
+                    submission_id=submission_id,
+                    scanned=cv_result.is_scanned,
+                    english=lang_result.is_english,
+                    confidence=round(cv_result.overall_confidence, 2),
+                )
             if not lang_result.is_english:
                 flag_reasons.append("CV is not written in English")
             if cv_result.is_scanned:
