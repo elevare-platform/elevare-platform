@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
 import { computeStrength, STRENGTH_FIELDS } from '@/lib/candidateUtils'
 
+// Where a CV is uploaded (the profile page has no CV upload).
+const CV_UPLOAD_PATH = '/candidate/dashboard/documents'
+
 // Human-readable labels for each strength field (Requirement 3.4)
 const FIELD_LABELS = {
   bio: 'About You',
@@ -30,6 +33,9 @@ export function ProfileStrengthBar({ profile }) {
   })
 
   const missingCV = !profile?.cvs || profile.cvs.length === 0
+  // Everything on the profile form is filled in and only the CV is left: the profile
+  // page cannot finish that, so the button goes to where a CV is uploaded.
+  const onlyCvMissing = missingCV && missingFields.length === 0
 
   // Color the bar based on strength level
   const barColor =
@@ -63,12 +69,12 @@ export function ProfileStrengthBar({ profile }) {
       {/* Encouraging copy - Requirement 3.3 (shown when below 100%) */}
       {strength < 100 && (
         <p className="text-sm text-text-muted">
-          Stronger profiles are prioritised by our recruiters.
+          You need all five items to apply for jobs, and stronger profiles are prioritised by our recruiters.
         </p>
       )}
 
       {/* Missing fields checklist - Requirement 3.4 (shown when below 100%) */}
-      {strength < 100 && missingFields.length > 0 && (
+      {strength < 100 && (missingFields.length > 0 || missingCV) && (
         <ul className="space-y-1">
           {missingFields.map((field) => (
             <li key={field} className="flex items-center gap-2 text-sm text-text-muted">
@@ -79,7 +85,10 @@ export function ProfileStrengthBar({ profile }) {
           {missingCV && (
             <li className="flex items-center gap-2 text-sm text-text-muted">
               <span className="w-4 h-4 rounded-full border-2 border-border flex-shrink-0" aria-hidden="true" />
-              Upload a CV
+              {/* A CV is uploaded from My Documents, not from the profile page. */}
+              <Link to={CV_UPLOAD_PATH} className="text-brand-blue font-medium hover:underline">
+                Upload a CV (PDF, up to 5MB)
+              </Link>
             </li>
           )}
         </ul>
@@ -87,10 +96,14 @@ export function ProfileStrengthBar({ profile }) {
 
       {/* CTA - Requirement 3.5 (always shown; label changes at 100%) */}
       <Link
-        to="/candidate/profile"
+        to={onlyCvMissing ? CV_UPLOAD_PATH : '/candidate/profile'}
         className="inline-block text-sm font-medium text-brand-blue hover:text-brand-blue-dark transition-colors"
       >
-        {strength === 100 ? 'Edit Your Profile →' : 'Complete Your Profile →'}
+        {strength === 100
+          ? 'Edit Your Profile →'
+          : onlyCvMissing
+            ? 'Upload Your CV →'
+            : 'Complete Your Profile →'}
       </Link>
     </div>
   )
