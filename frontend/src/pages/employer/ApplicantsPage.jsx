@@ -32,6 +32,9 @@ import { isPlanLimitMessage } from '@/lib/planErrors'
 import { interviewUnavailableMessage } from '@/lib/interviewErrors'
 import { interviewPricingNote } from '@/lib/interviewPricing'
 import { useReportStep } from '@/hooks/useOnboarding'
+import { useRescore } from '@/hooks/useRescore'
+import { describeRescore } from '@/lib/rescore'
+import RescoreBar from '@/components/employer/RescoreBar'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -95,8 +98,9 @@ function formatDate(isoString) {
 
 // ─── AI score badge ───────────────────────────────────────────────────────────
 
-function AiScoreBadge({ score, failure, fitSummary, strengths, weaknesses }) {
+function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weaknesses }) {
   const [open, setOpen] = useState(false)
+  const [rescoring, setRescoring] = useState(false)
   const [btnRef, setBtnRef] = useState(null)
   const hasScore = score !== null && score !== undefined
   const band = matchScoreBand(score, failure)
@@ -153,6 +157,19 @@ function AiScoreBadge({ score, failure, fitSummary, strengths, weaknesses }) {
             </div>
             {failureHelp && (
               <p className="text-xs text-text leading-relaxed">{failureHelp}</p>
+            )}
+            {failureHelp && onRescore && (
+              <button
+                type="button"
+                disabled={rescoring}
+                onClick={async () => {
+                  setRescoring(true)
+                  try { await onRescore() } finally { setRescoring(false); setOpen(false) }
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {rescoring ? 'Starting…' : 'Rescore this candidate'}
+              </button>
             )}
             {hasScore && (
               <p className="text-[10px] text-text-muted leading-relaxed">
@@ -489,7 +506,7 @@ function SendInterviewInvitePrompt({
 
 // ─── Applicant card ───────────────────────────────────────────────────────────
 
-function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCandidates, interviewList }) {
+function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCandidates, interviewList, onRescore }) {
   const [status, setStatus] = useState(application.status)
   const [updating, setUpdating] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -590,6 +607,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
           <AiScoreBadge
             score={application.ai_score}
             failure={application.ai_score_failure}
+            onRescore={onRescore}
             fitSummary={application.ai_fit_summary}
             strengths={application.ai_strengths}
             weaknesses={application.ai_weaknesses}
@@ -698,7 +716,8 @@ function SkeletonCard() {
 
 // ─── Talent Pool Profile Panel (Item 3) ──────────────────────────────────────
 
-function TalentPoolProfilePanel({ profile, onClose }) {
+function TalentPoolProfilePanel({ profile, onClose, onRescore }) {
+  const [rescoring, setRescoring] = useState(false)
   if (!profile) return null
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
@@ -790,6 +809,21 @@ function TalentPoolProfilePanel({ profile, onClose }) {
             <div className="rounded-lg bg-surface-muted border border-border px-4 py-3 text-sm text-text-muted text-center">
               {scoreFailureHelp(profile.ai_score_failure)
                 ?? 'AI scoring not yet computed. Attach this profile to a job and trigger scoring.'}
+              {profile.ai_score_failure && onRescore && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    disabled={rescoring}
+                    onClick={async () => {
+                      setRescoring(true)
+                      try { await onRescore() } finally { setRescoring(false); onClose() }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {rescoring ? 'Starting…' : 'Rescore this candidate'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1615,6 +1649,23 @@ export default function ApplicantsPage() {
     fetchTalentMatches()
   }, [mainTab, fetchTalentMatches])
 
+  // Candidates with no usable score (CV could not be read, or scoring failed), and
+  // putting them back in the queue. After a press the lists are loaded again, so the
+  // rows that were reset no longer say "could not read".
+  const { status: rescoreStatus, working: rescoring, result: rescoreResult,
+    rescore, dismissResult: dismissRescoreResult } = useRescore(jobId)
+  const handleRescore = useCallback(async (body) => {
+    const outcome = await rescore(body)
+    if (!outcome.ok) {
+      showToast(outcome.message)
+      return outcome
+    }
+    fetchApplicants(activeTab, null, true)
+    if (mainTab === 'pipeline') loadPipeline(true)
+    if (body && Object.keys(body).length > 0) showToast(describeRescore(outcome.data))
+    return outcome
+  }, [rescore, showToast, fetchApplicants, activeTab, mainTab, loadPipeline])
+
   const sortedApplicants = [...applicants].sort((a, b) => {
     if (sortBy === 'match_score') {
       return (b.match_score ?? -1) - (a.match_score ?? -1)
@@ -1646,6 +1697,14 @@ export default function ApplicantsPage() {
               <Share2 size={14} /> Share with client
             </Button>
           </div>
+
+          <RescoreBar
+            status={rescoreStatus}
+            working={rescoring}
+            result={rescoreResult}
+            onRescore={handleRescore}
+            onDismissResult={dismissRescoreResult}
+          />
 
           {/* Main tab switcher - Applicants vs Pipeline */}
           <div className="flex gap-1 p-1 bg-surface-muted rounded-xl border border-border mb-6 w-fit">
@@ -1777,6 +1836,7 @@ export default function ApplicantsPage() {
                   onError={showToast}
                   savedCandidates={savedCandidates}
                   interviewList={interviewList}
+                  onRescore={() => handleRescore({ application_id: app.id })}
                 />
               ))}
             </div>
@@ -1819,6 +1879,7 @@ export default function ApplicantsPage() {
         <TalentPoolProfilePanel
           profile={selectedProfile}
           onClose={() => setSelectedProfile(null)}
+          onRescore={() => handleRescore({ talent_pool_profile_id: selectedProfile.id })}
         />
       )}
 
