@@ -51,8 +51,32 @@ describe('OnboardingProvider', () => {
     expect(latest.checklistDismissed).toBe(true)
   })
 
-  it('does not ask for anyone who is not an employer', async () => {
+  it('loads a candidate\'s tour progress too', async () => {
     mockUser = { id: 'c1', role: 'CANDIDATE' }
+    api.get.mockResolvedValueOnce({ data: FRESH })
+    renderProvider()
+
+    await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('true|PENDING'))
+    expect(api.get).toHaveBeenCalledWith('/api/v1/onboarding/me')
+  })
+
+  it('records how a candidate\'s tour ended, but never reports checklist steps for one', async () => {
+    mockUser = { id: 'c1', role: 'CANDIDATE' }
+    api.get.mockResolvedValueOnce({ data: FRESH })
+    api.post.mockResolvedValue({ data: { ...FRESH, tour_status: 'SKIPPED' } })
+    renderProvider()
+    await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('true'))
+
+    act(() => latest.markStep('credits'))
+    act(() => latest.dismissChecklist())
+    act(() => latest.finishTour('SKIPPED'))
+
+    expect(api.post).toHaveBeenCalledTimes(1)
+    expect(api.post).toHaveBeenCalledWith('/api/v1/onboarding/me/tour', { outcome: 'SKIPPED' })
+  })
+
+  it('does not ask for an admin or a signed-out visitor', async () => {
+    mockUser = { id: 'a1', role: 'ADMIN' }
     renderProvider()
 
     expect(api.get).not.toHaveBeenCalled()

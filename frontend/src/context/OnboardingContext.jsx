@@ -25,6 +25,8 @@ export function OnboardingProvider({ children }) {
   const { user } = useAuth()
   const userId = user?.id
   const isEmployer = user?.role === 'EMPLOYER'
+  // Employers and candidates each have a tour; only employers have the checklist.
+  const hasTour = isEmployer || user?.role === 'CANDIDATE'
 
   // Remembers whose progress this is, so after one person logs out and another logs in
   // the first person's progress is never shown while the second's is loading.
@@ -35,7 +37,7 @@ export function OnboardingProvider({ children }) {
 
   useEffect(() => {
     reported.current = new Set()
-    if (!isEmployer) return undefined
+    if (!hasTour) return undefined
     let cancelled = false
     api.get(BASE)
       .then(({ data }) => {
@@ -49,7 +51,7 @@ export function OnboardingProvider({ children }) {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [isEmployer, userId])
+  }, [hasTour, userId])
 
   const markStep = useCallback((step) => {
     if (!isEmployer || reported.current.has(step)) return
@@ -66,14 +68,14 @@ export function OnboardingProvider({ children }) {
   }, [isEmployer, userId])
 
   const finishTour = useCallback((outcome) => {
-    if (!isEmployer) return
+    if (!hasTour) return
     setState((s) => (
       s.userId === userId && s.tourStatus === 'PENDING' ? { ...s, tourStatus: outcome } : s
     ))
     api.post(`${BASE}/tour`, { outcome })
       .then(({ data }) => setState(fromServer(userId, data)))
       .catch(() => {})
-  }, [isEmployer, userId])
+  }, [hasTour, userId])
 
   const dismissChecklist = useCallback(() => {
     if (!isEmployer) return
@@ -84,7 +86,7 @@ export function OnboardingProvider({ children }) {
   }, [isEmployer, userId])
 
   const value = useMemo(() => {
-    const mine = isEmployer && state.userId === userId ? state : NOOP_ONBOARDING
+    const mine = hasTour && state.userId === userId ? state : NOOP_ONBOARDING
     return {
       loaded: mine.loaded,
       tourStatus: mine.tourStatus,
@@ -94,7 +96,7 @@ export function OnboardingProvider({ children }) {
       finishTour,
       dismissChecklist,
     }
-  }, [state, isEmployer, userId, markStep, finishTour, dismissChecklist])
+  }, [state, hasTour, userId, markStep, finishTour, dismissChecklist])
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>
 }

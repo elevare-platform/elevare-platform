@@ -14,6 +14,8 @@ vi.mock('driver.js', () => ({
       lastStep: false,
       drive: vi.fn(),
       destroy: vi.fn(),
+      moveNext: vi.fn(),
+      movePrevious: vi.fn(),
       isLastStep: () => instance.lastStep,
     }
     created.push(instance)
@@ -35,15 +37,19 @@ function setOnboarding(overrides = {}) {
   mockOnboarding = { loaded: true, tourStatus: 'PENDING', finishTour: vi.fn(), ...overrides }
 }
 
-const render = (autoStart = true) => renderHook(() => useDashboardTour({ autoStart }))
+const onSeeExample = vi.fn()
+const render = (autoStart = true) => renderHook(() => useDashboardTour({ autoStart, onSeeExample }))
 const waitForDelay = () => act(() => vi.advanceTimersByTimeAsync(1000))
+const stepsOf = () => created[0].config.steps
+const lastStep = () => stepsOf()[stepsOf().length - 1]
 
 describe('useDashboardTour', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    vi.clearAllMocks()
     created.length = 0
     document.body.innerHTML = ''
-    addAnchors('post-job', 'recent-jobs', 'tab-talent-pipeline')
+    addAnchors('post-job', 'tab-talent-pipeline', 'manage-jobs')
     setOnboarding()
   })
 
@@ -63,8 +69,8 @@ describe('useDashboardTour', () => {
     render()
     await waitForDelay()
 
-    const titles = created[0].config.steps.map((s) => s.popover.title)
-    expect(titles).toEqual(['Post a job', 'Your jobs and applicants', 'Talent pool'])
+    const titles = stepsOf().map((s) => s.popover.title)
+    expect(titles).toEqual(['Post a job', 'Talent pool', 'Manage your jobs'])
   })
 
   it.each([
@@ -80,7 +86,7 @@ describe('useDashboardTour', () => {
   })
 
   it('waits until the page says it is ready', async () => {
-    const { rerender } = renderHook(({ ready }) => useDashboardTour({ autoStart: ready }), {
+    const { rerender } = renderHook(({ ready }) => useDashboardTour({ autoStart: ready, onSeeExample }), {
       initialProps: { ready: false },
     })
     await waitForDelay()
@@ -100,20 +106,32 @@ describe('useDashboardTour', () => {
     expect(created).toHaveLength(1)
   })
 
-  it('records completed when closed on the last step', async () => {
+  it('moves on to the example job from the last step, without recording anything yet', async () => {
+    render()
+    await waitForDelay()
+
+    expect(lastStep().popover.nextBtnText).toBe('See an example job')
+    act(() => lastStep().popover.onNextClick())
+
+    expect(created[0].destroy).toHaveBeenCalled()
+    expect(onSeeExample).toHaveBeenCalledTimes(1)
+    expect(mockOnboarding.finishTour).not.toHaveBeenCalled()
+  })
+
+  it('goes to the next step with the ordinary Next button', async () => {
+    render()
+    await waitForDelay()
+
+    act(() => stepsOf()[0].popover.onNextClick())
+
+    expect(created[0].moveNext).toHaveBeenCalledTimes(1)
+    expect(onSeeExample).not.toHaveBeenCalled()
+  })
+
+  it('records skipped when closed anywhere in part one, even on its last step', async () => {
     render()
     await waitForDelay()
     created[0].lastStep = true
-
-    act(() => created[0].config.onDestroyStarted())
-
-    expect(created[0].destroy).toHaveBeenCalled()
-    expect(mockOnboarding.finishTour).toHaveBeenCalledWith('COMPLETED')
-  })
-
-  it('records skipped when closed before the end', async () => {
-    render()
-    await waitForDelay()
 
     act(() => created[0].config.onDestroyStarted())
 

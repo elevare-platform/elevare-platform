@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Briefcase, FileText, CheckCircle, TrendingUp,
-  ChevronRight, Building2, Star, AlertCircle, Send,
+  ChevronRight, Building2, Star, AlertCircle, Send, HelpCircle,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import { ProfileStrengthBar } from '@/components/candidate/ProfileStrengthBar'
+import { useCandidateTour } from '@/components/onboarding/useCandidateTour'
 import { useCandidateProfile } from '@/hooks/useCandidateProfile'
 import { useCandidateIntroductions } from '@/hooks/useCandidateIntroductions'
 import { useAuth } from '@/context/AuthContext'
@@ -119,6 +120,11 @@ export default function CandidateDashboardPage() {
   const defaultCv = profile?.cvs?.find((cv) => cv.is_default) ?? profile?.cvs?.[0]
   const firstName = user?.first_name ?? 'there'
 
+  // Starts by itself the first time, once everything it points at has loaded.
+  const { start: startTour } = useCandidateTour({
+    autoStart: !profileLoading && !appsLoading && !jobsLoading,
+  })
+
   return (
     <div className="min-h-screen flex flex-col bg-surface-muted">
       <Navbar />
@@ -132,11 +138,22 @@ export default function CandidateDashboardPage() {
               <h1 className="text-2xl font-bold text-text">Welcome back, {firstName}</h1>
               <p className="text-text-muted text-sm mt-0.5">Here's your job search at a glance.</p>
             </div>
-            <Link to="/jobs">
-              <Button className="flex items-center gap-2">
-                <Briefcase size={15} /> Browse Jobs
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={startTour}
+                data-tour="candidate-tour-button"
+                className="flex items-center gap-2"
+              >
+                <HelpCircle size={15} /> Take a tour
               </Button>
-            </Link>
+              <Link to="/jobs">
+                <Button className="flex items-center gap-2">
+                  <Briefcase size={15} /> Browse Jobs
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {/* ── Stats row ── */}
@@ -167,7 +184,7 @@ export default function CandidateDashboardPage() {
             <div className="lg:col-span-2 space-y-6">
 
               {/* Recent Applications */}
-              <section className="bg-white rounded-xl border border-border overflow-hidden">
+              <section data-tour="candidate-applications" className="bg-white rounded-xl border border-border overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-border">
                   <h2 className="font-semibold text-text text-sm">My Applications</h2>
                   <Link to="/candidate/applications" className="text-brand-blue text-xs font-medium hover:underline flex items-center gap-1">
@@ -234,7 +251,7 @@ export default function CandidateDashboardPage() {
               </section>
 
               {/* Matched Jobs */}
-              <section className="bg-white rounded-xl border border-border overflow-hidden">
+              <section data-tour="candidate-matches" className="bg-white rounded-xl border border-border overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-border">
                   <h2 className="font-semibold text-text text-sm">Matched Jobs</h2>
                   <Link to="/candidate/matches" className="text-brand-blue text-xs font-medium hover:underline flex items-center gap-1">
@@ -287,7 +304,7 @@ export default function CandidateDashboardPage() {
 
               {/* Profile strength */}
               {!profileLoading && profile && (
-                <div className="bg-white rounded-xl border border-border p-5">
+                <div data-tour="candidate-profile" className="bg-white rounded-xl border border-border p-5">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="font-semibold text-text text-sm">Profile</h2>
                     <Link to="/candidate/profile" className="text-brand-blue text-xs font-medium hover:underline">
@@ -307,7 +324,7 @@ export default function CandidateDashboardPage() {
               )}
 
               {/* CV widget */}
-              <div className="bg-white rounded-xl border border-border p-5">
+              <div data-tour="candidate-documents" className="bg-white rounded-xl border border-border p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="font-semibold text-text text-sm">My Documents</h2>
                   <Link to="/candidate/dashboard/documents" className="text-brand-blue text-xs font-medium hover:underline">

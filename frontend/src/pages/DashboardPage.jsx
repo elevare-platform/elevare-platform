@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import {
   LogOut, Briefcase, ArrowRight, MailCheck,
@@ -201,8 +201,11 @@ function EmployerDashboard({ user }) {
 
   // Starts by itself the first time, once the overview and its numbers are showing;
   // the Help button runs it again.
+  const navigate = useNavigate()
+  const openExampleJob = useCallback(() => navigate('/employer/tour/example-job'), [navigate])
   const { start: startTour } = useDashboardTour({
     autoStart: activeTab === 'overview' && !statsLoading && !jobsLoading,
+    onSeeExample: openExampleJob,
   })
 
   const tabs = [
@@ -372,7 +375,7 @@ function EmployerDashboard({ user }) {
                     <p className="text-text-muted text-xs mt-0.5">Create a draft and publish when ready</p>
                   </div>
                 </Link>
-                <Link to="/employer/jobs" className="rounded-xl border border-border bg-white p-5 hover:border-brand-blue/40 hover:shadow-sm transition-all flex items-center gap-4">
+                <Link to="/employer/jobs" data-tour="manage-jobs" className="rounded-xl border border-border bg-white p-5 hover:border-brand-blue/40 hover:shadow-sm transition-all flex items-center gap-4">
                   <div className="w-9 h-9 rounded-lg bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
                     <Briefcase size={18} className="text-brand-blue" />
                   </div>
