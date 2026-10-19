@@ -103,6 +103,13 @@ class Application(BaseModel):
         String(64),
         nullable=True,
     )
+    # Why there is no score: "CV_UNREADABLE" (nothing could be read from the CV, so
+    # no scoring was attempted) or "SCORING_FAILED" (the scoring call failed and can
+    # be tried again). NULL means nothing is wrong. See ai/scoring_outcome.py.
+    ai_score_failure: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+    )
     ai_score_computed_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=True,

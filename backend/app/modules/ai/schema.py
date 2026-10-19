@@ -65,7 +65,14 @@ class SubmissionResponse(BaseModel):
 
 @dataclass
 class FitReasoningResult:
-    """Structured output from the LLM fit-reasoning step."""
+    """Structured output from the LLM fit-reasoning step.
+
+    ``failed`` is True when the call errored, was cut off at the token limit, or
+    returned no usable score. ``score`` is then meaningless: callers must not store
+    it, because 0 is also a legitimate score for a candidate who is a poor fit. The
+    token counts are still filled whenever a reply arrived, because a failed call
+    costs money too.
+    """
 
     score: int = 0
     strengths: list[str] = field(default_factory=list)
@@ -74,6 +81,7 @@ class FitReasoningResult:
     input_tokens: int = 0
     output_tokens: int = 0
     model: str = ""
+    failed: bool = False
 
 
 @dataclass

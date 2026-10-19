@@ -505,37 +505,64 @@ class AnthropicCVExtractionService(AIService):
             job_context=job_context,
         )
 
-        raw = ""
-
         try:
             response = await self._client.messages.create(
                 model=model,
-                max_tokens=1024,
+                # 1024 was close to the size of a long answer; a reply cut off at
+                # the limit is incomplete JSON and used to be saved as a score of 0.
+                max_tokens=2048,
                 system=FIT_REASONING_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}],
             )
-
-            raw = response.content[0].text
-            data = self._parse_response(raw)
-
-            return FitReasoningResult(
-                score=max(0, min(100, int(data.get("score", 0)))),
-                strengths=data.get("strengths", []),
-                weaknesses=data.get("weaknesses", []),
-                fit_summary=data.get("fit_summary", ""),
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-                model=model,
-            )
-        except (KeyError, TypeError, Exception) as e:
+        except Exception as e:
+            # The API itself failed: no reply, so no score and no tokens. Only
+            # sizes are logged, never the candidate's or the job's text.
             logger.error(
-                "LLM Fit Reasoning failed: %s | prompt_length=%d | candidate_context=%s | job_context=%s",
+                "LLM fit reasoning failed: %s (model=%s, prompt_length=%d)",
                 e,
+                model,
                 len(user_prompt),
-                candidate_context[:300],
-                job_context[:300],
             )
-            return FitReasoningResult(score=0)
+            return FitReasoningResult(model=model, failed=True)
+
+        # A reply arrived, so it cost money whatever it says.
+        spent = {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+            "model": model,
+        }
+
+        if response.stop_reason == "max_tokens":
+            logger.error(
+                "LLM fit reasoning cut off at max_tokens (model=%s, stop_reason=%s)",
+                model,
+                response.stop_reason,
+            )
+            return FitReasoningResult(failed=True, **spent)
+
+        try:
+            data = self._parse_response(response.content[0].text)
+            # The fallback parser returns a dataclass, not a dict, for unusable
+            # text; a missing or non-numeric score is not a score either.
+            score = int(data["score"]) if isinstance(data, dict) else None
+        except (IndexError, KeyError, TypeError, ValueError, AttributeError):
+            score = None
+
+        if score is None:
+            logger.error(
+                "LLM fit reasoning returned no usable score (model=%s, stop_reason=%s)",
+                model,
+                response.stop_reason,
+            )
+            return FitReasoningResult(failed=True, **spent)
+
+        return FitReasoningResult(
+            score=max(0, min(100, score)),
+            strengths=data.get("strengths") or [],
+            weaknesses=data.get("weaknesses") or [],
+            fit_summary=data.get("fit_summary") or "",
+            **spent,
+        )
 
     async def score_interview_transcript(
         self,

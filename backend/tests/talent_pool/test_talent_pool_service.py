@@ -550,3 +550,75 @@ class TestTalentPoolVisibilityCap:
         # unrelated admin-sourced profiles visible to every employer.
         returned_ids = {item.id for item in result["items"]}
         assert created_ids <= returned_ids
+
+
+class TestWhyAProfileHasNoScore:
+    """A profile that could not be scored says why, on the profile itself."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("reason", ["CV_UNREADABLE", "SCORING_FAILED"])
+    async def test_the_reason_is_returned_with_the_profile(
+        self, client, db_session, reason
+    ):
+        token, employer = await register_and_activate(client, db_session, "EMPLOYER")
+        profile = await make_sourced_profile(db_session, added_by=employer.id)
+        profile.ai_score_failure = reason
+        await db_session.flush()
+
+        resp = await client.get(
+            f"/api/v1/talent-pool/{profile.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ai_score"] is None
+        assert body["ai_score_failure"] == reason
+
+    @pytest.mark.asyncio
+    async def test_the_reason_is_not_hidden_like_a_stale_assessment_is(
+        self, client, db_session
+    ):
+        """The score and summary are hidden unless scored for the job being viewed
+        from. The reason explains why there is NO score, so it is always shown."""
+        token, employer = await register_and_activate(client, db_session, "EMPLOYER")
+        job = make_job(employer.id, moderation_status="APPROVED")
+        db_session.add(job)
+        await db_session.flush()
+        profile = await make_sourced_profile(
+            db_session, added_by=employer.id, ai_score_job_hash="stale-hash"
+        )
+        profile.ai_score_failure = "SCORING_FAILED"
+        await db_session.flush()
+
+        resp = await client.get(
+            f"/api/v1/talent-pool/{profile.id}",
+            params={"job_id": str(job.id)},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["ai_fit_summary"] is None  # stale, hidden
+        assert resp.json()["ai_score_failure"] == "SCORING_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_a_failed_profile_can_be_queued_for_scoring_again(
+        self, client, db_session
+    ):
+        """It has no job hash, so it is never reported as 'already current'."""
+        token, employer = await register_and_activate(client, db_session, "EMPLOYER")
+        job = make_job(employer.id, moderation_status="APPROVED")
+        db_session.add(job)
+        await db_session.flush()
+        profile = await make_sourced_profile(db_session, added_by=employer.id)
+        profile.ai_score_failure = "SCORING_FAILED"
+        await db_session.flush()
+
+        resp = await client.post(
+            f"/api/v1/talent-pool/{profile.id}/score",
+            params={"job_id": str(job.id)},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 202
+        assert resp.json()["status"] == "queued"

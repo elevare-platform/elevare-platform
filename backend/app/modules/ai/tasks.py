@@ -12,9 +12,15 @@ from sqlalchemy.pool import NullPool
 import app.core.model_registry  # noqa: F401 — ensures all mappers are registered before any DB use
 from app.core.celery_app import celery
 from app.core.config import settings
-from app.core.cv_pipeline.usability import UNREADABLE_REASON
+from app.core.cv_pipeline.usability import UNREADABLE_REASON, parsed_data_is_usable
 from app.modules.ai.enums import CVParsingStatus
 from app.modules.ai.repository import AIRepository
+from app.modules.ai.scoring_outcome import (
+    CV_UNREADABLE,
+    SCORING_FAILED,
+    ScoringFailed,
+    failure_fields,
+)
 from app.modules.ai.scoring_service import (
     hash_cv_scoring_inputs,
     hash_job_scoring_inputs,
@@ -60,12 +66,11 @@ CACHE_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 def _fit_score_needs_escalation(reasoning) -> bool:
     """Whether a fast-model fit-reasoning result should be re-run on the deep model.
 
-    Triggers on the API/parse-failure sentinel `generate_fit_reasoning`
-    returns (score 0 with no summary — see service.py), or when the fast
-    model's own score lands inside the configured "important enough to
-    double-check" band.
+    Triggers when the call failed (`reasoning.failed`: it errored, was cut off or
+    gave no usable score), or when the fast model's own score lands inside the
+    configured "important enough to double-check" band.
     """
-    if reasoning.score == 0 and not reasoning.fit_summary:
+    if reasoning.failed:
         return True
     low, high = settings.ai_fit_score_escalation_band
     return low <= reasoning.score <= high
@@ -103,8 +108,50 @@ async def _generate_tiered_fit_reasoning(ai_service, candidate_context, job_cont
             model=settings.anthropic_model,
         )
         attempts.append(reasoning)
+    elif reasoning.failed:
+        # Tiering is off, so there is no deep model to escalate to: try the same
+        # model once more before giving up on this attempt.
+        reasoning = await ai_service.generate_fit_reasoning(
+            candidate_context=candidate_context,
+            job_context=job_context,
+            model=first_model,
+        )
+        attempts.append(reasoning)
 
     return reasoning, attempts
+
+
+async def _save_unscored(db, repo, row, reason: str) -> None:
+    """Record why a candidate has no score (see scoring_outcome.py) and commit.
+
+    Saves no score and no hash, so nothing treats the row as already scored; a real
+    score already on the row is left alone.
+    """
+    fields = failure_fields(row, reason)
+    if fields:
+        await repo.update(row.id, fields)
+    await db.commit()
+
+
+async def _record_fit_costs(ai_repo, attempts, **ids) -> None:
+    """Write one cost row per fit-reasoning call that actually reached the model,
+    failed ones included: a cut-off or unusable reply is billed all the same."""
+    from app.core.ai_pricing import compute_anthropic_cost_usd
+
+    for attempt in attempts:
+        if not (attempt.input_tokens or attempt.output_tokens):
+            continue
+        await ai_repo.create_fit_scoring_cost_row(
+            **ids,
+            input_tokens=attempt.input_tokens,
+            output_tokens=attempt.output_tokens,
+            cost_usd=compute_anthropic_cost_usd(
+                attempt.model,
+                attempt.input_tokens,
+                attempt.output_tokens,
+            ),
+            model=attempt.model,
+        )
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
@@ -483,10 +530,35 @@ async def _score_application_async(application_id_str: str) -> None:
                 return
 
             submission = await ai_repo.get_submission_by_id(cv.submission_id)
+            if (
+                submission
+                and not submission.parsed_data
+                and submission.parse_status == CVParsingStatus.FAILED.value
+            ):
+                # The CV could not be parsed at all: say so, rather than leaving
+                # a blank that looks like "scoring has not happened yet".
+                logger.info(
+                    "score_application: CV parse failed for application %s; not scoring",
+                    application_id,
+                )
+                await _save_unscored(db, app_repo, application, CV_UNREADABLE)
+                return
             if not submission or not submission.parsed_data:
                 logger.info(
-                    "score_application: No parsed submission for application {application_id}. Skipping."
+                    "score_application: No parsed submission for application %s. Skipping.",
+                    application_id,
                 )
+                return
+
+            # Nothing readable in the parse: scoring it would only make up a number
+            # (it used to be saved as a real score of 0). No model call, no score,
+            # no hash.
+            if not parsed_data_is_usable(submission.parsed_data):
+                logger.info(
+                    "score_application: CV for application %s is unreadable; not scoring",
+                    application_id,
+                )
+                await _save_unscored(db, app_repo, application, CV_UNREADABLE)
                 return
 
             job = await job_repo.get_by_id(application.job_id)
@@ -565,6 +637,22 @@ async def _score_application_async(application_id_str: str) -> None:
                 # Close before the session/engine tears down so the loop is still alive
                 await ai_service._client.close()
 
+            # Failed calls are billed too, so their cost rows are written either way.
+            await _record_fit_costs(
+                ai_repo,
+                fit_attempts,
+                job_id=application.job_id,
+                application_id=application_id,
+            )
+
+            if reasoning.failed:
+                # No score and no hash: the row says why, nothing treats it as
+                # already scored, and raising lets Celery try again with backoff.
+                await _save_unscored(db, app_repo, application, SCORING_FAILED)
+                raise ScoringFailed(
+                    f"Scoring failed for application {application_id}"
+                )
+
             await app_repo.update(
                 application_id,
                 {
@@ -574,27 +662,10 @@ async def _score_application_async(application_id_str: str) -> None:
                     "ai_fit_summary": reasoning.fit_summary,
                     "ai_score_job_hash": job_hash,
                     "ai_score_cv_hash": cv_hash,
+                    "ai_score_failure": None,
                     "ai_score_computed_at": datetime.now(UTC),
                 },
             )
-
-            from app.core.ai_pricing import compute_anthropic_cost_usd
-
-            for attempt in fit_attempts:
-                if not (attempt.input_tokens or attempt.output_tokens):
-                    continue
-                await ai_repo.create_fit_scoring_cost_row(
-                    job_id=application.job_id,
-                    application_id=application_id,
-                    input_tokens=attempt.input_tokens,
-                    output_tokens=attempt.output_tokens,
-                    cost_usd=compute_anthropic_cost_usd(
-                        attempt.model,
-                        attempt.input_tokens,
-                        attempt.output_tokens,
-                    ),
-                    model=attempt.model,
-                )
 
             await db.commit()
             logger.info(
@@ -736,7 +807,24 @@ async def _score_talent_pool_profile_async(
                         submission.id,
                         submission.parse_status,
                     )
+                    if submission.parse_status == CVParsingStatus.FAILED.value:
+                        # The CV could not be parsed at all: say so, rather than
+                        # leaving a blank that looks like "not scored yet".
+                        await _save_unscored(
+                            db, talent_pool_repo, talent_pool, CV_UNREADABLE
+                        )
                     return
+
+            # Nothing readable in the parse: scoring it would only make up a number
+            # (it used to be saved as a real score of 0). No model call, no score,
+            # no hash.
+            if not parsed_data_is_usable(submission.parsed_data):
+                logger.info(
+                    "score_talent_pool_profile: CV for profile %s is unreadable; not scoring",
+                    profile_id,
+                )
+                await _save_unscored(db, talent_pool_repo, talent_pool, CV_UNREADABLE)
+                return
 
             # Use explicitly passed job_id first, fall back to profile's sourced_for_job_id
             effective_job_id = (
@@ -827,6 +915,22 @@ async def _score_talent_pool_profile_async(
                 # Close before the session/engine tears down so the loop is still alive
                 await ai_service._client.close()
 
+            # Failed calls are billed too, so their cost rows are written either way.
+            await _record_fit_costs(
+                ai_repo,
+                fit_attempts,
+                job_id=effective_job_id,
+                talent_pool_profile_id=profile_id,
+            )
+
+            if reasoning.failed:
+                # No score and no hash: the row says why, nothing treats it as
+                # already scored, and raising lets Celery try again with backoff.
+                await _save_unscored(db, talent_pool_repo, talent_pool, SCORING_FAILED)
+                raise ScoringFailed(
+                    f"Scoring failed for talent pool profile {profile_id}"
+                )
+
             await talent_pool_repo.update(
                 profile_id,
                 {
@@ -836,27 +940,10 @@ async def _score_talent_pool_profile_async(
                     "ai_fit_summary": reasoning.fit_summary,
                     "ai_score_job_hash": job_hash,
                     "ai_score_cv_hash": cv_hash,
+                    "ai_score_failure": None,
                     "ai_score_computed_at": datetime.now(UTC),
                 },
             )
-
-            from app.core.ai_pricing import compute_anthropic_cost_usd
-
-            for attempt in fit_attempts:
-                if not (attempt.input_tokens or attempt.output_tokens):
-                    continue
-                await ai_repo.create_fit_scoring_cost_row(
-                    job_id=effective_job_id,
-                    talent_pool_profile_id=profile_id,
-                    input_tokens=attempt.input_tokens,
-                    output_tokens=attempt.output_tokens,
-                    cost_usd=compute_anthropic_cost_usd(
-                        attempt.model,
-                        attempt.input_tokens,
-                        attempt.output_tokens,
-                    ),
-                    model=attempt.model,
-                )
 
             await db.commit()
             logger.info(

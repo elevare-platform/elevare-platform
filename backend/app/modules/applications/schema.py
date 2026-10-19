@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.applications.enums import ApplicationStatus
 from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME
@@ -52,6 +52,8 @@ class ApplicationResponse(BaseModel):
     ai_strengths: list[str] | None = None
     ai_weaknesses: list[str] | None = None
     ai_score_computed_at: datetime | None = None
+    # Why there is no score: "CV_UNREADABLE" or "SCORING_FAILED"; None otherwise.
+    ai_score_failure: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -126,34 +128,36 @@ class ApplicationResponse(BaseModel):
             ai_strengths=application.ai_strengths,
             ai_weaknesses=application.ai_weaknesses,
             ai_score_computed_at=application.ai_score_computed_at,
+            ai_score_failure=application.ai_score_failure,
         )
 
 
 class CandidateApplicationResponse(ApplicationResponse):
     """Candidate-facing view of an application — AI scoring fields are excluded.
 
-    Inherits all fields from ApplicationResponse but strips AI fields from
-    serialised output so candidates never see scoring data.
+    Inherits all fields from ApplicationResponse but strips the scoring data so
+    candidates never see it.
+
+    The stripping is a validator, so it runs however an instance comes about.
+    It used to live in an overridden ``from_application`` that the candidate
+    endpoints never called: they return plain ``ApplicationResponse`` objects and
+    let the response model convert them, which skipped the override and sent the
+    employer-only AI score, summary, strengths and match score to the candidate.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
-    @classmethod
-    def from_application(
-        cls, application, cv_url: str | None = None, interview_invited: bool = False
-    ) -> "CandidateApplicationResponse":
-        instance = super().from_application(
-            application, cv_url=cv_url, interview_invited=interview_invited
-        )
-        # Null out AI fields so they are omitted from candidate-facing responses
-        instance.ai_score = None
-        instance.ai_fit_summary = None
-        instance.ai_strengths = None
-        instance.ai_weaknesses = None
-        instance.ai_score_computed_at = None
-        instance.match_score = None
-        instance.score_computed_at = None
-        return instance
+    @model_validator(mode="after")
+    def _strip_scoring_data(self) -> "CandidateApplicationResponse":
+        self.ai_score = None
+        self.ai_fit_summary = None
+        self.ai_strengths = None
+        self.ai_weaknesses = None
+        self.ai_score_computed_at = None
+        self.ai_score_failure = None
+        self.match_score = None
+        self.score_computed_at = None
+        return self
 
 
 class ApplicationList(BaseModel):

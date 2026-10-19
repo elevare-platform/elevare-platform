@@ -536,3 +536,150 @@ async def test_my_applications_includes_job_context(client, db_session):
     assert len(items) == 1
     assert items[0]["job_title"] == "Senior Python Developer"
     assert items[0]["company_name"] == "Test Corp"
+
+
+# ---------------------------------------------------------------------------
+# Why an application has no AI score
+# ---------------------------------------------------------------------------
+
+
+async def _apply_and_mark_unscored(client, db_session, reason: str):
+    """A candidate applies; the application is then marked as it is when scoring
+    could not happen. Returns (employer_token, candidate_token, job)."""
+    candidate_token, candidate_user = await register_and_activate(
+        client, db_session, "CANDIDATE"
+    )
+    employer_token, _ = await register_and_activate(client, db_session, "EMPLOYER")
+    await complete_candidate_profile(
+        client, db_session, candidate_token, candidate_user.id
+    )
+    job = await create_job_via_api(client, db_session, employer_token)
+    await client.post(
+        "/api/v1/applications",
+        json={"job_id": job["id"]},
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    application = (
+        await db_session.execute(
+            select(Application).where(Application.job_id == job["id"])
+        )
+    ).scalar_one()
+    application.ai_score_failure = reason
+    await db_session.flush()
+    return employer_token, candidate_token, job
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["CV_UNREADABLE", "SCORING_FAILED"])
+async def test_the_employer_is_told_why_an_application_has_no_score(
+    client, db_session, reason
+):
+    employer_token, _, job = await _apply_and_mark_unscored(client, db_session, reason)
+
+    resp = await client.get(
+        f"/api/v1/applications/job/{job['id']}",
+        headers={"Authorization": f"Bearer {employer_token}"},
+    )
+
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert item["ai_score"] is None
+    assert item["ai_score_failure"] == reason
+
+
+@pytest.mark.asyncio
+async def test_the_candidate_never_sees_why_their_application_has_no_score(
+    client, db_session
+):
+    """Candidate-facing responses carry no scoring data at all."""
+    _, candidate_token, _ = await _apply_and_mark_unscored(
+        client, db_session, "CV_UNREADABLE"
+    )
+
+    resp = await client.get(
+        "/api/v1/applications/me",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["items"][0]["ai_score_failure"] is None
+
+
+SCORING_FIELDS = (
+    "ai_score",
+    "ai_fit_summary",
+    "ai_strengths",
+    "ai_weaknesses",
+    "ai_score_computed_at",
+    "ai_score_failure",
+    "match_score",
+    "score_computed_at",
+)
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_never_receives_any_scoring_data_about_themselves(
+    client, db_session
+):
+    """Regression: the candidate's own list used to return the employer-only AI
+    score, summary, strengths and match score, because the code that was meant to
+    strip them was never run on that path."""
+    employer_token, candidate_token, job = await _apply_and_mark_unscored(
+        client, db_session, "SCORING_FAILED"
+    )
+    application = (
+        await db_session.execute(
+            select(Application).where(Application.job_id == job["id"])
+        )
+    ).scalar_one()
+    application.ai_score = 41
+    application.ai_fit_summary = "EMPLOYER-ONLY summary"
+    application.ai_strengths = ["strength"]
+    application.ai_weaknesses = ["weakness"]
+    application.ai_score_computed_at = datetime.now(UTC)
+    application.match_score = 55
+    application.score_computed_at = datetime.now(UTC)
+    await db_session.flush()
+
+    listed = await client.get(
+        "/api/v1/applications/me",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+
+    assert listed.status_code == 200
+    item = listed.json()["items"][0]
+    assert {field: item[field] for field in SCORING_FIELDS} == dict.fromkeys(
+        SCORING_FIELDS
+    )
+    assert "EMPLOYER-ONLY" not in listed.text
+
+    # The employer still sees all of it.
+    employer_view = await client.get(
+        f"/api/v1/applications/job/{job['id']}",
+        headers={"Authorization": f"Bearer {employer_token}"},
+    )
+    seen = employer_view.json()["items"][0]
+    assert (seen["ai_score"], seen["ai_fit_summary"], seen["match_score"]) == (
+        41,
+        "EMPLOYER-ONLY summary",
+        55,
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_application_with_no_problem_has_no_failure_reason(client, db_session):
+    employer_token, _, job = await _apply_and_mark_unscored(client, db_session, "X")
+    application = (
+        await db_session.execute(
+            select(Application).where(Application.job_id == job["id"])
+        )
+    ).scalar_one()
+    application.ai_score_failure = None
+    await db_session.flush()
+
+    resp = await client.get(
+        f"/api/v1/applications/job/{job['id']}",
+        headers={"Authorization": f"Bearer {employer_token}"},
+    )
+
+    assert resp.json()["items"][0]["ai_score_failure"] is None
