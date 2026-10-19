@@ -4,6 +4,7 @@ import { CreditCard, Coins, Receipt, Loader2, CheckCircle2, XCircle, Clock } fro
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
+import CreditHistory from '@/components/employer/CreditHistory'
 import { useAuth } from '@/context/AuthContext'
 import { useBilling } from '@/hooks/useBilling'
 import { useCredits } from '@/hooks/useCredits'
@@ -291,6 +292,8 @@ export default function BillingPage() {
                   <p className="text-xs text-text-muted">Ask an owner or admin to buy more credits.</p>
                 )}
               </section>
+
+              <CreditHistory />
 
               {/* Payment history */}
               <section className="bg-white rounded-xl border border-border overflow-hidden">

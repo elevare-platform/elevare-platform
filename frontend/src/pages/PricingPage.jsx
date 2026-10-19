@@ -107,6 +107,17 @@ export default function PricingPage() {
     return () => { cancelled = true }
   }, [])
 
+  // The top-up packs are public, so a visitor comparing plans can see what extra
+  // credits cost. If they cannot be loaded the section is simply not shown.
+  const [packs, setPacks] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    api.get('/api/v1/billing/credit-packages')
+      .then(({ data }) => { if (!cancelled) setPacks(data) })
+      .catch(() => { /* no packs section */ })
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <>
       <Helmet>
@@ -226,6 +237,28 @@ export default function PricingPage() {
               </div>
             ))}
           </div>
+
+          {/* Top-up packs — bought credits never expire */}
+          {packs.length > 0 && (
+            <div className="mt-12 max-w-3xl mx-auto">
+              <p className="text-sm font-bold text-text mb-1.5 text-center">Need more credits?</p>
+              <p className="text-sm text-text-muted text-center mb-5">
+                Top up at any time, on any plan. Credits you buy never expire.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {packs.map((pack) => (
+                  <div key={pack.code} className="bg-white border border-border rounded-2xl p-5 text-center">
+                    <p className="text-sm font-bold text-text">{pack.name}</p>
+                    <p className="text-xs text-text-muted mt-0.5">{pack.credits} credits</p>
+                    <p className="text-2xl font-extrabold text-text mt-3">{formatPrice(pack.price_kobo)}</p>
+                    <p className="text-[11px] text-text-muted mt-1">
+                      {formatPrice(Math.round(pack.price_kobo / pack.credits))} per credit
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Credits explainer — applies on every plan, including Professional */}
           <div className="mt-12 bg-white border border-border rounded-2xl p-6 max-w-3xl mx-auto">
