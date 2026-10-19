@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/lib/api', () => ({
@@ -26,6 +26,7 @@ vi.mock('react-router-dom', async (importOriginal) => ({
 }))
 
 import api from '@/lib/api'
+import { EXAMPLE_VIEW_DEFAULT } from '@/components/onboarding/tourSteps'
 import ExampleJobTourPage from './ExampleJobTourPage'
 
 const CHARGED = {
@@ -45,6 +46,14 @@ function renderPage(pricing = CHARGED) {
 }
 
 const tab = (name) => screen.getByRole('tab', { name })
+const addToInterviewList = (index = 0) =>
+  fireEvent.click(screen.getAllByRole('button', { name: 'Add to interview list' })[index])
+const noWrites = () => {
+  expect(api.post).not.toHaveBeenCalled()
+  expect(api.put).not.toHaveBeenCalled()
+  expect(api.patch).not.toHaveBeenCalled()
+  expect(api.delete).not.toHaveBeenCalled()
+}
 
 describe('ExampleJobTourPage', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -92,42 +101,134 @@ describe('ExampleJobTourPage', () => {
     expect(screen.getByText('Gaps')).toBeInTheDocument()
   })
 
-  it('lets the tour put the page in the state a step needs', async () => {
+  describe('the interview list button', () => {
+    it('is on every applicant, as on the real page', () => {
+      renderPage()
+
+      expect(screen.getAllByRole('button', { name: 'Add to interview list' })).toHaveLength(3)
+    })
+
+    it('puts a person on the interview list and takes them off again', () => {
+      renderPage()
+
+      addToInterviewList(0)
+      expect(screen.getByRole('button', { name: 'Remove from interview list' })).toHaveTextContent('On interview list')
+      fireEvent.click(tab('Interview List'))
+      expect(screen.getByText('Amaka Obi')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove from interview list' }))
+      expect(screen.getByText('No one on the interview list yet')).toBeInTheDocument()
+    })
+
+    it('is on the Talent Pipeline rows too, and feeds the same list', () => {
+      renderPage()
+      fireEvent.click(tab('Talent Pipeline'))
+
+      addToInterviewList(0)
+      fireEvent.click(tab('Interview List'))
+
+      expect(screen.getByText('Segun Adeyemi')).toBeInTheDocument()
+    })
+
+    it('starts with an empty interview list and says how to fill it', () => {
+      renderPage()
+
+      fireEvent.click(tab('Interview List'))
+
+      expect(screen.getByText('No one on the interview list yet')).toBeInTheDocument()
+      expect(screen.getByText(/Add candidates from Applicants, Talent Pipeline/)).toBeInTheDocument()
+    })
+  })
+
+  describe('the Talent Pipeline tab and the Talent Pool', () => {
+    it('shows CVs scored against the job, one still being read', () => {
+      renderPage()
+
+      fireEvent.click(tab('Talent Pipeline'))
+
+      expect(screen.getByRole('button', { name: /Upload CVs/ })).toBeInTheDocument()
+      expect(screen.getByText('Not yet scored')).toBeInTheDocument()
+    })
+
+    it('opens the Talent Pool from Upload CVs, without uploading anything', () => {
+      renderPage()
+      fireEvent.click(tab('Talent Pipeline'))
+
+      fireEvent.click(screen.getByRole('button', { name: /Upload CVs/ }))
+
+      expect(screen.getByRole('heading', { name: 'Talent Pool' })).toBeInTheDocument()
+      expect(screen.getByText('Pipeline view (no job selected)')).toBeInTheDocument()
+      noWrites()
+    })
+
+    it('opens the upload drawer from Add CV with the same wording as the real one', () => {
+      renderPage()
+      act(() => tourOptions.setView({ ...EXAMPLE_VIEW_DEFAULT, page: 'pool' }))
+
+      fireEvent.click(screen.getByRole('button', { name: /Add CV/ }))
+
+      const drawer = screen.getByRole('dialog', { name: 'Add to Talent Pool' })
+      expect(drawer).toHaveTextContent('Upload up to 20 CVs (batch processed)')
+      expect(drawer).toHaveTextContent('Drop PDFs here')
+      expect(drawer).toHaveTextContent('Attach to Job')
+      expect(drawer).toHaveTextContent('No job (add to pipeline only)')
+      expect(within(drawer).getByRole('button', { name: 'Add to Talent Pool' })).toBeDisabled()
+    })
+
+    it('says scoring runs by itself once a job is chosen for the upload', () => {
+      renderPage()
+      act(() => tourOptions.setView({ ...EXAMPLE_VIEW_DEFAULT, page: 'pool', drawer: true }))
+      expect(screen.queryByText(/AI scoring will run automatically/)).not.toBeInTheDocument()
+
+      fireEvent.change(screen.getByLabelText(/Attach to Job/), { target: { value: 'sales' } })
+
+      expect(screen.getByText(/AI scoring will run automatically after parsing/)).toBeInTheDocument()
+    })
+
+    it('ranks the pool against the chosen job, best match first', () => {
+      renderPage()
+      act(() => tourOptions.setView({ ...EXAMPLE_VIEW_DEFAULT, page: 'pool' }))
+      expect(screen.getByText('Select a job to enable AI ranking')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Score all/ })).not.toBeInTheDocument()
+
+      fireEvent.change(screen.getByLabelText('View against job:'), { target: { value: 'sales' } })
+
+      expect(screen.getByText('Ranked by AI score')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Score all/ })).toBeInTheDocument()
+      expect(screen.getByText('Showing candidates ranked against Sales Manager')).toBeInTheDocument()
+      const names = screen.getAllByText(/Segun Adeyemi|Halima Yusuf|Ifeanyi Okoro/).map((el) => el.textContent)
+      expect(names).toEqual(['Segun Adeyemi', 'Halima Yusuf', 'Ifeanyi Okoro'])
+    })
+
+    it('goes back to the example job', () => {
+      renderPage()
+      act(() => tourOptions.setView({ ...EXAMPLE_VIEW_DEFAULT, page: 'pool' }))
+
+      fireEvent.click(screen.getByRole('button', { name: /Back to the example job/ }))
+
+      expect(screen.getByRole('heading', { name: 'Applicants for Sales Manager' })).toBeInTheDocument()
+    })
+  })
+
+  it('lets the tour put the page in the state a step needs', () => {
     renderPage()
     expect(tab('Applicants')).toHaveAttribute('aria-selected', 'true')
 
-    act(() => tourOptions.setView({ tab: 'interviews', reasoning: false, dialog: true }))
+    act(() => tourOptions.setView({ ...EXAMPLE_VIEW_DEFAULT, tab: 'interviews', dialog: true, listed: ['a1', 'p1'] }))
 
     expect(tab('Interview List')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Segun Adeyemi')).toBeInTheDocument()
 
-    act(() => tourOptions.setView({ tab: 'applicants', reasoning: true, dialog: false }))
+    act(() => tourOptions.setView({ ...EXAMPLE_VIEW_DEFAULT, reasoning: true }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByText('Strengths')).toBeInTheDocument()
   })
 
-  it('shows CVs waiting to be scored on the Talent Pipeline tab', () => {
-    renderPage()
-
-    fireEvent.click(tab('Talent Pipeline'))
-
-    expect(screen.getByRole('button', { name: /Upload CVs/ })).toBeInTheDocument()
-    expect(screen.getByText('Not yet scored')).toBeInTheDocument()
-  })
-
-  it('does not upload anything when Upload CVs is pressed, and says so', () => {
-    renderPage()
-    fireEvent.click(tab('Talent Pipeline'))
-
-    fireEvent.click(screen.getByRole('button', { name: /Upload CVs/ }))
-
-    expect(screen.getByRole('status')).toHaveTextContent('Nothing is uploaded from this example')
-    expect(api.post).not.toHaveBeenCalled()
-  })
-
   it('tells an employer who is charged what an interview costs, with the real numbers', async () => {
     renderPage()
+    addToInterviewList(0)
     fireEvent.click(tab('Interview List'))
 
     expect(await screen.findByText(/costs 8 credits/)).toBeInTheDocument()
@@ -136,6 +237,7 @@ describe('ExampleJobTourPage', () => {
 
   it('falls back to a general sentence when nothing is charged', async () => {
     renderPage({ charged: false })
+    addToInterviewList(0)
     fireEvent.click(tab('Interview List'))
 
     expect(await screen.findByText(/Each AI interview uses credits/)).toBeInTheDocument()
@@ -143,6 +245,7 @@ describe('ExampleJobTourPage', () => {
 
   it('opens the send dialog with the cost, and sends nothing', async () => {
     renderPage()
+    addToInterviewList(0)
     fireEvent.click(tab('Interview List'))
     await screen.findByText(/costs 8 credits/)
 
@@ -156,21 +259,23 @@ describe('ExampleJobTourPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send interview invite' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(api.post).not.toHaveBeenCalled()
+    noWrites()
   })
 
   it('never writes anything, whatever is pressed', async () => {
     renderPage()
+    addToInterviewList(0)
     fireEvent.click(tab('Talent Pipeline'))
     fireEvent.click(screen.getByRole('button', { name: /Upload CVs/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Add CV/ }))
+    fireEvent.change(screen.getByLabelText(/Attach to Job/), { target: { value: 'sales' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: /Back to the example job/ }))
     fireEvent.click(tab('Interview List'))
     fireEvent.click(await screen.findByRole('button', { name: /Send interview link to all/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
 
-    expect(api.post).not.toHaveBeenCalled()
-    expect(api.put).not.toHaveBeenCalled()
-    expect(api.patch).not.toHaveBeenCalled()
-    expect(api.delete).not.toHaveBeenCalled()
+    noWrites()
     // The only request is the read-only price lookup.
     expect(api.get).toHaveBeenCalledTimes(1)
     expect(api.get).toHaveBeenCalledWith('/api/v1/interviews/pricing')

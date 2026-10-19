@@ -51,8 +51,9 @@ describe('tour steps', () => {
     const titles = [...EMPLOYER_STEPS, ...EXAMPLE_JOB_STEPS].map((s) => s.title.toLowerCase()).join(' | ')
 
     for (const topic of [
-      'post a job', 'manage your jobs', 'applicants', 'ai score', 'upload cvs', 'interview list',
-      'send ai interviews', 'costs', 'talent pool', 'candidate search', 'credits',
+      'post a job', 'manage your jobs', 'applicants', 'ai score', 'add people to the interview list',
+      'upload cvs', 'talent pool', 'choose the job to score against', 'interview list',
+      'send ai interviews', 'costs', 'candidate search', 'credits',
     ]) {
       expect(titles).toContain(topic)
     }

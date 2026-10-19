@@ -23,7 +23,7 @@ export function useExampleJobTour({ setView, costText, onClosed, autoStart }) {
     autoStart,
     startWhen: 'always',
     skipMissing: false,
-    progressText: 'Example job: {{current}} of {{total}}',
+    progressText: 'Example: {{current}} of {{total}}',
     onClosed,
   })
 }

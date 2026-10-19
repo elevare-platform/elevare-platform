@@ -1,20 +1,29 @@
 import { useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, CalendarCheck, Send, Upload, User, X } from 'lucide-react'
+import {
+  ArrowLeft, Briefcase, CalendarCheck, ChevronDown, Send, TrendingUp, Upload, User, Users, X, Zap,
+} from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
+import InterviewListButton from '@/components/employer/InterviewListButton'
 import { useInterviewPricing } from '@/hooks/useInterviewPricing'
 import { useExampleJobTour } from '@/components/onboarding/useExampleJobTour'
+import { EXAMPLE_VIEW_DEFAULT } from '@/components/onboarding/tourSteps'
 import { interviewPricingNote } from '@/lib/interviewPricing'
 import { matchScoreBand } from '@/lib/matchScore'
 import { cn } from '@/lib/utils'
 
 // Everything on this page is made up. It never calls the API except for the interview
 // price (read only, the same request the real interview list makes), so nothing here can
-// be saved, sent or charged. It exists for the guided tour, which ends here.
+// be saved, sent or charged. It exists for the guided tour, which ends here. It shows two
+// screens, an example job and the Talent Pool, so the tour can walk from one to the other.
 
 const JOB_TITLE = 'Sales Manager'
+
+// What the real pages say, so the example reads the same.
+const GENERIC_COST =
+  'Each AI interview uses credits, taken when you first send it. You see the cost and your balance here before you send.'
 
 const APPLICANTS = [
   {
@@ -34,17 +43,21 @@ const APPLICANTS = [
   { id: 'a3', name: 'Ngozi Eze', location: 'Port Harcourt', years: 1, applied: '15 Oct 2026', status: 'SUBMITTED', score: 31 },
 ]
 
-const PIPELINE = [
-  { id: 'p1', name: 'Segun Adeyemi', note: 'CV uploaded 16 Oct 2026', score: 71 },
-  { id: 'p2', name: 'Halima Yusuf', note: 'CV uploaded 16 Oct 2026', score: 46 },
-  { id: 'p3', name: 'Ifeanyi Okoro', note: 'CV uploaded just now', score: null },
+// CVs in the talent pool. The scores are against the example job.
+const POOL = [
+  { id: 'p1', name: 'Segun Adeyemi', source: 'Referral', note: 'Added 16 Oct 2026', score: 71 },
+  { id: 'p2', name: 'Halima Yusuf', source: 'Email', note: 'Added 16 Oct 2026', score: 46 },
+  { id: 'p3', name: 'Ifeanyi Okoro', source: 'LinkedIn', note: 'Added just now', score: null },
 ]
 
-const INTERVIEWS = [
-  { id: 'i1', name: 'Amaka Obi', status: 'Not interviewed yet' },
-  { id: 'i2', name: 'Segun Adeyemi', status: 'Not interviewed yet' },
-  { id: 'i3', name: 'Tunde Bello', status: 'Invite sent' },
+const PEOPLE = [...APPLICANTS, ...POOL]
+
+const POOL_JOBS = [
+  { value: 'sales', label: JOB_TITLE },
+  { value: 'finance', label: 'Finance Officer' },
 ]
+
+const SOURCES = ['Email', 'Gmail', 'Zoho', 'Referral', 'LinkedIn', 'Other']
 
 const STATUS_BADGE = {
   SUBMITTED: 'bg-blue-100 text-blue-700',
@@ -59,10 +72,6 @@ const TABS = [
   { key: 'ai-matches', label: 'AI Talent Matches' },
   { key: 'interviews', label: 'Interview List' },
 ]
-
-// Shown when this account is not charged for interviews, or the price is not known.
-const GENERIC_COST =
-  'Each AI interview uses credits, taken when you first send it. You see the cost and your balance here before you send.'
 
 function ScoreBadge({ score, onClick, expanded }) {
   const band = matchScoreBand(score)
@@ -83,7 +92,8 @@ function ScoreBadge({ score, onClick, expanded }) {
   )
 }
 
-function ApplicantRow({ applicant, reasoningOpen, onToggleReasoning }) {
+function ApplicantRow({ applicant, reasoningOpen, onToggleReasoning, onList, onToggleList, first }) {
+  const interviewButton = <InterviewListButton onList={onList} onToggle={onToggleList} />
   return (
     <div className="rounded-lg border border-border bg-surface overflow-hidden">
       <div className="flex flex-wrap items-center gap-3 p-4">
@@ -99,6 +109,7 @@ function ApplicantRow({ applicant, reasoningOpen, onToggleReasoning }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 ml-auto">
+          {first ? <span data-tour="example-interview-button">{interviewButton}</span> : interviewButton}
           <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', STATUS_BADGE[applicant.status])}>
             {STATUS_LABEL[applicant.status]}
           </span>
@@ -146,6 +157,14 @@ function ApplicantRow({ applicant, reasoningOpen, onToggleReasoning }) {
   )
 }
 
+function PersonAvatar() {
+  return (
+    <span className="w-10 h-10 rounded-full border border-border bg-background flex items-center justify-center flex-shrink-0" aria-hidden="true">
+      <User size={16} className="text-text-muted" />
+    </span>
+  )
+}
+
 function SendInviteDialog({ name, costText, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -186,10 +205,177 @@ function SendInviteDialog({ name, costText, onClose }) {
   )
 }
 
+// The "Add to Talent Pool" drawer, as on the real Talent Pool page.
+function UploadDrawer({ poolJob, onChooseJob, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+      <div
+        className="relative ml-auto w-full max-w-md bg-white h-full overflow-y-auto shadow-2xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add to Talent Pool"
+      >
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+          <div>
+            <h2 className="font-semibold text-text text-base">Add to Talent Pool</h2>
+            <p className="text-xs text-text-muted mt-0.5">Upload up to 20 CVs (batch processed)</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-muted transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 px-6 py-6 space-y-5">
+          <div data-tour="example-pool-drop" className="rounded-xl border-2 border-dashed border-border p-8 text-center">
+            <div className="w-12 h-12 rounded-xl bg-brand-blue/10 flex items-center justify-center mx-auto mb-3">
+              <Upload size={20} className="text-brand-blue" />
+            </div>
+            <p className="text-sm font-medium text-text mb-1">Drop PDFs here</p>
+            <p className="text-xs text-text-muted">
+              or <span className="text-brand-blue font-medium">browse files</span> · up to 20
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Source</p>
+            <div className="grid grid-cols-2 gap-2">
+              {SOURCES.map((s, i) => (
+                <span
+                  key={s}
+                  className={cn(
+                    'px-3 py-2.5 rounded-lg border text-sm font-medium',
+                    i === 0 ? 'border-brand-blue bg-brand-blue/5 text-brand-blue' : 'border-border text-text-muted',
+                  )}
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div data-tour="example-pool-attach">
+            <label htmlFor="example-attach" className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2 block">
+              Attach to Job <span className="normal-case font-normal">(optional: enables immediate scoring)</span>
+            </label>
+            <div className="relative">
+              <select
+                id="example-attach"
+                value={poolJob}
+                onChange={(e) => onChooseJob(e.target.value)}
+                className="w-full text-sm rounded-lg border border-border px-3 py-2.5 pr-8 appearance-none bg-white"
+              >
+                <option value="">No job (add to pipeline only)</option>
+                {POOL_JOBS.map((job) => <option key={job.value} value={job.value}>{job.label}</option>)}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
+            </div>
+            {poolJob && (
+              <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                <Zap size={11} /> AI scoring will run automatically after parsing
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="px-6 py-5 border-t border-border space-y-2">
+          <Button disabled className="w-full" size="lg">Add to Talent Pool</Button>
+          <p className="text-xs text-text-muted text-center">Example only: nothing is uploaded from here.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TalentPoolScreen({ view, onChange }) {
+  const ranked = view.poolJob !== ''
+  const scoreOf = (person) => (view.poolJob === 'sales' ? person.score : null)
+  const rows = ranked
+    ? [...POOL].sort((a, b) => (scoreOf(b) ?? -1) - (scoreOf(a) ?? -1))
+    : POOL
+  const jobTitle = POOL_JOBS.find((job) => job.value === view.poolJob)?.label
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-text">Talent Pool</h2>
+          <p className="text-sm text-text-muted mt-1">
+            {ranked
+              ? `Showing candidates ranked against ${jobTitle}`
+              : 'Browse your talent pipeline - select a job to see AI rankings'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {ranked && (
+            <Button variant="outline" size="sm" className="flex items-center gap-1.5">
+              <Zap size={13} /> Score all
+            </Button>
+          )}
+          <Button size="sm" data-tour="example-pool-add" onClick={() => onChange({ drawer: true })} className="flex items-center gap-1.5">
+            <Upload size={13} /> Add CV
+          </Button>
+        </div>
+      </div>
+
+      <div data-tour="example-pool-job" className="rounded-xl border border-border bg-white p-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Briefcase size={16} className="text-brand-blue" />
+            <label htmlFor="example-view-job" className="text-sm font-medium text-text">View against job:</label>
+          </div>
+          <div className="relative flex-1 max-w-sm w-full">
+            <select
+              id="example-view-job"
+              value={view.poolJob}
+              onChange={(e) => onChange({ poolJob: e.target.value })}
+              className="w-full text-sm rounded-lg border border-border px-3 py-2 pr-8 appearance-none bg-white"
+            >
+              <option value="">Pipeline view (no job selected)</option>
+              {POOL_JOBS.map((job) => <option key={job.value} value={job.value}>{job.label}</option>)}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
+          </div>
+          {ranked ? (
+            <span className="text-xs text-brand-blue bg-brand-blue/10 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
+              <TrendingUp size={11} /> Ranked by AI score
+            </span>
+          ) : (
+            <span className="text-xs text-text-muted bg-surface-muted px-2.5 py-1 rounded-full border border-border">
+              Select a job to enable AI ranking
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {rows.map((person, index) => (
+          <div key={person.id} className="flex items-center gap-4 p-4 rounded-xl border border-border bg-white">
+            <span className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-bold flex items-center justify-center flex-shrink-0">
+              {ranked ? index + 1 : '·'}
+            </span>
+            <PersonAvatar />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-text text-sm">{person.name}</p>
+              <p className="text-xs text-text-muted mt-0.5">{person.source} · {person.note}</p>
+            </div>
+            {ranked && <ScoreBadge score={scoreOf(person)} />}
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-blue-100 text-blue-700 border-blue-200">
+              New
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
- * An example job with made-up applicants. The last stop of the employer's guided tour:
- * applicants and AI scores, uploading CVs to be scored, the interview list, and sending
- * an AI interview with what it costs. Reached from the last dashboard step; closing or
+ * An example job with made-up applicants, and the Talent Pool. The last stop of the
+ * employer's guided tour: applicants and AI scores, the interview list button, uploading
+ * CVs and choosing the job to score them against, the interview list, and sending an AI
+ * interview with what it costs. Reached from the last dashboard step; closing or
  * finishing the tour returns to the dashboard.
  */
 export default function ExampleJobTourPage() {
@@ -198,8 +384,7 @@ export default function ExampleJobTourPage() {
   const realCost = interviewPricingNote(pricing)?.text
   const costText = realCost ?? GENERIC_COST
 
-  const [view, setView] = useState({ tab: 'applicants', reasoning: false, dialog: false })
-  const [uploadNote, setUploadNote] = useState(false)
+  const [view, setView] = useState(EXAMPLE_VIEW_DEFAULT)
   const [inviteFor, setInviteFor] = useState('Amaka Obi')
 
   const goToDashboard = useCallback(() => navigate('/dashboard'), [navigate])
@@ -211,12 +396,18 @@ export default function ExampleJobTourPage() {
     autoStart: true,
   })
 
+  const change = (changes) => setView((v) => ({ ...v, ...changes }))
+  const showTab = (tab) => change({ tab, dialog: false })
+  const toggleListed = (id) => setView((v) => ({
+    ...v,
+    listed: v.listed.includes(id) ? v.listed.filter((x) => x !== id) : [...v.listed, id],
+  }))
   const openInvite = (name) => {
     setInviteFor(name)
-    setView((v) => ({ ...v, dialog: true }))
+    change({ dialog: true })
   }
-  const closeInvite = () => setView((v) => ({ ...v, dialog: false }))
-  const showTab = (tab) => setView((v) => ({ ...v, tab, dialog: false }))
+
+  const listedPeople = view.listed.map((id) => PEOPLE.find((person) => person.id === id)).filter(Boolean)
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-muted">
@@ -237,137 +428,169 @@ export default function ExampleJobTourPage() {
             className="mb-6 rounded-xl border border-brand-blue/30 bg-brand-blue/5 p-4 flex flex-wrap items-center justify-between gap-3"
           >
             <p className="text-sm text-text">
-              <span className="font-semibold">Example job.</span> The candidates and scores are made up.
+              <span className="font-semibold">Example.</span> The candidates and scores are made up.
               Nothing here is real, nothing is sent and no credits are used.
             </p>
             <Button size="sm" variant="outline" onClick={start}>Replay the tour</Button>
           </div>
 
-          <h1 className="text-2xl font-bold text-text mb-6">Applicants for {JOB_TITLE}</h1>
-
-          <div role="tablist" aria-label="Job sections" className="flex flex-wrap gap-1 p-1 bg-surface-muted rounded-xl border border-border mb-6 w-fit">
-            {TABS.map(({ key, label }) => (
+          {view.page === 'pool' ? (
+            <>
               <button
-                key={key}
                 type="button"
-                role="tab"
-                aria-selected={view.tab === key}
-                onClick={() => showTab(key)}
-                className={cn(
-                  'px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
-                  view.tab === key
-                    ? 'bg-white text-text shadow-sm border border-border'
-                    : 'text-text-muted hover:text-text',
-                )}
+                onClick={() => change({ page: 'job', drawer: false })}
+                className="inline-flex items-center gap-1.5 text-sm text-brand-blue hover:underline mb-4"
               >
-                {label}
+                <ArrowLeft size={14} /> Back to the example job
               </button>
-            ))}
-          </div>
+              <TalentPoolScreen view={view} onChange={change} />
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-text mb-6">Applicants for {JOB_TITLE}</h1>
 
-          {view.tab === 'applicants' && (
-            <div data-tour="example-applicants" className="space-y-3">
-              {APPLICANTS.map((applicant, index) => (
-                index === 0 ? (
-                  <div key={applicant.id} data-tour="example-score">
-                    <ApplicantRow
-                      applicant={applicant}
-                      reasoningOpen={view.reasoning}
-                      onToggleReasoning={() => setView((v) => ({ ...v, reasoning: !v.reasoning }))}
-                    />
-                  </div>
-                ) : (
-                  <ApplicantRow key={applicant.id} applicant={applicant} />
-                )
-              ))}
-            </div>
-          )}
-
-          {view.tab === 'pipeline' && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-text-muted">External CVs uploaded and scored against this job.</p>
-                <button
-                  type="button"
-                  data-tour="example-upload"
-                  onClick={() => setUploadNote(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-blue px-3 py-1.5 rounded-lg hover:bg-brand-blue-dark transition-colors"
-                >
-                  <Upload size={12} /> Upload CVs
-                </button>
-              </div>
-              {uploadNote && (
-                <p role="status" className="text-xs text-text-muted">
-                  In your account this opens the Talent Pool, where you choose the CV files. Nothing is uploaded from this example.
-                </p>
-              )}
-              <div data-tour="example-pipeline-rows" className="space-y-2">
-                {PIPELINE.map((profile) => (
-                  <div key={profile.id} className="flex items-center gap-4 px-4 py-3 rounded-xl border border-border bg-white">
-                    <span className="w-10 h-10 rounded-full border border-border bg-background flex items-center justify-center flex-shrink-0" aria-hidden="true">
-                      <User size={16} className="text-text-muted" />
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-text text-sm">{profile.name}</p>
-                      <p className="text-xs text-text-muted">{profile.note}</p>
-                    </div>
-                    <ScoreBadge score={profile.score} />
-                  </div>
+              <div role="tablist" aria-label="Job sections" className="flex flex-wrap gap-1 p-1 bg-surface-muted rounded-xl border border-border mb-6 w-fit">
+                {TABS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={view.tab === key}
+                    onClick={() => showTab(key)}
+                    className={cn(
+                      'px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
+                      view.tab === key
+                        ? 'bg-white text-text shadow-sm border border-border'
+                        : 'text-text-muted hover:text-text',
+                    )}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
-            </div>
-          )}
 
-          {view.tab === 'ai-matches' && (
-            <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
-              <p className="font-medium text-text text-sm mb-1">AI Talent Matches</p>
-              <p className="text-xs text-text-muted">
-                In your account, people in your talent pool who fit this job are suggested here. Not part of this example.
-              </p>
-            </div>
-          )}
-
-          {view.tab === 'interviews' && (
-            <div className="space-y-3">
-              <p className="text-xs text-text-muted">{costText}</p>
-              <div className="flex justify-end">
-                <div data-tour="example-send-interviews" className="flex flex-wrap justify-end gap-2">
-                  <button type="button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors">
-                    Edit interview brief
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openInvite('everyone on the list')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
-                  >
-                    <Send size={13} /> Send interview link to all
-                  </button>
+              {view.tab === 'applicants' && (
+                <div data-tour="example-applicants" className="space-y-3">
+                  {APPLICANTS.map((applicant, index) => {
+                    const row = (
+                      <ApplicantRow
+                        applicant={applicant}
+                        reasoningOpen={index === 0 ? view.reasoning : false}
+                        onToggleReasoning={() => change({ reasoning: !view.reasoning })}
+                        onList={view.listed.includes(applicant.id)}
+                        onToggleList={() => toggleListed(applicant.id)}
+                        first={index === 0}
+                      />
+                    )
+                    return index === 0
+                      ? <div key={applicant.id} data-tour="example-score">{row}</div>
+                      : <div key={applicant.id}>{row}</div>
+                  })}
                 </div>
-              </div>
-              <div data-tour="example-interview-list" className="space-y-3">
-                {INTERVIEWS.map((item) => (
-                  <div key={item.id} className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl border border-border bg-white">
-                    <CalendarCheck size={16} className="text-brand-blue flex-shrink-0" aria-hidden="true" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-text text-sm">{item.name}</p>
-                      <p className="text-[11px] text-text-muted">{item.status}</p>
-                    </div>
+              )}
+
+              {view.tab === 'pipeline' && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-text-muted">External CVs uploaded and scored against this job.</p>
                     <button
                       type="button"
-                      onClick={() => openInvite(item.name)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
+                      data-tour="example-upload"
+                      onClick={() => change({ page: 'pool' })}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-blue px-3 py-1.5 rounded-lg hover:bg-brand-blue-dark transition-colors"
                     >
-                      <Send size={13} /> Send interview link
+                      <Upload size={12} /> Upload CVs
                     </button>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div data-tour="example-pipeline-rows" className="space-y-2">
+                    {POOL.map((profile) => (
+                      <div key={profile.id} className="flex flex-wrap items-center gap-4 px-4 py-3 rounded-xl border border-border bg-white">
+                        <span className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                          <Users size={15} className="text-brand-blue" />
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-text">{profile.name}</p>
+                          <p className="text-xs text-text-muted">{profile.source} · {profile.note}</p>
+                        </div>
+                        <ScoreBadge score={profile.score} />
+                        <InterviewListButton
+                          onList={view.listed.includes(profile.id)}
+                          onToggle={() => toggleListed(profile.id)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {view.tab === 'ai-matches' && (
+                <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+                  <p className="font-medium text-text text-sm mb-1">AI Talent Matches</p>
+                  <p className="text-xs text-text-muted">
+                    In your account, people in your talent pool who fit this job are suggested here. Not part of this example.
+                  </p>
+                </div>
+              )}
+
+              {view.tab === 'interviews' && (listedPeople.length === 0 ? (
+                <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+                  <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
+                  <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
+                  <p className="text-xs text-text-muted">
+                    Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-text-muted">{costText}</p>
+                  <div className="flex justify-end">
+                    <div data-tour="example-send-interviews" className="flex flex-wrap justify-end gap-2">
+                      <button type="button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors">
+                        Edit interview brief
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openInvite('everyone on the list')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
+                      >
+                        <Send size={13} /> Send interview link to all
+                      </button>
+                    </div>
+                  </div>
+                  <div data-tour="example-interview-list" className="space-y-3">
+                    {listedPeople.map((person) => (
+                      <div key={person.id} className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl border border-border bg-white">
+                        <CalendarCheck size={16} className="text-brand-blue flex-shrink-0" aria-hidden="true" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-text text-sm">{person.name}</p>
+                          <p className="text-[11px] text-text-muted">Not interviewed yet</p>
+                        </div>
+                        <InterviewListButton onList onToggle={() => toggleListed(person.id)} />
+                        <button
+                          type="button"
+                          onClick={() => openInvite(person.name)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
+                        >
+                          <Send size={13} /> Send interview link
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
           )}
         </div>
       </main>
 
-      {view.dialog && <SendInviteDialog name={inviteFor} costText={costText} onClose={closeInvite} />}
+      {view.drawer && (
+        <UploadDrawer
+          poolJob={view.poolJob}
+          onChooseJob={(poolJob) => change({ poolJob })}
+          onClose={() => change({ drawer: false })}
+        />
+      )}
+      {view.dialog && <SendInviteDialog name={inviteFor} costText={costText} onClose={() => change({ dialog: false })} />}
 
       <Footer />
     </div>
