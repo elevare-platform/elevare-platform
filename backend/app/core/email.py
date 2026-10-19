@@ -22,6 +22,59 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
+# Shown in every email's footer. The name and address are the ones the website's
+# contact page publishes.
+COMPANY_NAME = "Elevare Human Solutions Ltd"
+COMPANY_ADDRESS = "Lekki Gardens, Eti-Osa, Lekki 106104, Lagos, Nigeria"
+
+# The logo is served by the website itself (frontend/public/email/), because an email
+# can only show an image from a public web address, not from a file in the project.
+# It is the official logo on a white background so it stays readable in dark mode.
+EMAIL_LOGO_PATH = "/email/elevare-logo.png"
+
+# The name an inbox shows next to the sender address.
+SENDER_NAME = "Elevare"
+
+
+def _html_to_text(html: str) -> str:
+    """A plain-text version of an email's HTML, sent alongside it.
+
+    Email without a text part scores worse with spam filters, and some readers (and
+    some clients) show only the text. Links keep their address in brackets after the
+    link text, so nothing is lost."""
+    import html as html_lib
+    import re
+
+    text = re.sub(r"<head>.*?</head>", "", html, flags=re.S | re.I)
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    # The hidden preview line at the top of the layout is for inboxes, not readers.
+    text = re.sub(r'<div style="display: none;.*?</div>', "", text, flags=re.S)
+
+    def link(match: re.Match) -> str:
+        address = match.group(1)
+        # An image inside the link (the logo) is represented by its alt text.
+        inner = re.sub(r'<img[^>]*alt="([^"]*)"[^>]*>', r"\1", match.group(2))
+        label = re.sub(r"<[^>]+>", "", inner).strip()
+        return address if not label or label == address else f"{label} ({address})"
+
+    text = re.sub(r'<a\s[^>]*href="([^"]+)"[^>]*>(.*?)</a>', link, text, flags=re.S | re.I)
+    text = re.sub(r"</(p|div|h1|h2|h3|tr|li|table)>|<br\s*/?>", "\n", text, flags=re.I)
+    text = html_lib.unescape(re.sub(r"<[^>]+>", "", text))
+
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    cleaned: list[str] = []
+    for line in lines:
+        if line or (cleaned and cleaned[-1]):
+            cleaned.append(line)
+    return "\n".join(cleaned).strip() + "\n"
+
+
+def _from_header() -> str:
+    """The From header: ``Elevare <noreply@...>`` so the inbox shows a name, not a bare
+    address. A configured value that already has a name is left as it is."""
+    sender = settings.mail_from or ""
+    return sender if "<" in sender else f"{SENDER_NAME} <{sender}>"
+
 
 class EmailService(ABC):
     """Abstract interface for email delivery."""
@@ -266,10 +319,8 @@ def _render_email_layout(
     body_content_html: str,
     footer_note: str,
 ) -> str:
-    """Wraps email content in a premium, modern, responsive layout."""
-    from datetime import datetime
-
-    current_year = datetime.now().year
+    """Wraps email content in the shared layout: logo, content, company footer."""
+    logo_url = f"{settings.app_url.rstrip('/')}{EMAIL_LOGO_PATH}"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -350,16 +401,10 @@ def _render_email_layout(
         <table class="email-container" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; max-width: 600px; width: 100%;">
           <!-- Logo Header -->
           <tr>
-            <td style="padding: 32px 32px 0 32px;" class="email-padding">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td align="left">
-                    <a href="{settings.app_url}" target="_blank" style="text-decoration: none;">
-                      <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 22px; font-weight: 800; color: #1A4D8F; letter-spacing: -0.5px;">elevare</span>
-                    </a>
-                  </td>
-                </tr>
-              </table>
+            <td align="left" style="padding: 32px 32px 0 32px;" class="email-padding">
+              <a href="{settings.app_url}" target="_blank" style="text-decoration: none;">
+                <img src="{logo_url}" width="150" alt="Elevare Human Solutions" style="display: block; width: 150px; max-width: 100%; height: auto; border: 0; font-family: Arial, Helvetica, sans-serif; font-size: 18px; font-weight: bold; color: #1A4D8F;">
+              </a>
             </td>
           </tr>
 
@@ -376,9 +421,9 @@ def _render_email_layout(
           <tr>
             <td align="center" style="padding: 24px 20px 0 20px; text-align: center;">
               <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #64748B; font-weight: 400;">
-                © {current_year} Elevare. All rights reserved.
+                {COMPANY_NAME}<br>{COMPANY_ADDRESS}
               </p>
-              <p style="margin: 4px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #94A3B8; font-weight: 400;">
+              <p style="margin: 8px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #94A3B8; font-weight: 400;">
                 {footer_note}
               </p>
               <!--unsubscribe-->
@@ -493,10 +538,11 @@ class ResendEmailService(EmailService):
         loop = asyncio.get_event_loop()
         for to, html, headers in deliveries:
             payload = {
-                "from": settings.mail_from,
+                "from": _from_header(),
                 "to": to,
                 "subject": subject,
                 "html": html,
+                "text": _html_to_text(html),
             }
             if headers:
                 payload["headers"] = headers
@@ -520,28 +566,28 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Send an application-received confirmation email to the candidate."""
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Application Received</h2>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your application for <strong>{job_title}</strong> at <strong>{company_name}</strong> has been successfully submitted.</p>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The hiring team will review your credentials and get in touch if your profile aligns with their needs. You can monitor the progress of your application on your dashboard.</p>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Application received</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've received your application for <strong>{job_title}</strong> at <strong>{company_name}</strong>.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The hiring team will review it and contact you if they want to take it further. You can follow its progress from your dashboard.</p>
 
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: left;">
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Application Details</div>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F;  margin-bottom: 8px;">Application</div>
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 600; color: #0F172A; margin-bottom: 4px;">{job_title}</div>
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color: #64748B;">{company_name}</div>
         </div>
 
-        {_render_button("View My Applications", f"{settings.app_url}/candidate/applications")}
+        {_render_button("View my applications", f"{settings.app_url}/candidate/applications")}
         """
 
         html_body = _render_email_layout(
-            title=f"Application Received: {job_title}",
-            preheader=f"Your application for {job_title} at {company_name} has been successfully submitted.",
+            title=f"Application received: {job_title}",
+            preheader=f"We've received your application for {job_title} at {company_name}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you applied for a job on Elevare.",
         )
 
         await self._send_html(
-            subject=f"Application Received: {job_title}",
+            subject=f"Application received: {job_title}",
             recipients=[candidate_email],
             html_body=html_body,
         )
@@ -553,40 +599,40 @@ class ResendEmailService(EmailService):
         badge_html = _render_badge(new_status)
 
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Application Status Update</h2>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your job application has been updated with a new status.</p>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Application update</h2>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The status of your application has changed.</p>
 
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: left;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
               <td style="padding-bottom: 16px;">
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Role</div>
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #64748B;  margin-bottom: 6px;">Role</div>
                 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 600; color: #0F172A;">{job_title}</div>
               </td>
             </tr>
             <tr>
               <td style="border-top: 1px solid #E2E8F0; padding-top: 16px;">
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">New Status</div>
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #64748B;  margin-bottom: 8px;">New status</div>
                 {badge_html}
               </td>
             </tr>
           </table>
         </div>
 
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Log in to your Elevare dashboard to view the complete details and next steps.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Log in to your dashboard to see the details.</p>
 
-        {_render_button("View My Applications", f"{settings.app_url}/candidate/applications")}
+        {_render_button("View my applications", f"{settings.app_url}/candidate/applications")}
         """
 
         html_body = _render_email_layout(
-            title=f"Application Update: {job_title}",
-            preheader=f"Your application status for {job_title} is now {new_status.capitalize()}.",
+            title=f"Application update: {job_title}",
+            preheader=f"Your application for {job_title} is now {new_status.lower()}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you have an active application on Elevare.",
         )
 
         await self._send_html(
-            subject=f"Application Update: {job_title}",
+            subject=f"Application update: {job_title}",
             recipients=[candidate_email],
             html_body=html_body,
         )
@@ -597,29 +643,29 @@ class ResendEmailService(EmailService):
         """Notify an employer by email that a new application has been received."""
         review_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New Application Received</h2>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A new candidate has applied to your job posting.</p>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New application</h2>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A candidate has applied for your job posting.</p>
 
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Candidate Name</div>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F;  margin-bottom: 8px;">Candidate</div>
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 18px; font-weight: 700; color: #0F172A; margin-bottom: 12px;">{candidate_name}</div>
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color: #475569;">Applied for <strong style="color: #0F172A;">{job_title}</strong></div>
         </div>
 
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Review their profile, resume, and AI match score on your Elevare employer dashboard.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You can review their profile, CV and AI match score on your dashboard.</p>
 
-        {_render_button("Review Application", review_url)}
+        {_render_button("Review application", review_url)}
         """
 
         html_body = _render_email_layout(
-            title=f"New Application: {job_title}",
-            preheader=f"New application received from {candidate_name} for your job {job_title}.",
+            title=f"New application: {job_title}",
+            preheader=f"{candidate_name} applied for {job_title}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you have an active job posting on Elevare.",
         )
 
         await self._send_html(
-            subject=f"New Application: {job_title}",
+            subject=f"New application: {job_title}",
             recipients=[employer_email],
             html_body=html_body,
         )
@@ -637,15 +683,15 @@ class ResendEmailService(EmailService):
             verification_link += f"&next={quote(next_url, safe='')}"
 
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Verify Your Email Address</h2>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Welcome to Elevare! Click the button below to verify your email address and activate your account. This link will expire in 24 hours.</p>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Verify your email address</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Welcome to Elevare. Please verify your email address to activate your account. The link expires in 24 hours.</p>
 
-        {_render_button("Verify Email", verification_link)}
+        {_render_button("Verify email address", verification_link)}
 
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 24px; border-top: 1px solid #E2E8F0; padding-top: 20px;">
           <tr>
             <td>
-              <p style="margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Trouble clicking the button?</p>
+              <p style="margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #64748B; font-weight: 600; ">If the button doesn't work, copy and paste this link into your browser:</p>
               <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #1A4D8F; word-break: break-all;">
                 <a href="{verification_link}" target="_blank" style="color: #1A4D8F; text-decoration: none; word-break: break-all;">{verification_link}</a>
               </p>
@@ -655,14 +701,14 @@ class ResendEmailService(EmailService):
         """
 
         html_body = _render_email_layout(
-            title="Verify Your Email Address",
+            title="Verify your email address",
             preheader="Verify your email address to activate your Elevare account.",
             body_content_html=body_content_html,
             footer_note="If you didn't create an account, you can safely ignore this email.",
         )
 
         await self._send_html(
-            subject="Verify Your Email Address — Elevare",
+            subject="Verify your email address",
             recipients=[email],
             html_body=html_body,
             essential=True,
@@ -748,9 +794,9 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Send a new contact form submission notification to the Elevare team."""
         label = (
-            "Employer Inquiry"
+            "employer inquiry"
             if inquiry_type == "employer_inquiry"
-            else "General Contact"
+            else "general message"
         )
         company_row = (
             f"""
@@ -764,8 +810,8 @@ class ResendEmailService(EmailService):
         )
 
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New Contact Submission</h2>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A new inquiry has been submitted via the Elevare website.</p>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New message from the website</h2>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Someone sent a message through the contact form on the Elevare website.</p>
 
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size: 14px; line-height: 1.5;">
@@ -780,26 +826,26 @@ class ResendEmailService(EmailService):
             {company_row}
             <tr>
               <td style="padding: 10px 0; font-weight: 600; color: #475569; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Type</td>
-              <td style="padding: 10px 0; color: #0F172A; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">{label}</td>
+              <td style="padding: 10px 0; color: #0F172A; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">{label.capitalize()}</td>
             </tr>
           </table>
         </div>
 
         <div style="background-color: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; text-align: left; margin-top: 20px;">
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">Message</div>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #1A4D8F;  margin-bottom: 12px;">Message</div>
           <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #0F172A; white-space: pre-wrap;">{message}</p>
         </div>
         """
 
         html_body = _render_email_layout(
-            title=f"New contact form submission — {name}",
-            preheader=f"New {label} inquiry from {name}.",
+            title=f"New contact form submission from {name}",
+            preheader=f"New {label} from {name}.",
             body_content_html=body_content_html,
-            footer_note="Elevare Team Internal Notification.",
+            footer_note="This message was sent to the Elevare team from the website contact form.",
         )
 
         await self._send_html(
-            subject=f"[Elevare] New {label} from {name}",
+            subject=f"New {label} from {name}",
             recipients=[recipient],
             html_body=html_body,
             essential=True,  # to Elevare's own inbox, not to a user
@@ -817,29 +863,24 @@ class ResendEmailService(EmailService):
         job_title = job_data["title"]
 
         if action == "APPROVED":
-            subject = f"Your job listing has been approved — {job_title}"
+            subject = f"Your job listing was approved: {job_title}"
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
 
             body_content_html = f"""
-            <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Job Listing Approved</h2>
+            <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your job listing was approved</h2>
+            <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've approved <strong>{job_title}</strong>. You can publish it now so candidates can see it and apply.</p>
 
-            <div style="background-color: #ECFDF5; border: 1px solid #D1FAE5; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #065F46; margin-bottom: 8px;">Approved & Ready to Publish</div>
-              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #065F46;">Your job listing <strong>{job_title}</strong> has been approved by our team. You can now publish it to make it visible to candidates and start receiving applications.</p>
-            </div>
-
-            {_render_button("Publish Job Now", cta_url)}
+            {_render_button("Publish job", cta_url)}
             """
         else:
-            subject = f"Your job listing requires changes — {job_title}"
+            subject = f"Your job listing needs changes: {job_title}"
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
 
             reason_block = (
                 f"""
-            <div style="background-color: #ffffff; border: 1px solid #FCD34D; border-radius: 8px; padding: 16px; margin-top: 16px;">
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #78350F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Moderator Feedback</div>
-              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F; font-style: italic;">"{reason}"</p>
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 0 0 24px 0;">
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px;">Feedback from our team</div>
+              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #0F172A;">{reason}</p>
             </div>
             """
                 if reason
@@ -847,23 +888,17 @@ class ResendEmailService(EmailService):
             )
 
             body_content_html = f"""
-            <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Job Listing Requires Changes</h2>
+            <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your job listing needs changes</h2>
+            <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We can't publish <strong>{job_title}</strong> yet. It needs a few changes first.</p>
+            {reason_block}
+            <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Please edit the listing and submit it again for review.</p>
 
-            <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #B45309; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #78350F; margin-bottom: 8px;">Revision Needed</div>
-              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F;">Your job listing <strong>{job_title}</strong> requires some adjustments before it can be published.</p>
-              {reason_block}
-            </div>
-
-            <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Please edit the listing to address the feedback above and resubmit it for moderation.</p>
-
-            {_render_button("Edit Job Listing", cta_url)}
+            {_render_button("Edit job listing", cta_url)}
             """
 
         html_body = _render_email_layout(
             title=subject,
-            preheader=f"Moderation update for your job listing: {job_title}.",
+            preheader=f"An update on your job listing: {job_title}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you have an active job posting on Elevare.",
         )
@@ -882,20 +917,20 @@ class ResendEmailService(EmailService):
         """Send introduction request email with accept/decline magic links."""
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You have an introduction request</h2>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">An employer on Elevare is interested in connecting with you for the role of <strong>{job_title}</strong>.</p>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">No login required — simply click Accept or Decline below. This link expires in 7 days.</p>
-        {_render_button("Accept Introduction", accept_url, is_primary=True)}
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">An employer on Elevare would like to connect with you about the <strong>{job_title}</strong> role.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You don't need to log in. Choose Accept or Decline below. The link expires in 7 days.</p>
+        {_render_button("Accept introduction", accept_url, is_primary=True)}
         {_render_button("Decline", decline_url, is_primary=False)}
         <p style="margin: 16px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">If you decline, your identity will not be shared with the employer.</p>
         """
         html_body = _render_email_layout(
-            title="Introduction Request — Elevare",
-            preheader=f"An employer wants to connect with you for the role of {job_title}.",
+            title="Introduction request",
+            preheader=f"An employer would like to connect with you about the {job_title} role.",
             body_content_html=body_content_html,
             footer_note="You received this email because your CV is in the Elevare talent pool.",
         )
         await self._send_html(
-            subject=f"Introduction Request: {job_title}",
+            subject=f"Introduction request: {job_title}",
             recipients=[candidate_email],
             html_body=html_body,
         )
@@ -917,19 +952,19 @@ class ResendEmailService(EmailService):
         """
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You're invited to an AI video interview</h2>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_name}</strong> would like to move you forward for the role of <strong>{job_title}</strong> with a short live interview.</p>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You'll speak with an AI interviewer, not a human — it will ask you questions and follow up based on your answers, the same way a real interview would. Your camera records the session for the employer to review afterward.</p>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">No login required — just click below when you're ready, with your camera and microphone available.</p>
-        {_render_button("Start Interview", interview_url, is_primary=True)}
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_name}</strong> would like to interview you for the <strong>{job_title}</strong> role.</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The interview is conducted by an AI interviewer, not a person. It asks you questions and follows up on your answers. Your camera records the session so the employer can review it afterwards.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You don't need to log in. Open the link when you're ready, with your camera and microphone available.</p>
+        {_render_button("Start interview", interview_url, is_primary=True)}
         """
         html_body = _render_email_layout(
-            title=f"AI Interview Invite — {job_title}",
-            preheader=f"{company_name} would like to interview you for {job_title}.",
+            title=f"Interview invitation: {job_title}",
+            preheader=f"{company_name} would like to interview you for the {job_title} role.",
             body_content_html=body_content_html,
             footer_note="You received this email because your CV is in the Elevare talent pool.",
         )
         await self._send_html(
-            subject=f"Interview Invite: {job_title} at {company_name}",
+            subject=f"Interview invitation: {job_title} at {company_name}",
             recipients=[candidate_email],
             html_body=html_body,
         )
@@ -947,17 +982,17 @@ class ResendEmailService(EmailService):
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">A candidate needs their AI interview reset</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{candidate_name}</strong> was locked out of their AI interview for <strong>{job_title}</strong> after restarting it twice, and is asking you to resend their invite so they can try again.</p>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Resending their invite from the interview list resets this automatically — no other action is needed.</p>
-        {_render_button("Manage Interview List", manage_url, is_primary=True)}
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Resending their invite from the interview list resets it automatically. Nothing else is needed.</p>
+        {_render_button("Manage interview list", manage_url, is_primary=True)}
         """
         html_body = _render_email_layout(
-            title=f"Interview Reset Requested — {job_title}",
+            title=f"Interview reset requested: {job_title}",
             preheader=f"{candidate_name} is asking you to reset their AI interview for {job_title}.",
             body_content_html=body_content_html,
             footer_note=f"You're receiving this because you own the {job_title} posting on {company_name}'s Elevare account.",
         )
         await self._send_html(
-            subject=f"Interview reset requested: {candidate_name} — {job_title}",
+            subject=f"Interview reset requested: {candidate_name}, {job_title}",
             recipients=[employer_email],
             html_body=html_body,
         )
@@ -970,19 +1005,19 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Notify employer that a candidate accepted their introduction request."""
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction Accepted</h2>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction accepted</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A candidate has accepted your introduction request for <strong>{job_title}</strong>.</p>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You can now view their full profile and contact details on your Elevare dashboard.</p>
-        {_render_button("View Full Profile", profile_url)}
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You can now see their full profile and contact details on your dashboard.</p>
+        {_render_button("View full profile", profile_url)}
         """
         html_body = _render_email_layout(
-            title=f"Introduction Accepted — {job_title}",
+            title=f"Introduction accepted: {job_title}",
             preheader=f"A candidate accepted your introduction request for {job_title}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you requested a candidate introduction on Elevare.",
         )
         await self._send_html(
-            subject=f"Introduction Accepted: {job_title}",
+            subject=f"Introduction accepted: {job_title}",
             recipients=[employer_email],
             html_body=html_body,
         )
@@ -994,19 +1029,19 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Notify employer that a candidate declined their introduction request."""
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction Declined</h2>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction declined</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The candidate has declined your introduction request for <strong>{job_title}</strong>.</p>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your credit has been refunded. You can request introductions from other matched candidates on your dashboard.</p>
-        {_render_button("View AI Matches", f"{settings.app_url}/employer/jobs")}
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your credit has been refunded. You can request introductions with other matched candidates from your dashboard.</p>
+        {_render_button("View AI matches", f"{settings.app_url}/employer/jobs")}
         """
         html_body = _render_email_layout(
-            title=f"Introduction Declined — {job_title}",
+            title=f"Introduction declined: {job_title}",
             preheader=f"A candidate declined your introduction request for {job_title}. Your credit has been refunded.",
             body_content_html=body_content_html,
             footer_note="You received this email because you requested a candidate introduction on Elevare.",
         )
         await self._send_html(
-            subject=f"Introduction Declined: {job_title}",
+            subject=f"Introduction declined: {job_title}",
             recipients=[employer_email],
             html_body=html_body,
         )
@@ -1020,13 +1055,13 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Notify the sourcing admin to manually reach out to the candidate."""
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction request — candidate you sourced</h2>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction request for a candidate you sourced</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{employer_name}</strong> would like an introduction to <strong>{candidate_name}</strong> for the role of <strong>{job_title}</strong>.</p>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Reach out to the candidate off-platform to confirm interest, then mark this request Accepted or Declined from the Introductions queue in the admin console.</p>
-        {_render_button("Open Introductions Queue", f"{settings.app_url}/admin/introductions")}
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Please contact the candidate to confirm their interest, then mark the request as accepted or declined in the introductions queue.</p>
+        {_render_button("Open introductions queue", f"{settings.app_url}/admin/introductions")}
         """
         html_body = _render_email_layout(
-            title="Introduction Request — Action Needed",
+            title="Introduction request: action needed",
             preheader=f"{employer_name} wants an introduction to {candidate_name} for {job_title}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you sourced this candidate into the Elevare talent pool.",
@@ -1049,13 +1084,13 @@ class ResendEmailService(EmailService):
         """One-way notification for a candidate the employer already owns."""
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">A role that might interest you</h2>
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{employer_name}</strong> thinks you'd be a good fit for their <strong>{job_title}</strong> role and wanted you to know about it.</p>
-        {_render_button("View Job", job_url)}
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{employer_name}</strong> thinks you could be a good fit for their <strong>{job_title}</strong> role and wanted to let you know.</p>
+        {_render_button("View job", job_url)}
         <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Want employers to find you for roles like this one?</p>
         {_render_button("Create your free profile", register_url, is_primary=False)}
         """
         html_body = _render_email_layout(
-            title=f"A role at {employer_name} — Elevare",
+            title=f"A role at {employer_name}",
             preheader=f"{employer_name} thinks you'd be a good fit for {job_title}.",
             body_content_html=body_content_html,
             footer_note="You received this email because your CV is in the Elevare talent pool.",
@@ -1078,36 +1113,29 @@ class ResendEmailService(EmailService):
         company_label = company_name or "your company"
         reason_block = (
             f"""
-            <div style="background-color: #ffffff; border: 1px solid #FCD34D; border-radius: 8px; padding: 16px; margin-top: 16px;">
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #78350F; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Reason</div>
-              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F; font-style: italic;">"{reason}"</p>
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 0 0 24px 0;">
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px;">Reason</div>
+              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #0F172A;">{reason}</p>
             </div>
             """
             if reason
             else ""
         )
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Company Verification Update</h2>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We were unable to verify <strong>{company_label}</strong> at this time.</p>
-
-        <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #B45309; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #78350F; margin-bottom: 8px;">Verification Rejected</div>
-          <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F;">Please upload the correct documents and resubmit your verification request.</p>
-          {reason_block}
-        </div>
-
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Click below to return to the verification page and resubmit.</p>
-        {_render_button("Resubmit Verification", cta_url)}
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Company verification update</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We couldn't verify <strong>{company_label}</strong> with the documents you submitted.</p>
+        {reason_block}
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Please upload the correct documents and submit your verification again.</p>
+        {_render_button("Resubmit verification", cta_url)}
         """
         html_body = _render_email_layout(
-            title="Company Verification Rejected — Elevare",
+            title="Company verification update",
             preheader=f"Your company verification for {company_label} was not approved. Please resubmit.",
             body_content_html=body_content_html,
             footer_note="You received this email because you submitted a company verification request on Elevare.",
         )
         await self._send_html(
-            subject="Company Verification Update — Action Required",
+            subject="Company verification: action needed",
             recipients=[employer_email],
             html_body=html_body,
         )
@@ -1120,24 +1148,19 @@ class ResendEmailService(EmailService):
         """Notify employer that their KYC has been approved."""
         company_label = company_name or "your company"
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Company Verification Approved</h2>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your company is verified</h2>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_label}</strong> is now verified. You can post jobs on Elevare.</p>
 
-        <div style="background-color: #ECFDF5; border: 1px solid #D1FAE5; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Status</div>
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #065F46; margin-bottom: 8px;">Verified ✓</div>
-          <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #065F46;"><strong>{company_label}</strong> has been successfully verified. You can now post jobs on Elevare.</p>
-        </div>
-
-        {_render_button("Post a Job", f"{settings.app_url}/employer/jobs/new")}
+        {_render_button("Post a job", f"{settings.app_url}/employer/jobs/new")}
         """
         html_body = _render_email_layout(
-            title="Company Verified — Elevare",
+            title="Your company is verified",
             preheader=f"{company_label} has been verified. You can now post jobs on Elevare.",
             body_content_html=body_content_html,
             footer_note="You received this email because you submitted a company verification request on Elevare.",
         )
         await self._send_html(
-            subject="Company Verified — You Can Now Post Jobs",
+            subject="Your company is verified",
             recipients=[employer_email],
             html_body=html_body,
         )
@@ -1152,18 +1175,18 @@ class ResendEmailService(EmailService):
         company_label = company_name or "An employer"
         review_url = f"{settings.app_url}/admin/kyc"
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New KYC Submission</h2>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New KYC submission</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_label}</strong> has submitted company verification documents and is waiting for review.</p>
-        {_render_button("Review Submission", review_url)}
+        {_render_button("Review submission", review_url)}
         """
         html_body = _render_email_layout(
-            title="New KYC Submission — Elevare",
+            title="New KYC submission",
             preheader=f"{company_label} submitted documents for company verification.",
             body_content_html=body_content_html,
             footer_note="You received this email because you are an Elevare platform admin.",
         )
         await self._send_html(
-            subject=f"New KYC Submission — {company_label}",
+            subject=f"New KYC submission: {company_label}",
             recipients=[admin_email],
             html_body=html_body,
         )
@@ -1181,18 +1204,13 @@ class ResendEmailService(EmailService):
         cta_url = f"{settings.app_url}/employer/billing"
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">We couldn't process your payment</h2>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your {plan_name} renewal charge for <strong>{company_label}</strong> didn't go through — this is usually an expired card or a temporary decline from your bank.</p>
-
-        <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: left;">
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 700; color: #B45309; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">What happens next</div>
-          <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #78350F;">Your plan keeps working for now. We'll automatically retry the charge — if it's still unresolved by <strong>{retry_by}</strong>, your account will move to the Starter plan.</p>
-        </div>
-
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Update your card to avoid any interruption.</p>
-        {_render_button("Update Payment Method", cta_url)}
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your {plan_name} renewal charge for <strong>{company_label}</strong> didn't go through. This is usually caused by an expired card or a temporary decline from the bank.</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your plan keeps working for now, and we'll retry the charge automatically. If it still fails by <strong>{retry_by}</strong>, your account will move to the Starter plan.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Please update your card to avoid any interruption.</p>
+        {_render_button("Update payment method", cta_url)}
         """
         html_body = _render_email_layout(
-            title="Payment Failed — Action Required",
+            title="Payment failed: action needed",
             preheader=f"Your {plan_name} renewal didn't go through. Update your card by {retry_by}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you manage billing for an Elevare organization.",
@@ -1214,23 +1232,23 @@ class ResendEmailService(EmailService):
         if company_name:
             subject = f"You've been invited to join {company_name} on Elevare"
             heading = "You're invited to join a team on Elevare"
-            copy = f"You've been invited to join <strong>{company_name}</strong> on Elevare. Click below to accept and set up your account."
+            copy = f"You've been invited to join <strong>{company_name}</strong> on Elevare. Use the button below to accept and set up your account."
         else:
             subject = "You've been invited to Elevare"
             heading = "You're invited to Elevare"
-            copy = "You've been invited to create an employer account on Elevare. Click below to accept and get started."
+            copy = "You've been invited to create an employer account on Elevare. Use the button below to accept and set up your account."
 
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">{heading}</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{copy}</p>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">This link expires in {settings.invite_expiry} day{"s" if settings.invite_expiry != 1 else ""}.</p>
 
-        {_render_button("Accept Invite", invite_link)}
+        {_render_button("Accept invitation", invite_link)}
 
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 24px; border-top: 1px solid #E2E8F0; padding-top: 20px;">
           <tr>
             <td>
-              <p style="margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Trouble clicking the button?</p>
+              <p style="margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #64748B; font-weight: 600; ">If the button doesn't work, copy and paste this link into your browser:</p>
               <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #1A4D8F; word-break: break-all;">
                 <a href="{invite_link}" target="_blank" style="color: #1A4D8F; text-decoration: none; word-break: break-all;">{invite_link}</a>
               </p>
@@ -1275,23 +1293,23 @@ class ResendEmailService(EmailService):
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your account is ready</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">{greeting}</p>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">When you switched your Elevare account to a <strong>{role_label}</strong> account, a bug on our end meant the switch didn't fully complete. This may have shown you an error when you tried to use it.</p>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've found and fixed the issue. Your account is now fully set up as a {role_label} account and ready to use.</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">When you switched your Elevare account to a <strong>{role_label}</strong> account, something went wrong on our side and the switch didn't complete properly. You may have seen an error when you tried to use your account.</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've fixed the problem. Your account is now set up as a {role_label} account and ready to use.</p>
 
         {_render_button("Log in to Elevare", login_link)}
 
-        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">Sorry for the inconvenience. If anything still looks off after logging in, contact us at <a href="mailto:info_admin@elevare.com.ng" style="color: #1A4D8F; text-decoration: none;">info_admin@elevare.com.ng</a> and we'll sort it out.</p>
+        <p style="margin: 24px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #64748B;">We apologise for the inconvenience. If anything still looks wrong after you log in, please contact us at <a href="mailto:info_admin@elevare.com.ng" style="color: #1A4D8F; text-decoration: none;">info_admin@elevare.com.ng</a>.</p>
         """
 
         html_body = _render_email_layout(
             title="Your Elevare account is ready",
-            preheader="We fixed an issue with your account. You're all set.",
+            preheader="We've fixed the problem with your account.",
             body_content_html=body_content_html,
             footer_note="You received this email because an account was corrected on Elevare following a report of an error.",
         )
 
         await self._send_html(
-            subject="Your Elevare account is ready, sorry for the trouble",
+            subject="Your Elevare account is ready",
             recipients=[email],
             html_body=html_body,
         )
