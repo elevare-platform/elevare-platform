@@ -86,6 +86,17 @@ export default function PricingPage() {
             if (!plan) return tier
             return {
               ...tier,
+              // The credits a plan includes come from the plan itself, so this
+              // page can never promise a number the billing system does not give.
+              features: plan.included_credits
+                ? [
+                    {
+                      text: `${plan.included_credits} credits included every month (introductions and AI interviews)`,
+                      included: true,
+                    },
+                    ...tier.features,
+                  ]
+                : tier.features,
               price: formatPrice(plan.price_kobo),
               priceNote: plan.price_kobo > 0 ? `per ${plan.interval.toLowerCase()}` : undefined,
             }
@@ -224,7 +235,10 @@ export default function PricingPage() {
               sourced on your behalf, requesting an introduction costs 1 credit across every plan,
               including Professional. That's because we personally verify the candidate's
               willingness to be introduced before you get access to their CV, not an
-              automated check. Credits are purchased separately from your subscription.
+              automated check. AI interviews also use credits. Paid plans include a monthly
+              allowance of credits, used first and replaced at each renewal (unused ones do not
+              carry over). If you need more, you can buy credits at any time; credits you buy
+              never expire.
             </p>
           </div>
 
