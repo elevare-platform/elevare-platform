@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import Navbar from '@/components/layout/Navbar'
@@ -8,10 +8,24 @@ import { Button } from '@/components/ui/button'
 import { CheckCircle2, Minus } from 'lucide-react'
 import api from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
+import { interviewsForCredits } from '@/lib/interviewPricing'
 
 function formatPrice(priceKobo) {
   if (priceKobo === 0) return 'Free'
   return `₦${(priceKobo / 100).toLocaleString()}`
+}
+
+function plural(count, word) {
+  return `${count} ${word}${count === 1 ? '' : 's'}`
+}
+
+// "40 credits included every month", and what they buy once the interview price
+// is known.
+function includedCreditsText(credits, interviewPricing) {
+  const interviews = interviewsForCredits(credits, interviewPricing)
+  return interviews
+    ? `${credits} credits included every month (about ${plural(interviews, 'AI interview')})`
+    : `${credits} credits included every month (introductions and AI interviews)`
 }
 
 const TIERS = [
@@ -72,51 +86,58 @@ const TIERS = [
 export default function PricingPage() {
   const { user } = useAuth()
   const isEmployer = user?.role === 'EMPLOYER'
-  const [tiers, setTiers] = useState(TIERS)
+  // What the server says; each is optional, and the page falls back gracefully
+  // when one cannot be loaded. The plan cards are built from these below, so the
+  // order the requests finish in does not matter.
+  const [plans, setPlans] = useState(null)
+  const [packs, setPacks] = useState([])
+  const [costs, setCosts] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     api.get('/api/v1/billing/plans')
-      .then(({ data }) => {
-        if (cancelled) return
-        const byName = Object.fromEntries(data.map((p) => [p.name.toLowerCase(), p]))
-        setTiers((prev) =>
-          prev.map((tier) => {
-            const plan = byName[tier.name.toLowerCase()]
-            if (!plan) return tier
-            return {
-              ...tier,
-              // The credits a plan includes come from the plan itself, so this
-              // page can never promise a number the billing system does not give.
-              features: plan.included_credits
-                ? [
-                    {
-                      text: `${plan.included_credits} credits included every month (introductions and AI interviews)`,
-                      included: true,
-                    },
-                    ...tier.features,
-                  ]
-                : tier.features,
-              price: formatPrice(plan.price_kobo),
-              priceNote: plan.price_kobo > 0 ? `per ${plan.interval.toLowerCase()}` : undefined,
-            }
-          })
-        )
-      })
+      .then(({ data }) => { if (!cancelled) setPlans(data) })
       .catch(() => { /* keep static fallback pricing */ })
-    return () => { cancelled = true }
-  }, [])
-
-  // The top-up packs are public, so a visitor comparing plans can see what extra
-  // credits cost. If they cannot be loaded the section is simply not shown.
-  const [packs, setPacks] = useState([])
-  useEffect(() => {
-    let cancelled = false
     api.get('/api/v1/billing/credit-packages')
       .then(({ data }) => { if (!cancelled) setPacks(data) })
       .catch(() => { /* no packs section */ })
+    api.get('/api/v1/billing/credit-costs')
+      .then(({ data }) => { if (!cancelled) setCosts(data) })
+      .catch(() => { /* credit costs are left unstated */ })
     return () => { cancelled = true }
   }, [])
+
+  // What an AI interview costs, in the shape the shared helpers read; null when
+  // unknown or when interviews are not charged for.
+  const interviewPricing = useMemo(
+    () => (costs?.ai_interview > 0
+      ? { charged: true, credits_per_interview: costs.ai_interview }
+      : null),
+    [costs],
+  )
+
+  const tiers = useMemo(() => {
+    if (!plans) return TIERS
+    const byName = Object.fromEntries(plans.map((p) => [p.name.toLowerCase(), p]))
+    return TIERS.map((tier) => {
+      const plan = byName[tier.name.toLowerCase()]
+      if (!plan) return tier
+      return {
+        ...tier,
+        // The credits a plan includes come from the plan itself, and what they
+        // buy from the real interview price, so this page can never promise a
+        // number the billing system does not give.
+        features: plan.included_credits
+          ? [
+              { text: includedCreditsText(plan.included_credits, interviewPricing), included: true },
+              ...tier.features,
+            ]
+          : tier.features,
+        price: formatPrice(plan.price_kobo),
+        priceNote: plan.price_kobo > 0 ? `per ${plan.interval.toLowerCase()}` : undefined,
+      }
+    })
+  }, [plans, interviewPricing])
 
   return (
     <>
@@ -250,6 +271,11 @@ export default function PricingPage() {
                   <div key={pack.code} className="bg-white border border-border rounded-2xl p-5 text-center">
                     <p className="text-sm font-bold text-text">{pack.name}</p>
                     <p className="text-xs text-text-muted mt-0.5">{pack.credits} credits</p>
+                    {interviewsForCredits(pack.credits, interviewPricing) > 0 && (
+                      <p className="text-[11px] text-text-muted">
+                        about {plural(interviewsForCredits(pack.credits, interviewPricing), 'AI interview')}
+                      </p>
+                    )}
                     <p className="text-2xl font-extrabold text-text mt-3">{formatPrice(pack.price_kobo)}</p>
                     <p className="text-[11px] text-text-muted mt-1">
                       {formatPrice(Math.round(pack.price_kobo / pack.credits))} per credit
@@ -262,16 +288,32 @@ export default function PricingPage() {
 
           {/* Credits explainer — applies on every plan, including Professional */}
           <div className="mt-12 bg-white border border-border rounded-2xl p-6 max-w-3xl mx-auto">
-            <p className="text-sm font-bold text-text mb-1.5">How introductions work</p>
+            <p className="text-sm font-bold text-text mb-1.5">How credits work</p>
+            <ul className="text-sm text-text-muted leading-relaxed space-y-2 mb-3">
+              <li>
+                <span className="font-semibold text-text">
+                  Introduction: {plural(costs?.introduction ?? 1, 'credit')}.
+                </span>{' '}
+                Candidates you source yourself are always free to contact. For candidates we've
+                sourced on your behalf, requesting an introduction costs credits on every plan,
+                including Professional, because we personally verify the candidate's willingness
+                to be introduced before you get access to their CV, not an automated check. The
+                credit is returned if the candidate declines or the request expires.
+              </li>
+              {interviewPricing && (
+                <li>
+                  <span className="font-semibold text-text">
+                    AI interview: {plural(interviewPricing.credits_per_interview, 'credit')}.
+                  </span>{' '}
+                  Taken when you first send the interview link to a candidate. Resending the same
+                  link is free, and the credits come back if the link expires unused.
+                </li>
+              )}
+            </ul>
             <p className="text-sm text-text-muted leading-relaxed">
-              Candidates you source yourself are always free to contact. For candidates we've
-              sourced on your behalf, requesting an introduction costs 1 credit across every plan,
-              including Professional. That's because we personally verify the candidate's
-              willingness to be introduced before you get access to their CV, not an
-              automated check. AI interviews also use credits. Paid plans include a monthly
-              allowance of credits, used first and replaced at each renewal (unused ones do not
-              carry over). If you need more, you can buy credits at any time; credits you buy
-              never expire.
+              Paid plans include a monthly allowance of credits, used first and replaced at each
+              renewal (unused ones do not carry over). If you need more, you can buy credits at
+              any time; credits you buy never expire.
             </p>
           </div>
 
