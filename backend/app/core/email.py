@@ -10,6 +10,14 @@ Wire into FastAPI via get_email_service() dependency.
 import logging
 from abc import ABC, abstractmethod
 
+from app.modules.email_preferences.links import (
+    list_unsubscribe_headers,
+    with_unsubscribe,
+    without_unsubscribe,
+)
+from app.modules.email_preferences.suppression import suppressed_addresses
+from app.modules.email_preferences.tokens import normalize_email
+
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -373,6 +381,7 @@ def _render_email_layout(
               <p style="margin: 4px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; color: #94A3B8; font-weight: 400;">
                 {footer_note}
               </p>
+              <!--unsubscribe-->
             </td>
           </tr>
         </table>
@@ -440,28 +449,71 @@ class ResendEmailService(EmailService):
         recipients: list[str],
         html_body: str,
         reply_to: str | None = None,
+        *,
+        essential: bool = False,
     ) -> None:
-        """Run the blocking Resend SDK call in a thread pool to avoid blocking the event loop."""
+        """Send an email, unless its recipient has turned emails off.
+
+        Every email Elevare sends passes through here, so this is where "turn emails
+        off" is enforced, at the moment of sending (an email already queued when
+        someone unsubscribes is stopped too).
+
+        An address that has unsubscribed is skipped, quietly, not an error.
+        ``essential`` emails are the ones a person needs to use or protect their
+        account (email verification, a teammate's invite, a failed payment) or that go
+        to Elevare's own inbox: they are always sent and carry no unsubscribe link.
+        Every other email is sent to each recipient separately, with that recipient's
+        own signed Unsubscribe link in the footer and in the List-Unsubscribe headers.
+        """
         import asyncio
 
+        # (recipients, html, extra headers) for each separate send.
+        deliveries: list[tuple[list[str], str, dict[str, str]]]
+        if essential:
+            deliveries = [(recipients, without_unsubscribe(html_body), {})]
+        else:
+            turned_off = await suppressed_addresses(recipients)
+            deliveries = []
+            for address in recipients:
+                if normalize_email(address) in turned_off:
+                    logger.info(
+                        "Email to %s not sent: the address has turned emails off — subject: %s",
+                        address,
+                        subject,
+                    )
+                    continue
+                deliveries.append(
+                    (
+                        [address],
+                        with_unsubscribe(html_body, address),
+                        list_unsubscribe_headers(address),
+                    )
+                )
+
         loop = asyncio.get_event_loop()
-        payload = {
-            "from": settings.mail_from,
-            "to": recipients,
-            "subject": subject,
-            "html": html_body,
-        }
-        if reply_to:
-            # Resend's SDK expects snake_case "reply_to" — only included when
-            # set, so the many other email types that don't use this aren't
-            # sending a stray null field.
-            payload["reply_to"] = reply_to
-        try:
-            await loop.run_in_executor(None, lambda: self._resend.Emails.send(payload))
-            logger.info("Email sent to %s — subject: %s", recipients, subject)
-        except Exception as exc:
-            logger.error("Resend delivery failed to %s: %s", recipients, exc)
-            raise
+        for to, html, headers in deliveries:
+            payload = {
+                "from": settings.mail_from,
+                "to": to,
+                "subject": subject,
+                "html": html,
+            }
+            if headers:
+                payload["headers"] = headers
+            if reply_to:
+                # Resend's SDK expects snake_case "reply_to" — only included when
+                # set, so the many other email types that don't use this aren't
+                # sending a stray null field.
+                payload["reply_to"] = reply_to
+            try:
+                # `payload` is rebuilt each pass, so the closure sees this send's.
+                await loop.run_in_executor(
+                    None, lambda payload=payload: self._resend.Emails.send(payload)
+                )
+                logger.info("Email sent to %s — subject: %s", to, subject)
+            except Exception as exc:
+                logger.error("Resend delivery failed to %s: %s", to, exc)
+                raise
 
     async def send_application_confirmation(
         self, candidate_email: str, job_title: str, company_name: str
@@ -613,6 +665,7 @@ class ResendEmailService(EmailService):
             subject="Verify Your Email Address — Elevare",
             recipients=[email],
             html_body=html_body,
+            essential=True,
         )
 
     async def send_verification_reminder(
@@ -749,6 +802,7 @@ class ResendEmailService(EmailService):
             subject=f"[Elevare] New {label} from {name}",
             recipients=[recipient],
             html_body=html_body,
+            essential=True,  # to Elevare's own inbox, not to a user
         )
 
     async def send_job_moderation_status(
@@ -1147,6 +1201,7 @@ class ResendEmailService(EmailService):
             subject="Action needed: your Elevare payment failed",
             recipients=[recipient_email],
             html_body=html_body,
+            essential=True,  # billing: a silent failure would let a plan lapse unnoticed
         )
 
     async def send_invite_email(
@@ -1195,6 +1250,7 @@ class ResendEmailService(EmailService):
             subject=subject,
             recipients=[email],
             html_body=html_body,
+            essential=True,  # a teammate asked for this; it is how the invitee joins
         )
 
     async def send_role_switch_corrected(

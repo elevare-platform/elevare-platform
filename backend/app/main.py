@@ -54,6 +54,7 @@ from app.modules.candidates.matches_router import router as candidate_matches_ro
 from app.modules.candidates.router import router as candidates_router
 from app.modules.contact.router import router as contact_router
 from app.modules.credits.router import router as credits_router
+from app.modules.email_preferences.router import router as email_preferences_router
 from app.modules.employer.router import router as employer_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.interview_list.router import router as interview_list_router
@@ -194,6 +195,11 @@ app.include_router(
     testimonials_router, prefix="/api/v1/testimonials", tags=["testimonials"]
 )
 app.include_router(credits_router, prefix="/api/v1/credits", tags=["credits"])
+app.include_router(
+    email_preferences_router,
+    prefix="/api/v1/email-preferences",
+    tags=["email-preferences"],
+)
 app.include_router(billing_webhook_router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(billing_public_router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])
