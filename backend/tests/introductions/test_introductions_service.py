@@ -348,3 +348,118 @@ async def test_expired_token_refunds_credit_on_decline(db_session):
 
     assert result["status"] == "EXPIRED"
     assert await credits_service.get_balance(organization.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_expired_link_used_again_and_again_refunds_only_once(db_session):
+    """Opening an expired link used to return the credit every time."""
+    employer, organization = await make_employer_with_org(db_session)
+    job = make_job(employer.id)
+    db_session.add(job)
+    await db_session.flush()
+    profile = make_talent_pool_profile(employer.id, job.id)
+    db_session.add(profile)
+    await db_session.flush()
+
+    credits_service = CreditsService(db_session)
+    await credits_service.grant(organization.id, amount=1)
+    intro = make_intro_request(
+        employer.id,
+        job.id,
+        profile.id,
+        token="expired-token-repeat",
+        expires_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    db_session.add(intro)
+    await db_session.flush()
+    await credits_service.deduct(organization.id, reference_id=intro.id)
+    assert await credits_service.get_balance(organization.id) == 0
+
+    service = IntroductionService(db_session)
+    for _ in range(3):
+        await service.accept("expired-token-repeat")
+    await service.decline("expired-token-repeat")
+
+    assert await credits_service.get_balance(organization.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_employers_list_and_the_expired_link_refund_only_once(db_session):
+    """The list screen refunds when it first notices the expiry; the candidate
+    opening the old link afterwards must not refund it a second time."""
+    employer, organization = await make_employer_with_org(db_session)
+    job = make_job(employer.id)
+    db_session.add(job)
+    await db_session.flush()
+    profile = make_talent_pool_profile(employer.id, job.id)
+    db_session.add(profile)
+    await db_session.flush()
+
+    credits_service = CreditsService(db_session)
+    await credits_service.grant(organization.id, amount=1)
+    intro = make_intro_request(
+        employer.id,
+        job.id,
+        profile.id,
+        token="expired-token-list",
+        expires_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    db_session.add(intro)
+    await db_session.flush()
+    await credits_service.deduct(organization.id, reference_id=intro.id)
+
+    service = IntroductionService(db_session)
+    await service.list_for_job(employer.id, job.id)  # notices the expiry, refunds
+    assert await credits_service.get_balance(organization.id) == 1
+
+    await service.accept("expired-token-list")  # the old link, afterwards
+
+    assert await credits_service.get_balance(organization.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_declined_introduction_returns_its_credit_to_the_plan_credits(
+    db_session,
+):
+    """The credit is recorded against the request, so the refund finds which pot
+    it came from: a request paid with plan credits is refunded to plan credits."""
+    employer, organization = await make_employer_with_org(db_session)
+    job = make_job(employer.id)
+    db_session.add(job)
+    await db_session.flush()
+    profile = make_talent_pool_profile(employer.id, job.id)
+    db_session.add(profile)
+    await db_session.flush()
+
+    credits_service = CreditsService(db_session)
+    await credits_service.grant(organization.id, amount=5)
+    await credits_service.reset_plan_allowance(organization.id, 2, uuid.uuid4())
+
+    service = IntroductionService(db_session)
+    with (
+        patch("app.modules.introductions.tasks.send_introduction_request_email", MagicMock()),
+        patch(
+            "app.modules.introductions.service.TalentPoolRepository.get_by_id_joined_with_other_data",
+            return_value=_profile_mock(),
+        ),
+    ):
+        intro = await service.request_introduction(
+            employer_id=employer.id,
+            job_id=job.id,
+            talent_pool_profile_id=profile.id,
+        )
+
+    # Plan credits are spent first: 1 of the 2 is gone, the 5 bought are untouched.
+    assert await credits_service.get_balances(organization.id) == {
+        "total": 6,
+        "plan_credits": 1,
+        "purchased_credits": 5,
+    }
+
+    await credits_service.refund(organization.id, reference_id=intro.id)
+
+    assert await credits_service.get_balances(organization.id) == {
+        "total": 7,
+        "plan_credits": 2,
+        "purchased_credits": 5,
+    }

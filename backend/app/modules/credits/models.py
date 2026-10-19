@@ -31,6 +31,10 @@ class EmployerCredits(BaseModel):
             "balance >= 0",
             name="ck_employer_credits_balance_non_negative",
         ),
+        CheckConstraint(
+            "plan_balance >= 0",
+            name="ck_employer_credits_plan_balance_non_negative",
+        ),
     )
 
     employer_id: Mapped[uuid.UUID] = mapped_column(
@@ -40,7 +44,17 @@ class EmployerCredits(BaseModel):
         unique=True,
     )
 
+    # The credits the organization bought or was granted. They never expire.
     balance: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    # The credits its plan includes for the current period. They are replaced at
+    # each renewal and wiped when the subscription lapses. Spent before `balance`.
+    plan_balance: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,
@@ -69,9 +83,16 @@ class CreditTransaction(BaseModel):
     reason: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # admin_grant | intro_request | intro_refund | interview_charge | interview_refund
+    # | plan_allowance | plan_allowance_expiry
     reference_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
-    )  # introduction_request.id, interview.id or admin action id
+    )  # introduction_request.id, interview.id, payment.id or admin action id
+    # How much of `delta` moved the plan credits (always >= 0, never more than
+    # |delta|); the rest moved the bought credits. Adding up `delta` over all of an
+    # organization's rows always gives plan_balance + balance.
+    plan_portion: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     organization: Mapped[Organization] = relationship(
         "Organization",

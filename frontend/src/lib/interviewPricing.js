@@ -11,21 +11,16 @@ export function interviewsForCredits(credits, pricing) {
 // nothing is charged for this account (Elevare's own admin accounts, an owner
 // with no organization, or a price of 0).
 export function interviewPricingNote(pricing) {
-  // A paid plan (Professional and above) covers interviews: say so, so the
-  // employer is not left wondering whether credits are being taken.
-  if (pricing?.included_in_plan) {
-    return {
-      text: 'AI interviews are included in your plan, so no credits are taken for them.',
-      short: false,
-    }
-  }
   if (!pricing || !pricing.charged) return null
-  const { credits_per_interview: cost, balance } = pricing
+  const { credits_per_interview: cost, balance, plan_credits: planCredits } = pricing
+  // Plan credits are spent first; say how many of the balance they are, so a
+  // subscriber sees why the number goes down by less than they bought.
+  const split = planCredits > 0 ? ` (${planCredits} of them included in your plan this month)` : ''
   return {
     text:
       `Each AI interview costs ${cost} credits, taken when you first send it. ` +
       'Resending is free, and the credits come back if the link expires unused. ' +
-      `Your balance: ${balance}.`,
+      `Your balance: ${balance}${split}.`,
     // Not enough for one more: the note turns into a nudge to buy credits.
     short: balance < cost,
   }

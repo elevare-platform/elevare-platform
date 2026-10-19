@@ -566,7 +566,7 @@ class BillingService:
         if verified_transaction.status not in ("success", "successful"):
             return  # Paystack's own record doesn't confirm it — do nothing
 
-        await self._repo.create_payment(
+        renewal_payment = await self._repo.create_payment(
             {
                 "organization_id": subscription.organization_id,
                 "subscription_id": subscription.id,
@@ -581,7 +581,9 @@ class BillingService:
                 "paid_at": verified_transaction.paid_at,
             }
         )
-        await self._activate_subscription(subscription.organization_id, plan)
+        await self._activate_subscription(
+            subscription.organization_id, plan, payment_id=renewal_payment.id
+        )
 
     async def _handle_subscription_create(self, event: ParsedWebhookEvent) -> None:
         """Paystack sends this once, right after the first charge on a
@@ -829,7 +831,7 @@ class BillingService:
                 )
             else:
                 subscription = await self._activate_subscription(
-                    payment.organization_id, plan
+                    payment.organization_id, plan, payment_id=payment.id
                 )
                 payment.subscription_id = subscription.id
                 notification_type = "SUBSCRIPTION_ACTIVATED"
@@ -868,15 +870,20 @@ class BillingService:
         plan" case (no provider_plan_code set), not something this sweep
         should silently paper over.
 
+        An expired subscription also loses its plan credits: they were included
+        in a period nobody is paying for any more. Bought credits are kept.
+
         Returns the number of subscriptions expired, for the caller to log.
         """
         now = datetime.now(UTC)
         lapsed_cancellations = await self._repo.list_lapsed_cancellations(older_than=now)
         lapsed_past_due = await self._repo.list_lapsed_past_due(older_than=now)
+        credits_service = CreditsService(self._db)
         for subscription in [*lapsed_cancellations, *lapsed_past_due]:
             await self._repo.update_subscription(
                 subscription.id, {"status": SubscriptionStatus.EXPIRED.value}
             )
+            await credits_service.expire_plan_allowance(subscription.organization_id)
         return len(lapsed_cancellations) + len(lapsed_past_due)
 
     async def reconcile_pending_payment(self, payment_id: uuid.UUID) -> None:
@@ -1087,13 +1094,22 @@ class BillingService:
         )
 
     async def _activate_subscription(
-        self, organization_id: uuid.UUID, plan: Plan
+        self,
+        organization_id: uuid.UUID,
+        plan: Plan,
+        payment_id: uuid.UUID | None = None,
     ) -> Subscription:
         """Create or update the organization's Subscription row to ACTIVE
         on `plan`, for one billing period starting now. Shared by the free-
         plan path in `start_subscription_checkout` and the paid-plan path
         in `_finalize_verified_payment` — one place decides what
         "activated" means, not two.
+
+        Given the id of the payment that paid for this period, a plan that
+        includes credits also gets them: the organization's plan credits are
+        replaced with a fresh allowance, in the same transaction, once per
+        payment (see CreditsService.reset_plan_allowance). Only a real payment
+        earns them: the free-plan path passes none.
         """
         now = datetime.now(UTC)
         period_length = (
@@ -1111,7 +1127,14 @@ class BillingService:
 
         existing = await self._repo.get_subscription_for_organization(organization_id)
         if existing is None:
-            return await self._repo.create_subscription(
+            subscription = await self._repo.create_subscription(
                 {"organization_id": organization_id, **data}
             )
-        return await self._repo.update_subscription(existing.id, data)
+        else:
+            subscription = await self._repo.update_subscription(existing.id, data)
+
+        if payment_id is not None and plan.included_credits:
+            await CreditsService(self._db).reset_plan_allowance(
+                organization_id, plan.included_credits, payment_id
+            )
+        return subscription

@@ -26,8 +26,13 @@ class IntroductionRepository:
         talent_pool_profile_id: uuid.UUID,
         token: str,
         expires_at: datetime,
+        intro_id: uuid.UUID | None = None,
     ) -> IntroductionRequest:
-        """Create a new PENDING introduction request. Does NOT commit."""
+        """Create a new PENDING introduction request. Does NOT commit.
+
+        ``intro_id`` lets the caller choose the request's id up front (so a credit
+        charge can be recorded against it); left out, one is generated as usual.
+        """
         row = IntroductionRequest(
             employer_id=employer_id,
             job_id=job_id,
@@ -35,6 +40,7 @@ class IntroductionRepository:
             status=IntroductionStatus.PENDING.value,
             token=token,
             expires_at=expires_at,
+            **({"id": intro_id} if intro_id is not None else {}),
         )
         self._db.add(row)
         await self._db.flush()

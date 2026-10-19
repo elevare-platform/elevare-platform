@@ -142,15 +142,21 @@ class InterviewInviteSendResponse(BaseModel):
 class InterviewPricingResponse(BaseModel):
     """What an AI interview costs the caller's organization, and what it has left.
 
-    ``charged`` is false when nothing is taken for them. ``included_in_plan`` says
-    why when it is because their plan (Professional and above) covers interviews;
-    otherwise it is Elevare's own admin accounts, an owner with no organization, or
-    a price of 0, and the screen shows no cost at all.
+    ``charged`` is false when nothing is taken for them: Elevare's own admin
+    accounts, an owner with no organization, or a price of 0, and the screen shows
+    no cost at all. ``balance`` is the total the organization can spend, made up of
+    ``plan_credits`` (included in its plan, replaced at each renewal and spent
+    first) and ``purchased_credits`` (bought or granted, never expire).
+    ``included_in_plan`` is always false now (a subscriber pays from plan credits
+    like everyone else) and only stays so a screen that has not been updated yet
+    still reads the response.
     """
     credits_per_interview: int
     balance: int | None
     charged: bool
     included_in_plan: bool = False
+    plan_credits: int | None = None
+    purchased_credits: int | None = None
 
 
 class InterviewLinkResponse(BaseModel):

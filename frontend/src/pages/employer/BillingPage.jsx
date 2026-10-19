@@ -4,6 +4,7 @@ import { CreditCard, Coins, Receipt, Loader2, CheckCircle2, XCircle, Clock } fro
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
+import CreditHistory from '@/components/employer/CreditHistory'
 import { useAuth } from '@/context/AuthContext'
 import { useBilling } from '@/hooks/useBilling'
 import { useCredits } from '@/hooks/useCredits'
@@ -59,7 +60,9 @@ export default function BillingPage() {
     getCurrentSubscription, listPlans, listCreditPackages, listPayments, startSubscriptionCheckout, startCreditCheckout,
     cancelSubscription,
   } = useBilling()
-  const { balance, loading: balanceLoading } = useCredits()
+  const {
+    balance, planCredits, purchasedCredits, planCreditsResetAt, loading: balanceLoading,
+  } = useCredits()
   const interviewPricing = useInterviewPricing()
 
   const [subscription, setSubscription] = useState(null)
@@ -249,10 +252,16 @@ export default function BillingPage() {
                   {' '}A candidate introduction costs 1 credit
                   {interviewPricing?.charged
                     ? `, and an AI interview costs ${interviewPricing.credits_per_interview} credits (taken when you first send it, and returned if the link expires unused).`
-                    : interviewPricing?.included_in_plan
-                      ? ', and AI interviews are included in your plan.'
-                      : '.'}
+                    : '.'}
                 </p>
+                {!balanceLoading && planCredits > 0 && (
+                  <p className="text-xs text-text-muted mb-4">
+                    {planCredits} of your credits are included in your plan
+                    {planCreditsResetAt ? ` and are replaced on ${formatDate(planCreditsResetAt)}` : ''}
+                    {' '}(unused plan credits do not carry over). The other {purchasedCredits} were bought
+                    and never expire. Plan credits are used first.
+                  </p>
+                )}
 
                 {canManage ? (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -283,6 +292,8 @@ export default function BillingPage() {
                   <p className="text-xs text-text-muted">Ask an owner or admin to buy more credits.</p>
                 )}
               </section>
+
+              <CreditHistory />
 
               {/* Payment history */}
               <section className="bg-white rounded-xl border border-border overflow-hidden">

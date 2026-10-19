@@ -8,6 +8,13 @@ vi.mock('@/lib/api', () => ({
   default: { post: vi.fn() },
 }))
 
+// The page renders the site Navbar, which reads the signed-in user: a visitor
+// who is not logged in.
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ user: null, logout: vi.fn(), authReady: true }),
+  getPostAuthRedirect: vi.fn(),
+}))
+
 // Mock analytics - no-op in tests
 vi.mock('@/lib/analytics', () => ({
   trackEvent: vi.fn(),
@@ -34,7 +41,7 @@ describe('ContactPage', () => {
   it('renders the contact form', () => {
     renderContact()
     expect(screen.getByLabelText(/full name/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/email address/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/email address \*/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/message/i)).toBeInTheDocument()
   })
 
@@ -44,7 +51,7 @@ describe('ContactPage', () => {
     renderContact()
 
     fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Jane Doe' } })
-    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'jane@example.com' } })
+    fireEvent.change(screen.getByLabelText(/email address \*/i), { target: { value: 'jane@example.com' } })
     fireEvent.change(screen.getByLabelText(/message/i), { target: { value: 'This is a test message long enough.' } })
     fireEvent.click(screen.getByRole('button', { name: /send message/i }))
 
@@ -61,7 +68,7 @@ describe('ContactPage', () => {
     renderContact()
 
     fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Jane Doe' } })
-    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'jane@example.com' } })
+    fireEvent.change(screen.getByLabelText(/email address \*/i), { target: { value: 'jane@example.com' } })
     fireEvent.change(screen.getByLabelText(/message/i), { target: { value: 'This is a test message long enough.' } })
     fireEvent.click(screen.getByRole('button', { name: /send message/i }))
 

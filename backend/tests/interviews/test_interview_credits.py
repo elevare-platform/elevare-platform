@@ -5,6 +5,7 @@ whose owner has no organization, and a price of 0 are never charged."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -363,43 +364,6 @@ async def test_a_refused_resend_leaves_the_existing_interview_untouched(db_sessi
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("plan_code", ["professional", "enterprise"])
-async def test_an_organization_on_a_paid_plan_is_not_charged_credits(
-    db_session, invite_email, plan_code
-):
-    """Until plans bundle monthly credits, a subscriber's plan covers interviews:
-    they must not pay the subscription and credits for the same thing."""
-    employer, organization, job = await _client(db_session, balance=0, plan_code=plan_code)
-    profile = await _profile(db_session, employer)
-
-    service = InterviewService(db_session)
-    try:
-        result = await service.send_invite(employer, job.id, profile.id)
-    finally:
-        await service.close()
-
-    assert result["sent"] is True
-    invite_email.delay.assert_called_once()
-    assert await _balance(db_session, organization) == 0
-    assert await _ledger(db_session, organization) == []
-
-
-@pytest.mark.asyncio
-async def test_copying_a_link_is_not_charged_on_a_paid_plan_either(db_session):
-    employer, organization, job = await _client(db_session, balance=0, plan_code="professional")
-    profile = await _profile(db_session, employer)
-
-    service = InterviewService(db_session)
-    try:
-        link = await service.get_interview_link(employer, job.id, profile.id)
-    finally:
-        await service.close()
-
-    assert link["interview_url"]
-    assert await _ledger(db_session, organization) == []
-
-
-@pytest.mark.asyncio
 async def test_a_lapsed_subscription_is_charged_like_starter(db_session):
     """An EXPIRED subscription no longer gives the plan, so credits apply."""
     employer, organization, job = await _client(db_session, balance=4, plan_code="professional")
@@ -425,9 +389,53 @@ async def test_a_lapsed_subscription_is_charged_like_starter(db_session):
 
 
 @pytest.mark.asyncio
-async def test_with_plan_gates_off_nothing_is_charged(db_session, monkeypatch):
+async def test_a_subscriber_pays_for_an_interview_like_anyone_else(db_session):
+    """No plan makes interviews free: a Professional organization with no credits
+    left is refused, and is told to buy more."""
+    employer, organization, job = await _client(
+        db_session, balance=0, plan_code="professional"
+    )
+    profile = await _profile(db_session, employer)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invite(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] is False
+    assert "Not enough credits" in result["reason"]
+
+
+@pytest.mark.asyncio
+async def test_a_subscribers_interview_comes_out_of_its_plan_credits_first(
+    db_session,
+):
+    employer, organization, job = await _client(
+        db_session, balance=5, plan_code="professional"
+    )
+    credits = CreditsService(db_session)
+    await credits.reset_plan_allowance(organization.id, 40, uuid4())
+    profile = await _profile(db_session, employer)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.send_invite(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result["sent"] is True
+    assert await credits.get_balances(organization.id) == {
+        "total": 35,
+        "plan_credits": 30,
+        "purchased_credits": 5,
+    }
+
+
+@pytest.mark.asyncio
+async def test_with_plan_gates_off_interviews_are_still_charged(db_session, monkeypatch):
     """The testing escape hatch makes every organization Professional (see
-    BillingService.get_effective_plan), so no credits are taken either."""
+    BillingService.get_effective_plan); that no longer waives the charge."""
     monkeypatch.setattr(settings, "plan_gates_enabled", False)
     employer, organization, job = await _client(db_session, balance=0)
     profile = await _profile(db_session, employer)
@@ -438,12 +446,16 @@ async def test_with_plan_gates_off_nothing_is_charged(db_session, monkeypatch):
     finally:
         await service.close()
 
-    assert result["sent"] is True
+    assert result["sent"] is False
+    assert "Not enough credits" in result["reason"]
 
 
 @pytest.mark.asyncio
-async def test_pricing_says_an_interview_is_included_on_a_paid_plan(db_session):
-    employer, _organization, _job = await _client(db_session, balance=7, plan_code="professional")
+async def test_pricing_shows_a_subscriber_both_pots(db_session):
+    employer, organization, _job = await _client(
+        db_session, balance=7, plan_code="professional"
+    )
+    await CreditsService(db_session).reset_plan_allowance(organization.id, 40, uuid4())
 
     service = InterviewService(db_session)
     try:
@@ -453,9 +465,11 @@ async def test_pricing_says_an_interview_is_included_on_a_paid_plan(db_session):
 
     assert pricing == {
         "credits_per_interview": 10,
-        "balance": 7,
-        "charged": False,
-        "included_in_plan": True,
+        "balance": 47,
+        "charged": True,
+        "included_in_plan": False,
+        "plan_credits": 40,
+        "purchased_credits": 7,
     }
 
 
@@ -474,6 +488,8 @@ async def test_pricing_tells_an_employer_the_cost_and_their_balance(db_session):
         "balance": 42,
         "charged": True,
         "included_in_plan": False,
+        "plan_credits": 0,
+        "purchased_credits": 42,
     }
 
 
