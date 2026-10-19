@@ -37,6 +37,7 @@ from app.modules.email_preferences.models import EmailSuppression
 from app.modules.employer.models import KYCDocument
 from app.modules.ingestion.models import IngestionImportRun, MailIntegration
 from app.modules.interview_list.models import InterviewListEntry
+from app.modules.interview_share.models import InterviewShareLink
 from app.modules.interviews.models import Interview, InterviewCost
 from app.modules.introductions.models import IntroductionRequest
 from app.modules.jobs.models import Job, JobAccessTokens
@@ -79,6 +80,7 @@ __all__ = [
     "Notification",
     "SavedCandidate",
     "InterviewListEntry",
+    "InterviewShareLink",
     "Interview",
     "InterviewCost",
     "Plan",

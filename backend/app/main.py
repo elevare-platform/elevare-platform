@@ -58,6 +58,10 @@ from app.modules.email_preferences.router import router as email_preferences_rou
 from app.modules.employer.router import router as employer_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.interview_list.router import router as interview_list_router
+from app.modules.interview_share.router import (
+    public_router as interview_share_public_router,
+)
+from app.modules.interview_share.router import router as interview_share_router
 from app.modules.interviews.router import public_router as interviews_public_router
 from app.modules.interviews.router import router as interviews_router
 from app.modules.introductions.router import admin_router as intro_admin_router
@@ -204,6 +208,14 @@ app.include_router(billing_webhook_router, prefix="/api/v1/billing", tags=["bill
 app.include_router(billing_public_router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(intro_public_router, prefix="/api/v1/public", tags=["introductions"])
+app.include_router(
+    interview_share_router, prefix="/api/v1/interview-share", tags=["interview-share"]
+)
+app.include_router(
+    interview_share_public_router,
+    prefix="/api/v1/public/interview-results",
+    tags=["interview-share"],
+)
 app.include_router(
     intro_mine_router, prefix="/api/v1/introductions", tags=["introductions"]
 )

@@ -1146,14 +1146,29 @@ class InterviewService:
         ):
             raise InterviewNotFound()
 
+        return await self.build_detail(job, interview)
+
+    async def build_detail(
+        self, job: Job, interview: Interview, *, video_seconds: int = 3600
+    ) -> InterviewDetailResponse:
+        """The full detail of a completed interview: recording, transcript, the AI's
+        assessment of it and the CV assessment next to it.
+
+        Does no permission check: the caller has already decided the reader may see
+        this (the employer's own detail view, and the shared results link). Shared so
+        both show exactly the same thing. ``video_seconds`` is how long the recording
+        link works; a link meant to be passed around uses a much shorter one.
+        """
         video_url = None
         if interview.r2_key:
             video_url = await get_storage_service().generate_presigned_url(
-                interview.r2_key, expires_seconds=3600,
+                interview.r2_key, expires_seconds=video_seconds,
             )
 
         cv_score, cv_strengths, cv_weaknesses, cv_fit_summary = (
-            await self._resolve_cv_assessment(interview, job)
+            await self.resolve_cv_assessment(
+                job, interview.talent_pool_profile, interview.application_id
+            )
         )
 
         # A transcript that did not match the recording is not shown: the
@@ -1186,6 +1201,15 @@ class InterviewService:
     async def _resolve_cv_assessment(
         self, interview: Interview, job: Job
     ) -> tuple[int | None, list[str] | None, list[str] | None, str | None]:
+        """The CV assessment for an existing interview's candidate (see
+        ``resolve_cv_assessment``)."""
+        return await self.resolve_cv_assessment(
+            job, interview.talent_pool_profile, interview.application_id
+        )
+
+    async def resolve_cv_assessment(
+        self, job: Job, profile, application_id: uuid.UUID | None = None
+    ) -> tuple[int | None, list[str] | None, list[str] | None, str | None]:
         """Best-effort lookup of this candidate's independently-computed CV fit
         score for this same job, shown alongside the interview assessment.
 
@@ -1198,8 +1222,8 @@ class InterviewService:
         still matches this job's current scoring inputs; otherwise it could
         be showing a stale score computed for a completely different job.
         """
-        if interview.application_id:
-            application = await self._application_repo.get_by_id(interview.application_id)
+        if application_id:
+            application = await self._application_repo.get_by_id(application_id)
             if application and application.ai_score is not None:
                 return (
                     application.ai_score,
@@ -1209,7 +1233,6 @@ class InterviewService:
                 )
             return None, None, None, None
 
-        profile = interview.talent_pool_profile
         if not profile or profile.ai_score is None or not profile.ai_score_job_hash:
             return None, None, None, None
 
