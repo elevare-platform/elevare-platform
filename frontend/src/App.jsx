@@ -31,6 +31,7 @@ const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const NotificationDetailPage = lazy(() => import('@/pages/NotificationDetailPage'))
 const UnauthorisedPage = lazy(() => import('@/pages/UnauthorisedPage'))
 const UnsubscribePage = lazy(() => import('@/pages/UnsubscribePage'))
+const SharedInterviewResultsPage = lazy(() => import('@/pages/SharedInterviewResultsPage'))
 const EmailSettingsPage = lazy(() => import('@/pages/settings/EmailSettingsPage'))
 
 const JobBoardPage = lazy(() => import('@/pages/jobs/JobBoardPage'))
@@ -137,6 +138,7 @@ function AppRoutes() {
         <Route path="/jobs" element={<JobBoardPage />} />
         <Route path="/jobs/:id" element={<JobDetailPage />} />
         <Route path="/shared/jobs/:token" element={<SharedApplicantsPage />} />
+        <Route path="/shared/interviews/:token" element={<SharedInterviewResultsPage />} />
         <Route path="/introduction-response" element={<IntroductionResponsePage />} />
         <Route path="/interview/:token" element={<InterviewInvitePage />} />
 
