@@ -70,6 +70,7 @@ from app.modules.introductions.router import public_router as intro_public_route
 from app.modules.jobs.access_token_router import router as access_token_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.onboarding.router import router as onboarding_router
 from app.modules.saved_candidates.router import router as saved_candidates_router
 from app.modules.sitemaps.router import router as sitemap_router
 from app.modules.talent_pool.router import router as talent_pool_router
@@ -204,6 +205,7 @@ app.include_router(
     prefix="/api/v1/email-preferences",
     tags=["email-preferences"],
 )
+app.include_router(onboarding_router, prefix="/api/v1/onboarding", tags=["onboarding"])
 app.include_router(billing_webhook_router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(billing_public_router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])

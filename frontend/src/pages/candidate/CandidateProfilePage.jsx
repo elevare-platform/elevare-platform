@@ -346,6 +346,8 @@ export default function CandidateProfilePage() {
 
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  // Saved, but the profile is still not complete (it still needs a CV).
+  const [savedIncomplete, setSavedIncomplete] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({})
   const [saveError, setSaveError] = useState(null)
 
@@ -406,12 +408,17 @@ export default function CandidateProfilePage() {
       const { data } = await api.put('/api/v1/candidates/me', changed)
       setInitialValues({ ...values })
       setSaveSuccess(true)
+      setSavedIncomplete(!data.is_profile_complete)
       // Keep AuthContext's user.is_profile_complete in sync immediately —
       // without this, ApplyButton and other gates keep using the stale
       // value from login until the next full page refresh.
       updateUser({ is_profile_complete: data.is_profile_complete })
-      trackEvent('Profile', 'profile_complete')
-      setTimeout(() => navigate(next, { replace: true }), 1200)
+      // Only a profile that is really complete goes on to where the person came from.
+      // One still missing its CV stays here, where the notice says how to finish it.
+      if (data.is_profile_complete) {
+        trackEvent('Profile', 'profile_complete')
+        setTimeout(() => navigate(next, { replace: true }), 1200)
+      }
     } catch (err) {
       const detail = err?.response?.data?.detail
       if (Array.isArray(detail)) {
@@ -461,6 +468,22 @@ export default function CandidateProfilePage() {
             <h1 className="text-2xl font-bold text-text">Edit Profile</h1>
             <p className="text-text-muted text-sm mt-1">Keep your information accurate to improve your profile strength.</p>
           </div>
+
+          {/* A profile is only complete with a CV, and a CV is not uploaded on this page. */}
+          {!loading && !error && profile && (profile.cvs?.length ?? 0) === 0 && (
+            <div role="note" className="rounded-xl border border-brand-amber/30 bg-brand-amber/5 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-amber-800">One more step: upload your CV</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  You need a CV before you can apply for jobs. Upload it from My Documents (PDF, up to 5MB), not on this page.
+                </p>
+              </div>
+              <Link to="/candidate/dashboard/documents"
+                className="inline-flex items-center rounded-lg border border-brand-amber px-3 py-1.5 text-xs font-semibold text-brand-amber hover:bg-brand-amber hover:text-white transition-colors">
+                Upload CV
+              </Link>
+            </div>
+          )}
 
           {loading && (
             <div className="space-y-4 animate-pulse" aria-busy="true">
@@ -580,6 +603,12 @@ export default function CandidateProfilePage() {
               {saveSuccess && (
                 <div role="status" className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
                   <CheckCircle size={15} />Your profile has been updated.
+                </div>
+              )}
+              {saveSuccess && savedIncomplete && (
+                <div role="note" className="rounded-lg border border-brand-amber/30 bg-brand-amber/5 px-4 py-3 text-sm text-amber-800">
+                  Your profile is not complete yet, so you cannot apply for jobs. It still needs a CV.{' '}
+                  <Link to="/candidate/dashboard/documents" className="font-semibold underline">Upload your CV</Link>
                 </div>
               )}
               {saveError && (

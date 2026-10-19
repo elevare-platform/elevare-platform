@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth, getPostAuthRedirect } from '@/context/AuthContext'
+import { OnboardingProvider } from '@/context/OnboardingContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { initAnalytics, trackPageview } from '@/lib/analytics'
 
@@ -44,6 +45,7 @@ const PublishJobPage = lazy(() => import('@/pages/employer/PublishJobPage'))
 const OnboardingPage = lazy(() => import('@/pages/employer/OnboardingPage'))
 const CompanyVerificationPage = lazy(() => import('@/pages/employer/CompanyVerificationPage'))
 const ApplicantsPage = lazy(() => import('@/pages/employer/ApplicantsPage'))
+const ExampleJobTourPage = lazy(() => import('@/pages/employer/ExampleJobTourPage'))
 const EmployerCVParserPage = lazy(() => import('@/pages/employer/EmployerCVParserPage'))
 const TalentPoolPage = lazy(() => import('@/pages/employer/TalentPoolPage'))
 const CandidateSearchPage = lazy(() => import('@/pages/employer/CandidateSearchPage'))
@@ -157,6 +159,8 @@ function AppRoutes() {
           <Route path="/employer/jobs/:id/edit" element={<EditJobPage />} />
           <Route path="/employer/jobs/:id/publish" element={<PublishJobPage />} />
           <Route path="/employer/jobs/:jobId/applicants" element={<ApplicantsPage />} />
+          {/* Made-up job the guided tour ends on; reads and writes nothing real. */}
+          <Route path="/employer/tour/example-job" element={<ExampleJobTourPage />} />
           <Route path="/employer/cv-parser" element={<EmployerCVParserPage />} />
           <Route path="/employer/talent-pool" element={<TalentPoolPage />} />
           <Route path="/employer/candidate-search" element={<CandidateSearchPage />} />
@@ -215,7 +219,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <OnboardingProvider>
+          <AppRoutes />
+        </OnboardingProvider>
       </AuthProvider>
     </BrowserRouter>
   )

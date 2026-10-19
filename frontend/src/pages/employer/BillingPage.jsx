@@ -6,6 +6,7 @@ import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import CreditHistory from '@/components/employer/CreditHistory'
 import { useAuth } from '@/context/AuthContext'
+import { useReportStep } from '@/hooks/useOnboarding'
 import { useBilling } from '@/hooks/useBilling'
 import { useCredits } from '@/hooks/useCredits'
 import { useInterviewPricing } from '@/hooks/useInterviewPricing'
@@ -55,6 +56,7 @@ function PaymentsNotAvailableNotice() {
 
 export default function BillingPage() {
   const { user } = useAuth()
+  useReportStep('credits')
   const canManage = user?.organization_role === 'OWNER' || user?.organization_role === 'ADMIN'
   const {
     getCurrentSubscription, listPlans, listCreditPackages, listPayments, startSubscriptionCheckout, startCreditCheckout,
