@@ -133,6 +133,18 @@ async def _save_unscored(db, repo, row, reason: str) -> None:
     await db.commit()
 
 
+class _ParsingInProgress(Exception):
+    """Internal signal that CV parsing hasn't finished yet — retry on a fixed delay."""
+
+
+# Parsing runs on its own async pipeline (up to task_soft_time_limit=240s), so a
+# scoring task that finds it unfinished polls on a fixed cadence: 10 tries 30s apart
+# is 5 minutes, longer than a parse can take. The default exponential backoff
+# exhausts its 3 retries in ~10-15s, long before parsing can realistically finish.
+PARSING_RETRY_SECONDS = 30
+PARSING_MAX_RETRIES = 10
+
+
 async def _record_fit_costs(ai_repo, attempts, **ids) -> None:
     """Write one cost row per fit-reasoning call that actually reached the model,
     failed ones included: a cut-off or unusable reply is billed all the same."""
@@ -345,6 +357,37 @@ async def _run_pipeline_async(
                     exc_info=True,
                 )
 
+            # --- Trigger scoring for applications that used this CV and are still
+            # unscored: a candidate who applied while the CV was being read has
+            # one waiting. Scoring is idempotent (it skips when nothing changed),
+            # and the waiting task would find the parse within 30s anyway; this
+            # only makes it prompt.
+            try:
+                from sqlalchemy import select as _select
+
+                from app.modules.applications.models import Application
+                from app.modules.candidates.models import CandidateCvs
+
+                waiting = await db.execute(
+                    _select(Application.id)
+                    .join(CandidateCvs, CandidateCvs.id == Application.cv_id)
+                    .where(
+                        CandidateCvs.submission_id == submission_id,
+                        Application.ai_score.is_(None),
+                    )
+                )
+                for application_id in list(waiting.scalars().all()):
+                    score_application_task.delay(str(application_id))
+                    logger.info(
+                        "Pipeline complete — queued scoring for application %s",
+                        application_id,
+                    )
+            except Exception:
+                logger.warning(
+                    "Failed to trigger application scoring after pipeline",
+                    exc_info=True,
+                )
+
         except Exception as e:
             logger.error(
                 f"Pipeline task failed for submission {submission_id}", exc_info=True
@@ -480,11 +523,25 @@ def score_application_task(self, application_id: str) -> None:
 
     Exits early (no LLM call, no write) if both content hashes match the stored values.
     Re-fires automatically when job description/skills changes via the job update endpoint.
+    A CV that is still being read is waited for (see PARSING_RETRY_SECONDS), and the
+    pipeline queues this task again when it finishes.
     """
-    asyncio.run(_score_application_async(application_id))
+    try:
+        asyncio.run(
+            _score_application_async(
+                application_id,
+                final_attempt=self.request.retries >= PARSING_MAX_RETRIES,
+            )
+        )
+    except _ParsingInProgress as exc:
+        raise self.retry(
+            countdown=PARSING_RETRY_SECONDS, max_retries=PARSING_MAX_RETRIES, exc=exc
+        ) from exc
 
 
-async def _score_application_async(application_id_str: str) -> None:
+async def _score_application_async(
+    application_id_str: str, final_attempt: bool = False
+) -> None:
     application_id = uuid.UUID(application_id_str)
 
     # Create a fresh engine and session for this event loop — avoids
@@ -543,6 +600,34 @@ async def _score_application_async(application_id_str: str) -> None:
                 )
                 await _save_unscored(db, app_repo, application, CV_UNREADABLE)
                 return
+            if (
+                submission
+                and not submission.parsed_data
+                and submission.parse_status
+                in (
+                    CVParsingStatus.PENDING.value,
+                    CVParsingStatus.PROCESSING.value,
+                )
+            ):
+                # The CV was uploaded a moment ago and is still being read. This
+                # used to skip the application for good, leaving it unscored with
+                # nothing to say why: wait and look again.
+                if final_attempt:
+                    logger.error(
+                        "score_application: parsing still not finished for application %s after %d tries; giving up",
+                        application_id,
+                        PARSING_MAX_RETRIES,
+                    )
+                    await _save_unscored(db, app_repo, application, SCORING_FAILED)
+                    return
+                logger.info(
+                    "score_application: parsing still in progress for application %s, retrying in %ds",
+                    application_id,
+                    PARSING_RETRY_SECONDS,
+                )
+                raise _ParsingInProgress(
+                    f"Parsing not complete for submission {submission.id} — will retry"
+                )
             if not submission or not submission.parsed_data:
                 logger.info(
                     "score_application: No parsed submission for application %s. Skipping.",
@@ -680,10 +765,6 @@ async def _score_application_async(application_id_str: str) -> None:
             await engine.dispose()
 
 
-class _ParsingInProgress(Exception):
-    """Internal signal that CV parsing hasn't finished yet — retry on a fixed delay."""
-
-
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def score_talent_pool_profile_task(
     self, profile_id: str, job_id: str | None = None
@@ -694,17 +775,21 @@ def score_talent_pool_profile_task(
     Pass job_id explicitly when scoring retroactively from score_against_job.
     """
     try:
-        asyncio.run(_score_talent_pool_profile_async(profile_id, job_id))
+        asyncio.run(
+            _score_talent_pool_profile_async(
+                profile_id,
+                job_id,
+                final_attempt=self.request.retries >= PARSING_MAX_RETRIES,
+            )
+        )
     except _ParsingInProgress as exc:
-        # Parsing runs on its own async pipeline (up to task_soft_time_limit=240s),
-        # so poll on a fixed 30s cadence instead of the default exponential
-        # backoff, which exhausts its 3 retries in ~10-15s — long before
-        # parsing can realistically finish.
-        raise self.retry(countdown=30, max_retries=10, exc=exc) from exc
+        raise self.retry(
+            countdown=PARSING_RETRY_SECONDS, max_retries=PARSING_MAX_RETRIES, exc=exc
+        ) from exc
 
 
 async def _score_talent_pool_profile_async(
-    profile_id_str: str, job_id_str: str | None = None
+    profile_id_str: str, job_id_str: str | None = None, final_attempt: bool = False
 ) -> None:
     profile_id = uuid.UUID(profile_id_str)
 
@@ -794,9 +879,22 @@ async def _score_talent_pool_profile_async(
                     CVParsingStatus.PENDING.value,
                     CVParsingStatus.PROCESSING.value,
                 ):
+                    if final_attempt:
+                        # Parsing never finished in the time we waited: say so,
+                        # rather than leaving a blank that looks like "not scored yet".
+                        logger.error(
+                            "score_talent_pool_profile: parsing still not finished for profile %s after %d tries; giving up",
+                            profile_id,
+                            PARSING_MAX_RETRIES,
+                        )
+                        await _save_unscored(
+                            db, talent_pool_repo, talent_pool, SCORING_FAILED
+                        )
+                        return
                     logger.info(
-                        "score_talent_pool_profile: parsing still in progress for profile %s, retrying in 30s",
+                        "score_talent_pool_profile: parsing still in progress for profile %s, retrying in %ds",
                         profile_id,
+                        PARSING_RETRY_SECONDS,
                     )
                     raise _ParsingInProgress(
                         f"Parsing not complete for submission {submission.id} — will retry"

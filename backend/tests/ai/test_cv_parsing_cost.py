@@ -90,11 +90,13 @@ def _make_cv_result(**overrides) -> CVExtractionResult:
 
 
 async def _run_pipeline_with_llm_result(
-    monkeypatch, db_session, llm_result, cv_result=None, redis=None
+    monkeypatch, db_session, llm_result, cv_result=None, redis=None, before_run=None
 ):
     """Create a submission, stub the extraction pipeline to return
     `llm_result` (and `cv_result`, a readable CV unless given), and run the real
-    task body against it. Pass `redis` (a mock) to inspect what was cached."""
+    task body against it. Pass `redis` (a mock) to inspect what was cached, and
+    `before_run` (an async function given the new submission) to set up rows that
+    point at it before the pipeline runs."""
     _patch_engine_to_use_test_session(monkeypatch, db_session)
     monkeypatch.setattr(ai_tasks.settings, "anthropic_model", _PRICED_MODEL)
 
@@ -105,6 +107,8 @@ async def _run_pipeline_with_llm_result(
     )
     db_session.add(submission)
     await db_session.flush()
+    if before_run:
+        await before_run(submission)
 
     deterministic = DeterministicExtractionResult(
         email=None,
