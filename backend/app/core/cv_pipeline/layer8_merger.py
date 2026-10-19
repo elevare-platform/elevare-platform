@@ -19,6 +19,11 @@ from app.core.cv_pipeline.layer5_taxonomy import TaxonomyMatchResult
 from app.core.cv_pipeline.layer6_nlp import NLPExtractionResult
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
 from app.core.cv_pipeline.models import CVExtractionResult, EducationEntry, WorkEntry
+from app.core.cv_pipeline.usability import (
+    education_entry_is_empty,
+    has_usable_content,
+    work_entry_is_empty,
+)
 
 CONFIDENCE_WEIGHTS = {
     "email": 0.15,
@@ -85,8 +90,9 @@ def _validate_fields(
         ):
             years_experience = None
 
-    # Clean skills — remove items > 50 chars, then deduplicate case-insensitively
-    skills = [s for s in skills if len(s) <= 50]
+    # Clean skills — remove blank items and items > 50 chars, then deduplicate
+    # case-insensitively
+    skills = [s for s in skills if s.strip() and len(s) <= 50]
     seen: set[str] = set()
     deduped = []
     for s in skills:
@@ -128,7 +134,9 @@ def merge_and_score(
     # Combined skills list
     all_skills = taxonomy_skills + llm_only_skills
 
-    # convert work history dicts to WorkEntry dataclass
+    # Convert work history dicts to the WorkEntry dataclass. An entry with no
+    # title, company or description is the all-null placeholder a model returns
+    # when it found no job: it is dropped, so it can never pass as real history.
     work_history = [
         WorkEntry(
             company=entry.get("company"),
@@ -140,9 +148,10 @@ def merge_and_score(
             is_current=entry.get("is_current", False),
         )
         for entry in llm_result.work_history
+        if not work_entry_is_empty(entry)
     ]
 
-    # Convert education dicts to EducationEntry dataclass
+    # Convert education dicts to the EducationEntry dataclass, dropping empty ones
     education = [
         EducationEntry(
             institution=entry.get("institution"),
@@ -152,6 +161,7 @@ def merge_and_score(
             qualification_type=entry.get("qualification_type"),
         )
         for entry in llm_result.education
+        if not education_entry_is_empty(entry)
     ]
 
     # Validate fields
@@ -172,6 +182,10 @@ def merge_and_score(
 
     # Name: Prefer spaCy, fallback to llm
     full_name = nlp_result.full_name or llm_result.current_title
+
+    # Is there anything here to judge a candidate on? (After dropping empty
+    # entries, at least one job, education entry or skill.)
+    usable = has_usable_content(work_history, education, all_skills)
 
     # Build and return final result
     return CVExtractionResult(
@@ -207,4 +221,5 @@ def merge_and_score(
         is_scanned=text_result.is_scanned,
         ocr_used=text_result.ocr_used,
         extracted_at=datetime.now(UTC),
+        usable=usable,
     )

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.cost_trend import build_flat_series
 from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
+from app.core.cv_pipeline.usability import parsed_data_is_usable
 from app.core.exceptions import PermissionDeniedException
 from app.core.file_validation import validate_pdf_upload
 from app.core.storage import StorageService
@@ -84,9 +85,17 @@ class CVParsingService:
 
         # Cache hit — return immediately, no pipeline needed
         cached = await self._redis.get(cache_key)
-        if cached:
-            parsed_data = json.loads(cached)
-
+        parsed_data = json.loads(cached) if cached else None
+        if parsed_data is not None and not parsed_data_is_usable(parsed_data):
+            # A cached parse with nothing readable in it is not an answer: serving
+            # it would give this upload the same empty profile for the rest of the
+            # cache lifetime (7 days). Parse it again instead.
+            logger.info(
+                "CV Parse cache entry holds an unreadable parse; parsing again",
+                extra={"hash": cv_text_hash},
+            )
+            parsed_data = None
+        if parsed_data:
             # Reuse the r2_key from an existing submission with the same content
             # so the download endpoint works without a redundant upload
             existing_with_r2 = await self._repo.get_with_r2_key_by_hash(cv_text_hash)

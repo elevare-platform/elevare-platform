@@ -55,6 +55,7 @@ def _failed_result(error: str) -> CVExtractionResult:
         is_scanned=False,
         ocr_used=False,
         extracted_at=datetime.now(UTC),
+        usable=False,
     )
 
 

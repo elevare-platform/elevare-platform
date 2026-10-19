@@ -234,3 +234,109 @@ def test_non_english_confidence_capped():
     )
     result = merge_and_score(*args)
     assert result.overall_confidence <= 0.5
+
+
+# ── Empty entries and the `usable` flag (A2 / A3) ────────────────────────────
+
+ALL_NULL_JOB = {
+    "company": None,
+    "title": None,
+    "start_date": None,
+    "end_date": None,
+    "duration_months": None,
+    "description": None,
+    "is_current": False,
+}
+REAL_JOB = {**ALL_NULL_JOB, "company": "Unilever Nigeria", "title": "Sales Manager"}
+ALL_NULL_SCHOOL = {
+    "institution": None,
+    "degree": None,
+    "field": None,
+    "graduation_year": None,
+    "qualification_type": None,
+}
+
+
+def merge_with(*, skills=(), work_history=(), education=(), taxonomy_skills=()):
+    """Merge a CV where the LLM found exactly this, and nothing else did."""
+    deterministic, taxonomy, nlp_result, llm_result, text_result, lang_result = (
+        make_merge_inputs()
+    )
+    taxonomy.matched_skills = list(taxonomy_skills)
+    llm_result.skills = list(skills)
+    llm_result.work_history = list(work_history)
+    llm_result.education = list(education)
+    return merge_and_score(
+        deterministic, taxonomy, nlp_result, llm_result, text_result, lang_result
+    )
+
+
+def test_an_all_null_work_entry_is_dropped_not_kept_as_history():
+    """The old prompt template made the model return exactly this. It is not a job."""
+    result = merge_with(work_history=[ALL_NULL_JOB])
+
+    assert result.work_history == []
+
+
+def test_real_jobs_are_kept_and_empty_ones_beside_them_dropped():
+    result = merge_with(work_history=[ALL_NULL_JOB, REAL_JOB, ALL_NULL_JOB])
+
+    assert [(job.company, job.title) for job in result.work_history] == [
+        ("Unilever Nigeria", "Sales Manager")
+    ]
+
+
+def test_dates_alone_do_not_make_a_job():
+    dates_only = {**ALL_NULL_JOB, "start_date": "2015", "end_date": "2018"}
+
+    assert merge_with(work_history=[dates_only]).work_history == []
+
+
+def test_a_job_with_only_a_description_is_kept():
+    only_description = {**ALL_NULL_JOB, "description": "Sold FMCG goods"}
+
+    assert len(merge_with(work_history=[only_description]).work_history) == 1
+
+
+def test_an_all_null_education_entry_is_dropped():
+    result = merge_with(education=[ALL_NULL_SCHOOL])
+
+    assert result.education == []
+
+
+def test_a_graduation_year_alone_is_not_an_education():
+    year_only = {**ALL_NULL_SCHOOL, "graduation_year": 2012}
+
+    assert merge_with(education=[year_only]).education == []
+
+
+def test_blank_skills_are_dropped():
+    result = merge_with(skills=["", "   ", "Excel"])
+
+    assert "Excel" in result.skills
+    assert all(skill.strip() for skill in result.skills)
+
+
+def test_a_cv_with_nothing_readable_is_not_usable():
+    result = merge_with(work_history=[ALL_NULL_JOB], education=[ALL_NULL_SCHOOL])
+
+    assert result.usable is False
+    assert result.work_history == [] and result.education == [] and result.skills == []
+
+
+def test_a_cv_with_only_a_job_is_usable():
+    assert merge_with(work_history=[REAL_JOB]).usable is True
+
+
+def test_a_cv_with_only_skills_is_usable():
+    assert merge_with(skills=["Excel"]).usable is True
+
+
+def test_a_cv_the_taxonomy_matched_skills_in_is_usable_even_if_the_llm_found_nothing():
+    assert merge_with(taxonomy_skills=["python"]).usable is True
+
+
+def test_a_graduate_with_only_a_degree_is_usable():
+    degree = {**ALL_NULL_SCHOOL, "institution": "University of Lagos", "degree": "BSc"}
+
+    assert merge_with(education=[degree]).usable is True

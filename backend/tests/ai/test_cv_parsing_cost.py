@@ -83,14 +83,18 @@ def _make_cv_result(**overrides) -> CVExtractionResult:
         "is_scanned": False,
         "ocr_used": False,
         "extracted_at": datetime.now(UTC),
+        "usable": True,
     }
     defaults.update(overrides)
     return CVExtractionResult(**defaults)
 
 
-async def _run_pipeline_with_llm_result(monkeypatch, db_session, llm_result):
+async def _run_pipeline_with_llm_result(
+    monkeypatch, db_session, llm_result, cv_result=None, redis=None
+):
     """Create a submission, stub the extraction pipeline to return
-    `llm_result`, and run the real task body against it."""
+    `llm_result` (and `cv_result`, a readable CV unless given), and run the real
+    task body against it. Pass `redis` (a mock) to inspect what was cached."""
     _patch_engine_to_use_test_session(monkeypatch, db_session)
     monkeypatch.setattr(ai_tasks.settings, "anthropic_model", _PRICED_MODEL)
 
@@ -118,7 +122,7 @@ async def _run_pipeline_with_llm_result(monkeypatch, db_session, llm_result):
         should_proceed_fully=True,
         flag_for_review=False,
     )
-    cv_result = _make_cv_result()
+    cv_result = cv_result or _make_cv_result()
 
     async def fake_run_extraction_pipeline(file, nlp, ai_service):
         return cv_result, (deterministic, llm_result, lang_result), [llm_result]
@@ -128,7 +132,7 @@ async def _run_pipeline_with_llm_result(monkeypatch, db_session, llm_result):
         fake_run_extraction_pipeline,
     )
 
-    mock_redis = AsyncMock()
+    mock_redis = redis or AsyncMock()
     mock_redis.setex = AsyncMock()
     monkeypatch.setattr(
         "redis.asyncio.from_url", lambda *a, **k: mock_redis

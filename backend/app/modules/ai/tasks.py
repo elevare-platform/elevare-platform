@@ -12,6 +12,7 @@ from sqlalchemy.pool import NullPool
 import app.core.model_registry  # noqa: F401 — ensures all mappers are registered before any DB use
 from app.core.celery_app import celery
 from app.core.config import settings
+from app.core.cv_pipeline.usability import UNREADABLE_REASON
 from app.modules.ai.enums import CVParsingStatus
 from app.modules.ai.repository import AIRepository
 from app.modules.ai.scoring_service import (
@@ -198,6 +199,10 @@ async def _run_pipeline_async(
             ) = await run_extraction_pipeline(file, nlp, ai_service)
 
             flag_reasons = []
+            # Nothing readable (no job, education or skill) was found. This used to
+            # be saved as an ordinary completed parse that scored as a real 0.
+            if not cv_result.usable:
+                flag_reasons.append(UNREADABLE_REASON)
             if not lang_result.is_english:
                 flag_reasons.append("CV is not written in English")
             if cv_result.is_scanned:
@@ -232,9 +237,12 @@ async def _run_pipeline_async(
                 },
             )
 
-            await redis.setex(
-                cache_key, CACHE_TTL_SECONDS, json.dumps(parsed_data, default=str)
-            )
+            # An unreadable parse is not cached: the same CV uploaded again must be
+            # read again, not handed this empty profile for the next 7 days.
+            if cv_result.usable:
+                await redis.setex(
+                    cache_key, CACHE_TTL_SECONDS, json.dumps(parsed_data, default=str)
+                )
 
             from app.core.ai_pricing import compute_anthropic_cost_usd
 
