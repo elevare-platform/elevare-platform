@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { X, Users, Brain, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
-import { matchScoreBand } from '@/lib/matchScore'
+import { matchScoreBand, scoreFailureHelp } from '@/lib/matchScore'
 
 /**
  * SourcedCvModal - shown for sourced-only talent pool profiles (no
@@ -180,6 +180,21 @@ export default function SourcedCvModal({ profileId, jobId, hasInterviewBrief, on
                 <p className="text-xs text-text-muted text-center py-2 border border-dashed border-border rounded-lg">
                   No CV file is on record for this candidate.
                 </p>
+              )}
+
+              {/* No score because it could not be read or scored: say why */}
+              {profile.ai_score == null && scoreFailureHelp(profile.ai_score_failure) && (
+                <div className="rounded-xl border border-border p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
+                      <Brain size={12} /> AI Assessment
+                    </p>
+                    <span className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(null, profile.ai_score_failure).className)}>
+                      {matchScoreBand(null, profile.ai_score_failure).label}
+                    </span>
+                  </div>
+                  <p className="text-sm text-text leading-relaxed">{scoreFailureHelp(profile.ai_score_failure)}</p>
+                </div>
               )}
 
               {/* AI Score */}

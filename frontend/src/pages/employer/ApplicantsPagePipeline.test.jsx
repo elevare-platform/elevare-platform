@@ -112,6 +112,32 @@ describe('ApplicantsPage, Talent Pipeline tab', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
   })
 
+  it('says why a profile has no score instead of "Not yet scored"', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url !== POOL_URL) return { data: { items: [] } }
+      return {
+        data: {
+          items: [
+            profile('a', { ai_score: null, ai_score_failure: 'CV_UNREADABLE' }),
+            profile('b', { ai_score: null, ai_score_failure: 'SCORING_FAILED' }),
+            profile('c', { ai_score: null }),
+          ],
+          next_cursor: null,
+          total: 3,
+        },
+      }
+    })
+    renderPipelineTab()
+    await screen.findByText('Candidate a')
+
+    expect(screen.getByText('Could not read CV')).toHaveAttribute(
+      'title', expect.stringMatching(/Nothing could be read/)
+    )
+    expect(screen.getByText('Scoring unavailable')).toBeInTheDocument()
+    // Only the profile with no failure is simply waiting.
+    expect(screen.getAllByText('Not yet scored')).toHaveLength(1)
+  })
+
   it('shows an error, not "No pipeline profiles yet", when loading fails', async () => {
     api.get.mockImplementation(async (url) => {
       if (url === POOL_URL) throw new Error('network')

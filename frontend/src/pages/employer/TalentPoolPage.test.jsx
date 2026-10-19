@@ -203,3 +203,45 @@ describe('TalentPoolPage jobs to attach CVs to', () => {
     expect(screen.getByText(/AI scoring will run automatically after parsing/)).toBeInTheDocument()
   })
 })
+
+describe('TalentPoolPage, profiles with no score', () => {
+  const PROFILES = [
+    { id: 'p-unreadable', candidate_name: 'Unreadable Una', status: 'new', source: 'email', created_at: '2026-10-01T10:00:00Z', ai_score: null, ai_score_failure: 'CV_UNREADABLE' },
+    { id: 'p-failed', candidate_name: 'Failed Femi', status: 'new', source: 'email', created_at: '2026-10-01T10:00:00Z', ai_score: null, ai_score_failure: 'SCORING_FAILED' },
+    { id: 'p-waiting', candidate_name: 'Waiting Wale', status: 'new', source: 'email', created_at: '2026-10-01T10:00:00Z', ai_score: null },
+  ]
+
+  function mockApi() {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/api/v1/jobs/mine') return { data: { items: [{ id: 'job-1', title: 'Accountant' }] } }
+      if (url === '/api/v1/talent-pool') return { data: { items: PROFILES, next_cursor: null, total: 3 } }
+      return { data: { items: [], next_cursor: null } }
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    AUTH.user = { role: 'EMPLOYER' }
+    mockApi()
+  })
+
+  it('says why in the pipeline view, and keeps "Unscored" for a profile that is simply waiting', async () => {
+    render(<MemoryRouter><TalentPoolPage /></MemoryRouter>)
+    await screen.findByText('Unreadable Una')
+
+    expect(screen.getByText('Could not read CV')).toHaveAttribute('title', expect.stringMatching(/Nothing could be read/))
+    expect(screen.getByText('Scoring unavailable')).toBeInTheDocument()
+    expect(screen.getAllByText('Unscored')).toHaveLength(1)
+  })
+
+  it('says why in the job view, in the score badge', async () => {
+    render(<MemoryRouter><TalentPoolPage /></MemoryRouter>)
+    await screen.findByRole('option', { name: 'Accountant' })
+    fireEvent.change(screen.getByDisplayValue(/pipeline view/i), { target: { value: 'job-1' } })
+    await screen.findByText('Unreadable Una')
+
+    expect(screen.getByText('Could not read CV')).toBeInTheDocument()
+    expect(screen.getByText('Scoring unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Not yet scored')).toBeInTheDocument()
+  })
+})

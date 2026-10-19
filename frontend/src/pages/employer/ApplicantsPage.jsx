@@ -11,7 +11,7 @@ import Footer from '@/components/layout/Footer'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
-import { matchScoreBand } from '@/lib/matchScore'
+import { matchScoreBand, scoreFailureHelp } from '@/lib/matchScore'
 import { useTalentMatches } from '@/hooks/useTalentMatches'
 import { useCredits } from '@/hooks/useCredits'
 import { useSavedCandidates } from '@/hooks/useSavedCandidates'
@@ -95,11 +95,13 @@ function formatDate(isoString) {
 
 // ─── AI score badge ───────────────────────────────────────────────────────────
 
-function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
+function AiScoreBadge({ score, failure, fitSummary, strengths, weaknesses }) {
   const [open, setOpen] = useState(false)
   const [btnRef, setBtnRef] = useState(null)
   const hasScore = score !== null && score !== undefined
-  const band = matchScoreBand(score)
+  const band = matchScoreBand(score, failure)
+  // No score because it could not be read or scored: the panel says why.
+  const failureHelp = hasScore ? null : scoreFailureHelp(failure)
 
   // Position the panel relative to the button using a fixed overlay
   const btnRect = btnRef?.getBoundingClientRect()
@@ -110,7 +112,7 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
         ref={setBtnRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={hasScore ? 'AI Score (click for reasoning)' : 'AI score not yet computed'}
+        title={hasScore ? 'AI Score (click for reasoning)' : (failureHelp ?? 'AI score not yet computed')}
         aria-label={`AI score: ${band.label}`}
         className={cn(
           'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer whitespace-nowrap',
@@ -120,7 +122,7 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
         {band.label}
       </button>
 
-      {open && hasScore && btnRect && (
+      {open && (hasScore || failureHelp) && btnRect && (
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
@@ -147,11 +149,16 @@ function AiScoreBadge({ score, fitSummary, strengths, weaknesses }) {
               <span className={cn('px-2 py-0.5 rounded-full text-xs font-semibold border', band.className)}>
                 {band.label}
               </span>
-              <span className="text-[10px] text-text-muted">raw: {score}/100</span>
+              {hasScore && <span className="text-[10px] text-text-muted">raw: {score}/100</span>}
             </div>
-            <p className="text-[10px] text-text-muted leading-relaxed">
-              Reflects how closely this candidate's experience matches the role, rather than a pass or fail score.
-            </p>
+            {failureHelp && (
+              <p className="text-xs text-text leading-relaxed">{failureHelp}</p>
+            )}
+            {hasScore && (
+              <p className="text-[10px] text-text-muted leading-relaxed">
+                Reflects how closely this candidate's experience matches the role, rather than a pass or fail score.
+              </p>
+            )}
 
             {fitSummary && (
               <p className="text-text text-xs leading-relaxed">{fitSummary}</p>
@@ -582,6 +589,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
           {/* AI score badge with popout reasoning panel */}
           <AiScoreBadge
             score={application.ai_score}
+            failure={application.ai_score_failure}
             fitSummary={application.ai_fit_summary}
             strengths={application.ai_strengths}
             weaknesses={application.ai_weaknesses}
@@ -780,7 +788,8 @@ function TalentPoolProfilePanel({ profile, onClose }) {
 
           {profile.ai_score == null && (
             <div className="rounded-lg bg-surface-muted border border-border px-4 py-3 text-sm text-text-muted text-center">
-              AI scoring not yet computed. Attach this profile to a job and trigger scoring.
+              {scoreFailureHelp(profile.ai_score_failure)
+                ?? 'AI scoring not yet computed. Attach this profile to a job and trigger scoring.'}
             </div>
           )}
         </div>
@@ -897,11 +906,11 @@ function PipelineTab({
                 <div
                   className={cn(
                     'px-2.5 py-1.5 rounded-full border text-xs font-bold flex-shrink-0 whitespace-nowrap',
-                    matchScoreBand(p.ai_score).className
+                    matchScoreBand(p.ai_score, p.ai_score_failure).className
                   )}
-                  title={p.ai_score != null ? `Raw score: ${p.ai_score}/100` : undefined}
+                  title={p.ai_score != null ? `Raw score: ${p.ai_score}/100` : (scoreFailureHelp(p.ai_score_failure) ?? undefined)}
                 >
-                  {matchScoreBand(p.ai_score).label}
+                  {matchScoreBand(p.ai_score, p.ai_score_failure).label}
                 </div>
                 <span className="text-xs text-text-muted capitalize px-2.5 py-0.5 rounded-full border border-border">
                   {(p.status || '').replace('_', ' ')}
