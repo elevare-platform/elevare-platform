@@ -161,11 +161,35 @@ async def test_a_step_that_was_later_retired_is_not_sent_to_the_app(client, db_s
 
 
 @pytest.mark.asyncio
-async def test_only_employers_can_use_it(client, db_session):
-    candidate_token, _ = await register_and_promote(client, db_session, "CANDIDATE")
+async def test_a_candidate_has_a_tour_too(client, db_session):
+    token, _ = await register_and_promote(client, db_session, "CANDIDATE")
 
-    assert (await client.get(BASE, headers=auth(candidate_token))).status_code == 403
-    assert (
-        await client.post(BASE + "/steps", json={"step": "credits"}, headers=auth(candidate_token))
-    ).status_code == 403
+    first = await client.get(BASE, headers=auth(token))
+    done = await client.post(BASE + "/tour", json={"outcome": "SKIPPED"}, headers=auth(token))
+
+    assert first.status_code == 200
+    assert first.json()["tour_status"] == "PENDING"
+    assert done.json()["tour_status"] == "SKIPPED"
+    assert (await client.get(BASE, headers=auth(token))).json()["tour_status"] == "SKIPPED"
+
+
+@pytest.mark.asyncio
+async def test_the_checklist_is_for_employers_only(client, db_session):
+    candidate_token, user = await register_and_promote(client, db_session, "CANDIDATE")
+
+    steps = await client.post(
+        BASE + "/steps", json={"step": "credits"}, headers=auth(candidate_token)
+    )
+    dismiss = await client.post(BASE + "/checklist/dismiss", headers=auth(candidate_token))
+
+    assert steps.status_code == 403
+    assert dismiss.status_code == 403
+    assert await row_count(db_session, user.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_admins_and_signed_out_visitors_are_refused(client, db_session):
+    admin_token, _ = await register_and_promote(client, db_session, "ADMIN")
+
+    assert (await client.get(BASE, headers=auth(admin_token))).status_code == 403
     assert (await client.get(BASE)).status_code == 401

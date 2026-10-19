@@ -1,9 +1,12 @@
 """Endpoints for the first-login tour and the "Get started" checklist.
 
-Employers only; each person has their own progress, even inside one company.
+Each person has their own progress, even inside one company.
 
+Employers and candidates (each has a tour):
   GET  /me                    where the user is (never creates anything)
   POST /me/tour               the tour was completed or skipped
+
+Employers only (the candidate dashboard has no checklist card):
   POST /me/steps              a checklist step was done (safe to repeat)
   POST /me/checklist/dismiss  hide the checklist card
 """
@@ -20,12 +23,13 @@ from app.modules.users.models import User
 router = APIRouter()
 
 EmployerUser = Depends(require_role("EMPLOYER"))
+TourUser = Depends(require_role("EMPLOYER", "CANDIDATE"))
 
 
 @router.get("/me", response_model=OnboardingResponse)
 async def get_my_onboarding(
     db: AsyncSession = Depends(get_db),
-    current_user: User = EmployerUser,
+    current_user: User = TourUser,
 ):
     return await OnboardingService(db).get(current_user)
 
@@ -36,7 +40,7 @@ async def finish_tour(
     request: Request,
     data: TourFinished,
     db: AsyncSession = Depends(get_db),
-    current_user: User = EmployerUser,
+    current_user: User = TourUser,
 ):
     return await OnboardingService(db).finish_tour(current_user, data.outcome)
 
