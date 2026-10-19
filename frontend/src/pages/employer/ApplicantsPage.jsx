@@ -26,6 +26,7 @@ import SaveHeartButton from '@/components/employer/SaveHeartButton'
 import InterviewListButton from '@/components/employer/InterviewListButton'
 import InterviewBriefSetupModal from '@/components/employer/InterviewBriefSetupModal'
 import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
+import ShareInterviewResults from '@/components/employer/ShareInterviewResults'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import { isPlanLimitMessage } from '@/lib/planErrors'
 import { interviewUnavailableMessage } from '@/lib/interviewErrors'
@@ -1411,6 +1412,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
 
   return (
     <div className="space-y-3">
+      <ShareInterviewResults jobId={jobId} />
       {pricingNote && (
         <p className={cn('text-xs', pricingNote.short ? 'text-red-600' : 'text-text-muted')}>
           {pricingNote.text}{' '}
