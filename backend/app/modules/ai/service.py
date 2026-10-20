@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
+from app.core.provider_alerts import report_if_credit_exhausted
 
 from .schema import (
     CVExtractionOutput,
@@ -369,6 +370,7 @@ class AnthropicCVExtractionService(AIService):
             # The API itself failed (network, authentication, rate limit): no
             # reply, no tokens to record.
             logger.error("LLM CV extraction failed: %s", e)
+            report_if_credit_exhausted(e, where="cv_extraction")
             return LLMExtractionResult()
 
         if not result.ok:
@@ -523,6 +525,7 @@ class AnthropicCVExtractionService(AIService):
                 model,
                 len(user_prompt),
             )
+            report_if_credit_exhausted(e, where="fit_scoring")
             return FitReasoningResult(model=model, failed=True)
 
         # A reply arrived, so it cost money whatever it says.
@@ -627,6 +630,7 @@ class AnthropicCVExtractionService(AIService):
                 len(user_prompt),
                 interview_brief[:300],
             )
+            report_if_credit_exhausted(e, where="interview_scoring")
             return InterviewScoringResult(
                 failed=True, input_tokens=input_tokens, output_tokens=output_tokens
             )
@@ -680,6 +684,7 @@ class AnthropicCVExtractionService(AIService):
             logger.error(
                 "LLM job description generation failed", extra={"error": str(e)}
             )
+            report_if_credit_exhausted(e, where="job_description")
             raise
 
 
