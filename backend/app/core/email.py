@@ -7,6 +7,7 @@ Provides an abstract EmailService interface with two implementations:
 Wire into FastAPI via get_email_service() dependency.
 """
 
+import html as html_lib
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -43,8 +44,6 @@ def _html_to_text(html: str) -> str:
     Email without a text part scores worse with spam filters, and some readers (and
     some clients) show only the text. Links keep their address in brackets after the
     link text, so nothing is lost."""
-    import html as html_lib
-
     text = re.sub(r"<head>.*?</head>", "", html, flags=re.S | re.I)
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     # The hidden preview line at the top of the layout is for inboxes, not readers.
@@ -81,6 +80,17 @@ def _clean_subject(subject: str) -> str:
     space."""
     one_line = re.sub(r"[\s\x00-\x1f\x7f-\x9f  ]+", " ", subject).strip()
     return one_line[:MAX_SUBJECT_LENGTH].rstrip()
+
+
+def _h(value):
+    """Text someone typed, made safe to put inside an email's HTML.
+
+    A job title, a name or a company is typed by one person and shown to another; unescaped,
+    markup in it becomes real markup (a link that looks like part of the email). Used at the
+    top of every ``send_*`` method for each typed value, so everything below it is safe.
+    Not for links, tokens or recipient addresses, which Elevare builds itself. A subject is
+    plain text, so ``_send_html`` turns the escaping back before it is sent."""
+    return value if value is None else html_lib.escape(str(value), quote=True)
 
 
 def _from_header() -> str:
@@ -526,7 +536,9 @@ class ResendEmailService(EmailService):
         """
         import asyncio
 
-        subject = _clean_subject(subject)
+        # The typed values in a subject were escaped for the HTML (see _h); a subject is
+        # plain text, so "Sales &amp; Marketing" goes out as "Sales & Marketing".
+        subject = _clean_subject(html_lib.unescape(subject))
 
         # (recipients, html, extra headers) for each separate send.
         deliveries: list[tuple[list[str], str, dict[str, str]]]
@@ -581,6 +593,7 @@ class ResendEmailService(EmailService):
         self, candidate_email: str, job_title: str, company_name: str
     ) -> None:
         """Send an application-received confirmation email to the candidate."""
+        job_title, company_name = _h(job_title), _h(company_name)
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Application received</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've received your application for <strong>{job_title}</strong> at <strong>{company_name}</strong>.</p>
@@ -612,6 +625,7 @@ class ResendEmailService(EmailService):
         self, candidate_email: str, job_title: str, new_status: str
     ) -> None:
         """Send a status update email to the candidate when their application status changes."""
+        job_title = _h(job_title)
         badge_html = _render_badge(new_status)
 
         body_content_html = f"""
@@ -657,6 +671,7 @@ class ResendEmailService(EmailService):
         self, employer_email: str, job_title: str, candidate_name: str, job_id: str
     ) -> None:
         """Notify an employer by email that a new application has been received."""
+        job_title, candidate_name = _h(job_title), _h(candidate_name)
         review_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New application</h2>
@@ -753,6 +768,7 @@ class ResendEmailService(EmailService):
 
         employer_link = f"{base}&role=EMPLOYER&next={quote('/employer/onboarding', safe='')}"
         candidate_link = f"{base}&role=CANDIDATE&next={quote('/candidate/dashboard', safe='')}"
+        first_name = _h(first_name)
         greeting = f"Hi {first_name}," if first_name else "Hi,"
 
         if is_employer:
@@ -809,6 +825,13 @@ class ResendEmailService(EmailService):
         inquiry_type: str,
     ) -> None:
         """Send a new contact form submission notification to the Elevare team."""
+        # Everything on this form is typed by a stranger: shown as text, never as markup.
+        name, sender_email, company, message = (
+            _h(name),
+            _h(sender_email),
+            _h(company),
+            _h(message),
+        )
         label = (
             "employer inquiry"
             if inquiry_type == "employer_inquiry"
@@ -876,7 +899,8 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Notify employer of job approval or rejection, with a publish link on approval."""
         job_id = job_data["id"]
-        job_title = job_data["title"]
+        job_title = _h(job_data["title"])
+        reason = _h(reason)
 
         if action == "APPROVED":
             subject = f"Your job listing was approved: {job_title}"
@@ -931,6 +955,7 @@ class ResendEmailService(EmailService):
         job_title: str,
     ) -> None:
         """Send introduction request email with accept/decline magic links."""
+        job_title = _h(job_title)
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You have an introduction request</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">An employer on Elevare would like to connect with you about the <strong>{job_title}</strong> role.</p>
@@ -966,6 +991,7 @@ class ResendEmailService(EmailService):
         Matches), so a login-gated dashboard link would be a dead end
         whenever that's the case.
         """
+        job_title, company_name = _h(job_title), _h(company_name)
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You're invited to an AI video interview</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_name}</strong> would like to interview you for the <strong>{job_title}</strong> role.</p>
@@ -995,6 +1021,11 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Notify an employer that a candidate is locked out of their AI
         interview's restart lock and is asking for it to be reset."""
+        candidate_name, job_title, company_name = (
+            _h(candidate_name),
+            _h(job_title),
+            _h(company_name),
+        )
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">A candidate needs their AI interview reset</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{candidate_name}</strong> was locked out of their AI interview for <strong>{job_title}</strong> after restarting it twice, and is asking you to resend their invite so they can try again.</p>
@@ -1020,6 +1051,7 @@ class ResendEmailService(EmailService):
         profile_url: str,
     ) -> None:
         """Notify employer that a candidate accepted their introduction request."""
+        job_title = _h(job_title)
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction accepted</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">A candidate has accepted your introduction request for <strong>{job_title}</strong>.</p>
@@ -1044,6 +1076,7 @@ class ResendEmailService(EmailService):
         job_title: str,
     ) -> None:
         """Notify employer that a candidate declined their introduction request."""
+        job_title = _h(job_title)
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction declined</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The candidate has declined your introduction request for <strong>{job_title}</strong>.</p>
@@ -1070,6 +1103,11 @@ class ResendEmailService(EmailService):
         candidate_name: str,
     ) -> None:
         """Notify the sourcing admin to manually reach out to the candidate."""
+        employer_name, job_title, candidate_name = (
+            _h(employer_name),
+            _h(job_title),
+            _h(candidate_name),
+        )
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction request for a candidate you sourced</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{employer_name}</strong> would like an introduction to <strong>{candidate_name}</strong> for the role of <strong>{job_title}</strong>.</p>
@@ -1098,6 +1136,7 @@ class ResendEmailService(EmailService):
         employer_email: str | None = None,
     ) -> None:
         """One-way notification for a candidate the employer already owns."""
+        employer_name, job_title = _h(employer_name), _h(job_title)
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">A role that might interest you</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{employer_name}</strong> thinks you could be a good fit for their <strong>{job_title}</strong> role and wanted to let you know.</p>
@@ -1125,6 +1164,7 @@ class ResendEmailService(EmailService):
         reason: str | None,
     ) -> None:
         """Notify employer that their KYC was rejected, with a link to resubmit."""
+        company_name, reason = _h(company_name), _h(reason)
         cta_url = f"{settings.app_url}/employer/verification"
         company_label = company_name or "your company"
         reason_block = (
@@ -1162,7 +1202,7 @@ class ResendEmailService(EmailService):
         company_name: str | None,
     ) -> None:
         """Notify employer that their KYC has been approved."""
-        company_label = company_name or "your company"
+        company_label = _h(company_name) or "your company"
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your company is verified</h2>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_label}</strong> is now verified. You can post jobs on Elevare.</p>
@@ -1188,7 +1228,7 @@ class ResendEmailService(EmailService):
         organization_id: str,
     ) -> None:
         """Notify an admin that an employer submitted KYC documents for review."""
-        company_label = company_name or "An employer"
+        company_label = _h(company_name) or "An employer"
         review_url = f"{settings.app_url}/admin/kyc"
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">New KYC submission</h2>
@@ -1216,7 +1256,8 @@ class ResendEmailService(EmailService):
     ) -> None:
         """Notify a billing manager that a subscription renewal charge
         failed, with the date access continues until."""
-        company_label = company_name or "your organization"
+        company_label = _h(company_name) or "your organization"
+        plan_name, retry_by = _h(plan_name), _h(retry_by)
         cta_url = f"{settings.app_url}/employer/billing"
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">We couldn't process your payment</h2>
@@ -1245,6 +1286,7 @@ class ResendEmailService(EmailService):
         company_name: str | None = None,
     ) -> None:
         """Send an invite link to a prospective new employer or teammate."""
+        company_name = _h(company_name)
         if company_name:
             subject = f"You've been invited to join {company_name} on Elevare"
             heading = "You're invited to join a team on Elevare"
@@ -1303,6 +1345,7 @@ class ResendEmailService(EmailService):
         back in.
         """
         login_link = f"{settings.app_url}/login"
+        first_name = _h(first_name)
         greeting = f"Hi {first_name}," if first_name else "Hi,"
         role_label = "job seeker" if role.upper() == "CANDIDATE" else "employer"
 
@@ -1342,6 +1385,7 @@ class ResendEmailService(EmailService):
         ``UserRepository.list_employers_missing_onboarding``.
         """
         onboarding_link = f"{settings.app_url}/employer/onboarding"
+        first_name = _h(first_name)
         greeting = f"Hi {first_name}," if first_name else "Hi,"
 
         body_content_html = f"""
@@ -1381,8 +1425,9 @@ class ResendEmailService(EmailService):
         ``UserRepository.list_employers_missing_kyc``.
         """
         verification_link = f"{settings.app_url}/employer/verification"
+        first_name = _h(first_name)
         greeting = f"Hi {first_name}," if first_name else "Hi,"
-        company_label = company_name or "your company"
+        company_label = _h(company_name) or "your company"
 
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">One step left: verify {company_label}</h2>
