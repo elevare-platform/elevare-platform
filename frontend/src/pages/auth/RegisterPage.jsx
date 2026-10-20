@@ -19,8 +19,9 @@ import ehsLogo from '@/assets/ehs-logo.png'
 // ─── Zod schema ───────────────────────────────────────────────────────────────
 
 const schema = z.object({
-  first_name: z.string().min(1, 'First name is required'),
-  last_name: z.string().min(1, 'Last name is required'),
+  // 30 is what the account can store; the API refuses more.
+  first_name: z.string().min(1, 'First name is required').max(30, 'First name must be 30 characters or fewer'),
+  last_name: z.string().min(1, 'Last name is required').max(30, 'Last name must be 30 characters or fewer'),
   email: z.string().email('Enter a valid email address'),
   phone_number: z
     .string()

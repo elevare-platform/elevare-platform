@@ -21,6 +21,12 @@ from pydantic import (
 
 from app.modules.users.enums import UserRole
 
+# What the users table can hold (first_name and last_name are String(30), phone_number
+# is String(15)). A value longer than this used to pass validation and then fail in the
+# database as a server error; it is now refused here with a message.
+MAX_NAME_LENGTH = 30
+MAX_PHONE_LENGTH = 15
+
 
 def validate_phone_digits(v: str) -> str:
     """Validate that the phone number is a valid international mobile number.
@@ -40,10 +46,14 @@ def validate_phone_digits(v: str) -> str:
         parsed = phonenumbers.parse(v, None)
         if not phonenumbers.is_valid_number(parsed):
             raise ValueError("Invalid phone number")
-        return phonenumbers.format_number(
+        formatted = phonenumbers.format_number(
             parsed,
             phonenumbers.PhoneNumberFormat.E164,
         )
+        # A 15-digit number is 16 characters with its "+", one more than the column holds.
+        if len(formatted) > MAX_PHONE_LENGTH:
+            raise ValueError("Phone number is too long")
+        return formatted
     except phonenumbers.phonenumberutil.NumberParseException as e:
         raise ValueError("Invalid phone number") from e
 
@@ -103,8 +113,8 @@ class RegisterRequest(BaseModel):
 
     """
 
-    first_name: str = Field(..., min_length=2, max_length=100)
-    last_name: str = Field(..., min_length=2, max_length=100)
+    first_name: str = Field(..., min_length=2, max_length=MAX_NAME_LENGTH)
+    last_name: str = Field(..., min_length=2, max_length=MAX_NAME_LENGTH)
     email: EmailStr
     phone_number: str = Field(..., min_length=8, max_length=16)
     password: str = Field(..., min_length=8)
@@ -228,8 +238,8 @@ class LoginRequest(BaseModel):
 class AcceptInviteRequest(BaseModel):
     """Payload for completing registration via an admin invite link."""
 
-    first_name: str = Field(..., min_length=2, max_length=100)
-    last_name: str = Field(..., min_length=2, max_length=100)
+    first_name: str = Field(..., min_length=2, max_length=MAX_NAME_LENGTH)
+    last_name: str = Field(..., min_length=2, max_length=MAX_NAME_LENGTH)
     phone_number: str = Field(..., min_length=8, max_length=16)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)

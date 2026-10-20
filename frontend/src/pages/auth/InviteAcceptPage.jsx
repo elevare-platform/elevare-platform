@@ -17,8 +17,9 @@ import ehsLogo from '@/assets/ehs-logo.png'
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 const schema = z.object({
-  first_name: z.string().min(2, 'First name must be at least 2 characters'),
-  last_name: z.string().min(2, 'Last name must be at least 2 characters'),
+  // 30 is what the account can store; the API refuses more.
+  first_name: z.string().min(2, 'First name must be at least 2 characters').max(30, 'First name must be 30 characters or fewer'),
+  last_name: z.string().min(2, 'Last name must be at least 2 characters').max(30, 'Last name must be 30 characters or fewer'),
   phone_number: z
     .string()
     .min(1, 'Phone number is required')
