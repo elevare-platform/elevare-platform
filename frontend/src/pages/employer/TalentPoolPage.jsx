@@ -19,7 +19,7 @@ import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
 import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
 import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
-import { matchScoreBand } from '@/lib/matchScore'
+import { matchScoreBand, scoreFailureHelp } from '@/lib/matchScore'
 import { groupJobsByStatus } from '@/lib/jobGroups'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -43,11 +43,11 @@ const SOURCE_LABELS = {
   email: 'Email', gmail_import: 'Gmail', zoho_import: 'Zoho', referral: 'Referral', linkedin: 'LinkedIn', other: 'Other',
 }
 
-function ScoreBadge({ score }) {
-  const band = matchScoreBand(score)
+function ScoreBadge({ score, failure }) {
+  const band = matchScoreBand(score, failure)
   return (
     <div
-      title={score != null ? `Raw score: ${score}/100` : undefined}
+      title={score != null ? `Raw score: ${score}/100` : (scoreFailureHelp(failure) ?? undefined)}
       className={cn(
         'px-2.5 py-1.5 rounded-full border text-xs font-bold flex-shrink-0 whitespace-nowrap',
         band.className
@@ -476,7 +476,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
         </div>
 
         {/* Score */}
-        <ScoreBadge score={profile.ai_score} />
+        <ScoreBadge score={profile.ai_score} failure={profile.ai_score_failure} />
 
         {/* Status */}
         <StatusBadge status={profile.status} />
@@ -600,11 +600,23 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
           <AgeLabel profile={profile} />
         </div>
 
-        {/* Unscored indicator */}
+        {/* Unscored indicator: says why when it could not be read or scored */}
         {profile.ai_score == null && (
-          <span className="text-xs text-text-muted bg-surface-muted px-2 py-0.5 rounded-full border border-border">
-            Unscored
-          </span>
+          profile.ai_score_failure ? (
+            <span
+              title={scoreFailureHelp(profile.ai_score_failure) ?? undefined}
+              className={cn(
+                'text-xs px-2 py-0.5 rounded-full border',
+                matchScoreBand(null, profile.ai_score_failure).className
+              )}
+            >
+              {matchScoreBand(null, profile.ai_score_failure).label}
+            </span>
+          ) : (
+            <span className="text-xs text-text-muted bg-surface-muted px-2 py-0.5 rounded-full border border-border">
+              Unscored
+            </span>
+          )
         )}
 
         <StatusBadge status={profile.status} />

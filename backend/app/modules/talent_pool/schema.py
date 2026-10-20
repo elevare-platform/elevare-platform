@@ -63,6 +63,10 @@ class TalentPoolProfileResponse(BaseModel):
     ai_strengths: list[str] | None = None
     ai_weaknesses: list[str] | None = None
     ai_score_computed_at: datetime | None = None
+    # Why there is no score: "CV_UNREADABLE" or "SCORING_FAILED"; None otherwise.
+    # Unlike the assessment above it is never hidden for being stale: it explains
+    # the absence of a score.
+    ai_score_failure: str | None = None
 
     # Populated by the service only once the requester's access is verified —
     # never present on an unentitled fetch.

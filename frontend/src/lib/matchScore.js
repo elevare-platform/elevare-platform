@@ -26,8 +26,35 @@ const BANDS = {
   unscored: { label: 'Not yet scored', className: 'bg-gray-100 text-gray-400 border-gray-200' },
 }
 
-export function matchScoreBand(score) {
-  if (score === null || score === undefined) return { key: 'unscored', ...BANDS.unscored }
+// Why a candidate has no score (`ai_score_failure` on a talent pool profile or an
+// application). Shown instead of "Not yet scored", which would read as "wait a moment".
+// A failure is never a low score, and it never replaces a real one.
+const FAILURE_BANDS = {
+  CV_UNREADABLE: {
+    key: 'unreadable',
+    label: 'Could not read CV',
+    className: 'bg-red-50 text-red-600 border-red-200',
+    help:
+      'Nothing could be read from this CV, so it was not scored. A clearer file, such as a text PDF instead of a photo or a scan, usually fixes it.',
+  },
+  SCORING_FAILED: {
+    key: 'failed',
+    label: 'Scoring unavailable',
+    className: 'bg-orange-50 text-orange-700 border-orange-200',
+    help: 'Scoring did not complete, so there is no score. This is not a low score.',
+  },
+}
+
+/** The sentence that explains a failure, or null when there is none. */
+export function scoreFailureHelp(failure) {
+  return FAILURE_BANDS[failure]?.help ?? null
+}
+
+export function matchScoreBand(score, failure = null) {
+  if (score === null || score === undefined) {
+    const { help, ...band } = FAILURE_BANDS[failure] ?? {}
+    return help ? band : { key: 'unscored', ...BANDS.unscored }
+  }
   if (score >= THRESHOLDS.strong) return { key: 'strong', ...BANDS.strong }
   if (score >= THRESHOLDS.good) return { key: 'good', ...BANDS.good }
   return { key: 'fair', ...BANDS.fair }

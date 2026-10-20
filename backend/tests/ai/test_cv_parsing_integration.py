@@ -108,7 +108,11 @@ async def test_submit_cv_creates_submission(client, db_session):
 async def test_submit_cv_cache_hit_returns_completed(client, db_session, mock_redis):
     import json
 
-    cached_data = {"full_name": "John Doe", "email": "john@example.com", "skills": []}
+    cached_data = {
+        "full_name": "John Doe",
+        "email": "john@example.com",
+        "skills": ["Excel"],
+    }
     # Re-register the override so the client fixture's mock_redis uses our cached response
     from app.core.dependencies import get_redis_client
 
@@ -130,6 +134,49 @@ async def test_submit_cv_cache_hit_returns_completed(client, db_session, mock_re
     )
     assert resp.status_code == 201
     assert resp.json()["parse_status"] == CVParsingStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cached_data",
+    [
+        # What the old pipeline cached for an unreadable CV: one all-null job.
+        {
+            "work_history": [{"company": None, "title": None, "description": None}],
+            "education": [],
+            "skills": [],
+        },
+        {"work_history": [], "education": [], "skills": []},
+    ],
+)
+async def test_a_cached_unreadable_parse_is_not_served_the_cv_is_parsed_again(
+    client, db_session, mock_celery_task, cached_data
+):
+    """The cache keeps a parse for 7 days. An unreadable one in it (including any
+    cached before this fix) must not be handed to the next upload of the same CV."""
+    import json
+
+    from app.core.dependencies import get_redis_client
+
+    configured_mock = AsyncMock()
+    configured_mock.get = AsyncMock(return_value=json.dumps(cached_data).encode())
+    configured_mock.setex = AsyncMock()
+
+    async def override_with_cache():
+        yield configured_mock
+
+    app.dependency_overrides[get_redis_client] = override_with_cache
+    token = await get_token(client, db_session, "ADMIN")
+
+    resp = await client.post(
+        "/api/v1/cv-parsing/submit",
+        files={"file": ("cv.pdf", make_pdf_bytes(), "application/pdf")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["parse_status"] == CVParsingStatus.PENDING.value
+    mock_celery_task.delay.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -210,7 +257,7 @@ async def test_same_cv_twice_no_second_llm_call(
     assert mock_celery_task.delay.call_count == 1
 
     # Simulate cache populated — re-register override with cached response
-    cached_data = {"full_name": "Test", "skills": []}
+    cached_data = {"full_name": "Test", "skills": ["Excel"]}
     cache_mock = AsyncMock()
     cache_mock.get = AsyncMock(return_value=json.dumps(cached_data).encode())
     cache_mock.setex = AsyncMock()

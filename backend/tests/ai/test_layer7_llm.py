@@ -1,38 +1,27 @@
-"""Unit tests for Layer 7: LLM extraction — MockLLMService, zero real API calls."""
+"""Unit tests for Layer 7: LLM extraction. Zero real API calls: the Anthropic
+client is a fake that returns realistic replies (see anthropic_fakes.py)."""
 
-import json
-from unittest.mock import AsyncMock, MagicMock
+import logging
 
 import pytest
 
-from app.core.cv_pipeline.layer3_sections import DetectedSections
 from app.core.cv_pipeline.layer7_llm import LLMExtractionResult
 from app.modules.ai.service import MockAIService
 
-
-def make_sections(**kwargs) -> DetectedSections:
-    defaults = {
-        "summary": None,
-        "experience": "Worked at Google as Software Engineer 2020-2023.",
-        "education": "BSc Computer Science, Lagos 2018.",
-        "skills": None,
-        "certifications": None,
-        "projects": None,
-        "references": None,
-        "unclassified": "John Doe\njohn@email.com",
-    }
-    defaults.update(kwargs)
-    return DetectedSections(**defaults)
-
+from .anthropic_fakes import (
+    NOTHING_FOUND,
+    anthropic_service,
+    extraction,
+    failing_client,
+    fake_client,
+)
 
 # ── MockAIService returns valid schema ────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_mock_service_returns_valid_schema():
-    service = MockAIService()
-    sections = make_sections()
-    result = await service.extract_cv_data(sections, already_extracted={})
+    result = await MockAIService().extract_cv_data(already_extracted={})
 
     assert isinstance(result, LLMExtractionResult)
     assert isinstance(result.skills, list)
@@ -43,8 +32,7 @@ async def test_mock_service_returns_valid_schema():
 
 @pytest.mark.asyncio
 async def test_mock_service_returns_empty_result():
-    service = MockAIService()
-    result = await service.extract_cv_data(make_sections(), {})
+    result = await MockAIService().extract_cv_data({})
 
     # All fields null/empty — mock returns safe defaults
     assert result.years_experience is None
@@ -52,22 +40,102 @@ async def test_mock_service_returns_empty_result():
     assert result.summary is None
 
 
-# ── AnthropicCVExtractionService — malformed JSON handling ───────────────────
+# ── AnthropicCVExtractionService: a good reply ───────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_malformed_json_returns_null_result():
-    from app.modules.ai.service import AnthropicCVExtractionService
+async def test_valid_reply_is_turned_into_the_extraction_result():
+    reply = extraction(
+        skills=["Python", "FastAPI"],
+        years_experience=5,
+        current_title="Software Engineer",
+        profession="Software Engineering",
+        seniority_level="senior",
+        summary="Experienced backend engineer.",
+        work_history=[
+            {
+                "company": "Google",
+                "title": "Software Engineer",
+                "start_date": "2020-01",
+                "end_date": None,
+                "duration_months": 36,
+                "description": "Built APIs.",
+                "is_current": True,
+            }
+        ],
+        education=[
+            {
+                "institution": "University of Lagos",
+                "degree": "BSc Computer Science",
+                "field": "Computer Science",
+                "graduation_year": 2018,
+                "qualification_type": "bsc",
+            }
+        ],
+        field_confidence={**NOTHING_FOUND["field_confidence"], "skills": "high"},
+    )
+    service = anthropic_service(fake_client(reply, input_tokens=1200, output_tokens=350))
 
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
+    result = await service.extract_cv_data({}, model="m")
 
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="this is not json at all {{{{")]
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-    service._client = mock_client
+    assert result.model == "m"
+    assert result.skills == ["Python", "FastAPI"]
+    assert result.years_experience == 5
+    assert result.seniority_level == "senior"
+    assert result.profession == "Software Engineering"
+    # The merger reads these as plain dicts with these keys.
+    assert result.work_history == [
+        {
+            "company": "Google",
+            "title": "Software Engineer",
+            "start_date": "2020-01",
+            "end_date": None,
+            "duration_months": 36,
+            "description": "Built APIs.",
+            "is_current": True,
+        }
+    ]
+    assert result.education[0]["institution"] == "University of Lagos"
+    assert result.field_confidence["skills"] == "high"
+    assert set(result.field_confidence) == set(NOTHING_FOUND["field_confidence"])
 
-    result = await service.extract_cv_data(make_sections(), {})
+
+@pytest.mark.asyncio
+async def test_nothing_found_is_an_empty_list_not_a_fake_entry():
+    """The old prompt's template held one all-null work-history entry that models
+    copied. 'Nothing found' is now an empty list, and stays one."""
+    service = anthropic_service(fake_client(NOTHING_FOUND))
+
+    result = await service.extract_cv_data({})
+
+    assert result.work_history == []
+    assert result.education == []
+    assert result.skills == []
+
+
+@pytest.mark.asyncio
+async def test_the_request_asks_the_api_to_enforce_the_answer_shape():
+    client = fake_client()
+    service = anthropic_service(client)
+
+    await service.extract_cv_data({}, model="m")
+
+    kwargs = client.messages.create.await_args.kwargs
+    schema = kwargs["output_config"]["format"]["schema"]
+    assert kwargs["output_config"]["format"]["type"] == "json_schema"
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) >= {"skills", "work_history", "education", "field_confidence"}
+    assert kwargs["model"] == "m"
+
+
+# ── AnthropicCVExtractionService: a reply that cannot be used ────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_reply_that_is_not_the_requested_shape_gives_an_empty_result():
+    service = anthropic_service(fake_client("this is not json at all {{{{"))
+
+    result = await service.extract_cv_data({}, model="m")
 
     assert isinstance(result, LLMExtractionResult)
     assert result.skills == []
@@ -75,44 +143,27 @@ async def test_malformed_json_returns_null_result():
 
 
 @pytest.mark.asyncio
-async def test_valid_json_response_parsed_correctly():
-    from app.modules.ai.service import AnthropicCVExtractionService
+async def test_a_reply_missing_required_fields_gives_an_empty_result():
+    service = anthropic_service(fake_client({"skills": ["Python"]}))
 
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
+    result = await service.extract_cv_data({})
 
-    valid_response = json.dumps(
-        {
-            "skills": ["Python", "FastAPI"],
-            "years_experience": 5,
-            "current_title": "Software Engineer",
-            "seniority_level": "senior",
-            "summary": "Experienced backend engineer.",
-            "work_history": [],
-            "education": [],
-            "field_confidence": {
-                "skills": "high",
-                "years_experience": "medium",
-                "current_title": "high",
-                "seniority_level": "medium",
-                "summary": "medium",
-                "work_history": "low",
-                "education": "low",
-            },
-        }
+    assert result.skills == []
+
+
+@pytest.mark.asyncio
+async def test_a_reply_cut_off_at_the_token_limit_is_logged_with_its_stop_reason(caplog):
+    service = anthropic_service(
+        fake_client('{"skills": ["Pyth', stop_reason="max_tokens", input_tokens=800, output_tokens=5120)
     )
 
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=valid_response)]
-    mock_response.usage = MagicMock(input_tokens=1200, output_tokens=350)
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-    service._client = mock_client
+    with caplog.at_level(logging.ERROR):
+        result = await service.extract_cv_data({}, model="m")
 
-    result = await service.extract_cv_data(make_sections(), {})
-
-    assert "Python" in result.skills
-    assert result.years_experience == 5
-    assert result.seniority_level == "senior"
+    assert result.skills == []
+    assert "max_tokens" in caplog.text
+    # The call cost money even though it gave nothing: the cost is kept.
+    assert (result.model, result.input_tokens, result.output_tokens) == ("m", 800, 5120)
 
 
 # ── Token usage capture (cost tracking) ────────────────────────────────────────
@@ -122,19 +173,11 @@ async def test_valid_json_response_parsed_correctly():
 async def test_extract_cv_data_captures_real_token_usage():
     """The whole point of this fix — response.usage must reach LLMExtractionResult,
     not be silently discarded (see the CVParsingCost bug this closes)."""
-    from app.modules.ai.service import AnthropicCVExtractionService
+    service = anthropic_service(
+        fake_client(extraction(skills=["Python"]), input_tokens=987, output_tokens=321)
+    )
 
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
-
-    valid_response = json.dumps({"skills": ["Python"], "field_confidence": {}})
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=valid_response)]
-    mock_response.usage = MagicMock(input_tokens=987, output_tokens=321)
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-    service._client = mock_client
-
-    result = await service.extract_cv_data(make_sections(), {})
+    result = await service.extract_cv_data({})
 
     assert result.input_tokens == 987
     assert result.output_tokens == 321
@@ -144,61 +187,9 @@ async def test_extract_cv_data_captures_real_token_usage():
 async def test_extract_cv_data_exception_path_has_zero_usage():
     """The exception-fallback LLMExtractionResult() has no response to read
     usage from — it must stay at the dataclass default (0), not crash."""
-    from app.modules.ai.service import AnthropicCVExtractionService
+    service = anthropic_service(failing_client(RuntimeError("API down")))
 
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
-
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(side_effect=RuntimeError("API down"))
-    service._client = mock_client
-
-    result = await service.extract_cv_data(make_sections(), {})
-
-    assert result.input_tokens == 0
-    assert result.output_tokens == 0
-
-
-@pytest.mark.asyncio
-async def test_generate_fit_reasoning_captures_real_token_usage():
-    """Fit-reasoning (candidate-vs-job scoring, used by both the Application
-    and talent-pool "score against job" flows) must also capture usage —
-    this was previously discarded, leaving both flows' LLM cost untracked."""
-    from app.modules.ai.service import AnthropicCVExtractionService
-
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
-
-    valid_response = json.dumps(
-        {"score": 80, "strengths": [], "weaknesses": [], "fit_summary": "Good fit"}
-    )
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=valid_response)]
-    mock_response.usage = MagicMock(input_tokens=555, output_tokens=111)
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-    service._client = mock_client
-
-    result = await service.generate_fit_reasoning(
-        candidate_context="Senior engineer", job_context="Backend role"
-    )
-
-    assert result.score == 80
-    assert result.input_tokens == 555
-    assert result.output_tokens == 111
-
-
-@pytest.mark.asyncio
-async def test_generate_fit_reasoning_exception_path_has_zero_usage():
-    from app.modules.ai.service import AnthropicCVExtractionService
-
-    service = AnthropicCVExtractionService.__new__(AnthropicCVExtractionService)
-
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(side_effect=RuntimeError("API down"))
-    service._client = mock_client
-
-    result = await service.generate_fit_reasoning(
-        candidate_context="Senior engineer", job_context="Backend role"
-    )
+    result = await service.extract_cv_data({})
 
     assert result.input_tokens == 0
     assert result.output_tokens == 0

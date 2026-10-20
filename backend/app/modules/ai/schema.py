@@ -3,6 +3,7 @@
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -64,7 +65,14 @@ class SubmissionResponse(BaseModel):
 
 @dataclass
 class FitReasoningResult:
-    """Structured output from the LLM fit-reasoning step."""
+    """Structured output from the LLM fit-reasoning step.
+
+    ``failed`` is True when the call errored, was cut off at the token limit, or
+    returned no usable score. ``score`` is then meaningless: callers must not store
+    it, because 0 is also a legitimate score for a candidate who is a poor fit. The
+    token counts are still filled whenever a reply arrived, because a failed call
+    costs money too.
+    """
 
     score: int = 0
     strengths: list[str] = field(default_factory=list)
@@ -73,6 +81,7 @@ class FitReasoningResult:
     input_tokens: int = 0
     output_tokens: int = 0
     model: str = ""
+    failed: bool = False
 
 
 @dataclass
@@ -93,6 +102,64 @@ class InterviewScoringResult:
     input_tokens: int = 0
     output_tokens: int = 0
     failed: bool = False
+
+
+Confidence = Literal["high", "medium", "low"]
+
+
+class CVWorkEntry(BaseModel):
+    """One job in a CV's work history, as the extraction model returns it."""
+
+    company: str | None
+    title: str | None
+    start_date: str | None
+    end_date: str | None
+    duration_months: int | None
+    description: str | None
+    is_current: bool
+
+
+class CVEducationEntry(BaseModel):
+    """One education entry in a CV, as the extraction model returns it."""
+
+    institution: str | None
+    degree: str | None
+    field: str | None
+    graduation_year: int | None
+    qualification_type: str | None
+
+
+class CVFieldConfidence(BaseModel):
+    """How sure the model is of each part of its answer. A fixed set of keys, not
+    a free dictionary, because the structured-output schema must be closed."""
+
+    skills: Confidence
+    years_experience: Confidence
+    current_title: Confidence
+    profession: Confidence
+    seniority_level: Confidence
+    summary: Confidence
+    work_history: Confidence
+    education: Confidence
+
+
+class CVExtractionOutput(BaseModel):
+    """What the CV extraction model must return. Sent to the API as a JSON schema,
+    so the reply always has this shape; "nothing found" is an empty list or null.
+
+    Every field is required (a missing fact is null or an empty list, never an
+    omitted key), which is what lets the API enforce the shape.
+    """
+
+    skills: list[str]
+    years_experience: int | None
+    current_title: str | None
+    profession: str | None
+    seniority_level: Literal["junior", "mid", "senior", "lead", "executive"] | None
+    summary: str | None
+    work_history: list[CVWorkEntry]
+    education: list[CVEducationEntry]
+    field_confidence: CVFieldConfidence
 
 
 class JobContext(BaseModel):

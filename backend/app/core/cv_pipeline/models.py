@@ -64,3 +64,9 @@ class CVExtractionResult:
     is_scanned: bool
     ocr_used: bool
     extracted_at: datetime
+
+    # False when nothing readable was found (no job, education entry or skill), so
+    # the profile has nothing to judge a candidate on. Saved in `parsed_data` with
+    # the rest; rows saved before this field existed are judged by
+    # `usability.parsed_data_is_usable`.
+    usable: bool
