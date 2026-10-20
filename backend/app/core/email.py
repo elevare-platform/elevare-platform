@@ -8,6 +8,7 @@ Wire into FastAPI via get_email_service() dependency.
 """
 
 import logging
+import re
 from abc import ABC, abstractmethod
 
 from app.modules.email_preferences.links import (
@@ -43,7 +44,6 @@ def _html_to_text(html: str) -> str:
     some clients) show only the text. Links keep their address in brackets after the
     link text, so nothing is lost."""
     import html as html_lib
-    import re
 
     text = re.sub(r"<head>.*?</head>", "", html, flags=re.S | re.I)
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
@@ -67,6 +67,20 @@ def _html_to_text(html: str) -> str:
         if line or (cleaned and cleaned[-1]):
             cleaned.append(line)
     return "\n".join(cleaned).strip() + "\n"
+
+
+# Mail clients cut a long subject, and a very long one is a sign something is wrong.
+MAX_SUBJECT_LENGTH = 200
+
+
+def _clean_subject(subject: str) -> str:
+    """A subject on one line. Subjects include things people typed (a job title, a name,
+    a company), and a line break or other control character in an email header is
+    refused by the mail provider and is how header injection works. Every run of
+    whitespace or control characters, including the Unicode line separators, becomes one
+    space."""
+    one_line = re.sub(r"[\s\x00-\x1f\x7f-\x9f  ]+", " ", subject).strip()
+    return one_line[:MAX_SUBJECT_LENGTH].rstrip()
 
 
 def _from_header() -> str:
@@ -511,6 +525,8 @@ class ResendEmailService(EmailService):
         own signed Unsubscribe link in the footer and in the List-Unsubscribe headers.
         """
         import asyncio
+
+        subject = _clean_subject(subject)
 
         # (recipients, html, extra headers) for each separate send.
         deliveries: list[tuple[list[str], str, dict[str, str]]]
