@@ -2,7 +2,9 @@
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +21,7 @@ from app.modules.ai.tasks import score_talent_pool_profile_task
 from app.modules.auth.service import AuthService
 from app.modules.candidates.enums import VisibilityStatus
 from app.modules.jobs.repository import JobRepository
+from app.modules.talent_pool import dedupe
 from app.modules.talent_pool.enums import TalentPoolStatus
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.talent_pool.repository import TalentPoolRepository
@@ -178,6 +181,16 @@ async def get_top_matches_for_job(
     return scored[:limit]
 
 
+@dataclass
+class _Added:
+    """What happened to one uploaded CV: ``queued`` (a new profile), ``duplicate`` (already in
+    the pool, nothing added) or ``attached`` (already in the pool without a job, now on this one)."""
+
+    status: Literal["queued", "duplicate", "attached"]
+    profile: TalentPoolProfiles
+    submission_id: uuid.UUID | None
+
+
 class TalentPoolService:
     """Orchestrates talent pool CV submissions, scoring, and candidate promotion."""
 
@@ -236,23 +249,59 @@ class TalentPoolService:
         data: TalentPoolSubmitRequest,
         current_user: User,
     ):
-        """Submit a single CV into the talent pool and queue parsing/scoring."""
-        submission = await self._cv_service.submit_cv_for_parsing(
-            uploaded_by=current_user, file=file, filename=filename
-        )
+        """Submit a single CV into the talent pool and queue parsing/scoring.
 
-        # Deduplication — same CV content already exists against this job
-        existing = await self._repo.get_by_cv_hash(
-            submission.cv_text_hash, data.sourced_for_job_id
+        A CV that is already in the pool is not added again: the existing profile is
+        returned with ``already_in_pool`` set (see ``dedupe`` for the rule)."""
+        added = await self._add_cv(
+            file, filename, data, current_user, await self._can_auto_score(current_user)
         )
-        if existing:
-            response = TalentPoolProfileResponse.model_validate(existing)
-            return await self._enrich(existing, response)
+        response = TalentPoolProfileResponse.model_validate(added.profile)
+        response.already_in_pool = added.status == "duplicate"
+        return await self._enrich(added.profile, response)
 
-        # Create talent pool profile
+    async def _add_cv(
+        self,
+        file: bytes,
+        filename: str,
+        data: TalentPoolSubmitRequest,
+        current_user: User,
+        can_auto_score: bool,
+    ) -> "_Added":
+        """Find or create the profile for one uploaded CV. Used by both upload paths, so a
+        single upload and a batch cannot disagree about what a duplicate is.
+
+        The duplicate check happens BEFORE any submission is made (a duplicate used to leave
+        a submission with no profile behind it), under a lock on the CV's content, and the
+        submission and profile are made in one transaction, so two uploads of the same CV at
+        the same moment find each other's work instead of both adding it."""
+        cv_hash = self._cv_service.fingerprint(file, filename)
+        is_admin = current_user.role == UserRole.ADMIN.value
+
+        await dedupe.lock_cv(self._db, cv_hash)
+        found = await dedupe.find_in_scope(self._db, cv_hash, current_user.id, is_admin)
+        decision = dedupe.decide(found, data.sourced_for_job_id, current_user.id)
+
+        if decision.action == "duplicate":
+            await self._db.commit()  # nothing changed; this ends the transaction and the lock
+            return _Added("duplicate", decision.existing, None)
+
+        if decision.action == "attach":
+            # Already in the pool without a job, and uploaded again for one: it joins that
+            # job's pipeline, rather than becoming a second profile.
+            profile = decision.existing
+            profile.sourced_for_job_id = data.sourced_for_job_id
+            await self._db.commit()
+            if can_auto_score:
+                score_talent_pool_profile_task.delay(str(profile.id))
+            return _Added("attached", profile, None)
+
+        staged = await self._cv_service.stage_cv(
+            current_user, file, filename, cv_hash
+        )
         profile = await self._repo.create(
             {
-                "parsed_submission_id": submission.id,
+                "parsed_submission_id": staged.submission.id,
                 "source": data.source,
                 "source_note": data.source_note,
                 "sourced_for_job_id": data.sourced_for_job_id,
@@ -260,13 +309,12 @@ class TalentPoolService:
                 "status": TalentPoolStatus.NEW.value,
             }
         )
-
-        if data.sourced_for_job_id and await self._can_auto_score(current_user):
-            score_talent_pool_profile_task.delay(str(profile.id))
-
         await self._db.commit()
-        response = TalentPoolProfileResponse.model_validate(profile)
-        return await self._enrich(profile, response)
+        # Only after the commit: a worker cannot see rows that are not committed yet.
+        staged.dispatch()
+        if data.sourced_for_job_id and can_auto_score:
+            score_talent_pool_profile_task.delay(str(profile.id))
+        return _Added("queued", profile, staged.submission.id)
 
     async def submit_batch(
         self,
@@ -279,49 +327,28 @@ class TalentPoolService:
         results = []
         for file_bytes, filename in files:
             try:
-                submission = await self._cv_service.submit_cv_for_parsing(
-                    uploaded_by=current_user,
-                    file=file_bytes,
-                    filename=filename,
+                added = await self._add_cv(
+                    file_bytes, filename, data, current_user, can_auto_score
                 )
-                # Deduplication — skip if same CV content+job already exists
-                existing = await self._repo.get_by_cv_hash(
-                    submission.cv_text_hash, data.sourced_for_job_id
-                )
-                if existing:
-                    results.append(
-                        {
-                            "filename": filename,
-                            "status": "duplicate",
-                            "profile_id": str(existing.id),
-                            "submission_id": str(submission.id),
-                        }
-                    )
-                    continue
-
-                profile = await self._repo.create(
-                    {
-                        "parsed_submission_id": submission.id,
-                        "source": data.source,
-                        "source_note": data.source_note,
-                        "sourced_for_job_id": data.sourced_for_job_id,
-                        "added_by": current_user.id,
-                        "status": TalentPoolStatus.NEW.value,
-                    }
-                )
-                if data.sourced_for_job_id and can_auto_score:
-                    score_talent_pool_profile_task.delay(str(profile.id))
-                await self._db.commit()
                 results.append(
                     {
                         "filename": filename,
-                        "status": "queued",
-                        "profile_id": str(profile.id),
-                        "submission_id": str(submission.id),
+                        # queued: a new profile; duplicate: already in the pool, nothing
+                        # added; attached: already in the pool without a job, now on this one
+                        "status": added.status,
+                        "profile_id": str(added.profile.id),
+                        "submission_id": str(added.submission_id)
+                        if added.submission_id
+                        else None,
+                        "linked_job_id": str(added.profile.sourced_for_job_id)
+                        if added.profile.sourced_for_job_id
+                        else None,
                     }
                 )
             except Exception as e:
                 logger.error("Batch submit failed for %s: %s", filename, e)
+                # One bad file must not poison the session for the files after it.
+                await self._db.rollback()
                 results.append(
                     {"filename": filename, "status": "failed", "error": str(e)}
                 )

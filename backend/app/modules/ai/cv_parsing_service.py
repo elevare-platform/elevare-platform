@@ -5,6 +5,8 @@ import hmac
 import json
 import logging
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 import redis.asyncio as aioredis
@@ -34,6 +36,27 @@ logger = logging.getLogger(__name__)
 CACHE_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
 
+def compute_cv_hash(text: str | None, file: bytes) -> str:
+    """HMAC-SHA256 that identifies a CV's content (also its Redis cache key).
+
+    It is the hash of the CV's text. A PDF with no extractable text (a scan the OCR could
+    not read) is hashed by its bytes instead: hashing the empty text gave every such file
+    the SAME hash, so unrelated candidates were treated as one CV. The same function is used
+    for CVs uploaded by hand and CVs that arrive by mail, so the same CV matches on both.
+    """
+    content = text.encode() if text and text.strip() else file
+    return hmac.new(settings.hmac_secret.encode(), content, hashlib.sha256).hexdigest()
+
+
+@dataclass
+class StagedSubmission:
+    """A submission row created but not yet committed, and the background work that must
+    run only after it is committed (a worker cannot see an uncommitted row)."""
+
+    submission: ParsedCVSubmission
+    dispatch: Callable[[], None]
+
+
 class CVParsingService:
     """Orchestrates CV upload, text extraction, cache lookup, and pipeline dispatch."""
 
@@ -56,13 +79,18 @@ class CVParsingService:
         self._user_repo = UserRepository(db)
         self._candidate_repo = CandidateRepository(db)
 
-    def _compute_hash(self, text: str) -> str:
-        """HMAC-SHA256 hash of CV text — used as a Redis cache key."""
-        return hmac.new(
-            settings.hmac_secret.encode(),
-            text.encode(),
-            hashlib.sha256,
-        ).hexdigest()
+    def fingerprint(self, file: bytes, filename: str) -> str:
+        """Validate an upload and return the hash that identifies its content.
+
+        Touches no database and creates nothing, so a duplicate can be recognised
+        before any submission row exists (a duplicate upload used to leave an orphan
+        submission with no profile behind it). The same function is used for CVs that
+        arrive by mail, so the same CV gets the same hash on both paths.
+        """
+        # Validate PDF — synchronous, fast
+        validate_pdf_upload(file, filename)
+        # Layer 1: text extraction — synchronous
+        return compute_cv_hash(extract_text_from_pdf(file).text, file)
 
     async def submit_cv_for_parsing(
         self,
@@ -75,12 +103,26 @@ class CVParsingService:
         Returns a ParsedCVSubmission row immediately — either COMPLETED (cache
         hit) or PENDING (cache miss, Celery task queued).
         """
-        # Validate PDF — synchronous, fast
-        validate_pdf_upload(file, filename)
+        cv_text_hash = self.fingerprint(file, filename)
+        staged = await self.stage_cv(uploaded_by, file, filename, cv_text_hash)
+        await self._db.commit()
+        staged.dispatch()
+        return staged.submission
 
-        # Layer 1: text extraction — synchronous, keeps cache check on the fast path
-        text_result = extract_text_from_pdf(file)
-        cv_text_hash = self._compute_hash(text_result.text or "")
+    async def stage_cv(
+        self,
+        uploaded_by: User,
+        file: bytes,
+        filename: str,
+        cv_text_hash: str,
+    ) -> "StagedSubmission":
+        """Create the submission row (flushed, NOT committed) and say what to run after.
+
+        For a caller that must create more rows in the same transaction (the talent
+        pool makes the profile together with the submission, so a concurrent upload of
+        the same CV finds both or neither). After committing, call ``dispatch()``: the
+        background work must not start before the row is visible to the workers.
+        """
         cache_key = f"cv_parse:{cv_text_hash}"
 
         # Cache hit — return immediately, no pipeline needed
@@ -109,18 +151,18 @@ class CVParsingService:
                 parsed_data,
                 r2_key=r2_key,
             )
-            await self._db.commit()
             logger.info("CV Parse cache hit", extra={"hash": cv_text_hash})
 
-            # No existing r2_key — queue a background upload so the file is downloadable
-            if not r2_key:
-                from app.modules.ai.tasks import upload_cv_to_r2_task
+            def dispatch_cache_hit() -> None:
+                # No existing r2_key — queue a background upload so the file is downloadable
+                if not r2_key:
+                    from app.modules.ai.tasks import upload_cv_to_r2_task
 
-                upload_cv_to_r2_task.delay(
-                    str(submission.id), str(uploaded_by.id), filename, file
-                )
+                    upload_cv_to_r2_task.delay(
+                        str(submission.id), str(uploaded_by.id), filename, file
+                    )
 
-            return submission
+            return StagedSubmission(submission, dispatch_cache_hit)
 
         # Cache miss — create PENDING row immediately and return.
         # R2 upload + full pipeline runs in Celery, so the response is instant.
@@ -131,16 +173,16 @@ class CVParsingService:
             parse_status=CVParsingStatus.PENDING.value,
             r2_key=None,  # set by the Celery task once uploaded
         )
-        await self._db.commit()
 
-        # Fire Celery task — passes raw file bytes, task handles R2 upload + pipeline
-        run_full_pipeline_task.delay(
-            submission_id=str(submission.id),
-            cache_key=cache_key,
-            file=file,
-        )
+        def dispatch_cache_miss() -> None:
+            # Fire Celery task — passes raw file bytes, task handles R2 upload + pipeline
+            run_full_pipeline_task.delay(
+                submission_id=str(submission.id),
+                cache_key=cache_key,
+                file=file,
+            )
 
-        return submission
+        return StagedSubmission(submission, dispatch_cache_miss)
 
     async def get_submission(
         self,

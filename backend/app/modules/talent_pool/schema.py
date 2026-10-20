@@ -46,6 +46,9 @@ class TalentPoolProfileResponse(BaseModel):
     promoted_at: datetime | None = None
     last_invite_sent_at: datetime | None = None
     created_at: datetime
+    # Set on the answer to an upload that found the CV already in the pool: nothing was added,
+    # this is the profile that was already there (its job is ``sourced_for_job_id``).
+    already_in_pool: bool = False
 
     # Enriched from parsed_data — not stored on the model, populated by the service
     candidate_name: str | None = None

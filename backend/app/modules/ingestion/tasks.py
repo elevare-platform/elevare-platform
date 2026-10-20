@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
 import logging
 import os
 import re
@@ -43,15 +41,6 @@ _FETCH_CONCURRENCY = 3
 # left runs stuck in RUNNING before the stale-run recovery fix. Comfortably
 # under the hard limit to leave room for whatever page is in flight.
 _TASK_DEADLINE_SECONDS = 90 * 60
-
-
-def _compute_cv_hash(content: bytes | str) -> str:
-    data = content.encode() if isinstance(content, str) else content
-    return hmac.new(
-        settings.hmac_secret.encode(),
-        data,
-        hashlib.sha256,
-    ).hexdigest()
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -612,15 +601,17 @@ async def _process_attachment(
     sourced_for_job_id,
     db,
 ):
-    from sqlalchemy import select as _select
-
     from app.core.cv_pipeline.layer1_extraction import extract_text_from_pdf
     from app.core.storage import get_storage_service
     from app.modules.ai.cv_parsing_repo import CVParsingRepo
+    from app.modules.ai.cv_parsing_service import compute_cv_hash
     from app.modules.ai.enums import CVParsingStatus
     from app.modules.ai.tasks import run_full_pipeline_task
     from app.modules.ingestion.repository import IngestionRepository
+    from app.modules.talent_pool import dedupe
     from app.modules.talent_pool.models import TalentPoolProfiles
+    from app.modules.users.enums import UserRole
+    from app.modules.users.models import User
     from app.modules.users.repository import UserRepository
 
     filename = _sanitize_filename(filename)
@@ -631,40 +622,10 @@ async def _process_attachment(
     except Exception:
         cv_text = ""
 
-    cv_hash = (
-        _compute_cv_hash(cv_text)
-        if cv_text.strip()
-        else _compute_cv_hash(attachment_data)
-    )
+    # The same hash the manual upload uses, so the same CV matches on both paths.
+    cv_hash = compute_cv_hash(cv_text, attachment_data)
     storage = get_storage_service()
     parsing_repo = CVParsingRepo(db, storage)
-
-    existing = await parsing_repo.get_with_r2_key_by_hash(cv_hash)
-    if existing:
-        existing_tp = await db.execute(
-            _select(TalentPoolProfiles).where(
-                TalentPoolProfiles.parsed_submission_id == existing.id
-            )
-        )
-        if not existing_tp.scalar_one_or_none():
-            ingestion_repo = IngestionRepository(db)
-            integration = await ingestion_repo.get_integration_by_id(integration_id)
-            owner_id = integration.user_id if integration else None
-            if owner_id:
-                source_value, source_label = _source_for_provider(
-                    integration.provider if integration else ""
-                )
-                db.add(
-                    TalentPoolProfiles(
-                        parsed_submission_id=existing.id,
-                        source=source_value,
-                        source_note=f"{source_label} — {sender_email} · message {message_id}",
-                        sourced_for_job_id=sourced_for_job_id,
-                        added_by=owner_id,
-                    )
-                )
-                await db.commit()
-        return "deduplicated"
 
     user_repo = UserRepository(db)
     uploader_user = await user_repo.get_user_by_email(sender_email)
@@ -676,6 +637,56 @@ async def _process_attachment(
     source_value, source_label = _source_for_provider(
         integration.provider if integration else ""
     )
+    source_note = f"{source_label} — {sender_email} · message {message_id}"
+
+    if not owner_id:
+        # Nobody to own a profile: only the parse is kept. Nothing to scope by, so a CV
+        # already parsed (by anyone) is not parsed again.
+        if await parsing_repo.get_with_r2_key_by_hash(cv_hash):
+            return "deduplicated"
+    else:
+        owner = await db.get(User, owner_id)
+        owner_is_admin = bool(owner and owner.role == UserRole.ADMIN.value)
+
+        # Same rule as an upload by hand (talent_pool/dedupe.py): only what this owner can see
+        # counts, whether or not the earlier copy has finished parsing or been stored.
+        await dedupe.lock_cv(db, cv_hash)
+        found = await dedupe.find_in_scope(db, cv_hash, owner_id, owner_is_admin)
+        decision = dedupe.decide(found, sourced_for_job_id, owner_id)
+        if decision.action == "duplicate":
+            await db.commit()  # ends the transaction and the lock
+            return "deduplicated"
+        if decision.action == "attach":
+            decision.existing.sourced_for_job_id = sourced_for_job_id
+            await db.commit()
+            return "deduplicated"
+
+        # A new profile. If this exact CV was already parsed (for someone else, or by hand
+        # earlier) reuse that parse instead of paying for it again, as a copy owned by this
+        # profile; otherwise it is parsed below.
+        parsed = await parsing_repo.get_with_r2_key_by_hash(cv_hash)
+        if parsed:
+            copy = await parsing_repo.submit_cv_for_parsing(
+                filename=filename,
+                uploaded_by_id=owner_id,
+                cv_text_hash=cv_hash,
+                parse_status=CVParsingStatus(parsed.parse_status),
+                parsed_data=parsed.parsed_data,
+                r2_key=parsed.r2_key,
+            )
+            profile = TalentPoolProfiles(
+                parsed_submission_id=copy.id,
+                source=source_value,
+                source_note=source_note,
+                sourced_for_job_id=sourced_for_job_id,
+                added_by=owner_id,
+            )
+            db.add(profile)
+            await db.commit()
+            from app.modules.ai.tasks import generate_talent_pool_embedding_task
+
+            generate_talent_pool_embedding_task.delay(str(profile.id))
+            return "queued"
 
     submission = await parsing_repo.submit_cv_for_parsing(
         filename=filename,
@@ -691,11 +702,15 @@ async def _process_attachment(
             TalentPoolProfiles(
                 parsed_submission_id=submission.id,
                 source=source_value,
-                source_note=f"{source_label} — {sender_email} · message {message_id}",
+                source_note=source_note,
                 sourced_for_job_id=sourced_for_job_id,
                 added_by=owner_id,
             )
         )
+        # Commit the submission and its profile together BEFORE the slow upload below: this
+        # releases the lock and lets a second copy of the same CV (a manual upload, another
+        # mailbox) find this one while it is still being stored and parsed.
+        await db.commit()
 
     # Upload to R2 now so the pipeline task receives only the key.
     # This keeps large file bytes out of Redis/Celery messages entirely,
@@ -709,7 +724,20 @@ async def _process_attachment(
     content_type = mime_map.get(ext, "application/octet-stream")
     timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     r2_key = f"cv-ingestion/{owner_id or 'system'}/{timestamp}_{filename}"
-    await storage.upload_file(attachment_data, r2_key, content_type)
+    try:
+        await storage.upload_file(attachment_data, r2_key, content_type)
+    except Exception as exc:
+        # The profile is already saved (so a second copy finds it). Say the CV could not be
+        # stored, rather than leave it "pending" for ever.
+        await parsing_repo.update(
+            submission.id,
+            {
+                "parse_status": CVParsingStatus.FAILED.value,
+                "error_message": f"Could not store the CV file: {exc}",
+            },
+        )
+        await db.commit()
+        raise
     await parsing_repo.update(submission.id, {"r2_key": r2_key})
 
     await db.commit()
