@@ -14,6 +14,10 @@ from app.modules.jobs.enums import ContractType, SeniorityLevel, WorkLocation, W
 # until the "admin posts on behalf of a real company" flow exists.
 PLATFORM_COMPANY_NAME = "Elevare Human Solutions Ltd"
 
+# The largest value the salary_min / salary_max columns (Numeric(12, 2)) can hold. A
+# higher limit here let a value through validation that then failed in the database.
+MAX_JOB_SALARY = Decimal("9999999999.99")
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -79,8 +83,8 @@ class JobCreateRequest(BaseModel):
     location: str = Field(..., max_length=255)
     contract_type: ContractType
     work_model: WorkModel | None = None
-    salary_min: Decimal | None = Field(default=None, ge=0, le=999_999_999_999)
-    salary_max: Decimal | None = Field(default=None, ge=0, le=999_999_999_999)
+    salary_min: Decimal | None = Field(default=None, ge=0, le=MAX_JOB_SALARY)
+    salary_max: Decimal | None = Field(default=None, ge=0, le=MAX_JOB_SALARY)
     work_location: WorkLocation
     application_deadline: datetime | None = None
     required_skills: list[str] | None = None
@@ -118,8 +122,8 @@ class JobUpdateRequest(BaseModel):
     location: str | None = Field(default=None, max_length=255)
     contract_type: ContractType | None = None
     work_model: WorkModel | None = None
-    salary_min: Decimal | None = Field(default=None, ge=0, le=999_999_999_999)
-    salary_max: Decimal | None = Field(default=None, ge=0, le=999_999_999_999)
+    salary_min: Decimal | None = Field(default=None, ge=0, le=MAX_JOB_SALARY)
+    salary_max: Decimal | None = Field(default=None, ge=0, le=MAX_JOB_SALARY)
     work_location: WorkLocation | None = None
     application_deadline: datetime | None = None
     required_skills: list[str] | None = None

@@ -88,6 +88,42 @@ describe('CandidateProfilePage, finishing a profile', () => {
     expect(updateUser).toHaveBeenCalledWith({ is_profile_complete: false })
   })
 
+  it('shows the API\'s message next to the field it refused, such as a salary that is too big', async () => {
+    api.put.mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          code: 'VALIDATION_ERROR',
+          message: 'Validation failed',
+          details: [{ field: 'expected_salary', message: 'Input should be less than or equal to 99999999.99' }],
+        },
+      },
+    })
+    renderPage()
+
+    await fillAboutYouAndSave()
+
+    expect(await screen.findByText(/less than or equal to 99999999.99/)).toBeInTheDocument()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('shows a refusal for a field the form has no place for above the Save button', async () => {
+    api.put.mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          code: 'VALIDATION_ERROR',
+          details: [{ field: 'avatar_url', message: 'String should have at most 255 characters' }],
+        },
+      },
+    })
+    renderPage()
+
+    await fillAboutYouAndSave()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('avatar_url: String should have at most 255 characters')
+  })
+
   it('sends the person back to where they came from once the profile is complete', async () => {
     mockProfile = { ...WITHOUT_CV, cvs: [{ id: 'c1' }] }
     api.put.mockResolvedValueOnce({ data: { is_profile_complete: true } })

@@ -3,10 +3,13 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.candidates.enums import AvailabilityBucket
 from app.modules.jobs.enums import SeniorityLevel
+
+# The largest value the expected_salary column (Numeric(10, 2)) can hold.
+MAX_EXPECTED_SALARY = 99_999_999.99
 
 # ------------------------------------------
 #           REQUEST SCHEMAS
@@ -19,17 +22,20 @@ class UpdateProfileSchema(BaseModel):
     All fields are optional; only provided fields are written to the database.
     """
 
+    # Each limit matches its database column (String(255), String(3), Numeric(10, 2)),
+    # so a value that cannot be stored is refused here with a 422 and a clear message
+    # instead of failing in the database as a 500.
     bio: str | None = None
-    avatar_url: str | None = None
+    avatar_url: str | None = Field(default=None, max_length=255)
     skills: list[str] | None = None
-    location: str | None = None
-    expected_salary: float | None = None
-    expected_currency: str | None = None
-    years_of_experience: int | None = None
-    notice_period_days: int | None = None
-    linkedin_url: str | None = None
-    portfolio_url: str | None = None
-    github_url: str | None = None
+    location: str | None = Field(default=None, max_length=255)
+    expected_salary: float | None = Field(default=None, ge=0, le=MAX_EXPECTED_SALARY)
+    expected_currency: str | None = Field(default=None, max_length=3)
+    years_of_experience: int | None = Field(default=None, ge=0, le=60)
+    notice_period_days: int | None = Field(default=None, ge=0, le=3650)
+    linkedin_url: str | None = Field(default=None, max_length=255)
+    portfolio_url: str | None = Field(default=None, max_length=255)
+    github_url: str | None = Field(default=None, max_length=255)
     preferred_locations: list[str] | None = None
     preferred_work_models: list[str] | None = None
     open_to_relocation: bool = False
