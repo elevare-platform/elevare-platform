@@ -1770,10 +1770,34 @@ def score_job_against_talent_pool_task(self, job_id: str) -> None:
     via score_talent_pool_profile_task so the all-pairs explosion is avoided —
     only this specific job is scored, not every job × every candidate.
     """
-    asyncio.run(_score_job_against_talent_pool_async(job_id))
+    try:
+        asyncio.run(
+            _score_job_against_talent_pool_async(
+                job_id, final_attempt=self.request.retries >= EMBEDDING_MAX_RETRIES
+            )
+        )
+    except _EmbeddingNotReady as exc:
+        raise self.retry(
+            countdown=EMBEDDING_RETRY_SECONDS, max_retries=EMBEDDING_MAX_RETRIES, exc=exc
+        ) from exc
 
 
-async def _score_job_against_talent_pool_async(job_id_str: str) -> None:
+class _EmbeddingNotReady(Exception):
+    """Internal signal that the job's embedding has not been stored yet: try again."""
+
+
+# A job's embedding is made by its own task, queued at the same moment as this one when
+# an admin creates a job, so this task usually starts first. Wait for it: 6 tries 30
+# seconds apart is 3 minutes. (This used to crash with len(None) and lean on Celery's
+# default retries, which give up after about 15 seconds.)
+EMBEDDING_RETRY_SECONDS = 30
+EMBEDDING_MAX_RETRIES = 6
+
+
+async def _score_job_against_talent_pool_async(
+    job_id_str: str, final_attempt: bool = False
+) -> None:
+    from app.core.exceptions import JobNotFoundError
     from app.modules.jobs.repository import JobRepository as _JobRepo
     from app.modules.talent_pool.service import get_top_matches_for_job
 
@@ -1787,13 +1811,26 @@ async def _score_job_against_talent_pool_async(job_id_str: str) -> None:
     async with SessionLocal() as db:
         try:
             job_repo = _JobRepo(db)
-            job = await job_repo.get_by_id(job_id)
-            if job is None or len(job.job_embedding) == 0:
-                logger.info(
-                    "score_job_against_talent_pool: job %s has no embedding, skipping",
-                    job_id,
-                )
+            try:
+                job = await job_repo.get_by_id(job_id)
+            except JobNotFoundError:
+                # Deleted since it was queued: nothing to score, and nothing to retry.
+                logger.info("score_job_against_talent_pool: job %s not found", job_id)
                 return
+            if job.job_embedding is None or len(job.job_embedding) == 0:
+                if final_attempt:
+                    logger.error(
+                        "score_job_against_talent_pool: job %s still has no embedding after %d tries; giving up",
+                        job_id,
+                        EMBEDDING_MAX_RETRIES,
+                    )
+                    return
+                logger.info(
+                    "score_job_against_talent_pool: job %s has no embedding yet, retrying in %ds",
+                    job_id,
+                    EMBEDDING_RETRY_SECONDS,
+                )
+                raise _EmbeddingNotReady(f"No embedding yet for job {job_id}")
 
             # Use the same scoring logic as the API — embedding * modulator,
             # floor filter, top 20. Only these profiles get LLM scoring queued.
@@ -1808,6 +1845,8 @@ async def _score_job_against_talent_pool_async(job_id_str: str) -> None:
                 len(top_matches),
                 job_id,
             )
+        except _EmbeddingNotReady:
+            raise  # expected while the embedding is being made: not an error to report
         except Exception:
             logger.exception("score_job_against_talent_pool: failed for job %s", job_id)
             raise
