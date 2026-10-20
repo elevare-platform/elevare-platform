@@ -18,15 +18,23 @@ CV_UNREADABLE_PARSE = "cv_unreadable_parse"
 SCORE_NOT_SAVED = "score_not_saved"
 
 
-def report_quality_signal(name: str, **fields) -> None:
-    """Record that ``name`` happened, with ``fields`` saying which and why."""
+def report_quality_signal(name: str, *, level: str = "warning", **fields) -> None:
+    """Record that ``name`` happened, with ``fields`` saying which and why.
+
+    ``level`` is how loud it is in Sentry: "warning" for data-quality notes, "error"
+    for something that stops the product working (it then trips Sentry's default alert
+    for new issues).
+    """
     try:
-        logger.warning(
-            "%s %s", name, " ".join(f"{key}={value}" for key, value in sorted(fields.items()))
+        logger.log(
+            logging.ERROR if level == "error" else logging.WARNING,
+            "%s %s",
+            name,
+            " ".join(f"{key}={value}" for key, value in sorted(fields.items())),
         )
         with sentry_sdk.new_scope() as scope:
             scope.fingerprint = [name]
             scope.set_context("signal", {key: str(value) for key, value in fields.items()})
-            sentry_sdk.capture_message(name, level="warning")
+            sentry_sdk.capture_message(name, level=level)
     except Exception:  # never let a report break the work it is reporting on
         logger.debug("could not report quality signal %s", name, exc_info=True)
