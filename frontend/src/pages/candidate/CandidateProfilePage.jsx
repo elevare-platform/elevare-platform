@@ -27,7 +27,14 @@ export function isDirty(initial, current) {
   return Object.keys(getDirtyFields(initial, current)).length > 0
 }
 
-const INPUT_CLS = 'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue'
+// The fields of the form that can show their own error (the rest, if the server refuses
+// one, are shown above the Save button).
+const FORM_FIELDS = [
+  'bio', 'skills', 'years_of_experience', 'location', 'expected_salary',
+  'notice_period_days', 'linkedin_url', 'github_url', 'portfolio_url',
+]
+
+const INPUT_CLS ='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue'
 const CURRENCIES = ['NGN', 'USD', 'GBP', 'EUR', 'CAD', 'AUD', 'ZAR', 'GHS', 'KES']
 
 // ─── Field wrapper ────────────────────────────────────────────────────────────
@@ -420,8 +427,17 @@ export default function CandidateProfilePage() {
         setTimeout(() => navigate(next, { replace: true }), 1200)
       }
     } catch (err) {
-      const detail = err?.response?.data?.detail
-      if (Array.isArray(detail)) {
+      const body = err?.response?.data
+      const detail = body?.detail
+      if (Array.isArray(body?.details) && body.details.length > 0) {
+        // The API's own format: { details: [{ field, message }] }. A field the form
+        // has no place for (a link, say) is shown above the button instead of lost.
+        const errs = {}
+        const unplaced = []
+        body.details.forEach((d) => { if (FORM_FIELDS.includes(d.field)) errs[d.field] = d.message; else unplaced.push(`${d.field}: ${d.message}`) })
+        setFieldErrors(errs)
+        if (unplaced.length > 0) setSaveError(unplaced.join(' · '))
+      } else if (Array.isArray(detail)) {
         const errs = {}
         detail.forEach((d) => { const f = d.loc?.[d.loc.length - 1]; if (f) errs[f] = d.msg })
         setFieldErrors(errs)
