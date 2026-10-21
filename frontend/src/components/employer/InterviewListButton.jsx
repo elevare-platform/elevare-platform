@@ -37,7 +37,8 @@ export default function InterviewListButton({ onList, onToggle, className }) {
       )}
     >
       {busy ? <Loader2 size={13} className="animate-spin" /> : <CalendarCheck size={13} />}
-      {onList ? 'On interview list' : 'Interview list'}
+      {/* Icon only on a phone: the label is still in aria-label and the tooltip */}
+      <span className="hidden sm:inline">{onList ? 'On interview list' : 'Interview list'}</span>
     </button>
   )
 }

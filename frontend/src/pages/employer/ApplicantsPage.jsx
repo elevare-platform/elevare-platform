@@ -109,6 +109,12 @@ function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weakne
 
   // Position the panel relative to the button using a fixed overlay
   const btnRect = btnRef?.getBoundingClientRect()
+  // The panel is 288px wide (w-72). Its right edge lines up with the button, but it is
+  // kept at least 8px inside the screen, so on a phone it cannot open off the left edge.
+  const PANEL_WIDTH = 288
+  const panelLeft = btnRect
+    ? Math.max(8, Math.min(btnRect.right - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - 8))
+    : 8
 
   return (
     <div className="relative flex-shrink-0">
@@ -131,10 +137,10 @@ function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weakne
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
           <div
-            className="fixed z-50 w-72 rounded-xl border border-border bg-white shadow-xl p-4 space-y-3 text-sm overflow-y-auto"
+            className="fixed z-50 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-white shadow-xl p-4 space-y-3 text-sm overflow-y-auto"
             style={{
               top: btnRect.bottom + 8,
-              right: window.innerWidth - btnRect.right,
+              left: panelLeft,
               maxHeight: `calc(100vh - ${btnRect.bottom + 24}px)`,
             }}
             role="dialog"
@@ -569,59 +575,74 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-text text-sm">{candidateName}</p>
+          <p className="font-semibold text-text text-sm break-words">{candidateName}</p>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
             {application.location && <span>📍 {application.location}</span>}
             {application.years_of_experience != null && (
               <span>{application.years_of_experience} yr{application.years_of_experience !== 1 ? 's' : ''} exp</span>
             )}
-            <span>Applied {formatDate(application.status_updated_at)}</span>
+            <span className="hidden sm:inline">Applied {formatDate(application.status_updated_at)}</span>
           </div>
         </div>
 
-        {/* Right-side controls - wrap onto next line on small screens */}
-        <div className="flex flex-wrap items-center gap-2 ml-auto">
+        {/* Controls. On a phone they take their own full-width rows, in this order:
+            row 1: AI score, status, interview-list icon; row 2: Move to, CV, View profile.
+            The `order-*` classes set that order; `sm:order-none` puts them back in
+            reading order on a wider screen, where nothing is hidden. The heart, the
+            "AI interview sent" tag and the cover letter are desktop only. */}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
           {savedCandidates && application.candidate_profile_id && (
-            <SaveHeartButton
-              saved={savedCandidates.isSaved({ candidateProfileId: application.candidate_profile_id })}
-              onToggle={() => savedCandidates.toggle({ candidateProfileId: application.candidate_profile_id })}
-            />
+            <div className="hidden sm:block">
+              <SaveHeartButton
+                saved={savedCandidates.isSaved({ candidateProfileId: application.candidate_profile_id })}
+                onToggle={() => savedCandidates.toggle({ candidateProfileId: application.candidate_profile_id })}
+              />
+            </div>
           )}
 
           {interviewList && application.candidate_profile_id && (
-            <InterviewListButton
-              onList={interviewList.isOnList({ candidateProfileId: application.candidate_profile_id })}
-              onToggle={() => interviewList.toggle({ candidateProfileId: application.candidate_profile_id })}
-            />
+            <div className="order-3 sm:order-none">
+              <InterviewListButton
+                onList={interviewList.isOnList({ candidateProfileId: application.candidate_profile_id })}
+                onToggle={() => interviewList.toggle({ candidateProfileId: application.candidate_profile_id })}
+              />
+            </div>
           )}
 
-          <StatusBadge status={status} />
+          <div className="order-2 sm:order-none">
+            <StatusBadge status={status} />
+          </div>
 
           {hasAiInterview && (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-blue/10 text-brand-blue flex-shrink-0">
+            <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-blue/10 text-brand-blue flex-shrink-0">
               AI interview sent
             </span>
           )}
 
           {/* AI score badge with popout reasoning panel */}
-          <AiScoreBadge
-            score={application.ai_score}
-            failure={application.ai_score_failure}
-            onRescore={onRescore}
-            fitSummary={application.ai_fit_summary}
-            strengths={application.ai_strengths}
-            weaknesses={application.ai_weaknesses}
-          />
+          <div className="order-1 sm:order-none">
+            <AiScoreBadge
+              score={application.ai_score}
+              failure={application.ai_score_failure}
+              onRescore={onRescore}
+              fitSummary={application.ai_fit_summary}
+              strengths={application.ai_strengths}
+              weaknesses={application.ai_weaknesses}
+            />
+          </div>
+
+          {/* Forces the actions onto their own row on a phone */}
+          <div className="order-4 basis-full h-0 sm:hidden" aria-hidden="true" />
 
           {/* Status transition dropdown */}
           {!isTerminal && (
-            <div className="relative flex-shrink-0">
+            <div className="relative flex-1 sm:flex-none order-5 sm:order-none">
               <select
                 defaultValue=""
                 disabled={updating}
                 onChange={handleStatusChange}
                 aria-label="Move application to next status"
-                className="appearance-none rounded-md border border-border bg-background pl-3 pr-7 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="w-full sm:w-auto appearance-none rounded-md border border-border bg-background pl-3 pr-7 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 <option value="" disabled>Move to...</option>
                 {nextStatuses.map((s) => (
@@ -634,17 +655,17 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
 
           {/* CV download */}
           {application.cv_url && (
-            <Button size="sm" variant="outline" onClick={handleDownloadCv} className="flex-shrink-0">
+            <Button size="sm" variant="outline" onClick={handleDownloadCv} className="flex-shrink-0 order-6 sm:order-none">
               Download CV
             </Button>
           )}
 
-          {/* Expand toggle for cover letter */}
+          {/* Expand toggle for cover letter (desktop only) */}
           {application.cover_letter && (
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
+              className="hidden sm:inline flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
             >
               {expanded ? 'Hide letter' : 'Cover letter'}
             </button>
@@ -655,7 +676,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
             <button
               type="button"
               onClick={() => setProfileOpen(true)}
-              className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
+              className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none order-7 sm:order-none"
             >
               View profile
             </button>
@@ -841,7 +862,7 @@ function PipelineTab({
   const filtered = filters.isFiltered(true)
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <p className="text-sm text-text-muted">
           External CVs uploaded and scored against this job.
         </p>
@@ -914,18 +935,20 @@ function PipelineTab({
           {profiles.map((p, i) => (
             <div
               key={p.id}
-              className="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all group"
+              className="w-full flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all group"
             >
+              {/* On a phone the rank, avatar, status chip and brain icon are left out so the
+                  candidate's name has room to be read */}
               <button
                 type="button"
                 onClick={() => onProfileClick(p)}
-                className="flex items-center gap-4 flex-1 min-w-0 text-left"
+                className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 text-left"
               >
-                <span className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold flex items-center justify-center flex-shrink-0">
+                <span className="hidden sm:flex w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold items-center justify-center flex-shrink-0">
                   {/* A rank only means something when sorted by score */}
                   {filters.sortBy === 'score' ? i + 1 : '·'}
                 </span>
-                <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+                <div className="hidden sm:flex w-9 h-9 rounded-full bg-brand-blue/10 items-center justify-center flex-shrink-0">
                   <Users size={15} className="text-brand-blue" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -946,10 +969,10 @@ function PipelineTab({
                 >
                   {matchScoreBand(p.ai_score, p.ai_score_failure).label}
                 </div>
-                <span className="text-xs text-text-muted capitalize px-2.5 py-0.5 rounded-full border border-border">
+                <span className="hidden sm:inline text-xs text-text-muted capitalize px-2.5 py-0.5 rounded-full border border-border">
                   {(p.status || '').replace('_', ' ')}
                 </span>
-                <Brain size={14} className="text-text-muted group-hover:text-brand-blue transition-colors flex-shrink-0" />
+                <Brain size={14} className="hidden sm:block text-text-muted group-hover:text-brand-blue transition-colors flex-shrink-0" />
               </button>
 
               {interviewList && (
@@ -1209,19 +1232,22 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
   }
 
   return (
-    <div className="rounded-xl border border-border bg-white p-4 flex flex-wrap items-center gap-4">
-      <span className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
-        <User size={16} className="text-brand-blue" />
-      </span>
+    <div className="rounded-xl border border-border bg-white p-4 flex flex-wrap items-center gap-3 sm:gap-4">
+      {/* The name block takes the whole first line on a phone, with the buttons below it */}
+      <div className="flex items-center gap-3 w-full sm:w-auto sm:flex-1 min-w-0">
+        <span className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+          <User size={16} className="text-brand-blue" />
+        </span>
 
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-text text-sm truncate">{item.candidate_name ?? 'Private profile'}</p>
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
-          {item.current_title && <span>{item.current_title}</span>}
-          {item.location && <span>{item.location}</span>}
-          {item.years_of_experience != null && <span>{item.years_of_experience} yrs exp</span>}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-text text-sm break-words sm:truncate">{item.candidate_name ?? 'Private profile'}</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
+            {item.current_title && <span>{item.current_title}</span>}
+            {item.location && <span>{item.location}</span>}
+            {item.years_of_experience != null && <span>{item.years_of_experience} yrs exp</span>}
+          </div>
+          {item.note && <p className="text-xs text-text-muted italic mt-1">"{item.note}"</p>}
         </div>
-        {item.note && <p className="text-xs text-text-muted italic mt-1">"{item.note}"</p>}
       </div>
 
       <button
@@ -1688,12 +1714,13 @@ export default function ApplicantsPage() {
             Back to jobs
           </Link>
 
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl font-bold text-text">
+          {/* On a phone the button sits under the title instead of squeezing it */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+            <h1 className="text-xl sm:text-2xl font-bold text-text">
               Applicants{jobTitle ? ` for ${jobTitle}` : ''}
             </h1>
             <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}
-              className="flex items-center gap-1.5">
+              className="flex items-center gap-1.5 self-start sm:self-auto whitespace-nowrap">
               <Share2 size={14} /> Share with client
             </Button>
           </div>
@@ -1707,7 +1734,9 @@ export default function ApplicantsPage() {
           />
 
           {/* Main tab switcher - Applicants vs Pipeline */}
-          <div className="flex gap-1 p-1 bg-surface-muted rounded-xl border border-border mb-6 w-fit">
+          {/* On a phone the four tabs are one row you can swipe, so the page itself never
+              gets wider than the screen */}
+          <div className="flex gap-1 p-1 bg-surface-muted rounded-xl border border-border mb-6 w-full sm:w-fit overflow-x-auto">
             {[
               { key: 'applicants', label: 'Applicants' },
               { key: 'pipeline', label: 'Talent Pipeline' },
@@ -1716,7 +1745,7 @@ export default function ApplicantsPage() {
             ].map(({ key, label }) => (
               <button key={key} onClick={() => { setMainTab(key); if (key === 'ai-matches') setNewMatchCount(0) }}
                 className={cn(
-                  'px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5',
+                  'px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0',
                   mainTab === key
                     ? 'bg-white text-text shadow-sm border border-border'
                     : 'text-text-muted hover:text-text'
@@ -1766,7 +1795,9 @@ export default function ApplicantsPage() {
             <InterviewListTab jobId={jobId} job={job} onJobUpdated={setJob} onProfileClick={setSelectedProfile} />
           ) : (
           <>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter applicants by status">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+            {/* One swipeable row on a phone; wraps onto several rows on a wider screen */}
+            <div className="flex w-full gap-1.5 overflow-x-auto pb-1 sm:w-auto sm:flex-wrap sm:overflow-visible sm:pb-0" role="tablist" aria-label="Filter applicants by status">
               {FILTER_TABS.map((tab) => (
                 <button
                   key={tab}
@@ -1774,7 +1805,7 @@ export default function ApplicantsPage() {
                   aria-selected={activeTab === tab}
                   onClick={() => setActiveTab(tab)}
                   className={cn(
-                    'px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
+                    'px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors whitespace-nowrap flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
                     activeTab === tab
                       ? 'bg-brand-blue text-white'
                       : 'bg-surface border border-border text-text-muted hover:text-text'
@@ -1864,7 +1895,7 @@ export default function ApplicantsPage() {
         <div
           role="alert"
           aria-live="assertive"
-          className="fixed bottom-6 right-6 z-50 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-md"
+          className="fixed bottom-4 left-4 right-4 sm:left-auto sm:bottom-6 sm:right-6 z-50 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-md"
         >
           {toast}
           {isPlanLimitMessage(toast) && <PlanUpgradeLink />}
