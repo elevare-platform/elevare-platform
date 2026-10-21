@@ -34,7 +34,7 @@ export function TalentPoolFilterControls({ filters, hasJob }) {
           <input type="number" min="0" max="100" inputMode="numeric"
             value={minScoreInput} onChange={e => setMinScoreInput(e.target.value)}
             placeholder="Min score" aria-label="Minimum score"
-            className={cn(SELECT_CLASS, 'w-24')} />
+            className={cn(SELECT_CLASS, 'w-28')} />
           <button type="button"
             onClick={() => setMinScoreInput(chipOn ? '' : String(DEFAULT_MIN_SCORE))}
             aria-pressed={chipOn}
