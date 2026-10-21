@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Briefcase, FileText, FilePlus2,
   ScrollText, LogOut, Menu, UserPlus, Building2, FileSearch, MessageSquareQuote, Mail, Send, TrendingUp, ShieldCheck,
-  DollarSign
+  DollarSign, Crown
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import NotificationBell from '@/components/layout/NotificationBell'
@@ -24,6 +24,7 @@ const NAV = [
   { to: '/admin/costs', icon: DollarSign, label: 'AI Costs' },
   { to: '/admin/invite', icon: UserPlus, label: 'Invite' },
   { to: '/admin/clients', icon: Building2, label: 'Client Accounts' },
+  { to: '/admin/plan-exemptions', icon: Crown, label: 'Plan Exemptions' },
   { to: '/admin/mail-ingestion', icon: Mail, label: 'Mail Ingestion' },
 ]
 
@@ -93,7 +94,7 @@ export default function AdminLayout({ children }) {
       )}
 
       {/* Main content */}
-      <div className="flex-1 lg:ml-56 flex flex-col min-h-screen">
+      <div className="flex-1 min-w-0 lg:ml-56 flex flex-col min-h-screen">
         {/* Mobile topbar */}
         <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-border">
           <button
