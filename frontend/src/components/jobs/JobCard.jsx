@@ -217,8 +217,10 @@ function EmployerActions({ job, onPublish, onClose, onDelete, onResubmit }) {
           <Button size="sm" variant="ghost" className="transition-colors">View</Button>
         </Link>
       )}
-      <Link to={`/employer/jobs/${job.id}/applicants`}>
-        <Button size="sm" variant="ghost" className="transition-colors">
+      {/* The main action. On a phone it is a full-width button on top of the smaller ones
+          (`order-first`); from `sm` up it is back in reading order. */}
+      <Link to={`/employer/jobs/${job.id}/applicants`} className="order-first w-full sm:order-none sm:w-auto">
+        <Button size="sm" variant="ghost" className="transition-colors w-full sm:w-auto border border-border sm:border-0">
           View Applicants
           {job.application_count != null && (
             <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-brand-blue text-white text-[10px] font-bold leading-none">

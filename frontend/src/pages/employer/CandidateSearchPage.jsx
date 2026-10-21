@@ -42,7 +42,7 @@ function InfoTooltip({ text }) {
       <Info size={13} className="text-text-muted cursor-help" aria-label={text} tabIndex={0} />
       <span
         role="tooltip"
-        className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 rounded-lg bg-gray-900 text-white text-xs leading-snug p-2.5 opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity z-10"
+        className="pointer-events-none absolute right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg bg-gray-900 text-white text-xs leading-snug p-2.5 hidden group-hover/tooltip:block group-focus-within/tooltip:block z-10"
       >
         {text}
       </span>
