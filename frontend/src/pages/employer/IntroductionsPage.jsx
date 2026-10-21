@@ -47,35 +47,39 @@ function IntroductionRow({ intro }) {
   const canView = intro.status === 'ACCEPTED'
 
   return (
-    <div className="rounded-xl border border-border bg-white p-4 flex flex-wrap items-center gap-4">
-      <span className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
-        <User size={16} className="text-brand-blue" />
-      </span>
+    <div className="rounded-xl border border-border bg-white p-4 flex flex-wrap items-center gap-3 sm:gap-4">
+      {/* The name block takes the whole first line on a phone; the dates, the CV button
+          and the status then sit below it instead of squeezing the name */}
+      <div className="flex items-center gap-3 w-full sm:w-auto sm:flex-1 min-w-0">
+        <span className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+          <User size={16} className="text-brand-blue" />
+        </span>
 
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-text text-sm truncate">{displayName}</p>
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
-          {intro.candidate_current_title && <span>{intro.candidate_current_title}</span>}
-          {intro.is_general_interest ? (
-            // No real job to link to  -  a General Interest introduction
-            // isn't anchored to an actual posting (see CandidateActionModal).
-            <span className="flex items-center gap-1">
-              <Briefcase size={11} />
-              General interest (not a specific role)
-            </span>
-          ) : (
-            <Link
-              to={`/employer/jobs/${intro.job_id}/applicants`}
-              className="flex items-center gap-1 text-brand-blue hover:underline"
-            >
-              <Briefcase size={11} />
-              {intro.job_title}
-            </Link>
-          )}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-text text-sm break-words sm:truncate">{displayName}</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
+            {intro.candidate_current_title && <span>{intro.candidate_current_title}</span>}
+            {intro.is_general_interest ? (
+              // No real job to link to  -  a General Interest introduction
+              // isn't anchored to an actual posting (see CandidateActionModal).
+              <span className="flex items-center gap-1">
+                <Briefcase size={11} />
+                General interest (not a specific role)
+              </span>
+            ) : (
+              <Link
+                to={`/employer/jobs/${intro.job_id}/applicants`}
+                className="flex items-center gap-1 text-brand-blue hover:underline"
+              >
+                <Briefcase size={11} />
+                {intro.job_title}
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted w-full sm:w-auto">
         <span>Requested {formatDate(intro.created_at)}</span>
         {intro.responded_at && <span>· Responded {formatDate(intro.responded_at)}</span>}
         {intro.status === 'PENDING' && <span>· Expires {formatDate(intro.expires_at)}</span>}

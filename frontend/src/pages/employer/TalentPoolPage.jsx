@@ -447,21 +447,24 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
       'hover:shadow-md hover:border-brand-blue/20',
       expanded ? 'shadow-md border-brand-blue/20' : 'border-border'
     )}>
-      <div className="flex items-center gap-4 p-4">
+      {/* Phone: the rank and name share the first line, and the score, status and buttons drop
+          to a second line (the wrapper below). From `sm` up the wrapper disappears
+          (`sm:contents`) and everything is one row as before. */}
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 p-4">
         {/* Rank */}
         <div className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-bold flex items-center justify-center flex-shrink-0">
           {rank}
         </div>
 
-        {/* Avatar */}
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-blue/20 to-brand-blue/5 flex items-center justify-center flex-shrink-0">
+        {/* Avatar (not on a phone, the name needs the room) */}
+        <div className="hidden sm:flex w-10 h-10 rounded-full bg-gradient-to-br from-brand-blue/20 to-brand-blue/5 items-center justify-center flex-shrink-0">
           <Users size={16} className="text-brand-blue" />
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-text text-sm">
+            <p className="font-semibold text-text text-sm break-words">
               {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
             </p>
             <span className="text-xs text-text-muted capitalize flex items-center gap-1">
@@ -478,6 +481,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
           <AgeLabel profile={profile} />
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:contents">
         {/* Score */}
         <ScoreBadge score={profile.ai_score} failure={profile.ai_score_failure} />
 
@@ -485,7 +489,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
         <StatusBadge status={profile.status} />
 
         {/* Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 ml-auto sm:ml-0">
           {!['promoted', 'promoted_pending'].includes(profile.status) && (
             <div className="relative">
               <select value="" onChange={e => { if (e.target.value) onStatusChange(profile.id, e.target.value) }}
@@ -517,10 +521,12 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
           {hasDetails && (
             <button onClick={() => setExpanded(v => !v)}
               className="p-1.5 rounded-lg text-text-muted hover:text-brand-blue hover:bg-brand-blue/5 transition-colors"
+              aria-label="Show details"
               aria-expanded={expanded}>
               <Brain size={14} />
             </button>
           )}
+        </div>
         </div>
       </div>
 
@@ -584,15 +590,18 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
 
   return (
     <div className="rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all group">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <div className="w-8 h-8 rounded-full bg-surface-muted flex items-center justify-center flex-shrink-0">
+      {/* On a phone the badges and buttons drop onto a second line (the wrapper below) so the
+          candidate's name has the whole first line. From `sm` up the wrapper disappears
+          (`sm:contents`) and everything sits in one row as before. */}
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 px-4 py-3">
+        <div className="hidden sm:flex w-8 h-8 rounded-full bg-surface-muted items-center justify-center flex-shrink-0">
           <Users size={14} className="text-text-muted" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-text truncate">
+          <p className="text-sm font-medium text-text break-words sm:truncate">
             {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
           </p>
-          <p className="text-xs text-text-muted flex items-center gap-1.5 mt-0.5">
+          <p className="text-xs text-text-muted flex flex-wrap items-center gap-1.5 mt-0.5">
             <span>{SOURCE_ICONS[profile.source] ?? '📎'}</span>
             <span className="capitalize">{SOURCE_LABELS[profile.source] ?? profile.source}</span>
             {profile.candidate_current_title && <><span className="text-border">·</span><span>{profile.candidate_current_title}</span></>}
@@ -603,6 +612,7 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
           <AgeLabel profile={profile} />
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:contents">
         {/* Unscored indicator: says why when it could not be read or scored */}
         {profile.ai_score == null && (
           profile.ai_score_failure ? (
@@ -624,7 +634,9 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
 
         <StatusBadge status={profile.status} />
 
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Hidden until hover on a desktop. A phone has no hover, so there the buttons are
+            always shown (and a keyboard user reaches them through focus-within). */}
+        <div className="flex flex-wrap items-center gap-2 ml-auto sm:ml-0 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
           {!['promoted', 'promoted_pending'].includes(profile.status) && (
             <div className="relative">
               <select value="" onChange={e => { if (e.target.value) onStatusChange(profile.id, e.target.value) }}
@@ -647,10 +659,12 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
           {hasDetails && (
             <button onClick={() => setExpanded(v => !v)}
               className="p-1.5 rounded-lg text-text-muted hover:text-brand-blue hover:bg-brand-blue/5 transition-colors"
+              aria-label="Show details"
               aria-expanded={expanded}>
               <Brain size={14} />
             </button>
           )}
+        </div>
         </div>
       </div>
 

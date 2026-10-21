@@ -70,6 +70,7 @@ const AdminCostsPage = lazy(() => import('@/pages/admin/AdminCostsPage'))
 const AdminIntroductionsPage = lazy(() => import('@/pages/admin/AdminIntroductionsPage'))
 const AdminCVParserPage = lazy(() => import('@/pages/admin/AdminCVParserPage'))
 const AdminTestimonialsPage = lazy(() => import('@/pages/admin/AdminTestimonialsPage'))
+const AdminPlanExemptionsPage = lazy(() => import('@/pages/admin/AdminPlanExemptionsPage'))
 const TestimonialSubmitPage = lazy(() => import('@/pages/TestimonialSubmitPage'))
 
 const CandidateDashboardPage = lazy(() => import('@/pages/candidate/CandidateDashboardPage'))
@@ -185,6 +186,7 @@ function AppRoutes() {
           <Route path="/admin/cv-parser" element={<AdminCVParserPage />} />
           <Route path="/admin/talent-pool" element={<TalentPoolPage />} />
           <Route path="/admin/testimonials" element={<AdminTestimonialsPage />} />
+          <Route path="/admin/plan-exemptions" element={<AdminPlanExemptionsPage />} />
           <Route path="/admin/mail-ingestion" element={<MailIngestionPage />} />
         </Route>
 

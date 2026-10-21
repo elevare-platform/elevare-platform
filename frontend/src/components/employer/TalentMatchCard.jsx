@@ -296,7 +296,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       )}
 
       {/* Actions */}
-      <div className="relative flex items-center gap-2 mt-4 pt-4 border-t border-border">
+      <div className="relative flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border">
         <button
           type="button"
           onClick={() => setShowShortlistConfirm(true)}
