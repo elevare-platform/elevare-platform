@@ -111,6 +111,16 @@ class BillingService:
             if plan is not None:
                 return plan
 
+        # No paid plan. An admin may have exempted this organization (a pilot
+        # customer, a partner, a test account), which gives it Professional
+        # features. This sits here, after the subscription check, so an
+        # exemption can only raise a free organization: a paying Enterprise
+        # customer who is also on the list keeps Enterprise.
+        if await self._repo.has_active_exemption(organization_id):
+            professional = await self._repo.get_plan_by_code("professional")
+            if professional is not None:
+                return professional
+
         starter = await self._repo.get_plan_by_code("starter")
         if starter is None:
             raise RuntimeError(

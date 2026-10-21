@@ -29,6 +29,9 @@ from .schemas import (
     InviteRequest,
     JobModerationRequest,
     KYCModerationRequest,
+    PlanExemptionCreateRequest,
+    PlanExemptionListResponse,
+    PlanExemptionResponse,
     ProvisionEmployerRequest,
     ProvisionEmployerResponse,
     UserStatusUpdateRequest,
@@ -560,3 +563,48 @@ async def grant_credits(
         amount=data.amount,
         reason=data.reason,
     )
+
+
+# ---------------------------------------------------------------------------
+# Plan exemptions
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/plan-exemptions",
+    response_model=PlanExemptionListResponse,
+    status_code=200,
+)
+async def list_plan_exemptions(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """List the companies that keep Professional access while gating is on."""
+    return await AdminService(db).list_plan_exemptions(limit=limit, offset=offset)
+
+
+@router.post(
+    "/plan-exemptions",
+    response_model=PlanExemptionResponse,
+    status_code=201,
+)
+async def add_plan_exemption(
+    data: PlanExemptionCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """Exempt a company (found by any member's email), or renew its exemption."""
+    return await AdminService(db).add_plan_exemption(admin_user.id, data)
+
+
+@router.delete("/plan-exemptions/{organization_id}", status_code=204)
+async def remove_plan_exemption(
+    organization_id: UUID = Path(...),
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """Take a company off the exemption list."""
+    await AdminService(db).remove_plan_exemption(admin_user.id, organization_id)
+    return Response(status_code=204)

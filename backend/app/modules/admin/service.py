@@ -13,12 +13,15 @@ from app.core.exceptions import (
     CannotModifyAdminException,
     DocumentNotFoundError,
     JobNotFoundError,
+    NotFoundException,
     ProfileNotFoundException,
     UserNotFoundException,
     ValidationException,
 )
 from app.core.storage import StorageService
 from app.modules.admin.repository import AdminRepository
+from app.modules.billing.models import PlanGateExemption
+from app.modules.billing.repository import BillingRepository
 from app.modules.employer.enums import KYCStatus
 from app.modules.employer.tasks import send_kyc_approved_email, send_kyc_rejection_email
 from app.modules.jobs.enums import ModerationStatus
@@ -26,7 +29,13 @@ from app.modules.jobs.schemas import JobResponse
 from app.modules.notifications.repository import NotificationRepository
 from app.modules.users.enums import AccountStatus, UserRole
 
-from .schemas import ClientJobCreateRequest, ProvisionEmployerRequest
+from .schemas import (
+    ClientJobCreateRequest,
+    PlanExemptionCreateRequest,
+    PlanExemptionListResponse,
+    PlanExemptionResponse,
+    ProvisionEmployerRequest,
+)
 
 _VALID_MODERATION_ACTIONS = {
     ModerationStatus.APPROVED.value,
@@ -51,6 +60,106 @@ class AdminService:
         self._db = db
         self._repo = AdminRepository(db)
         self._storage = storage
+
+    # -----------------------------------------------------------------------
+    # Plan exemptions
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _exemption_response(
+        exemption: PlanGateExemption, company_name: str | None
+    ) -> PlanExemptionResponse:
+        """Build the API shape, working out whether the exemption still applies."""
+        ends = exemption.expires_at
+        return PlanExemptionResponse(
+            organization_id=exemption.organization_id,
+            company_name=company_name,
+            reason=exemption.reason,
+            granted_by=exemption.granted_by,
+            expires_at=ends,
+            created_at=exemption.created_at,
+            is_active=ends is None or ends > datetime.now(UTC),
+        )
+
+    async def add_plan_exemption(
+        self, admin_id: UUID, data: PlanExemptionCreateRequest
+    ) -> PlanExemptionResponse:
+        """Let a company keep Professional access while plan gating is on.
+
+        Adding a company that is already listed renews it (new reason and end
+        date) instead of failing.
+        """
+        user = await self._repo.get_user_by_email_ignore_case(data.email)
+        if user is None:
+            raise UserNotFoundException(message="No account has that email address")
+        if user.organization_id is None:
+            raise ValidationException(
+                message="That account does not belong to a company, so it has no plan",
+                code="NOT_A_COMPANY_ACCOUNT",
+            )
+
+        billing_repo = BillingRepository(self._db)
+        was_listed = await billing_repo.get_exemption(user.organization_id) is not None
+        exemption = await billing_repo.upsert_exemption(
+            organization_id=user.organization_id,
+            reason=data.reason,
+            granted_by=admin_id,
+            expires_at=data.expires_at,
+        )
+        await self._repo.write_audit_log(
+            admin_id=admin_id,
+            action="ADD_PLAN_EXEMPTION",
+            target_type="organization",
+            target_id=user.organization_id,
+            reason=data.reason,
+            log_metadata={
+                "email": data.email,
+                "expires_at": data.expires_at.isoformat() if data.expires_at else None,
+                "renewed": was_listed,
+            },
+        )
+        await self._db.commit()
+        return self._exemption_response(exemption, user.organization.company_name)
+
+    async def remove_plan_exemption(
+        self, admin_id: UUID, organization_id: UUID
+    ) -> None:
+        """Take a company off the exemption list."""
+        billing_repo = BillingRepository(self._db)
+        exemption = await billing_repo.get_exemption(organization_id)
+        if exemption is None:
+            raise NotFoundException(
+                message="That company is not on the exemption list",
+                code="PLAN_EXEMPTION_NOT_FOUND",
+            )
+        await billing_repo.delete_exemption(organization_id)
+        await self._repo.write_audit_log(
+            admin_id=admin_id,
+            action="REMOVE_PLAN_EXEMPTION",
+            target_type="organization",
+            target_id=organization_id,
+            log_metadata={
+                "previous_reason": exemption.reason,
+                "previous_expires_at": (
+                    exemption.expires_at.isoformat() if exemption.expires_at else None
+                ),
+            },
+        )
+        await self._db.commit()
+
+    async def list_plan_exemptions(
+        self, limit: int, offset: int
+    ) -> PlanExemptionListResponse:
+        """One page of the exemption list, newest first."""
+        rows, total = await BillingRepository(self._db).list_exemptions(
+            limit=limit, offset=offset
+        )
+        return PlanExemptionListResponse(
+            items=[self._exemption_response(row, name) for row, name in rows],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
 
     # -----------------------------------------------------------------------
     # Provisioning

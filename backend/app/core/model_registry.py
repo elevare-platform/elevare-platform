@@ -20,6 +20,7 @@ from app.modules.billing.models import (
     CreditPackage,
     Payment,
     Plan,
+    PlanGateExemption,
     Subscription,
     WebhookEvent,
 )
@@ -86,6 +87,7 @@ __all__ = [
     "Interview",
     "InterviewCost",
     "Plan",
+    "PlanGateExemption",
     "CreditPackage",
     "Subscription",
     "Payment",

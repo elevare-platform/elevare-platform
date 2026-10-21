@@ -275,3 +275,59 @@ class AuditLogResponse(BaseModel):
     target_id: UUID
     log_metadata: dict | None = None
     admin: AuditLogAdminSummary | None = None
+
+
+class PlanExemptionCreateRequest(BaseModel):
+    """Payload for exempting a company from plan gating.
+
+    ``email`` is any member's email address: it is only used to find the
+    company, and the exemption applies to the whole company.
+    """
+
+    email: EmailStr
+    reason: str = Field(..., min_length=3, max_length=500)
+    # Leave out for an exemption that never ends on its own.
+    expires_at: datetime | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def reason_is_not_blank(cls, v: str) -> str:
+        """Trim the reason and refuse one that is only spaces."""
+        v = v.strip()
+        if len(v) < 3:
+            raise ValueError("Give a reason of at least 3 characters")
+        return v
+
+    @field_validator("expires_at")
+    @classmethod
+    def end_date_is_in_the_future(cls, v: datetime | None) -> datetime | None:
+        """An end date needs a timezone and must not already have passed."""
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            raise ValueError("The end date needs a timezone, for example 2026-12-31T00:00:00Z")
+        if v <= datetime.now(v.tzinfo):
+            raise ValueError("The end date must be in the future")
+        return v
+
+
+class PlanExemptionResponse(BaseModel):
+    """One company on the exemption list."""
+
+    organization_id: UUID
+    company_name: str | None = None
+    reason: str
+    granted_by: UUID | None = None
+    expires_at: datetime | None = None
+    created_at: datetime
+    # False once the end date has passed (the row stays until an admin removes it).
+    is_active: bool
+
+
+class PlanExemptionListResponse(BaseModel):
+    """A page of the exemption list."""
+
+    items: list[PlanExemptionResponse]
+    total: int
+    limit: int
+    offset: int

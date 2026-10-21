@@ -158,6 +158,37 @@ class Subscription(BaseModel):
     )
 
 
+class PlanGateExemption(BaseModel):
+    """An organization an Elevare admin has decided keeps Professional access.
+
+    Used for pilot customers, partners and our own test accounts, so they
+    are not locked out when plan gating is switched on. One row per
+    organization (the unique constraint stops two admins creating two rows
+    at the same moment). Removing an exemption deletes the row; the admin
+    audit log keeps the history of who added and removed it, and why.
+    """
+
+    __tablename__ = "plan_gate_exemptions"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    # Always say why, so nobody has to guess later.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    granted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # NULL means the exemption never ends on its own.
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class Payment(BaseModel):
     """Append-only history of every charge attempt — subscription renewals
     and one-off credit top-ups both flow through this single table.

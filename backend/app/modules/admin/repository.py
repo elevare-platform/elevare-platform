@@ -286,6 +286,25 @@ class AdminRepository:
         }
 
     # -----------------------------------------------------------------------
+    # Plan exemptions
+    # -----------------------------------------------------------------------
+
+    async def get_user_by_email_ignore_case(self, email: str) -> User | None:
+        """Find a user by email, treating Ada@x.com and ada@x.com as the same.
+
+        Emails are stored as typed, so an exact match could miss an account
+        the admin is looking at. ``first()`` rather than ``scalar_one_or_none``
+        because two accounts differing only by case would otherwise crash.
+        """
+        stmt = (
+            select(User)
+            .where(func.lower(User.email) == email.strip().lower())
+            .options(selectinload(User.organization))
+        )
+        result = await self._db.execute(stmt)
+        return result.scalars().first()
+
+    # -----------------------------------------------------------------------
     # Audit log
     # -----------------------------------------------------------------------
 

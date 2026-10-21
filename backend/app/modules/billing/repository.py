@@ -10,7 +10,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,9 +19,11 @@ from app.modules.billing.models import (
     CreditPackage,
     Payment,
     Plan,
+    PlanGateExemption,
     Subscription,
     WebhookEvent,
 )
+from app.modules.users.models import Organization
 
 
 class BillingRepository:
@@ -45,6 +48,91 @@ class BillingRepository:
         stmt = select(Plan).where(Plan.id == plan_id)
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
+
+    # --- Plan gate exemptions ---
+
+    async def has_active_exemption(self, organization_id: uuid.UUID) -> bool:
+        """True if an admin has exempted this organization and it hasn't ended.
+
+        "Active" means a row exists and it either has no end date or the end
+        date is still in the future. The database's own clock decides that.
+        """
+        stmt = select(PlanGateExemption.id).where(
+            PlanGateExemption.organization_id == organization_id,
+            or_(
+                PlanGateExemption.expires_at.is_(None),
+                PlanGateExemption.expires_at > func.now(),
+            ),
+        )
+        result = await self._db.execute(stmt)
+        return result.first() is not None
+
+    async def get_exemption(
+        self, organization_id: uuid.UUID
+    ) -> PlanGateExemption | None:
+        stmt = select(PlanGateExemption).where(
+            PlanGateExemption.organization_id == organization_id
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def upsert_exemption(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        reason: str,
+        granted_by: uuid.UUID,
+        expires_at: datetime | None,
+    ) -> PlanGateExemption:
+        """Add an exemption, or renew it if the organization already has one.
+
+        One INSERT ... ON CONFLICT statement, so two admins adding the same
+        organization at the same moment cannot create two rows or crash.
+        """
+        stmt = pg_insert(PlanGateExemption).values(
+            organization_id=organization_id,
+            reason=reason,
+            granted_by=granted_by,
+            expires_at=expires_at,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[PlanGateExemption.organization_id],
+            set_={
+                "reason": reason,
+                "granted_by": granted_by,
+                "expires_at": expires_at,
+                "updated_at": func.now(),
+            },
+        ).returning(PlanGateExemption)
+        result = await self._db.execute(
+            stmt, execution_options={"populate_existing": True}
+        )
+        return result.scalar_one()
+
+    async def delete_exemption(self, organization_id: uuid.UUID) -> bool:
+        """Remove an organization's exemption. True if there was one to remove."""
+        stmt = delete(PlanGateExemption).where(
+            PlanGateExemption.organization_id == organization_id
+        )
+        result = await self._db.execute(stmt)
+        return result.rowcount > 0
+
+    async def list_exemptions(
+        self, *, limit: int, offset: int
+    ) -> tuple[list[tuple[PlanGateExemption, str | None]], int]:
+        """Newest first, each with its company name, plus the total count."""
+        total = (
+            await self._db.execute(select(func.count(PlanGateExemption.id)))
+        ).scalar_one()
+        stmt = (
+            select(PlanGateExemption, Organization.company_name)
+            .join(Organization, Organization.id == PlanGateExemption.organization_id)
+            .order_by(PlanGateExemption.created_at.desc(), PlanGateExemption.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._db.execute(stmt)
+        return [(row[0], row[1]) for row in result.all()], total
 
     # --- Subscriptions ---
 
