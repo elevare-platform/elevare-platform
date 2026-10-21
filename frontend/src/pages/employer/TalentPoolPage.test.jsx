@@ -245,3 +245,48 @@ describe('TalentPoolPage, profiles with no score', () => {
     expect(screen.getByText('Not yet scored')).toBeInTheDocument()
   })
 })
+
+describe('TalentPoolPage, uploading a CV that may already be in the pool', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    AUTH.user = { role: 'EMPLOYER' }
+    api.get.mockImplementation(async (url) => {
+      if (url === '/api/v1/jobs/mine') return { data: { items: [{ id: 'job-1', title: 'Accountant' }] } }
+      return { data: { items: [], next_cursor: null } }
+    })
+  })
+
+  async function uploadAndGet(results) {
+    api.post.mockResolvedValueOnce({ data: { results } })
+    render(<MemoryRouter><TalentPoolPage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /add cv/i }))
+    const pdf = new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' })
+    fireEvent.change(document.getElementById('tp-drawer-file'), { target: { files: [pdf] } })
+    fireEvent.click(await screen.findByRole('button', { name: /add 1 cv to talent pool/i }))
+  }
+
+  it('says a CV that was already in the pool without a job has been added to this job', async () => {
+    await uploadAndGet([
+      { filename: 'chidi.pdf', status: 'attached', profile_id: 'p1', submission_id: null, linked_job_id: 'job-1' },
+    ])
+
+    expect(await screen.findByText('Already in pool, added to this job')).toBeInTheDocument()
+    expect(screen.queryByText('Queued')).not.toBeInTheDocument()
+  })
+
+  it('says a duplicate was not added again, and which kind it was', async () => {
+    await uploadAndGet([
+      { filename: 'a.pdf', status: 'duplicate', profile_id: 'p1', submission_id: null, linked_job_id: null },
+      { filename: 'b.pdf', status: 'duplicate', profile_id: 'p2', submission_id: null, linked_job_id: 'job-1' },
+    ])
+
+    expect(await screen.findByText('Already in pool')).toBeInTheDocument()
+    expect(screen.getByText('Already in pool, for a job')).toBeInTheDocument()
+  })
+
+  it('still shows a file that failed with its reason', async () => {
+    await uploadAndGet([{ filename: 'bad.pdf', status: 'failed', error: 'bad.pdf is not a valid PDF' }])
+
+    expect(await screen.findByText('bad.pdf is not a valid PDF')).toBeInTheDocument()
+  })
+})

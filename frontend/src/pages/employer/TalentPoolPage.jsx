@@ -246,30 +246,33 @@ function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
           {results.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Results</p>
-              {results.map((r, i) => (
-                <div key={i} className={cn(
-                  'flex items-center gap-2 px-3 py-2 rounded-lg border text-xs',
-                  r.status === 'queued'
-                    ? 'border-green-200 bg-green-50 text-green-700'
-                    : r.status === 'duplicate'
-                    ? 'border-amber-200 bg-amber-50 text-amber-700'
-                    : 'border-red-200 bg-red-50 text-red-700'
-                )}>
-                  {r.status === 'queued'
-                    ? <CheckCircle2 size={12} />
-                    : r.status === 'duplicate'
-                    ? <AlertCircle size={12} />
-                    : <AlertCircle size={12} />}
-                  <span className="flex-1 truncate">{r.filename}</span>
-                  <span>
-                    {r.status === 'queued'
-                      ? 'Queued'
+              {results.map((r, i) => {
+                // queued: added; attached: it was already in the pool without a job and is
+                // now on this one; duplicate: already in the pool, nothing was added.
+                const added = r.status === 'queued' || r.status === 'attached'
+                return (
+                  <div key={i} className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg border text-xs',
+                    added
+                      ? 'border-green-200 bg-green-50 text-green-700'
                       : r.status === 'duplicate'
-                      ? 'Already in pool'
-                      : r.error}
-                  </span>
-                </div>
-              ))}
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-red-200 bg-red-50 text-red-700'
+                  )}>
+                    {added ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                    <span className="flex-1 truncate">{r.filename}</span>
+                    <span>
+                      {r.status === 'queued'
+                        ? 'Queued'
+                        : r.status === 'attached'
+                        ? 'Already in pool, added to this job'
+                        : r.status === 'duplicate'
+                        ? (r.linked_job_id ? 'Already in pool, for a job' : 'Already in pool')
+                        : r.error}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           )}
 
