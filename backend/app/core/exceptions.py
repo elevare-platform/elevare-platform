@@ -670,6 +670,25 @@ class PlanUpgradeRequiredException(PlatformError):
         super().__init__(message, code, status_code, details)
 
 
+class PlanLimitReachedException(PlatformError):
+    """Raised when a company has used up a monthly allowance of its plan.
+
+    Different from ``PlanUpgradeRequiredException``, which says the plan does not include a
+    feature at all. Here the feature is included, but this month's allowance is spent. The
+    message says how much was used and when it resets, so it can be shown as it is.
+    """
+
+    def __init__(
+        self,
+        message: str = "Your plan's monthly limit has been reached",
+        code: str = "PLAN_LIMIT_REACHED",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
 class NoActiveSubscriptionException(PlatformError):
     """Raised when cancelling a subscription an organization doesn't have."""
 

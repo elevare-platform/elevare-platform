@@ -88,6 +88,9 @@ class PlanResponse(BaseModel):
     interval: str
     job_posting_limit: int | None = None
     included_credits: int | None = None
+    # Monthly allowances (None = unlimited, 0 = none).
+    monthly_cv_uploads: int | None = None
+    monthly_ai_scores: int | None = None
     is_active: bool
     sort_order: int
 
