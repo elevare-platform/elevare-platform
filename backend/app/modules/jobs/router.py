@@ -237,7 +237,15 @@ async def get_talent_matches(
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> TalentMatchListResponse:
-    """Return AI-matched talent pool profiles for a job. Employer or admin."""
+    """Return AI-matched talent pool profiles for a job. Employer or admin.
+
+    Professional+ (AI matching is a paid feature).
+    """
+    if current_user.role != "ADMIN":
+        from app.modules.billing.service import BillingService
+
+        await BillingService(db).assert_professional_or_above(current_user.organization_id)
+
     import redis.asyncio as aioredis
 
     from app.core.config import settings

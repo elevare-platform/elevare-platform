@@ -1026,9 +1026,29 @@ function AiMatchesSkeletonCard() {
 }
 
 function AiMatchesTab({
-  matches, loading, error, notReady, onRefresh, onScored,
+  matches, loading, error, notReady, planRequired, onRefresh, onScored,
   jobId, creditsBalance, creditsLoading, onCreditSpent, onError, savedCandidates, interviewList,
 }) {
+  // Starter: AI matching is a Professional feature, so explain that instead of showing a
+  // list or an error.
+  if (planRequired) {
+    return (
+      <div className="text-center py-16 px-4 rounded-xl border border-dashed border-border bg-white">
+        <Sparkles size={28} className="mx-auto text-brand-blue mb-3" />
+        <p className="font-medium text-text text-sm mb-1">AI Talent Matches is part of the Professional plan</p>
+        <p className="text-xs text-text-muted mb-4 max-w-sm mx-auto">
+          Upgrade to see the talent pool candidates ranked by how well they fit this job.
+        </p>
+        <Link
+          to="/pricing"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-blue px-4 py-2 rounded-lg hover:bg-brand-blue-dark transition-colors"
+        >
+          See plans
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1573,6 +1593,7 @@ export default function ApplicantsPage() {
     loading: aiMatchesLoading,
     error: aiMatchesError,
     notReady: aiMatchesNotReady,
+    planRequired: aiMatchesPlanRequired,
     fetchTalentMatches,
   } = useTalentMatches(jobId)
   const { balance: creditsBalance, loading: creditsLoading, refetch: refetchCredits } = useCredits()
@@ -1781,6 +1802,7 @@ export default function ApplicantsPage() {
               loading={aiMatchesLoading}
               error={aiMatchesError}
               notReady={aiMatchesNotReady}
+              planRequired={aiMatchesPlanRequired}
               onRefresh={() => fetchTalentMatches()}
               onScored={() => fetchTalentMatches(20, { silent: true })}
               jobId={jobId}

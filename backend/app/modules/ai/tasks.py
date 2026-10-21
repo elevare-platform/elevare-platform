@@ -1898,6 +1898,23 @@ async def _notify_candidate_new_matches(db, user_id, candidate_embedding) -> Non
     await db.commit()
 
 
+async def _employer_has_ai_matching(db, employer_id) -> bool:
+    """Whether this employer's company may use AI Talent Matches (Professional and above).
+
+    Admins, and an employer with no company record, are not restricted: the same
+    exceptions the plan gates on the matches endpoints make. The plan is read through
+    ``get_effective_plan``, so the exemption list and the gating switch both apply.
+    """
+    from app.modules.billing.service import BillingService
+    from app.modules.users.models import User
+
+    employer = await db.get(User, employer_id)
+    if employer is None or employer.role == "ADMIN" or employer.organization_id is None:
+        return True
+    plan = await BillingService(db).get_effective_plan(employer.organization_id)
+    return plan.code != "starter"
+
+
 async def _notify_employer_new_matches(
     db, employer_id, job_id, job_embedding, job_title: str
 ) -> None:
@@ -1916,6 +1933,11 @@ async def _notify_employer_new_matches(
     from app.modules.talent_pool.models import TalentPoolProfiles
 
     if job_embedding is None or len(job_embedding) == 0:
+        return
+
+    # AI Talent Matches are a Professional feature, so a Starter company is not told about
+    # matches it cannot open. (Same helper the matches endpoints use.)
+    if not await _employer_has_ai_matching(db, employer_id):
         return
 
     await db.execute(_text("SET ivfflat.probes = 10"))

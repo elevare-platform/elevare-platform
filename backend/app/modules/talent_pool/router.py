@@ -212,8 +212,13 @@ async def get_new_matches_count(
     """Return the number of new (unseen) matches for a job without consuming them.
 
     Use this to power the badge on the AI Recruiter tab before the employer opens it.
+    Professional+ like the matches themselves, so a Starter company gets no hint of them.
     """
+    from app.modules.billing.service import BillingService
     from app.modules.notifications.match_repository import MatchNotificationRepository
+
+    if current_user.role != "ADMIN":
+        await BillingService(db).assert_professional_or_above(current_user.organization_id)
 
     repo = MatchNotificationRepository(db)
     count = await repo.count_new_for_job(job_id)
@@ -226,11 +231,18 @@ async def get_job_matches(
     limit: int = Query(default=20, ge=1, le=100),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Return AI-matched talent pool profiles for a job, ranked by blended score.
 
     Also marks all new matches as viewed — call this endpoint to consume the new-match badge.
+    Professional+ (AI matching is a paid feature).
     """
+    if current_user.role != "ADMIN":
+        from app.modules.billing.service import BillingService
+
+        await BillingService(db).assert_professional_or_above(current_user.organization_id)
+
     result = await service.get_job_matches(
         job_id=job_id,
         employer_id=current_user.id,
