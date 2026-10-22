@@ -20,6 +20,7 @@ const BADGE_CLASSES = {
   DRAFT:         'bg-gray-100 text-gray-600',
   ACTIVE:        'bg-green-100 text-green-700',
   CLOSED:        'bg-red-100 text-red-600',
+  DISABLED:      'bg-amber-100 text-amber-700',
   FULL_TIME:     'bg-brand-blue-light text-brand-blue',
   PART_TIME:     'bg-brand-blue-light text-brand-blue',
   CONTRACT:      'bg-purple-100 text-purple-700',
@@ -46,6 +47,7 @@ const LABELS = {
   DRAFT:         'Draft',
   ACTIVE:        'Active',
   CLOSED:        'Closed',
+  DISABLED:      'Not accepting applications',
 }
 
 function Badge({ value }) {

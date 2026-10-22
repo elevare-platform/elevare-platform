@@ -37,6 +37,9 @@ function resolveAction(notification) {
       to: `/employer/jobs/${notification.entity_id}/applicants?tab=interview-list`,
     }
   }
+  if (notification.type === 'JOB_DISABLED' && notification.entity_type === 'JOB') {
+    return { label: 'View applicants', to: `/employer/jobs/${notification.entity_id}/applicants` }
+  }
   if (notification.type === 'JOB_BRIEF_CHANGED' && notification.entity_type === 'JOB') {
     return { label: 'Review job', to: '/admin/jobs' }
   }

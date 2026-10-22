@@ -9,6 +9,7 @@ const TYPE_ICON = {
   NEW_JOB_MATCHES: BrainCircuit,
   NEW_CANDIDATE_MATCHES: BrainCircuit,
   APPLICATION_STATUS: Briefcase,
+  JOB_DISABLED: Briefcase,
   AI_INTERVIEW_INVITE: Video,
   AI_INTERVIEW_COMPLETED: Video,
   KYC_SUBMITTED: ShieldCheck,

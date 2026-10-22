@@ -44,6 +44,7 @@ const STATUS_FILTERS = [
   { value: 'approved', label: 'Ready to publish' },
   { value: 'pending',  label: 'Pending review' },
   { value: 'rejected', label: 'Rejected' },
+  { value: 'disabled', label: 'Switched off' },
   { value: 'closed',   label: 'Closed' },
 ]
 

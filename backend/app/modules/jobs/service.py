@@ -150,6 +150,22 @@ class JobService:
             self._check_ownership(job, current_user)
 
         self._check_transition(job, JobStatus.ACTIVE)
+
+        # A job the platform switched off (its applicant limit, its 30 days, a lapsed plan) can
+        # come back, but only on a plan that allows it: on Starter it would just be switched
+        # off again, so the employer is asked to upgrade instead.
+        if job.status == JobStatus.DISABLED.value and current_user.role != "ADMIN":
+            from app.core.exceptions import PlanUpgradeRequiredException
+            from app.modules.billing.service import BillingService
+
+            plan = await BillingService(self._db).get_effective_plan(
+                current_user.organization_id
+            )
+            if plan.code == "starter":
+                raise PlanUpgradeRequiredException(
+                    "Upgrade your plan to re-publish this job. Its applicants are kept."
+                )
+
         if job.moderation_status == ModerationStatus.APPROVED.value:
             # Quota check comes last, right before the state change it
             # gates — a job that isn't approved yet, or is already ACTIVE

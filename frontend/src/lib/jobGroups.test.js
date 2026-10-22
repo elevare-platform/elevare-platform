@@ -36,6 +36,16 @@ describe('groupJobsByStatus', () => {
     expect(withChosen[1].jobs.map((j) => j.id)).toEqual(['c2'])
   })
 
+  it('treats a job the plan switched off like a closed one: it takes no applications', () => {
+    const jobs = [job('a1', 'ACTIVE'), job('s1', 'DISABLED')]
+
+    expect(groupJobsByStatus(jobs).map((g) => g.label)).toEqual(['Active'])
+
+    const withChosen = groupJobsByStatus(jobs, 's1')
+    expect(withChosen.map((g) => g.label)).toEqual(['Active', 'Closed'])
+    expect(withChosen[1].jobs.map((j) => j.id)).toEqual(['s1'])
+  })
+
   it('treats a job with no known status like an active one, as the picker always has', () => {
     const groups = groupJobsByStatus([{ id: 'x', title: 'No status' }])
 
