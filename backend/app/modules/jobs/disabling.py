@@ -8,6 +8,8 @@ it (see ``JobService.publish_job``).
 from __future__ import annotations
 
 import logging
+import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -45,21 +47,36 @@ def _words(job, reason: JobDisabledReason, detail: int | None) -> tuple[str, str
     )
 
 
+@dataclass(frozen=True)
+class DisabledJob:
+    """What the email about a switched-off job needs, kept until the switch-off is committed."""
+
+    job_id: uuid.UUID
+    title: str
+    employer_email: str | None
+    reason: JobDisabledReason
+    detail: int | None
+
+
 async def disable_job(
     db: AsyncSession, job, reason: JobDisabledReason, detail: int | None = None
-) -> None:
-    """Switch a live job off and tell its owner. Not committed: the caller commits.
+) -> DisabledJob | None:
+    """Switch a live job off and tell its owner in the app. Not committed: the caller commits.
 
     ``detail`` is the number the message quotes: the applicant limit, or the number of days.
-    Does nothing for a job that is not ACTIVE (a closed job stays closed).
+    Does nothing for a job that is not ACTIVE (a closed job stays closed) and returns None.
+
+    Returns what the email needs. The caller commits FIRST and then passes it to
+    ``queue_disabled_emails``, so an email never goes out for a switch-off that did not save.
     """
     if job.status != JobStatus.ACTIVE.value:
-        return
+        return None
     job.status = JobStatus.DISABLED.value
     job.disabled_reason = reason.value
     job.disabled_at = datetime.now(UTC)
     await db.flush()
 
+    employer_email = None
     if job.employer_id is not None:
         title, body = _words(job, reason, detail)
         await NotificationRepository(db).create(
@@ -70,6 +87,33 @@ async def disable_job(
             entity_type="JOB",
             entity_id=job.id,
         )
+        employer = await db.get(User, job.employer_id)
+        employer_email = employer.email if employer else None
+    return DisabledJob(job.id, job.title, employer_email, reason, detail)
+
+
+def queue_disabled_emails(disabled: list[DisabledJob | None]) -> None:
+    """Send the "your job was switched off" email for each switch-off. Call AFTER the commit.
+
+    A problem queueing an email (the broker is down) is logged and never raised: it must not
+    fail the application or the sweep that switched the job off, and the employer has the
+    in-app notification either way.
+    """
+    from app.modules.applications.tasks import send_job_switched_off_email
+
+    for item in disabled:
+        if item is None or not item.employer_email:
+            continue
+        try:
+            send_job_switched_off_email.delay(
+                item.employer_email,
+                str(item.job_id),
+                item.title,
+                item.reason.value,
+                item.detail,
+            )
+        except Exception:
+            logger.exception("Could not queue the switched-off email for job %s", item.job_id)
 
 
 async def disable_expired_starter_jobs(db: AsyncSession) -> int:
@@ -122,10 +166,13 @@ async def disable_expired_starter_jobs(db: AsyncSession) -> int:
             .scalars()
             .all()
         )
-        for job in jobs:
+        disabled = [
             await disable_job(db, job, JobDisabledReason.EXPIRED, STARTER_JOB_DAYS)
-            switched_off += 1
+            for job in jobs
+        ]
         await db.commit()
+        queue_disabled_emails(disabled)  # only now that the switch-off is saved
+        switched_off += len([d for d in disabled if d is not None])
     if switched_off:
         logger.info("disable_expired_starter_jobs: switched off %d job(s)", switched_off)
     return switched_off

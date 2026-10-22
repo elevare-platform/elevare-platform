@@ -51,6 +51,11 @@ EVERY_EMAIL = {
             TO, {"id": "job-1", "title": JOB}, "REJECTED", "The salary range is missing."
         ),
     ],
+    "send_job_switched_off": [
+        lambda s: s.send_job_switched_off(TO, {"id": "job-1", "title": JOB}, "APPLICANT_LIMIT", 3),
+        lambda s: s.send_job_switched_off(TO, {"id": "job-1", "title": JOB}, "EXPIRED", 30),
+        lambda s: s.send_job_switched_off(TO, {"id": "job-1", "title": JOB}, "PLAN_LAPSED"),
+    ],
     "send_contact_notification": [
         lambda s: s.send_contact_notification(TO, "Visitor", "v@example.com", COMPANY, "Hello", "general")
     ],

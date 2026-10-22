@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.core.config import settings
 from app.core.exceptions import JobNotAcceptingApplications
 from app.modules.applications import service as applications_service
+from app.modules.applications import tasks as application_tasks
 from app.modules.applications.models import Application
 from app.modules.applications.service import ApplicationService
 from app.modules.auth.jwt_handler import create_token_pair
@@ -205,6 +206,73 @@ async def test_a_candidate_who_already_applied_is_told_so_not_that_the_job_is_of
 
     assert again.json()["code"] != "JOB_NOT_ACCEPTING_APPLICATIONS"
     assert again.status_code in (409, 422)
+
+
+# --- the email -----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def switched_off_emails(monkeypatch):
+    queued = MagicMock()
+    monkeypatch.setattr(application_tasks.send_job_switched_off_email, "delay", queued)
+    return queued
+
+
+@pytest.mark.asyncio
+async def test_the_employer_is_emailed_when_the_job_takes_its_last_applicant(
+    client, db_session, switched_off_emails
+):
+    employer, _org, job = await _company_with_job(db_session)
+
+    await _apply(client, await _candidate_headers(db_session), job)
+    await _apply(client, await _candidate_headers(db_session), job)
+    switched_off_emails.assert_not_called()  # two places taken, one left: nothing yet
+
+    await _apply(client, await _candidate_headers(db_session), job)
+
+    switched_off_emails.assert_called_once_with(
+        employer.email, str(job.id), job.title, "APPLICANT_LIMIT", 3
+    )
+
+
+@pytest.mark.asyncio
+async def test_turning_a_candidate_away_from_a_switched_off_job_sends_no_second_email(
+    client, db_session, switched_off_emails
+):
+    _employer, _org, job = await _company_with_job(db_session)
+    for _ in range(3):
+        await _apply(client, await _candidate_headers(db_session), job)
+    switched_off_emails.reset_mock()
+
+    await _apply(client, await _candidate_headers(db_session), job)
+
+    switched_off_emails.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_professional_company_is_never_emailed_about_a_limit(
+    client, db_session, switched_off_emails
+):
+    _employer, _org, job = await _company_with_job(db_session, plan="professional")
+
+    for _ in range(4):
+        await _apply(client, await _candidate_headers(db_session), job)
+
+    switched_off_emails.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_broken_email_queue_does_not_break_applying(client, db_session, switched_off_emails):
+    """The broker being down must not turn a candidate's application into an error; the
+    employer still has the in-app notification."""
+    switched_off_emails.side_effect = RuntimeError("broker is down")
+    _employer, _org, job = await _company_with_job(db_session)
+
+    for _ in range(3):
+        response = await _apply(client, await _candidate_headers(db_session), job)
+        assert response.status_code == 201
+
+    assert await _status_of(db_session, job) == ("DISABLED", "APPLICANT_LIMIT")
 
 
 # --- two at the same moment ----------------------------------------------------------------

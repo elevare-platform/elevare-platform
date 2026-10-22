@@ -183,6 +183,21 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
+    async def send_job_switched_off(
+        self,
+        employer_email: str,
+        job_data: dict,
+        reason: str,
+        detail: int | None = None,
+    ) -> None:
+        """Tell an employer the platform switched one of their jobs off (a plan rule).
+
+        ``reason`` is ``APPLICANT_LIMIT``, ``EXPIRED`` or ``PLAN_LAPSED``; ``detail`` is the
+        applicant limit or the number of days the message quotes.
+        """
+        ...
+
+    @abstractmethod
     async def send_contact_notification(
         self,
         recipient: str,
@@ -947,6 +962,46 @@ class ResendEmailService(EmailService):
             subject=subject, recipients=[employer_email], html_body=html_body
         )
 
+    async def send_job_switched_off(
+        self,
+        employer_email: str,
+        job_data: dict,
+        reason: str,
+        detail: int | None = None,
+    ) -> None:
+        """Tell an employer a job was switched off by their plan's rules, with what to do next."""
+        job_id = job_data["id"]
+        job_title = _h(job_data["title"])
+        why = {
+            "APPLICANT_LIMIT": (
+                f"it reached {detail} applicants, the most your plan allows for one job"
+            ),
+            "EXPIRED": f"it ran for {detail} days, the longest your plan allows",
+        }.get(reason, "your plan has ended and the plan you are on now allows fewer jobs")
+        subject = f"Your job has been switched off: {job_title}"
+        applicants_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
+        plans_url = f"{settings.app_url}/pricing"
+
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your job has been switched off</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{job_title}</strong> was switched off because {why}. It is no longer shown to candidates, and it takes no new applications.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Nothing is lost. Every applicant is kept and you can still review them. To re-publish the same job and take more applicants, upgrade your plan.</p>
+
+        {_render_button("Review your applicants", applicants_url)}
+        <p style="margin: 16px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: #334155;"><a href="{plans_url}" style="color: #1A4D8F;">See the plans</a></p>
+        """
+
+        html_body = _render_email_layout(
+            title=subject,
+            preheader=f"{job_title} was switched off. Your applicants are kept.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you have a job posting on Elevare.",
+        )
+
+        await self._send_html(
+            subject=subject, recipients=[employer_email], html_body=html_body
+        )
+
     async def send_introduction_request(
         self,
         candidate_email: str,
@@ -1545,6 +1600,23 @@ class StubEmailService(EmailService):
             reason,
             label,
             cta_url,
+        )
+
+    async def send_job_switched_off(
+        self,
+        employer_email: str,
+        job_data: dict,
+        reason: str,
+        detail: int | None = None,
+    ) -> None:
+        """Log a stub job-switched-off email with the link to the applicants."""
+        logger.info(
+            "STUB JOB SWITCHED OFF to %s: Job '%s' reason=%s detail=%s\nApplicants link: %s",
+            employer_email,
+            job_data["title"],
+            reason,
+            detail,
+            f"{settings.app_url}/employer/jobs/{job_data['id']}/applicants",
         )
 
     async def send_contact_notification(

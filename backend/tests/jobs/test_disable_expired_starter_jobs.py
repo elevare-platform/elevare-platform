@@ -3,6 +3,7 @@ whichever comes first". Professional companies, exempt companies, admins and any
 not live are left alone, and nothing happens while plan gating is off."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import func, select
@@ -146,6 +147,55 @@ async def test_running_it_again_does_nothing_more(db_session):
         )
     ).scalar_one()
     assert told == 1  # one notification, not one per run
+
+
+@pytest.fixture
+def switched_off_emails(monkeypatch):
+    from app.modules.applications import tasks as application_tasks
+
+    queued = MagicMock()
+    monkeypatch.setattr(application_tasks.send_job_switched_off_email, "delay", queued)
+    return queued
+
+
+@pytest.mark.asyncio
+async def test_each_switched_off_job_is_emailed_once_after_the_sweep_saves_it(
+    db_session, switched_off_emails
+):
+    owner = await _company(db_session)
+    job = await _live_job(db_session, owner, days=31)
+
+    await disable_expired_starter_jobs(db_session)
+    await disable_expired_starter_jobs(db_session)  # a second run finds nothing to do
+
+    ours = [
+        call
+        for call in switched_off_emails.call_args_list
+        if call.args[1] == str(job.id)
+    ]
+    assert len(ours) == 1
+    assert ours[0].args == (owner.email, str(job.id), job.title, "EXPIRED", 30)
+
+
+@pytest.mark.asyncio
+async def test_a_job_left_running_sends_no_email(db_session, switched_off_emails):
+    owner = await _company(db_session)
+    job = await _live_job(db_session, owner, days=10)
+
+    await disable_expired_starter_jobs(db_session)
+
+    assert not [c for c in switched_off_emails.call_args_list if c.args[1] == str(job.id)]
+
+
+@pytest.mark.asyncio
+async def test_a_broken_email_queue_does_not_stop_the_sweep(db_session, switched_off_emails):
+    switched_off_emails.side_effect = RuntimeError("broker is down")
+    owner = await _company(db_session)
+    job = await _live_job(db_session, owner, days=31)
+
+    await disable_expired_starter_jobs(db_session)
+
+    assert await _state(db_session, job) == ("DISABLED", "EXPIRED")
 
 
 @pytest.mark.asyncio

@@ -30,7 +30,7 @@ from app.modules.applications.schema import (
 from app.modules.billing.starter_rules import applicant_limit
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.interview_list.repository import InterviewListRepository
-from app.modules.jobs.disabling import disable_job
+from app.modules.jobs.disabling import disable_job, queue_disabled_emails
 from app.modules.jobs.enums import JobDisabledReason, JobStatus
 from app.modules.jobs.models import Job
 from app.modules.jobs.repository import JobRepository
@@ -143,10 +143,11 @@ class ApplicationService:
             taken = await self._app_repo.count_for_job(job.id)
             if taken >= applicant_cap:
                 # Should already be off; make sure it is, and refuse.
-                await disable_job(
+                switched_off = await disable_job(
                     self._db, job, JobDisabledReason.APPLICANT_LIMIT, applicant_cap
                 )
                 await self._db.commit()
+                queue_disabled_emails([switched_off])
                 raise JobNotAcceptingApplications()
 
         # Fall back to the candidate's default CV if none specified
@@ -166,8 +167,9 @@ class ApplicationService:
 
         # That was the last place the plan allows: switch the job off (and tell the employer)
         # in the same transaction, so the next candidate is turned away.
+        switched_off = None
         if applicant_cap is not None and taken + 1 >= applicant_cap:
-            await disable_job(
+            switched_off = await disable_job(
                 self._db, job, JobDisabledReason.APPLICANT_LIMIT, applicant_cap
             )
 
@@ -214,6 +216,11 @@ class ApplicationService:
         # application.
         compute_match_score_task.delay(str(application.id))
         score_application_task.delay(str(application.id))
+        # The job took its last allowed applicant: tell the employer by email too, now that
+        # the switch-off is saved.
+        # The job took its last allowed applicant: tell the employer by email too, now that
+        # the switch-off is saved.
+        queue_disabled_emails([switched_off])
 
         return ApplicationResponse.from_application(application, cv_url=cv_url)
 
