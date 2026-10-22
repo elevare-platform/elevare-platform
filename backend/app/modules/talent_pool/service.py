@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     JobNotFoundError,
     PermissionDeniedException,
+    PlanLimitReachedException,
     ProfileNotFoundException,
     SubmissionNotFound,
     ValidationException,
@@ -344,6 +345,15 @@ class TalentPoolService:
                         if added.profile.sourced_for_job_id
                         else None,
                     }
+                )
+            except PlanLimitReachedException as e:
+                # This month's allowance is spent. A CV that is already in the pool still
+                # goes through (it costs nothing), so only the new ones report this.
+                # Nothing was written for this file (the check comes first), so a commit
+                # just ends the transaction and releases its lock, as the duplicate path does.
+                await self._db.commit()
+                results.append(
+                    {"filename": filename, "status": "limit_reached", "error": e.message}
                 )
             except Exception as e:
                 logger.error("Batch submit failed for %s: %s", filename, e)

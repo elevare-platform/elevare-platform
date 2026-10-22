@@ -139,6 +139,36 @@ class AllowanceService:
         used = 0 if limit is None else await self._count_scores(organization_id, start)
         return Allowance("AI scores", limit, used, next_start)
 
+    async def may_score(
+        self,
+        organization_id: uuid.UUID | None,
+        job_id: uuid.UUID,
+        *,
+        application_id: uuid.UUID | None = None,
+        talent_pool_profile_id: uuid.UUID | None = None,
+    ) -> bool:
+        """Whether the company may have this candidate AI-scored against this job now.
+
+        Yes while this month's AI-scoring allowance has room. When it is spent, only a
+        candidate who was already scored on this job THIS month (a retry, or a rescore):
+        that adds no new score, so it must not be blocked.
+        """
+        allowance = await self.ai_scores(organization_id)
+        if not allowance.exhausted:
+            return True
+        start, _ = month_window()
+        same_candidate = (
+            FitScoringCost.application_id == application_id
+            if application_id is not None
+            else FitScoringCost.talent_pool_profile_id == talent_pool_profile_id
+        )
+        stmt = select(func.count(FitScoringCost.id)).where(
+            FitScoringCost.job_id == job_id,
+            FitScoringCost.created_at >= start,
+            same_candidate,
+        )
+        return (await self._db.execute(stmt)).scalar_one() > 0
+
     async def require_cv_upload(self, organization_id: uuid.UUID | None) -> None:
         """Raise ``PlanLimitReachedException`` when the company has used this month's uploads."""
         allowance = await self.cv_uploads(organization_id)

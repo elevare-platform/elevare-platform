@@ -12,6 +12,10 @@ cannot drift apart.
 # Why a row has no score. Stored in ``ai_score_failure``; NULL means nothing is wrong.
 CV_UNREADABLE = "CV_UNREADABLE"  # nothing could be read, so scoring was not attempted
 SCORING_FAILED = "SCORING_FAILED"  # the scoring call failed; it can be tried again
+# The company's monthly AI-scoring allowance is used up, so scoring was not attempted. Not a
+# failure: the candidate is saved and visible, and a rescore after the month turns over (or
+# after an upgrade) scores it. See billing/allowance.py.
+PLAN_LIMIT = "PLAN_LIMIT"
 
 
 class ScoringFailed(Exception):
