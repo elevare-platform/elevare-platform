@@ -706,6 +706,23 @@ class PlanLimitReachedException(PlatformError):
         super().__init__(message, code, status_code, details)
 
 
+class QuestionDraftFailedException(PlatformError):
+    """Raised when the AI could not draft interview questions (the service was unavailable or
+    its reply was unusable). The employer can try again or write the questions themselves."""
+
+    def __init__(
+        self,
+        message: str = (
+            "We could not draft the questions just now. Please try again, or write them yourself."
+        ),
+        code: str = "INTERVIEW_QUESTIONS_DRAFT_FAILED",
+        status_code: int = 503,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
 class NoActiveSubscriptionException(PlatformError):
     """Raised when cancelling a subscription an organization doesn't have."""
 

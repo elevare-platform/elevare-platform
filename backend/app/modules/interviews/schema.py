@@ -2,10 +2,75 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 MAX_TRANSCRIPT_CHARS = 150_000
+
+# The questions of a job's strict interview. The real limits (how many, how long, the total) are
+# settings and are checked in ``question_rules`` with messages the employer can act on; the
+# bounds here only stop an absurdly large request from getting that far.
+QuestionSource = Literal["AI", "EMPLOYER"]
+
+
+class InterviewQuestionIn(BaseModel):
+    """One question the employer wants to save, with the seconds to answer it."""
+
+    text: str = Field(max_length=5000)
+    time_limit_seconds: int
+    source: QuestionSource = "EMPLOYER"
+
+
+class InterviewQuestionsPutRequest(BaseModel):
+    """The employer's whole list, in the order shown. An empty list clears the questions."""
+
+    questions: list[InterviewQuestionIn] = Field(max_length=50)
+
+
+class InterviewQuestionsDraftRequest(BaseModel):
+    """How many questions to draft. Left out, the default (5) is used; never more than the
+    most an interview may have."""
+
+    count: int | None = Field(default=None, ge=1, le=50)
+
+
+class SavedInterviewQuestion(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    position: int
+    text: str
+    time_limit_seconds: int
+    source: QuestionSource
+
+
+class DraftedInterviewQuestion(BaseModel):
+    text: str
+    time_limit_seconds: int
+    source: QuestionSource = "AI"
+
+
+class _QuestionLimits(BaseModel):
+    """What the screen shows next to a list of questions."""
+
+    total_seconds: int
+    max_questions: int
+    default_questions: int
+    max_total_seconds: int
+    # Which interview new invitations use ("live" or "strict"). The questions editor is only
+    # shown when it is "strict".
+    style: Literal["live", "strict"]
+
+
+class InterviewQuestionsResponse(_QuestionLimits):
+    questions: list[SavedInterviewQuestion]
+
+
+class InterviewQuestionsDraftResponse(_QuestionLimits):
+    """A draft. Nothing is saved until the employer saves it."""
+
+    questions: list[DraftedInterviewQuestion]
 
 
 class InterviewSessionResponse(BaseModel):
@@ -157,6 +222,9 @@ class InterviewPricingResponse(BaseModel):
     included_in_plan: bool = False
     plan_credits: int | None = None
     purchased_credits: int | None = None
+    # Which interview new invitations use ("live" or "strict"), so the screen knows whether to
+    # offer the strict interview's questions editor.
+    style: Literal["live", "strict"] = "live"
 
 
 class InterviewLinkResponse(BaseModel):

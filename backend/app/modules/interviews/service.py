@@ -860,6 +860,7 @@ class InterviewService:
                 "included_in_plan": False,
                 "plan_credits": None,
                 "purchased_credits": None,
+                "style": settings.interview_style,
             }
         balances = await CreditsService(self._db).get_balances(user.organization_id)
         return {
@@ -871,6 +872,7 @@ class InterviewService:
             "included_in_plan": False,
             "plan_credits": balances["plan_credits"],
             "purchased_credits": balances["purchased_credits"],
+            "style": settings.interview_style,
         }
 
     async def get_interview_link(

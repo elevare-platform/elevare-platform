@@ -1,6 +1,7 @@
 """Application settings loaded from environment variables and .env file."""
 
 import logging
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -163,6 +164,19 @@ class Settings(BaseSettings):
     # call per interview (about $0.006 per audio minute). Set to false to fall
     # back to trusting the submitted transcript, without a deploy.
     interview_transcript_crosscheck_enabled: bool = True
+
+    # Which interview NEW invitations use (docs/08_DECISIONS.md, "The new strict, text-only
+    # AI interview"). "live" is the existing live voice conversation, and stays the default
+    # until the strict interview is built and has been through its reviews. "strict" is the
+    # proctored interview with questions shown as text. The old one is kept in the code only
+    # so this can be switched back with no rebuild. An interview keeps the style it was
+    # invited with.
+    interview_style: Literal["live", "strict"] = "live"
+    # The strict interview's limits (the user's decisions): 20 minutes in all, and the
+    # employer sets 5 questions by default, up to 6, which fits that cap.
+    strict_interview_max_minutes: int = 20
+    strict_interview_max_questions: int = 6
+    strict_interview_default_questions: int = 5
     # Minimum share (0.0-1.0) of the submitted transcript's word pairs that must
     # also appear in the recording's own transcript. An unmeasured starting
     # point: calibrate it against real interviews via the match_score stored in

@@ -4,7 +4,7 @@ import {
   User, ArrowLeft, ChevronDown, X,
   Share2, Link as LinkIcon, Copy, Check as CheckIcon,
   Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3, Sparkles, Coins,
-  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil,
+  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil, ListOrdered,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -25,6 +25,7 @@ import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
 import SaveHeartButton from '@/components/employer/SaveHeartButton'
 import InterviewListButton from '@/components/employer/InterviewListButton'
 import InterviewBriefSetupModal from '@/components/employer/InterviewBriefSetupModal'
+import InterviewQuestionsModal from '@/components/employer/InterviewQuestionsModal'
 import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
 import ShareInterviewResults from '@/components/employer/ShareInterviewResults'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
@@ -1396,6 +1397,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
   const [sendingAll, setSendingAll] = useState(false)
   const [bulkSummary, setBulkSummary] = useState(null)
   const [showBriefModal, setShowBriefModal] = useState(false)
+  const [showQuestionsModal, setShowQuestionsModal] = useState(false)
   // What an interview costs and the balance, shown before anything is sent and
   // refreshed after each send (a send takes credits).
   const [pricing, setPricing] = useState(null)
@@ -1483,11 +1485,35 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
     />
   )
 
+  // The strict interview shows each candidate the same list of questions. Only offered when the
+  // platform's interview style is "strict"; with the live interview there are no questions to edit.
+  const questionsButton = pricing?.style === 'strict' && (
+    <button
+      type="button"
+      onClick={() => setShowQuestionsModal(true)}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
+    >
+      <ListOrdered size={13} />
+      Interview questions
+    </button>
+  )
+
+  const questionsModal = showQuestionsModal && (
+    <InterviewQuestionsModal
+      jobId={jobId}
+      hasBrief={hasInterviewBrief}
+      onClose={() => setShowQuestionsModal(false)}
+    />
+  )
+
   if (items.length === 0) {
     return (
       <div className="space-y-3">
-        {editBriefButton && <div className="flex justify-end">{editBriefButton}</div>}
+        {(editBriefButton || questionsButton) && (
+          <div className="flex flex-wrap justify-end gap-2">{editBriefButton}{questionsButton}</div>
+        )}
         {briefModal}
+        {questionsModal}
         <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
           <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
           <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
@@ -1516,6 +1542,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
         <div className="flex flex-col items-end gap-1">
           <div className="flex flex-wrap justify-end gap-2">
             {editBriefButton}
+            {questionsButton}
             <button
               type="button"
               onClick={handleSendAll}
@@ -1529,7 +1556,8 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           {bulkSummary && <span className="text-[11px] text-text-muted">{bulkSummary}</span>}
         </div>
       ) : (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          {questionsButton}
           <button
             type="button"
             onClick={() => setShowBriefModal(true)}
@@ -1540,6 +1568,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
         </div>
       )}
       {briefModal}
+      {questionsModal}
       {items.map((item) => (
         <InterviewListRow
           key={item.id}

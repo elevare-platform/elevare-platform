@@ -1,0 +1,440 @@
+"""A job's list of strict-interview questions: reading, saving and drafting, over HTTP.
+
+The same questions go to every candidate on the job. The employer edits the list; the AI only
+ever drafts, and a draft is never saved on its own. Access is the shared company rule (D2): the
+job's owner means anyone in the company that owns it.
+"""
+
+import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+from sqlalchemy import select
+
+from app.core.config import settings
+from app.modules.auth.jwt_handler import create_token_pair
+from app.modules.interviews.models import JobInterviewQuestion
+from tests.conftest import (
+    make_admin,
+    make_employer,
+    make_job,
+    make_organization_for,
+)
+
+BRIEF = "Probe system design, testing habits and how they handle an outage."
+
+
+def q(text="Tell us about a time you handled a production outage.", seconds=120, source="EMPLOYER"):
+    return {"text": text, "time_limit_seconds": seconds, "source": source}
+
+
+async def _company(db_session, brief=BRIEF):
+    """A company with an owner, a teammate and a job. Returns (owner, teammate, job)."""
+    owner = make_employer()
+    db_session.add(owner)
+    await db_session.flush()
+    organization = await make_organization_for(db_session, owner, company_name="Acme")
+    teammate = make_employer(organization_id=organization.id)
+    db_session.add(teammate)
+    job = make_job(owner.id, interview_brief=brief)
+    db_session.add(job)
+    await db_session.flush()
+    return owner, teammate, job
+
+
+def _headers(user):
+    token = create_token_pair(user.id, user.role)["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _url(job, tail=""):
+    return f"/api/v1/interviews/jobs/{job.id}/questions{tail}"
+
+
+async def _save(client, user, job, questions):
+    return await client.put(_url(job), json={"questions": questions}, headers=_headers(user))
+
+
+async def _rows(db_session, job):
+    return (
+        await db_session.execute(
+            select(JobInterviewQuestion)
+            .where(JobInterviewQuestion.job_id == job.id)
+            .order_by(JobInterviewQuestion.position)
+        )
+    ).scalars().all()
+
+
+# --- reading -------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_job_with_no_questions_returns_an_empty_list_and_the_limits(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await client.get(_url(job), headers=_headers(owner))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "questions": [],
+        "total_seconds": 0,
+        "max_questions": 6,
+        "default_questions": 5,
+        "max_total_seconds": 1200,
+        "style": "live",
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_response_says_which_interview_new_invitations_use(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "interview_style", "strict")
+    owner, _teammate, job = await _company(db_session)
+
+    response = await client.get(_url(job), headers=_headers(owner))
+
+    assert response.json()["style"] == "strict"
+
+
+# --- saving --------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_saved_list_comes_back_in_order_with_positions_and_a_total(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+    questions = [
+        q("First: describe a system you designed.", 180),
+        q("Second: how do you test a risky change?", 120, "AI"),
+        q("Third: what would you do when a deploy fails?", 90),
+    ]
+
+    saved = await _save(client, owner, job, questions)
+    again = await client.get(_url(job), headers=_headers(owner))
+
+    assert saved.status_code == 200
+    body = again.json()
+    assert [(x["position"], x["text"], x["time_limit_seconds"], x["source"]) for x in body["questions"]] == [
+        (1, "First: describe a system you designed.", 180, "EMPLOYER"),
+        (2, "Second: how do you test a risky change?", 120, "AI"),
+        (3, "Third: what would you do when a deploy fails?", 90, "EMPLOYER"),
+    ]
+    assert body["total_seconds"] == 390
+    assert saved.json() == body  # the save returns exactly what a later read returns
+
+
+@pytest.mark.asyncio
+async def test_saving_replaces_the_old_list_and_an_empty_list_clears_it(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+    await _save(client, owner, job, [q("The old question number one?"), q("The old question number two?")])
+
+    await _save(client, owner, job, [q("The only new question now?")])
+    assert [r.text for r in await _rows(db_session, job)] == ["The only new question now?"]
+
+    cleared = await _save(client, owner, job, [])
+    assert cleared.status_code == 200 and cleared.json()["questions"] == []
+    assert await _rows(db_session, job) == []
+
+
+@pytest.mark.asyncio
+async def test_saving_the_same_list_twice_is_fine(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+    questions = [q("Question one is about system design?"), q("Question two is about testing?")]
+
+    assert (await _save(client, owner, job, questions)).status_code == 200
+    assert (await _save(client, owner, job, questions)).status_code == 200
+    assert len(await _rows(db_session, job)) == 2
+
+
+@pytest.mark.asyncio
+async def test_extra_blanks_in_a_question_are_tidied_when_saved(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    await _save(client, owner, job, [q("   Why   do you want    this     role?   ")])
+
+    assert (await _rows(db_session, job))[0].text == "Why do you want this role?"
+
+
+@pytest.mark.asyncio
+async def test_a_list_that_breaks_a_rule_is_refused_naming_every_problem_and_changes_nothing(
+    client, db_session
+):
+    owner, _teammate, job = await _company(db_session)
+    await _save(client, owner, job, [q("A good question that is already saved?")])
+
+    refused = await _save(
+        client,
+        owner,
+        job,
+        [q("Why?"), q("A perfectly fine question here.", 20)] + [q("Filler question number %d here." % n, 300) for n in range(6)],
+    )
+
+    assert refused.status_code == 422
+    body = refused.json()
+    messages = [detail["message"] for detail in body["details"]]
+    assert "An interview can have at most 6 questions." in messages
+    assert "Question 1 is too short to be a question." in messages
+    assert any(m.startswith("Question 2 needs between 30 seconds and 10 minutes") for m in messages)
+    assert any("add up to" in m and "limited to 20 minutes" in m for m in messages)
+    assert all(detail["field"] == "questions" for detail in body["details"])
+    # Refused: the saved list is exactly as it was.
+    assert [r.text for r in await _rows(db_session, job)] == ["A good question that is already saved?"]
+
+
+@pytest.mark.asyncio
+async def test_six_questions_that_fit_the_cap_are_saved(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(client, owner, job, [q("Question number %d is about your work." % n, 200) for n in range(6)])
+
+    assert response.status_code == 200 and response.json()["total_seconds"] == 1200
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_source_or_a_huge_request_is_refused(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    assert (await _save(client, owner, job, [q(source="ROBOT")])).status_code == 422
+    assert (await _save(client, owner, job, [q("x" * 5001)])).status_code == 422
+    assert (await _save(client, owner, job, [q()] * 51)).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_deleting_the_job_deletes_its_questions(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+    await _save(client, owner, job, [q("A question that will go with the job?")])
+
+    await db_session.delete(job)
+    await db_session.flush()
+
+    assert await _rows(db_session, job) == []
+
+
+# --- who may use it ------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_anyone_in_the_company_that_owns_the_job_can_read_and_save(client, db_session):
+    owner, teammate, job = await _company(db_session)
+
+    assert (await _save(client, teammate, job, [q("Saved by a teammate, not the creator?")])).status_code == 200
+    assert (await client.get(_url(job), headers=_headers(teammate))).status_code == 200
+    assert (await client.get(_url(job), headers=_headers(owner))).json()["questions"][0]["text"] == (
+        "Saved by a teammate, not the creator?"
+    )
+
+
+@pytest.mark.asyncio
+async def test_another_company_cannot_read_save_or_draft(client, db_session):
+    _owner, _teammate, job = await _company(db_session)
+    stranger = make_employer()
+    db_session.add(stranger)
+    await db_session.flush()
+    await make_organization_for(db_session, stranger, company_name="Other Ltd")
+
+    assert (await client.get(_url(job), headers=_headers(stranger))).status_code == 403
+    assert (await _save(client, stranger, job, [q()])).status_code == 403
+    assert (await client.post(_url(job, "/draft"), json={}, headers=_headers(stranger))).status_code == 403
+    assert await _rows(db_session, job) == []
+
+
+@pytest.mark.asyncio
+async def test_an_admin_gets_no_extra_access_to_a_clients_job(client, db_session):
+    """The shared ownership rule (D2) grants an admin nothing extra on someone else's job."""
+    _owner, _teammate, job = await _company(db_session)
+    admin = make_admin()
+    db_session.add(admin)
+    await db_session.flush()
+
+    assert (await client.get(_url(job), headers=_headers(admin))).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_a_job_that_does_not_exist_is_a_404(client, db_session):
+    owner, _teammate, _job = await _company(db_session)
+    nobody = SimpleNamespace(id=uuid.uuid4())  # an id no job has
+
+    assert (await client.get(_url(nobody), headers=_headers(owner))).status_code == 404
+    assert (await _save(client, owner, nobody, [q()])).status_code == 404
+    assert (await client.post(_url(nobody, "/draft"), json={}, headers=_headers(owner))).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_or_a_visitor_cannot_use_it(client, db_session):
+    from tests.interviews.conftest import make_candidate_user
+
+    _owner, _teammate, job = await _company(db_session)
+    candidate = make_candidate_user()
+    db_session.add(candidate)
+    await db_session.flush()
+
+    assert (await client.get(_url(job), headers=_headers(candidate))).status_code == 403
+    assert (await client.get(_url(job))).status_code == 401
+    assert (await client.put(_url(job), json={"questions": []})).status_code == 401
+
+
+# --- drafting ------------------------------------------------------------------------------
+
+
+class FakeAI:
+    """Stands in for the Anthropic service: hands back the given pairs (or None) and records
+    what it was asked."""
+
+    def __init__(self, reply):
+        self._reply = reply
+        self.asked = []
+        self._client = SimpleNamespace(close=AsyncMock())
+
+    async def draft_interview_questions(self, **kwargs):
+        self.asked.append(kwargs)
+        return self._reply
+
+
+@pytest.fixture
+def ai(monkeypatch):
+    """Patch the service the questions code builds, and give the test the fake."""
+    holder = SimpleNamespace(current=FakeAI([]))
+    monkeypatch.setattr(
+        "app.modules.ai.service.AnthropicCVExtractionService", lambda: holder.current
+    )
+
+    def use(reply):
+        holder.current = FakeAI(reply)
+        return holder.current
+
+    return use
+
+
+@pytest.mark.asyncio
+async def test_a_draft_needs_the_interview_brief(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session, brief=None)
+    fake = ai([("A question that never gets asked?", 60)])
+
+    response = await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
+
+    assert response.status_code == 422
+    assert "Write the interview brief first" in response.json()["message"]
+    assert fake.asked == []  # no AI call, so no cost
+
+
+@pytest.mark.asyncio
+async def test_a_blank_brief_counts_as_no_brief(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session, brief="   \n  ")
+    ai([("A question that never gets asked?", 60)])
+
+    response = await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_draft_is_cleaned_marked_as_ai_and_never_saved(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    ai([
+        ("  Describe a system   you designed and why.  ", 100),
+        ("How do you test a risky change before it ships?", 130),
+        ("Why?", 60),  # too short: dropped
+    ])
+
+    response = await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["questions"] == [
+        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI"},
+        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI"},
+    ]
+    assert body["total_seconds"] == 210
+    assert await _rows(db_session, job) == []  # a draft is only ever returned
+
+
+@pytest.mark.asyncio
+async def test_the_draft_is_asked_for_from_the_job_and_five_questions_by_default(
+    client, db_session, ai
+):
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([("Describe a system you designed and why.", 90)])
+
+    await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
+
+    [asked] = fake.asked
+    assert asked["count"] == 5
+    assert asked["interview_brief"] == BRIEF
+    assert asked["title"] == job.title
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("sent", "asked"), [(3, 3), (6, 6), (40, 6), (1, 1)])
+async def test_the_count_is_never_more_than_an_interview_may_have(client, db_session, ai, sent, asked):
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([("Describe a system you designed and why.", 90)])
+
+    await client.post(_url(job, "/draft"), json={"count": sent}, headers=_headers(owner))
+
+    assert fake.asked[0]["count"] == asked
+
+
+@pytest.mark.asyncio
+async def test_drafted_times_are_shortened_so_the_list_can_always_be_saved(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    ai([(f"Describe how you handled situation number {n} at work.", 600) for n in range(5)])  # 50 minutes
+
+    draft = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
+    saved = await _save(client, owner, job, draft["questions"])
+
+    assert draft["total_seconds"] <= 1200
+    assert saved.status_code == 200  # what the AI drafted can be saved as it is
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply", [None, [], [("Why?", 60)], [("", 60), ("   ", 60)]])
+async def test_a_draft_that_gives_nothing_usable_is_a_clear_503_and_nothing_is_saved(
+    client, db_session, ai, reply
+):
+    owner, _teammate, job = await _company(db_session)
+    ai(reply)
+
+    response = await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "INTERVIEW_QUESTIONS_DRAFT_FAILED"
+    assert "write them yourself" in response.json()["message"]
+    assert await _rows(db_session, job) == []
+
+
+@pytest.mark.asyncio
+async def test_the_ai_client_the_service_opened_is_closed_again(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([("Describe a system you designed and why.", 90)])
+
+    await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
+
+    fake._client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_draft_is_limited_to_twenty_an_hour(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    ai([("Describe a system you designed and why.", 90)])
+
+    statuses = [
+        (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).status_code
+        for _ in range(21)
+    ]
+
+    assert statuses[:20] == [200] * 20
+    assert statuses[20] == 429
+
+
+# --- the pricing screen's field ------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_pricing_response_carries_the_style_too(client, db_session, monkeypatch):
+    owner, _teammate, _job = await _company(db_session)
+
+    live = await client.get("/api/v1/interviews/pricing", headers=_headers(owner))
+    monkeypatch.setattr(settings, "interview_style", "strict")
+    strict = await client.get("/api/v1/interviews/pricing", headers=_headers(owner))
+
+    assert live.json()["style"] == "live"
+    assert strict.json()["style"] == "strict"

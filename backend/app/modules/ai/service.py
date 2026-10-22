@@ -295,6 +295,67 @@ class AnthropicCVExtractionService(AIService):
 
         self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
+    async def draft_interview_questions(
+        self,
+        *,
+        title: str,
+        seniority: str | None,
+        required_skills: list[str] | None,
+        requirements: str | None,
+        about_the_role: str | None,
+        interview_brief: str,
+        count: int,
+    ) -> list[tuple[str, int]] | None:
+        """Draft a job's strict-interview questions from its interview brief.
+
+        Returns ``(question, seconds)`` pairs exactly as the model gave them, or ``None`` when
+        the call failed or the reply cannot be used. The caller cleans and limits them
+        (``interviews/question_rules.py``) and the employer edits them: nothing here is
+        trusted. A cheap, fast model is enough for a short draft the employer reviews.
+        """
+        from app.modules.ai.prompts.interview_questions import (
+            INTERVIEW_QUESTIONS_SYSTEM_PROMPT,
+            build_interview_questions_prompt,
+        )
+
+        from .schema import DraftedInterviewQuestions
+
+        try:
+            result = await call_structured(
+                self._client,
+                model=settings.anthropic_model_fast,
+                max_tokens=1500,
+                system=INTERVIEW_QUESTIONS_SYSTEM_PROMPT,
+                user=build_interview_questions_prompt(
+                    title=title,
+                    seniority=seniority,
+                    required_skills=required_skills,
+                    requirements=requirements,
+                    about_the_role=about_the_role,
+                    interview_brief=interview_brief,
+                    count=count,
+                ),
+                output_type=DraftedInterviewQuestions,
+            )
+        except Exception as e:
+            logger.error("LLM interview question drafting failed: %s", e)
+            report_if_credit_exhausted(e, where="interview_questions")
+            return None
+
+        if not result.ok:
+            logger.error(
+                "LLM interview question drafting returned no usable answer: %s (stop_reason=%s)",
+                result.error,
+                result.stop_reason,
+            )
+            return None
+        logger.info(
+            "Drafted interview questions: %d tokens in, %d out",
+            result.input_tokens,
+            result.output_tokens,
+        )
+        return [(item.question, item.seconds) for item in result.parsed.questions]
+
     # Stub for the existing method - this class only handles CV extraction
     async def compute_match_score(
         self,

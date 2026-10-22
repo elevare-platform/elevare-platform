@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_candidate, get_db, require_role
 from app.core.limiter import limiter
 from app.modules.candidates.models import CandidateProfile
+from app.modules.interviews.questions import InterviewQuestionService
 from app.modules.interviews.schema import (
     InterviewCompleteRequest,
     InterviewDetailResponse,
@@ -17,6 +18,10 @@ from app.modules.interviews.schema import (
     InterviewLinkResponse,
     InterviewPricingResponse,
     InterviewPublicInfoResponse,
+    InterviewQuestionsDraftRequest,
+    InterviewQuestionsDraftResponse,
+    InterviewQuestionsPutRequest,
+    InterviewQuestionsResponse,
     InterviewResetRequestResponse,
     InterviewResponse,
     InterviewScoreRequestResponse,
@@ -165,6 +170,55 @@ async def get_interview_pricing(
         return await service.get_pricing(current_user)
     finally:
         await service.close()
+
+
+@router.get(
+    "/jobs/{job_id}/questions", response_model=InterviewQuestionsResponse, status_code=200
+)
+async def get_job_interview_questions(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """The job's strict-interview questions, in the order a candidate sees them, with the limits.
+    Anyone in the company that owns the job."""
+    return await InterviewQuestionService(db).list_questions(current_user, job_id)
+
+
+@router.put(
+    "/jobs/{job_id}/questions", response_model=InterviewQuestionsResponse, status_code=200
+)
+async def save_job_interview_questions(
+    job_id: uuid.UUID,
+    data: InterviewQuestionsPutRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save the job's whole list of questions in place of the old one. Every problem is named in
+    the refusal (too many, a bad time, times that do not fit the interview). An empty list
+    clears the questions."""
+    return await InterviewQuestionService(db).replace_questions(
+        current_user, job_id, [item.model_dump() for item in data.questions]
+    )
+
+
+@router.post(
+    "/jobs/{job_id}/questions/draft",
+    response_model=InterviewQuestionsDraftResponse,
+    status_code=200,
+)
+@limiter.limit("20/hour")
+async def draft_job_interview_questions(
+    request: Request,
+    job_id: uuid.UUID,
+    data: InterviewQuestionsDraftRequest = InterviewQuestionsDraftRequest(),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ask the AI to draft questions from the job's interview brief. Nothing is saved: the
+    employer reads and edits the draft and saves it. Needs a brief. Limited to 20 an hour, as it
+    is a paid AI call."""
+    return await InterviewQuestionService(db).draft_questions(current_user, job_id, data.count)
 
 
 @router.post("/{talent_pool_profile_id}/interview-link", response_model=InterviewLinkResponse, status_code=200)

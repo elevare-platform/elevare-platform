@@ -29,6 +29,36 @@ if TYPE_CHECKING:
     from app.modules.talent_pool.models import TalentPoolProfiles
 
 
+class JobInterviewQuestion(BaseModel):
+    """One question of a job's strict interview, with the time a candidate has to answer it.
+
+    A job has one list, in ``position`` order, the same for every candidate (decision: the
+    questions are made once per job, so candidates can be compared fairly). The AI drafts
+    the list from the job's interview brief and the employer edits it; ``source`` says who
+    wrote each question. Replacing the list deletes and re-adds the rows in one transaction.
+    """
+
+    __tablename__ = "job_interview_questions"
+    __table_args__ = (
+        UniqueConstraint("job_id", "position", name="uq_job_interview_questions_position"),
+    )
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # 1, 2, 3 ... the order the candidate sees them.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # How long the candidate has to answer this question (a follow-up gets its own,
+    # shorter allowance on top). Set by the AI when it drafts, and changeable by the employer.
+    time_limit_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    # "AI" (drafted) or "EMPLOYER" (written or edited by the employer).
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="EMPLOYER")
+
+
 class Interview(BaseModel):
     """A candidate's live AI video interview for one job.
 

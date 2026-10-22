@@ -143,6 +143,21 @@ class CVFieldConfidence(BaseModel):
     education: Confidence
 
 
+class DraftedInterviewQuestion(BaseModel):
+    """One question the model drafted, and the seconds it suggests to answer it."""
+
+    question: str
+    seconds: int
+
+
+class DraftedInterviewQuestions(BaseModel):
+    """What the question drafting model must return (sent to the API as a JSON schema).
+    Its numbers and wording are checked again before anything is shown or saved
+    (interviews/question_rules.py), so this only has to give the API a shape."""
+
+    questions: list[DraftedInterviewQuestion]
+
+
 class CVExtractionOutput(BaseModel):
     """What the CV extraction model must return. Sent to the API as a JSON schema,
     so the reply always has this shape; "nothing found" is an empty list or null.
