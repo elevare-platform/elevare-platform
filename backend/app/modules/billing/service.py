@@ -212,10 +212,16 @@ class BillingService:
         if plan.code == "starter":
             raise PlanUpgradeRequiredException()
 
-    async def assert_can_post_job(self, organization_id: uuid.UUID | None) -> None:
+    async def assert_can_post_job(
+        self, organization_id: uuid.UUID | None, job_id: uuid.UUID | None = None
+    ) -> None:
         """Gate job creation to the organization's plan's active-posting
         limit. Counts active jobs across every member of the org, not just
         the caller — the quota is shared, not per-login.
+
+        Starter also gets only ONE new job per calendar month (Lagos time): a second job
+        stays a draft until the next month. ``job_id`` is the job being published, so it
+        is never counted against itself.
 
         An employer with no organization at all shouldn't occur in a real
         request (every employer gets one at registration, see Phase 1a),
@@ -240,6 +246,35 @@ class BillingService:
             raise JobPostingLimitExceededException(
                 f"Your plan allows {plan.job_posting_limit} active job posting(s); "
                 f"you currently have {active_count}."
+            )
+
+        if plan.code == "starter":
+            await self._assert_one_new_job_a_month(organization_id, job_id)
+
+    async def _assert_one_new_job_a_month(
+        self, organization_id: uuid.UUID, job_id: uuid.UUID | None
+    ) -> None:
+        # Local import: the allowance module imports this one.
+        from app.modules.billing.allowance import LAGOS, month_window
+
+        start, next_start = month_window()
+        stmt = (
+            select(func.count(Job.id))
+            .join(User, User.id == Job.employer_id)
+            .where(
+                User.organization_id == organization_id,
+                Job.published_at >= start,
+            )
+        )
+        if job_id is not None:
+            stmt = stmt.where(Job.id != job_id)
+        published_this_month = (await self._db.execute(stmt)).scalar_one()
+        if published_this_month >= 1:
+            again = next_start.astimezone(LAGOS).strftime("%-d %B")
+            raise JobPostingLimitExceededException(
+                "Your plan allows one new job a month, and you have already published one "
+                f"this month. You can publish this one from {again}, or upgrade your plan "
+                "to publish now."
             )
 
     async def start_credit_topup_checkout(

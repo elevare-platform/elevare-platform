@@ -30,6 +30,7 @@ from app.core.config import settings
 from app.core.exceptions import PlanLimitReachedException
 from app.modules.ai.models import FitScoringCost, ParsedCVSubmission
 from app.modules.billing.service import BillingService
+from app.modules.billing.starter_rules import is_taste_job
 from app.modules.jobs.models import Job
 from app.modules.users.models import User
 
@@ -156,6 +157,15 @@ class AllowanceService:
         allowance = await self.ai_scores(organization_id)
         if not allowance.exhausted:
             return True
+        # Starter has no AI scores (a limit of 0), except on its free taste: the company's
+        # first job, once the company is verified. What bounds that is the taste job's own
+        # 10 applicants and the 10 uploads a month, not this meter.
+        if organization_id is not None:
+            plan = await BillingService(self._db).get_effective_plan(organization_id)
+            if plan.code == "starter" and await is_taste_job(
+                self._db, organization_id, job_id
+            ):
+                return True
         start, _ = month_window()
         same_candidate = (
             FitScoringCost.application_id == application_id

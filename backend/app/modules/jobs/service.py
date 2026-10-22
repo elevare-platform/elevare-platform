@@ -1,6 +1,7 @@
 """Business logic for the jobs module."""
 
 import logging
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +32,10 @@ logger = logging.getLogger(__name__)
 # Valid status transitions — enforced in the service layer
 _VALID_TRANSITIONS: dict[JobStatus, list[JobStatus]] = {
     JobStatus.DRAFT: [JobStatus.ACTIVE],
-    JobStatus.ACTIVE: [JobStatus.CLOSED],
+    # The platform switches a job off (DISABLED) when a plan rule is hit; the employer closes it.
+    JobStatus.ACTIVE: [JobStatus.CLOSED, JobStatus.DISABLED],
+    # A disabled job can come back (re-published once the plan allows it) or be closed.
+    JobStatus.DISABLED: [JobStatus.ACTIVE, JobStatus.CLOSED],
     JobStatus.CLOSED: [],  # closed jobs cannot be re-opened without admin action
 }
 
@@ -95,6 +99,7 @@ class JobService:
 
         if is_admin:
             job.status = JobStatus.ACTIVE.value
+            job.published_at = datetime.now(UTC)
             job.moderation_status = ModerationStatus.APPROVED.value
 
         await self._db.commit()
@@ -158,8 +163,21 @@ class JobService:
                 from app.modules.billing.service import BillingService
 
                 billing_service = BillingService(self._db)
-                await billing_service.assert_can_post_job(current_user.organization_id)
+                await billing_service.assert_can_post_job(
+                    current_user.organization_id, job_id=job.id
+                )
 
+            # The date the Starter rules count from; and a re-published job is no longer disabled.
+            from app.modules.billing.starter_rules import claim_taste_if_first
+
+            # The job owner's company, not the caller's: an admin may publish for a client.
+            owner = await self._db.get(User, job.employer_id) if job.employer_id else None
+            await claim_taste_if_first(
+                self._db, owner.organization_id if owner else None, job.id
+            )
+            job.published_at = datetime.now(UTC)
+            job.disabled_reason = None
+            job.disabled_at = None
             job = await self._repo.set_status(job, JobStatus.ACTIVE)
             await self._db.commit()
 

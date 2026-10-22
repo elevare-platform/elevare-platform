@@ -204,6 +204,10 @@ class JobResponse(BaseModel):
     work_location: WorkLocation
     created_at: datetime | None = None
     application_deadline: datetime | None = None
+    # When the job last went live, and, while it is DISABLED, which rule switched it off.
+    published_at: datetime | None = None
+    disabled_reason: str | None = None
+    disabled_at: datetime | None = None
     application_count: int = 0
     pipeline_count: int = 0  # talent pool profiles sourced for this job
     required_skills: list[str] | None = None
@@ -280,6 +284,9 @@ class JobResponse(BaseModel):
             employer_phone=employer.phone_number if employer and include_contact_info else None,
             created_at=job.created_at,
             application_deadline=job.application_deadline,
+            published_at=job.published_at,
+            disabled_reason=job.disabled_reason,
+            disabled_at=job.disabled_at,
             application_count=getattr(job, "application_count", 0),
             pipeline_count=getattr(job, "pipeline_count", 0),
             required_skills=job.required_skills,
