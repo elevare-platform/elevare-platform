@@ -90,6 +90,12 @@ class Job(BaseModel):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # The employer's choice at posting time: publish this job automatically the moment an admin
+    # approves it, instead of waiting for them to press Publish. The plan limits still apply at
+    # that moment (a job the plan does not allow yet stays an approved draft).
+    publish_when_approved: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     # Set while the job is DISABLED (see JobStatus.DISABLED): which rule switched it off,
     # and when. Cleared when the job is re-published.
     disabled_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)

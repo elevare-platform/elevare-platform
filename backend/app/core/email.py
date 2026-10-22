@@ -927,6 +927,32 @@ class ResendEmailService(EmailService):
 
             {_render_button("Publish job", cta_url)}
             """
+        elif action == "APPROVED_AND_PUBLISHED":
+            # The employer asked for it to be published as soon as it was approved.
+            subject = f"Your job is live: {job_title}"
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
+
+            body_content_html = f"""
+            <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your job is live</h2>
+            <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've approved <strong>{job_title}</strong> and published it, as you asked. Candidates can see it and apply now.</p>
+
+            {_render_button("See your applicants", cta_url)}
+            """
+        elif action == "APPROVED_NOT_PUBLISHED":
+            # Approved, but the plan does not allow publishing it yet: say why, and how to go on.
+            subject = f"Your job listing was approved: {job_title}"
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
+
+            body_content_html = f"""
+            <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your job listing was approved</h2>
+            <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've approved <strong>{job_title}</strong>. You asked us to publish it as soon as it was approved, but we couldn't do that yet.</p>
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 0 0 24px 0;">
+              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #0F172A;">{reason}</p>
+            </div>
+            <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The job is saved. You can publish it yourself when you are able to.</p>
+
+            {_render_button("Publish job", cta_url)}
+            """
         else:
             subject = f"Your job listing needs changes: {job_title}"
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
@@ -1586,9 +1612,12 @@ class StubEmailService(EmailService):
     ) -> None:
         """Log stub job moderation status with the correct action link."""
         job_id = job_data["id"]
-        if action == "APPROVED":
+        if action in ("APPROVED", "APPROVED_NOT_PUBLISHED"):
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
             label = "Publish link"
+        elif action == "APPROVED_AND_PUBLISHED":
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
+            label = "Applicants link"
         else:
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
             label = "Edit link"

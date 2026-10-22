@@ -104,6 +104,10 @@ class JobService:
 
         await self._db.commit()
 
+        if not is_admin:
+            # A new employer job waits for an admin's review: tell the admins.
+            await self._notify_admins_job_waiting(job, "posted a job")
+
         from app.modules.ai.tasks import generate_job_embedding_task
 
         generate_job_embedding_task.delay(str(job.id))
@@ -231,6 +235,7 @@ class JobService:
         job.moderation_status = ModerationStatus.PENDING.value
         job.moderation_reason = None
         await self._db.commit()
+        await self._notify_admins_job_waiting(job, "sent a job back for review")
         return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
 
     async def close_job(self, job_id: UUID, current_user: User) -> JobResponse:
@@ -283,7 +288,8 @@ class JobService:
         # AI interview brief is not public listing content, so changing it alone
         # does not send a live job back for review; admins are told instead (below).
         changed = _changed_fields(job, update_data)
-        needs_review = bool(changed - {"interview_brief"})
+        # Neither the brief nor "publish when approved" is part of the public listing.
+        needs_review = bool(changed - {"interview_brief", "publish_when_approved"})
         brief_changed = "interview_brief" in changed
 
         # REJECTED is a terminal state the employer must explicitly resubmit
@@ -321,6 +327,10 @@ class JobService:
 
         job = await self._repo.update(job, data)
         await self._db.commit()
+
+        if was_sent_for_review:
+            # A live job was pulled offline by this edit and needs the admins' review again.
+            await self._notify_admins_job_waiting(job, "edited a live job, which needs review again")
 
         if (
             brief_changed
@@ -362,6 +372,42 @@ class JobService:
                 )
 
         return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
+
+    async def _notify_admins_job_waiting(self, job, what_happened: str) -> None:
+        """Tell every admin that a job is waiting for their review.
+
+        Until now nobody was told: a new job just sat as a draft until an admin happened to open
+        the Jobs page. In-app only (no email, to protect the daily email quota). Runs after the
+        job is committed and never raises, so a notification problem cannot undo a job.
+        ``what_happened`` finishes the sentence: "posted a job", "sent a job back for review".
+        """
+        from app.modules.employer.repository import EmployerRepository
+        from app.modules.notifications.repository import NotificationRepository
+
+        try:
+            organization = job.employer.organization if job.employer else None
+            company = (
+                organization.company_name
+                if organization and organization.company_name
+                else "An employer"
+            )
+            notification_repo = NotificationRepository(self._db)
+            for admin in await EmployerRepository(self._db).list_admin_users():
+                await notification_repo.create(
+                    recipient_id=admin.id,
+                    type="JOB_AWAITING_REVIEW",
+                    title=f"{company} {what_happened}: {job.title}",
+                    body="It is waiting for review. Open Jobs to approve it or ask for changes.",
+                    entity_type="JOB",
+                    entity_id=job.id,
+                )
+            await self._db.commit()
+        except Exception:
+            logger.warning(
+                "Could not tell the admins that job %s is waiting for review",
+                job.id,
+                exc_info=True,
+            )
 
     async def _notify_admins_brief_changed(self, job) -> None:
         """Tell every admin that a live job's private interview brief changed.

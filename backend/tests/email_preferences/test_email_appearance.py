@@ -50,6 +50,13 @@ EVERY_EMAIL = {
         lambda s: s.send_job_moderation_status(
             TO, {"id": "job-1", "title": JOB}, "REJECTED", "The salary range is missing."
         ),
+        lambda s: s.send_job_moderation_status(TO, {"id": "job-1", "title": JOB}, "APPROVED_AND_PUBLISHED"),
+        lambda s: s.send_job_moderation_status(
+            TO,
+            {"id": "job-1", "title": JOB},
+            "APPROVED_NOT_PUBLISHED",
+            "Your plan allows one new job a month.",
+        ),
     ],
     "send_job_switched_off": [
         lambda s: s.send_job_switched_off(TO, {"id": "job-1", "title": JOB}, "APPLICANT_LIMIT", 3),
