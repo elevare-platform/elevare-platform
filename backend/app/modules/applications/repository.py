@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -62,6 +62,12 @@ class ApplicationRepository:
         await self._db.flush()
         await self._db.refresh(application)
         return application
+
+    async def count_for_job(self, job_id: uuid.UUID) -> int:
+        """How many applications the job has received, withdrawn ones included (each one
+        was a place taken, and may have cost an AI score)."""
+        stmt = select(func.count(Application.id)).where(Application.job_id == job_id)
+        return (await self._db.execute(stmt)).scalar_one()
 
     async def has_applied(
         self, candidate_id: uuid.UUID, job_id: uuid.UUID

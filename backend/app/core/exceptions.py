@@ -467,6 +467,23 @@ class ValidationException(PlatformError):
 # ---------------------------------------------------------------------------
 # Job Exceptions
 # ---------------------------------------------------------------------------
+class JobNotAcceptingApplications(PlatformError):
+    """Raised when a job has been switched off (status DISABLED) and takes no more applications.
+
+    Different from ``JobApplicationEnded``, which is about the deadline the employer set.
+    """
+
+    def __init__(
+        self,
+        message: str = "This job is no longer accepting applications.",
+        code: str = "JOB_NOT_ACCEPTING_APPLICATIONS",
+        status_code: int = 422,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
 class JobApplicationEnded(PlatformError):
     """Raised when the job application deadline has passed."""
 
