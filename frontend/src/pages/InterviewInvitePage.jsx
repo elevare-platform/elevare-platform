@@ -67,6 +67,12 @@ export default function InterviewInvitePage() {
     return data
   }, [token])
 
+  // Where to send a recording the browser kept across a reload (the server joins the parts).
+  const requestPartUploadUrl = useCallback(async () => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/recording-part`)
+    return data
+  }, [token])
+
   const completeStrict = useCallback(async () => {
     await api.post(`/api/v1/public/interviews/${token}/complete`, {})
   }, [token])
@@ -101,6 +107,7 @@ export default function InterviewInvitePage() {
         sendAnswer={sendStrictAnswer}
         requestUploadUrl={requestUploadUrl}
         completeUpload={completeStrict}
+        requestPartUploadUrl={requestPartUploadUrl}
         subtitle={subtitle}
         maxMinutes={info.max_duration_minutes}
         resuming={info.status === 'IN_PROGRESS'}

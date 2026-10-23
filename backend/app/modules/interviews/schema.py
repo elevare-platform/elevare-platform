@@ -143,10 +143,27 @@ class InterviewResponse(BaseModel):
     session_start_count: int
 
 
-class CandidateInterviewResponse(InterviewResponse):
-    """The interview as the logged-in candidate's own screen loads it: the record, plus which
-    interview it is (the live voice conversation or the strict, text-question one), so the
-    screen opens the matching flow."""
+class CandidateInterviewResponse(BaseModel):
+    """An interview as the CANDIDATE it belongs to may see it: where it stands, never the
+    employer's assessment. ``ai_score`` and ``ai_rationale`` are the employer's view of the
+    candidate and are left out on purpose (the same rule as ``CandidateApplicationResponse``);
+    every candidate-facing interview endpoint must answer with this, not ``InterviewResponse``."""
+
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    application_id: uuid.UUID | None
+    status: str
+    transcript: str | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    session_start_count: int
+
+
+class CandidateInterviewDetailResponse(CandidateInterviewResponse):
+    """The same, as the logged-in candidate's own screen loads it, plus which interview it is
+    (the live voice conversation or the strict, text-question one), so the screen opens the
+    matching flow."""
 
     style: Literal["live", "strict"]
 
@@ -194,6 +211,15 @@ class InterviewPublicInfoResponse(BaseModel):
     # Which interview this invitation is: the live voice conversation or the strict,
     # text-question one. Decided when the invite was created; the screen shows the matching flow.
     style: Literal["live", "strict"] = "live"
+
+
+class StrictRecordingPartResponse(BaseModel):
+    """Where to upload an earlier recording the browser kept across a reload, and which part
+    number it is. The server joins the parts with the final recording before scoring."""
+
+    upload_url: str
+    expires_in_seconds: int
+    part: int
 
 
 class StrictStartRequest(BaseModel):

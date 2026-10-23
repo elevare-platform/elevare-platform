@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import InterviewRules from '@/components/candidate/InterviewRules'
 import { STRICT_RULES_VERSION, STRICT_RULE_GROUPS } from '@/lib/interviewRules'
 import { MAX_ATTEMPTS, uploadRecording, withRetry } from '@/lib/interviewUpload'
+import { openRecordingStore } from '@/lib/recordingStore'
+import { salvagePreviousRecordings } from '@/lib/recordingSalvage'
 import {
   checkDevice,
   formatClock,
@@ -21,6 +23,11 @@ const LIVE_PHASES = ['question', 'sending', 'send_error']
 function serverMessage(err, fallback) {
   const message = err?.response?.data?.message
   return typeof message === 'string' && message ? message : fallback
+}
+
+// A name for one recording, so a reload never mixes it with an earlier one.
+function newSegmentId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 function stopTracks(stream) {
@@ -61,6 +68,7 @@ export default function StrictInterviewFlow({
   sendAnswer,
   requestUploadUrl,
   completeUpload,
+  requestPartUploadUrl,
   backTo,
   backLabel = 'Back',
   subtitle = null,
@@ -68,7 +76,11 @@ export default function StrictInterviewFlow({
   resuming = false,
   completed = false,
   maxMinutes = 20,
+  // Where the recording is kept while it is made, so a reload does not lose it. Left out, the
+  // browser's own storage is used; null (no storage) records in memory only, as before.
+  recordingStore: providedStore,
 }) {
+  const [recordingStore] = useState(() => (providedStore !== undefined ? providedStore : openRecordingStore()))
   // 'gate' | 'starting' | 'question' | 'sending' | 'send_error' | 'ending' | 'uploading'
   // | 'upload_error' | 'done' | 'error'
   const [phase, setPhase] = useState(completed ? 'done' : 'gate')
@@ -98,6 +110,9 @@ export default function StrictInterviewFlow({
   const finishingRef = useRef(false)
   const recordingBlobRef = useRef(null)
   const fileUploadedRef = useRef(false)
+  const interviewIdRef = useRef(null)
+  const segmentRef = useRef(null)
+  const salvageRef = useRef(null)
 
   const isLive = LIVE_PHASES.includes(phase)
   const guardAgainstLeaving = isLive || ['ending', 'uploading', 'upload_error'].includes(phase)
@@ -168,16 +183,24 @@ export default function StrictInterviewFlow({
 
   // ── Recording ────────────────────────────────────────────────────────────
 
-  const startInterviewRecording = useCallback((stream) => {
+  // Every chunk is also kept in the browser's storage under this recording's own id, so that a
+  // reload, a crash or a closed tab leaves it there to be sent when the candidate comes back.
+  const startInterviewRecording = useCallback((stream, interviewId) => {
     const mimeType = pickInterviewMimeType()
     interviewChunksRef.current = []
+    const segment = newSegmentId()
+    segmentRef.current = segment
+    let index = 0
     const recorder = new MediaRecorder(stream, { mimeType })
     recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) interviewChunksRef.current.push(event.data)
+      if (event.data.size > 0) {
+        interviewChunksRef.current.push(event.data)
+        recordingStore?.addChunk(interviewId, segment, index++, event.data)
+      }
     }
     recorder.start(1000)
     interviewRecorderRef.current = recorder
-  }, [])
+  }, [recordingStore])
 
   const startAnswerRecording = useCallback(() => {
     const stream = streamRef.current
@@ -219,13 +242,15 @@ export default function StrictInterviewFlow({
       setUploadStep('confirming')
       await withRetry(() => completeUpload())
       recordingBlobRef.current = null
+      // The interview is over and the server has it all, so nothing needs keeping here.
+      recordingStore?.deleteInterview(interviewIdRef.current)
       setPhase('done')
     } catch (err) {
       if (err?.response?.data?.code === 'RECORDING_NOT_RECEIVED') fileUploadedRef.current = false
       setError(serverMessage(err, 'We could not upload your recording. Your connection may have dropped.'))
       setPhase('upload_error')
     }
-  }, [requestUploadUrl, completeUpload])
+  }, [requestUploadUrl, completeUpload, recordingStore])
 
   const finishInterview = useCallback(async () => {
     if (finishingRef.current) return
@@ -242,6 +267,9 @@ export default function StrictInterviewFlow({
     streamRef.current = null
     try { navigator.keyboard?.unlock?.() } catch { /* not supported */ }
     if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {})
+    // Earlier recordings (before a reload) are being sent as parts. They must be on the server
+    // before the interview is completed, since the server joins them with this one then.
+    await salvageRef.current
     await submitRecording()
   }, [submitRecording])
 
@@ -338,7 +366,16 @@ export default function StrictInterviewFlow({
       }
       streamRef.current = stream
       const next = await startInterview({ accepted: true, rulesVersion: STRICT_RULES_VERSION })
-      startInterviewRecording(stream)
+      interviewIdRef.current = next.interview_id
+      startInterviewRecording(stream, next.interview_id)
+      // After a reload, what was recorded before it is still in storage. Send it in the
+      // background (the first question is already running); finishing waits for it.
+      salvageRef.current = salvagePreviousRecordings({
+        store: recordingStore,
+        interviewId: next.interview_id,
+        currentSegment: segmentRef.current,
+        requestPartUploadUrl,
+      })
       beginTurn(next)
     } catch (err) {
       releaseEverything()

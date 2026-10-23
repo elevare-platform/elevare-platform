@@ -185,6 +185,10 @@ class Settings(BaseSettings):
     # How much audio one answer may upload (the longest answer is 10 minutes of speech,
     # which is a few MB; this only stops an absurd file).
     strict_answer_max_bytes: int = 15 * 1024 * 1024
+    # A candidate whose page reloads keeps what was recorded so far in their browser and sends
+    # it as a separate part, to be joined into one video. This bounds how many parts one
+    # interview may have (each reload makes one).
+    strict_recording_max_parts: int = 8
     # Minimum share (0.0-1.0) of the submitted transcript's word pairs that must
     # also appear in the recording's own transcript. An unmeasured starting
     # point: calibrate it against real interviews via the match_score stored in

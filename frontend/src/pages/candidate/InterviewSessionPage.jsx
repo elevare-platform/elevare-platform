@@ -62,6 +62,12 @@ export default function InterviewSessionPage() {
     return data
   }, [applicationId])
 
+  // Where to send a recording the browser kept across a reload (the server joins the parts).
+  const requestPartUploadUrl = useCallback(async () => {
+    const { data } = await api.post(`/api/v1/interviews/applications/${applicationId}/strict/recording-part`)
+    return data
+  }, [applicationId])
+
   const completeStrict = useCallback(async () => {
     await api.post(`/api/v1/interviews/applications/${applicationId}/complete`, {})
   }, [applicationId])
@@ -92,6 +98,7 @@ export default function InterviewSessionPage() {
         sendAnswer={sendStrictAnswer}
         requestUploadUrl={requestUploadUrl}
         completeUpload={completeStrict}
+        requestPartUploadUrl={requestPartUploadUrl}
         backTo="/candidate/applications"
         backLabel="Back to applications"
         doneAction={{

@@ -228,8 +228,12 @@ class EmailService(ABC):
         interview_url: str,
         job_title: str,
         company_name: str,
+        strict: bool = False,
     ) -> None:
-        """Invite a candidate to a live AI video interview, no login required."""
+        """Invite a candidate to a live AI video interview, no login required.
+
+        ``strict`` is the strict, text-question interview, which needs a laptop or desktop
+        computer with Chrome or Edge, so its email says so."""
         ...
 
     @abstractmethod
@@ -1063,6 +1067,7 @@ class ResendEmailService(EmailService):
         interview_url: str,
         job_title: str,
         company_name: str,
+        strict: bool = False,
     ) -> None:
         """Invite a candidate to a live AI video interview, no login required.
 
@@ -1073,10 +1078,18 @@ class ResendEmailService(EmailService):
         whenever that's the case.
         """
         job_title, company_name = _h(job_title), _h(company_name)
+        # A strict interview cannot be taken on a phone, a tablet or another browser, so the
+        # email says so before the candidate opens the link on the wrong device.
+        device_html = (
+            """<p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>Use a laptop or desktop computer with Chrome or Edge.</strong> This interview cannot be taken on a phone or a tablet. Questions appear on the screen and you answer them out loud to your camera, so find a quiet place and plan for about 20 minutes.</p>"""
+            if strict
+            else ""
+        )
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You're invited to an AI video interview</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_name}</strong> would like to interview you for the <strong>{job_title}</strong> role.</p>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The interview is conducted by an AI interviewer, not a person. It asks you questions and follows up on your answers. Your camera records the session so the employer can review it afterwards.</p>
+        {device_html}
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You don't need to log in. Open the link when you're ready, with your camera and microphone available.</p>
         {_render_button("Start interview", interview_url, is_primary=True)}
         """
@@ -1688,6 +1701,7 @@ class StubEmailService(EmailService):
         interview_url: str,
         job_title: str,
         company_name: str,
+        strict: bool = False,
     ) -> None:
         """Log a stub AI interview invite email."""
         logger.info(

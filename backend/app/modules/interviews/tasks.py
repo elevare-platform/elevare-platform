@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from openai import AsyncOpenAI
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -28,6 +29,12 @@ from app.modules.interviews.enums import (
     InterviewCostComponent,
     InterviewStatus,
     TranscriptCheckStatus,
+)
+from app.modules.interviews.models import StrictInterviewRun
+from app.modules.interviews.recording_merge import (
+    concat_recordings,
+    merge_key,
+    part_key,
 )
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.scoring_access import assert_can_score_interviews
@@ -129,6 +136,82 @@ async def _transcribe_recording(r2_key: str) -> tuple[str, float]:
     return response.text, response.duration
 
 
+async def _merge_recording_parts(db, repo, interview):
+    """Join an interview's earlier recording parts and its final recording into one video.
+
+    Returns the interview as it should be read from here on: with ``r2_key`` pointing at the
+    joined video when a join happened, unchanged otherwise. Safe to run again after any
+    failure: the output has its own key, the interview is only pointed at it (and the part
+    count reset) in one commit, and the pieces are deleted only after that. A join that fails
+    never blocks scoring: the final recording is still there, the parts stay in storage, and
+    the failure is logged.
+    """
+    run = (
+        await db.execute(
+            select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
+        )
+    ).scalar_one_or_none()
+    if run is None or run.recording_parts <= 0 or not interview.r2_key:
+        return interview
+
+    storage = get_storage_service()
+    part_keys: list[str] = []
+    new_key: str | None = None
+    try:
+        pieces: list[bytes] = []
+        for number in range(1, run.recording_parts + 1):
+            key = part_key(interview.id, number)
+            # A part that was reserved but never uploaded (the browser went away) is skipped.
+            if not await storage.get_object_size(key):
+                logger.warning(
+                    "merge_recording_parts: part %s of interview %s was never uploaded",
+                    number,
+                    interview.id,
+                )
+                continue
+            pieces.append(await storage.download_file(key))
+            part_keys.append(key)
+
+        if pieces:
+            pieces.append(await storage.download_file(interview.r2_key))
+            try:
+                joined = await concat_recordings(pieces)
+            except RuntimeError:
+                # The final recording can be nearly empty (a reload just after the last
+                # answer), and a nearly empty file may not join. The parts are the real
+                # interview, so join them alone rather than lose them.
+                logger.warning(
+                    "merge_recording_parts: the final recording of interview %s would not "
+                    "join, joining the parts alone",
+                    interview.id,
+                    exc_info=True,
+                )
+                joined = await concat_recordings(pieces[:-1])
+            new_key = merge_key(interview.id)
+            await storage.upload_file(joined, new_key, "video/webm")
+    except Exception:
+        # Scoring does not depend on the video, so it carries on with the final recording.
+        # The parts stay in storage so the join can be run again.
+        logger.exception(
+            "merge_recording_parts: could not join the recordings of interview %s", interview.id
+        )
+        return interview
+
+    # The database change is not guarded: if it fails the task fails and runs again.
+    old_key = interview.r2_key
+    if new_key is not None:
+        interview = await repo.update(interview.id, {"r2_key": new_key})
+    run.recording_parts = 0
+    await db.commit()
+
+    for key in [*part_keys, *([old_key] if new_key is not None else [])]:
+        try:
+            await storage.delete_file(key)
+        except Exception:
+            logger.warning("merge_recording_parts: could not delete %s", key, exc_info=True)
+    return interview
+
+
 async def _record_scoring_cost(repo, interview_id, result) -> None:
     """Write the scoring cost row for a call that was actually billed,
     including failed attempts (a response we could not parse still cost tokens)."""
@@ -155,6 +238,7 @@ def send_ai_interview_invite_email(
     interview_url: str,
     job_title: str,
     company_name: str,
+    strict: bool = False,
 ) -> None:
     """Send an AI interview invite email with a no-login magic link.
 
@@ -172,6 +256,7 @@ def send_ai_interview_invite_email(
             interview_url=interview_url,
             job_title=job_title,
             company_name=company_name,
+            strict=strict,
         )
 
     try:
@@ -296,6 +381,11 @@ async def _transcribe_and_score_interview_async(
                     interview.status,
                 )
                 return
+
+            # A strict interview whose page reloaded has earlier recordings uploaded as
+            # separate parts. Join them into the one video the employer plays; the
+            # steps below then read the joined recording.
+            interview = await _merge_recording_parts(db, repo, interview)
 
             # The transcript the browser submitted (diarized, both speakers) is
             # captured on the candidate's own device, so it is checked against

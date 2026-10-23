@@ -92,6 +92,11 @@ class StrictInterviewRun(BaseModel):
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Earlier recordings that survived a reload and were uploaded as separate parts
+    # (interviews/<id>/part-<n>.webm). Joined into one video before scoring, then back to 0.
+    recording_parts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
 
 class InterviewTurn(BaseModel):

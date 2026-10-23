@@ -1191,6 +1191,80 @@ async def test_a_live_invite_notification_is_worded_as_it_always_was(
     assert "appear on your screen" not in body
 
 
+@pytest.mark.asyncio
+async def test_a_strict_invite_queues_an_email_that_says_what_device_it_needs(
+    db_session, monkeypatch, invite_email
+):
+    monkeypatch.setattr(settings, "interview_style", "strict")
+    monkeypatch.setattr(settings, "interview_credit_cost", 0)
+    job, profile = await _job_with_candidate(db_session)
+    profile.override_email = "candidate@example.com"
+
+    service = InterviewService(db_session)
+    try:
+        await service.send_invite(job.employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert invite_email.delay.call_args.kwargs["strict"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_live_invite_email_is_queued_exactly_as_it_always_was(
+    db_session, monkeypatch, invite_email
+):
+    monkeypatch.setattr(settings, "interview_style", "live")
+    monkeypatch.setattr(settings, "interview_credit_cost", 0)
+    job, profile = await _job_with_candidate(db_session)
+    profile.override_email = "candidate@example.com"
+
+    service = InterviewService(db_session)
+    try:
+        await service.send_invite(job.employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert "strict" not in invite_email.delay.call_args.kwargs
+
+
+@pytest.fixture
+def resend_service(monkeypatch):
+    from types import SimpleNamespace as NS
+
+    from app.core import email as email_module
+    from app.core.email import ResendEmailService
+
+    sender = ResendEmailService.__new__(ResendEmailService)
+    sender._resend = NS(Emails=NS(send=MagicMock()))
+    monkeypatch.setattr(email_module, "suppressed_addresses", AsyncMock(return_value=set()))
+    return sender
+
+
+@pytest.mark.asyncio
+async def test_the_strict_invite_email_tells_the_candidate_to_use_a_laptop_with_chrome_or_edge(
+    resend_service,
+):
+    await resend_service.send_ai_interview_invite(
+        "ada@example.com", "https://x.test/i", "Sales Manager", "Acme", strict=True
+    )
+
+    html = resend_service._resend.Emails.send.call_args.args[0]["html"]
+    assert "Use a laptop or desktop computer with Chrome or Edge." in html
+    assert "cannot be taken on a phone or a tablet" in html
+    assert "about 20 minutes" in html
+
+
+@pytest.mark.asyncio
+async def test_the_live_invite_email_does_not_say_it_needs_a_laptop(resend_service):
+    await resend_service.send_ai_interview_invite(
+        "ada@example.com", "https://x.test/i", "Sales Manager", "Acme"
+    )
+
+    html = resend_service._resend.Emails.send.call_args.args[0]["html"]
+    assert "Chrome or Edge" not in html
+    assert "phone or a tablet" not in html
+
+
 # ---------------------------------------------------------------------------
 # The logged-in candidate reaches the same interview
 # ---------------------------------------------------------------------------

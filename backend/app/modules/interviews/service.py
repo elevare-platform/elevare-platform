@@ -30,6 +30,7 @@ from app.modules.interviews.enums import (
     TranscriptCheckStatus,
 )
 from app.modules.interviews.models import Interview
+from app.modules.interviews.recording_merge import part_key
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.schema import (
     InterviewDetailResponse,
@@ -37,6 +38,7 @@ from app.modules.interviews.schema import (
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
     RealtimeUsageDetail,
+    StrictRecordingPartResponse,
 )
 from app.modules.interviews.scoring_access import assert_can_score_interviews
 from app.modules.interviews.strict import StrictInterviewService
@@ -448,6 +450,27 @@ class InterviewService:
         return await self._strict().answer(
             interview, turn_id=turn_id, audio=audio, content_type=content_type
         )
+
+    async def _recording_part_url(self, interview: Interview) -> StrictRecordingPartResponse:
+        self._assert_interviews_enabled()
+        part = await self._strict().reserve_recording_part(interview)
+        upload_url = await get_storage_service().generate_presigned_upload_url(
+            part_key(interview.id, part), _VIDEO_CONTENT_TYPE, _UPLOAD_URL_EXPIRES_SECONDS
+        )
+        return StrictRecordingPartResponse(
+            upload_url=upload_url, expires_in_seconds=_UPLOAD_URL_EXPIRES_SECONDS, part=part
+        )
+
+    async def recording_part_url_by_token(self, token: str) -> StrictRecordingPartResponse:
+        """An upload URL for an earlier recording kept across a reload, from an emailed link."""
+        return await self._recording_part_url(await self._resolve_interview_by_token(token))
+
+    async def recording_part_url(
+        self, application_id: uuid.UUID, candidate_id: uuid.UUID
+    ) -> StrictRecordingPartResponse:
+        """The same, for a logged-in candidate."""
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        return await self._recording_part_url(interview)
 
     async def start_strict_by_token(
         self, token: str, accepted: bool, rules_version: str | None
@@ -912,15 +935,20 @@ class InterviewService:
         # from Candidate Search / Talent Matches) — routing them to the
         # dashboard instead is a dead end whenever that's the case, so the
         # token link is the one path that's guaranteed to work for anyone.
+        is_strict = await self._strict().is_strict(_interview.id)
+        # Only a strict interview's email says what device it needs; a live one is sent
+        # exactly as it always was.
+        extra = {"strict": True} if is_strict else {}
         send_ai_interview_invite_email.delay(
             candidate_email=candidate_email,
             interview_url=interview_url,
             job_title=job.title,
             company_name=company_name,
+            **extra,
         )
 
         if is_first_invite and is_self_registered:
-            if await self._strict().is_strict(_interview.id):
+            if is_strict:
                 what_it_is = (
                     "The questions appear on your screen and you answer each one out "
                     "loud to your camera. Use a laptop or desktop computer with Chrome "

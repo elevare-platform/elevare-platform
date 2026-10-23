@@ -67,7 +67,10 @@ EVERY_EMAIL = {
         lambda s: s.send_contact_notification(TO, "Visitor", "v@example.com", COMPANY, "Hello", "general")
     ],
     "send_introduction_request": [lambda s: s.send_introduction_request(TO, LINK, LINK, JOB)],
-    "send_ai_interview_invite": [lambda s: s.send_ai_interview_invite(TO, LINK, JOB, COMPANY)],
+    "send_ai_interview_invite": [
+        lambda s: s.send_ai_interview_invite(TO, LINK, JOB, COMPANY),
+        lambda s: s.send_ai_interview_invite(TO, LINK, JOB, COMPANY, strict=True),
+    ],
     "send_interview_restart_request": [
         lambda s: s.send_interview_restart_request(TO, "Chidi Okafor", JOB, COMPANY, LINK)
     ],

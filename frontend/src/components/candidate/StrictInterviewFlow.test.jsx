@@ -5,13 +5,14 @@ import { MemoryRouter } from 'react-router-dom'
 vi.mock('@/lib/interviewUpload', async (importOriginal) => ({
   ...(await importOriginal()),
   uploadRecording: vi.fn(async () => {}),
+  putBlob: vi.fn(async () => {}),
 }))
 vi.mock('@/lib/strictInterview', async (importOriginal) => ({
   ...(await importOriginal()),
   checkDevice: vi.fn(() => ({ ok: true, problems: [] })),
 }))
 
-import { uploadRecording } from '@/lib/interviewUpload'
+import { putBlob, uploadRecording } from '@/lib/interviewUpload'
 import { checkDevice } from '@/lib/strictInterview'
 import { STRICT_RULES_VERSION } from '@/lib/interviewRules'
 import StrictInterviewFlow from './StrictInterviewFlow'
@@ -31,6 +32,11 @@ class FakeMediaRecorder {
 
   start() {
     this.state = 'recording'
+  }
+
+  // What the browser does once a second while recording.
+  emit(data) {
+    this.ondataavailable?.({ data })
   }
 
   stop() {
@@ -118,6 +124,8 @@ beforeEach(() => {
   })
   vi.mocked(checkDevice).mockReturnValue({ ok: true, problems: [] })
   vi.mocked(uploadRecording).mockClear()
+  vi.mocked(putBlob).mockReset()
+  vi.mocked(putBlob).mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -480,5 +488,185 @@ describe('StrictInterviewFlow, the locked screen', () => {
     window.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(false)
+  })
+})
+
+// ── Not losing the recording to a reload ────────────────────────────────────
+
+// A store in memory with the same methods as the real one (lib/recordingStore.js).
+function memoryStore(initial = {}) {
+  const chunks = new Map(Object.entries(initial)) // `${interviewId}/${segment}` -> Blob[]
+  const key = (interviewId, segment) => `${interviewId}/${segment}`
+  return {
+    chunks,
+    addChunk: vi.fn(async (interviewId, segment, index, blob) => {
+      const list = chunks.get(key(interviewId, segment)) ?? []
+      list[index] = blob
+      chunks.set(key(interviewId, segment), list)
+      return true
+    }),
+    segments: vi.fn(async (interviewId) =>
+      [...chunks.entries()]
+        .filter(([k]) => k.startsWith(`${interviewId}/`))
+        .map(([k, list]) => ({ segment: k.split('/')[1], chunks: list.length, bytes: list.reduce((n, b) => n + b.size, 0) }))
+    ),
+    readSegment: vi.fn(async (interviewId, segment) => chunks.get(key(interviewId, segment)) ?? []),
+    deleteSegment: vi.fn(async (interviewId, segment) => {
+      chunks.delete(key(interviewId, segment))
+      return true
+    }),
+    deleteInterview: vi.fn(async (interviewId) => {
+      for (const k of [...chunks.keys()]) if (k.startsWith(`${interviewId}/`)) chunks.delete(k)
+      return true
+    }),
+  }
+}
+
+const EARLIER = new Blob(['E'.repeat(3000)], { type: 'video/webm' })
+
+describe('StrictInterviewFlow, keeping the recording across a reload', () => {
+  const interviewRecorder = () => FakeMediaRecorder.instances.find((r) => r.mimeType.startsWith('video/'))
+
+  it('keeps every chunk of the recording in storage as it is made, in order, under the interview', async () => {
+    const recordingStore = memoryStore()
+    setup({ recordingStore })
+    await acceptAndStart()
+
+    const first = new Blob(['one'])
+    const second = new Blob(['two'])
+    interviewRecorder().emit(first)
+    interviewRecorder().emit(second)
+
+    await waitFor(() => expect(recordingStore.addChunk).toHaveBeenCalledTimes(2))
+    const [id1, segment1, index1, blob1] = recordingStore.addChunk.mock.calls[0]
+    const [id2, segment2, index2, blob2] = recordingStore.addChunk.mock.calls[1]
+    expect([id1, id2]).toEqual(['iv-1', 'iv-1'])
+    expect(segment1).toBe(segment2)
+    expect([index1, index2]).toEqual([0, 1])
+    expect([blob1, blob2]).toEqual([first, second])
+  })
+
+  it('does not keep the empty chunks the recorder sometimes emits', async () => {
+    const recordingStore = memoryStore()
+    setup({ recordingStore })
+    await acceptAndStart()
+
+    interviewRecorder().emit(new Blob([]))
+
+    expect(recordingStore.addChunk).not.toHaveBeenCalled()
+  })
+
+  it('sends a recording left by an earlier visit as a part, and forgets it, while the interview carries on', async () => {
+    const recordingStore = memoryStore({ 'iv-1/before-reload': [EARLIER] })
+    const requestPartUploadUrl = vi.fn(async () => ({ upload_url: 'https://r2.test/part-1', part: 1 }))
+    setup({ recordingStore, requestPartUploadUrl, resuming: true })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await screen.findByTestId('question-text')
+
+    await waitFor(() => expect(putBlob).toHaveBeenCalledTimes(1))
+    expect(requestPartUploadUrl).toHaveBeenCalledTimes(1)
+    expect(putBlob.mock.calls[0][0]).toMatchObject({ url: 'https://r2.test/part-1', contentType: 'video/webm' })
+    expect(putBlob.mock.calls[0][0].blob.size).toBe(3000)
+    await waitFor(() => expect(recordingStore.deleteSegment).toHaveBeenCalledWith('iv-1', 'before-reload'))
+    // The question is on screen the whole time: sending the old recording does not hold it up.
+    expect(screen.getByTestId('question-text')).toBeInTheDocument()
+  })
+
+  it('never sends the recording it is making now as a part', async () => {
+    const recordingStore = memoryStore()
+    const requestPartUploadUrl = vi.fn(async () => ({ upload_url: 'https://r2.test/part', part: 1 }))
+    setup({ recordingStore, requestPartUploadUrl })
+    await acceptAndStart()
+
+    interviewRecorder().emit(new Blob(['N'.repeat(3000)]))
+    await waitFor(() => expect(recordingStore.addChunk).toHaveBeenCalled())
+
+    expect(requestPartUploadUrl).not.toHaveBeenCalled()
+    expect(putBlob).not.toHaveBeenCalled()
+  })
+
+  it('waits for the earlier recording to reach the server before it completes the interview', async () => {
+    const recordingStore = memoryStore({ 'iv-1/before-reload': [EARLIER] })
+    let releasePart
+    const requestPartUploadUrl = vi.fn(() => new Promise((resolve) => {
+      releasePart = () => resolve({ upload_url: 'https://r2.test/part-1', part: 1 })
+    }))
+    const { completeUpload } = setup({
+      recordingStore,
+      requestPartUploadUrl,
+      resuming: true,
+      sendAnswer: vi.fn(async () => FINISHED),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await screen.findByTestId('question-text')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText(/Wrapping up/)
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)) })
+    expect(completeUpload).not.toHaveBeenCalled()
+    expect(uploadRecording).not.toHaveBeenCalled()
+
+    releasePart()
+    expect(await screen.findByText('Interview submitted')).toBeInTheDocument()
+    expect(putBlob).toHaveBeenCalledTimes(1)
+    expect(completeUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it('still completes the interview when the earlier recording cannot be sent, and keeps it for next time', async () => {
+    const recordingStore = memoryStore({ 'iv-1/before-reload': [EARLIER] })
+    const requestPartUploadUrl = vi.fn(async () => {
+      throw { response: { status: 422, data: { code: 'INTERVIEW_TOO_MANY_PARTS' } } }
+    })
+    const { completeUpload } = setup({
+      recordingStore,
+      requestPartUploadUrl,
+      resuming: true,
+      sendAnswer: vi.fn(async () => FINISHED),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await screen.findByTestId('question-text')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByText('Interview submitted')).toBeInTheDocument()
+    expect(completeUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it('forgets everything it kept once the interview is submitted', async () => {
+    const recordingStore = memoryStore()
+    setup({ recordingStore, sendAnswer: vi.fn(async () => FINISHED) })
+    await acceptAndStart()
+    interviewRecorder().emit(new Blob(['x'.repeat(10)]))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText('Interview submitted')
+
+    expect(recordingStore.deleteInterview).toHaveBeenCalledWith('iv-1')
+  })
+
+  it('keeps what it recorded while the upload fails, so a reload can still send it', async () => {
+    uploadRecording.mockRejectedValueOnce({ response: { status: 422, data: { message: 'We did not receive your recording.' } } })
+    const recordingStore = memoryStore()
+    setup({ recordingStore, sendAnswer: vi.fn(async () => FINISHED) })
+    await acceptAndStart()
+    interviewRecorder().emit(new Blob(['x'.repeat(10)]))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText(/hasn.t uploaded yet/)
+
+    expect(recordingStore.deleteInterview).not.toHaveBeenCalled()
+    await waitFor(() => expect(recordingStore.chunks.size).toBe(1))
+  })
+
+  it('records in memory only, as before, when the browser has no storage', async () => {
+    const sendAnswer = vi.fn(async () => FINISHED)
+    setup({ recordingStore: null, sendAnswer })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByText('Interview submitted')).toBeInTheDocument()
+    expect(uploadRecording.mock.calls[0][0].blob.size).toBeGreaterThan(0)
   })
 })

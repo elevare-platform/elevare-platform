@@ -13,6 +13,7 @@ from app.core.limiter import limiter
 from app.modules.candidates.models import CandidateProfile
 from app.modules.interviews.questions import InterviewQuestionService
 from app.modules.interviews.schema import (
+    CandidateInterviewDetailResponse,
     CandidateInterviewResponse,
     InterviewCompleteRequest,
     InterviewDetailResponse,
@@ -26,11 +27,11 @@ from app.modules.interviews.schema import (
     InterviewQuestionsPutRequest,
     InterviewQuestionsResponse,
     InterviewResetRequestResponse,
-    InterviewResponse,
     InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
     StrictInterviewStateResponse,
+    StrictRecordingPartResponse,
     StrictStartRequest,
 )
 from app.modules.interviews.service import InterviewService
@@ -80,6 +81,27 @@ async def start_strict_interview(
             candidate_id=candidate.user_id,
             accepted=body.accepted,
             rules_version=body.rules_version,
+        )
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/applications/{application_id}/strict/recording-part",
+    status_code=201,
+    response_model=StrictRecordingPartResponse,
+)
+async def create_strict_recording_part_url(
+    application_id: uuid.UUID,
+    candidate: CandidateProfile = Depends(get_candidate),
+    db: AsyncSession = Depends(get_db),
+) -> StrictRecordingPartResponse:
+    """An upload URL for an earlier recording the browser kept across a reload. The server
+    joins it with the final recording into one video before scoring."""
+    service = InterviewService(db)
+    try:
+        return await service.recording_part_url(
+            application_id=application_id, candidate_id=candidate.user_id
         )
     finally:
         await service.close()
@@ -181,14 +203,14 @@ async def create_upload_url(
 @router.post(
     "/applications/{application_id}/complete",
     status_code=200,
-    response_model=InterviewResponse,
+    response_model=CandidateInterviewResponse,
 )
 async def complete_interview_upload(
     application_id: uuid.UUID,
     body: InterviewCompleteRequest = InterviewCompleteRequest(),
     candidate: CandidateProfile = Depends(get_candidate),
     db: AsyncSession = Depends(get_db),
-) -> InterviewResponse:
+) -> CandidateInterviewResponse:
     """Candidate confirms the recording finished uploading to R2."""
     service = InterviewService(db)
     try:
@@ -205,21 +227,22 @@ async def complete_interview_upload(
 @router.get(
     "/applications/{application_id}",
     status_code=200,
-    response_model=CandidateInterviewResponse,
+    response_model=CandidateInterviewDetailResponse,
 )
 async def get_interview(
     application_id: uuid.UUID,
     candidate: CandidateProfile = Depends(get_candidate),
     db: AsyncSession = Depends(get_db),
-) -> CandidateInterviewResponse:
-    """Candidate views the status of their interview for an application."""
+) -> CandidateInterviewDetailResponse:
+    """Candidate views the status of their interview for an application. Never the
+    employer's assessment of them."""
     service = InterviewService(db)
     try:
         interview = await service.get_for_application(
             application_id=application_id, candidate_id=candidate.user_id
         )
-        return CandidateInterviewResponse(
-            **InterviewResponse.model_validate(interview).model_dump(),
+        return CandidateInterviewDetailResponse(
+            **CandidateInterviewResponse.model_validate(interview).model_dump(),
             style=await service.style_of(interview),
         )
     finally:
@@ -469,6 +492,25 @@ async def start_strict_interview_by_token(
 
 
 @public_router.post(
+    "/{token}/strict/recording-part",
+    status_code=201,
+    response_model=StrictRecordingPartResponse,
+)
+@limiter.limit("20/minute")
+async def create_strict_recording_part_url_by_token(
+    request: Request,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> StrictRecordingPartResponse:
+    """An upload URL for an earlier recording the browser kept across a reload."""
+    service = InterviewService(db)
+    try:
+        return await service.recording_part_url_by_token(token)
+    finally:
+        await service.close()
+
+
+@public_router.post(
     "/{token}/strict/answer",
     status_code=200,
     response_model=StrictInterviewStateResponse,
@@ -532,7 +574,7 @@ async def create_upload_url_by_token(
 @public_router.post(
     "/{token}/complete",
     status_code=200,
-    response_model=InterviewResponse,
+    response_model=CandidateInterviewResponse,
 )
 @limiter.limit("10/minute")
 async def complete_interview_upload_by_token(
@@ -540,7 +582,7 @@ async def complete_interview_upload_by_token(
     token: str,
     body: InterviewCompleteRequest = InterviewCompleteRequest(),
     db: AsyncSession = Depends(get_db),
-) -> InterviewResponse:
+) -> CandidateInterviewResponse:
     """Confirm the recording finished uploading, from an emailed invite link."""
     service = InterviewService(db)
     try:

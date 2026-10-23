@@ -373,6 +373,34 @@ class StrictInterviewService:
         return self._state(interview, run, turns, now)
 
     # ------------------------------------------------------------------
+    # Recording pieces that survived a reload
+    # ------------------------------------------------------------------
+
+    async def reserve_recording_part(self, interview: Interview) -> int:
+        """Reserve the next part number for a recording the browser kept across a reload.
+
+        The number is handed out (and counted) here, under the interview's row lock, so two
+        tabs can never be given the same part. A part that is then never uploaded is skipped
+        when the pieces are joined.
+        """
+        status = await self._repo.lock_status(interview.id)
+        if status not in (InterviewStatus.PENDING.value, InterviewStatus.IN_PROGRESS.value):
+            raise ValidationException("This interview can no longer accept a recording")
+        run = await self.get_run(interview.id)
+        if run is None:
+            raise ValidationException(
+                "This is not a strict interview.", code="INTERVIEW_WRONG_STYLE"
+            )
+        if run.recording_parts >= settings.strict_recording_max_parts:
+            raise ValidationException(
+                "This interview has been interrupted too many times to keep every recording.",
+                code="INTERVIEW_TOO_MANY_PARTS",
+            )
+        run.recording_parts += 1
+        await self._db.commit()
+        return run.recording_parts
+
+    # ------------------------------------------------------------------
     # Answering
     # ------------------------------------------------------------------
 

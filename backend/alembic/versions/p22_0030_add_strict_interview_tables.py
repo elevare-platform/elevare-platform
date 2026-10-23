@@ -59,6 +59,10 @@ def upgrade() -> None:
         sa.Column("rules_accepted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("questions", postgresql.JSONB(), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+        # How many earlier recordings (kept by the browser across a reload) were uploaded as
+        # separate parts. The server joins them with the final recording into one video
+        # before scoring, then sets this back to 0.
+        sa.Column("recording_parts", sa.Integer(), nullable=False, server_default="0"),
         sa.UniqueConstraint("interview_id", name="uq_interview_strict_runs_interview"),
     )
 
