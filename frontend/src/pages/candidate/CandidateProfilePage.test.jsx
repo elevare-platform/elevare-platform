@@ -137,3 +137,103 @@ describe('CandidateProfilePage, finishing a profile', () => {
     expect(navigate).toHaveBeenCalledWith('/jobs/42', { replace: true })
   })
 })
+
+describe('CandidateProfilePage, a profile that is not complete after saving', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function save() {
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save Profile' })) })
+  }
+
+  it('does not tell someone who has a CV to upload one when it is the skills that are missing', async () => {
+    mockProfile = { ...WITHOUT_CV, bio: 'Sales professional', skills: [], cvs: [{ id: 'c1' }] }
+    api.put.mockResolvedValueOnce({ data: { is_profile_complete: false } })
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText('About You'), { target: { value: 'Sales professional, 4 years' } })
+    await save()
+
+    const note = (await screen.findByText(/Your profile is not complete yet/)).closest('[role="note"]')
+    expect(note).toHaveTextContent('It still needs skills.')
+    expect(note).not.toHaveTextContent(/CV/)
+    expect(note.querySelector('a')).toBeNull()
+  })
+
+  it('names everything that is missing, and only then points to the CV page', async () => {
+    mockProfile = { ...WITHOUT_CV, bio: 'x', skills: [], location: '', cvs: [] }
+    api.put.mockResolvedValueOnce({ data: { is_profile_complete: false } })
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText('About You'), { target: { value: 'Sales professional' } })
+    await save()
+
+    const note = (await screen.findByText(/Your profile is not complete yet/)).closest('[role="note"]')
+    expect(note).toHaveTextContent('It still needs skills, location and a CV.')
+    expect(note.querySelector('a')).toHaveAttribute('href', '/candidate/dashboard/documents')
+  })
+
+  it('says it needs a CV when that is all that is missing', async () => {
+    mockProfile = { ...WITHOUT_CV, bio: 'Sales professional', cvs: [] }
+    api.put.mockResolvedValueOnce({ data: { is_profile_complete: false } })
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText('About You'), { target: { value: 'Sales professional, 4 years' } })
+    await save()
+
+    const note = (await screen.findByText(/Your profile is not complete yet/)).closest('[role="note"]')
+    expect(note).toHaveTextContent('It still needs a CV.')
+  })
+})
+
+describe('CandidateProfilePage, skills on a tablet', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.clearAllMocks()
+    mockProfile = { ...WITHOUT_CV, skills: [], cvs: [{ id: 'c1' }] }
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('saves a skill that was typed but never confirmed with Enter, when Save is tapped', async () => {
+    api.put.mockResolvedValueOnce({ data: { is_profile_complete: true } })
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText('Add a skill'), { target: { value: 'Negotiation' } })
+    // Tapping Save moves focus away from the field first.
+    fireEvent.blur(screen.getByLabelText('Add a skill'))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save Profile' })) })
+
+    expect(api.put).toHaveBeenCalledTimes(1)
+    expect(api.put.mock.calls[0][1].skills).toEqual(['Negotiation'])
+  })
+
+  it('does not save the profile when Enter is pressed in the skills field', () => {
+    renderPage()
+    fireEvent.change(screen.getByLabelText('Add a skill'), { target: { value: 'Negotiation' } })
+
+    fireEvent.keyDown(screen.getByLabelText('Add a skill'), { key: 'Unidentified', keyCode: 13 })
+
+    expect(api.put).not.toHaveBeenCalled()
+    expect(screen.getByText('Negotiation')).toBeInTheDocument()
+  })
+
+  it('adds a skill with the Add button and saves it', async () => {
+    api.put.mockResolvedValueOnce({ data: { is_profile_complete: true } })
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText('Add a skill'), { target: { value: 'Negotiation' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add skill' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save Profile' })) })
+
+    expect(api.put.mock.calls[0][1].skills).toEqual(['Negotiation'])
+  })
+})

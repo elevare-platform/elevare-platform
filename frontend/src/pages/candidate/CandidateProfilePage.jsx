@@ -4,6 +4,7 @@ import { ArrowLeft, AlertCircle, CheckCircle, Plus, Trash2, Briefcase, Graduatio
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { SkillsInput } from '@/components/candidate/SkillsInput'
+import { CV_MISSING, joinList, missingForCompletion } from '@/lib/profileCompleteness'
 import { useCandidateProfile } from '@/hooks/useCandidateProfile'
 import { useAuth } from '@/context/AuthContext'
 import api from '@/lib/api'
@@ -353,8 +354,9 @@ export default function CandidateProfilePage() {
 
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
-  // Saved, but the profile is still not complete (it still needs a CV).
-  const [savedIncomplete, setSavedIncomplete] = useState(false)
+  // Saved, but the profile is still not complete: what it still needs, as labels (null when it
+  // is complete or nothing has been saved).
+  const [savedMissing, setSavedMissing] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
   const [saveError, setSaveError] = useState(null)
 
@@ -415,7 +417,9 @@ export default function CandidateProfilePage() {
       const { data } = await api.put('/api/v1/candidates/me', changed)
       setInitialValues({ ...values })
       setSaveSuccess(true)
-      setSavedIncomplete(!data.is_profile_complete)
+      setSavedMissing(
+        data.is_profile_complete ? null : missingForCompletion(values, profile?.cvs?.length ?? 0)
+      )
       // Keep AuthContext's user.is_profile_complete in sync immediately —
       // without this, ApplyButton and other gates keep using the stale
       // value from login until the next full page refresh.
@@ -445,7 +449,7 @@ export default function CandidateProfilePage() {
         setSaveError(typeof detail === 'string' ? detail : (err.message ?? 'Failed to save profile.'))
       }
     } finally { setSaving(false) }
-  }, [dirty, initialValues, values, updateUser])
+  }, [dirty, initialValues, values, updateUser, profile?.cvs?.length])
 
   // Delete handlers
   const handleDeleteWork = async (id) => {
@@ -621,10 +625,13 @@ export default function CandidateProfilePage() {
                   <CheckCircle size={15} />Your profile has been updated.
                 </div>
               )}
-              {saveSuccess && savedIncomplete && (
+              {saveSuccess && savedMissing && (
                 <div role="note" className="rounded-lg border border-brand-amber/30 bg-brand-amber/5 px-4 py-3 text-sm text-amber-800">
-                  Your profile is not complete yet, so you cannot apply for jobs. It still needs a CV.{' '}
-                  <Link to="/candidate/dashboard/documents" className="font-semibold underline">Upload your CV</Link>
+                  Your profile is not complete yet, so you cannot apply for jobs.
+                  {savedMissing.length > 0 && <> It still needs {joinList(savedMissing)}.</>}
+                  {savedMissing.includes(CV_MISSING) && (
+                    <>{' '}<Link to="/candidate/dashboard/documents" className="font-semibold underline">Upload your CV</Link></>
+                  )}
                 </div>
               )}
               {saveError && (
