@@ -26,10 +26,12 @@ from app.modules.interviews.schema import (
     InterviewQuestionsDraftResponse,
     InterviewQuestionsPutRequest,
     InterviewQuestionsResponse,
+    InterviewReinstateResponse,
     InterviewResetRequestResponse,
     InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
+    StrictEventRequest,
     StrictInterviewStateResponse,
     StrictRecordingPartResponse,
     StrictStartRequest,
@@ -81,6 +83,53 @@ async def start_strict_interview(
             candidate_id=candidate.user_id,
             accepted=body.accepted,
             rules_version=body.rules_version,
+        )
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/applications/{application_id}/strict/event",
+    status_code=200,
+    response_model=StrictInterviewStateResponse,
+)
+async def report_strict_event(
+    application_id: uuid.UUID,
+    body: StrictEventRequest,
+    candidate: CandidateProfile = Depends(get_candidate),
+    db: AsyncSession = Depends(get_db),
+) -> StrictInterviewStateResponse:
+    """The screen reports a leave, a return, a key press or a heartbeat. The server times it,
+    and the reply says whether it ended the interview and how many warnings are used."""
+    service = InterviewService(db)
+    try:
+        return await service.strict_event(
+            application_id=application_id,
+            candidate_id=candidate.user_id,
+            event_type=body.type,
+            cause=body.cause,
+            key=body.key,
+        )
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/applications/{application_id}/strict/stop",
+    status_code=200,
+    response_model=StrictInterviewStateResponse,
+)
+async def stop_strict_interview(
+    application_id: uuid.UUID,
+    candidate: CandidateProfile = Depends(get_candidate),
+    db: AsyncSession = Depends(get_db),
+) -> StrictInterviewStateResponse:
+    """The candidate pressed "I need to stop" and confirmed. Ends the interview as their own
+    choice; the employer can reinstate it."""
+    service = InterviewService(db)
+    try:
+        return await service.stop_strict(
+            application_id=application_id, candidate_id=candidate.user_id
         )
     finally:
         await service.close()
@@ -244,6 +293,7 @@ async def get_interview(
         return CandidateInterviewDetailResponse(
             **CandidateInterviewResponse.model_validate(interview).model_dump(),
             style=await service.style_of(interview),
+            started=await service.is_started(interview),
         )
     finally:
         await service.close()
@@ -259,6 +309,26 @@ async def send_interview_invite(
     service = InterviewService(db)
     try:
         return await service.send_invite(current_user, job_id, talent_pool_profile_id)
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/{talent_pool_profile_id}/reinstate",
+    response_model=InterviewReinstateResponse,
+    status_code=200,
+)
+async def reinstate_interview(
+    talent_pool_profile_id: uuid.UUID,
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Let a candidate carry on with an AI interview that ended early, where they stopped.
+    Only the company that owns the job may do this. Nothing is charged."""
+    service = InterviewService(db)
+    try:
+        return await service.reinstate(current_user, job_id, talent_pool_profile_id)
     finally:
         await service.close()
 
@@ -487,6 +557,47 @@ async def start_strict_interview_by_token(
         return await service.start_strict_by_token(
             token, accepted=body.accepted, rules_version=body.rules_version
         )
+    finally:
+        await service.close()
+
+
+@public_router.post(
+    "/{token}/strict/event",
+    status_code=200,
+    response_model=StrictInterviewStateResponse,
+)
+@limiter.limit("120/minute")
+async def report_strict_event_by_token(
+    request: Request,
+    token: str,
+    body: StrictEventRequest,
+    db: AsyncSession = Depends(get_db),
+) -> StrictInterviewStateResponse:
+    """The screen reports a leave, a return, a key press or a heartbeat (about 4 a minute)."""
+    service = InterviewService(db)
+    try:
+        return await service.strict_event_by_token(
+            token, event_type=body.type, cause=body.cause, key=body.key
+        )
+    finally:
+        await service.close()
+
+
+@public_router.post(
+    "/{token}/strict/stop",
+    status_code=200,
+    response_model=StrictInterviewStateResponse,
+)
+@limiter.limit("10/minute")
+async def stop_strict_interview_by_token(
+    request: Request,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> StrictInterviewStateResponse:
+    """The candidate pressed "I need to stop" and confirmed."""
+    service = InterviewService(db)
+    try:
+        return await service.stop_strict_by_token(token)
     finally:
         await service.close()
 

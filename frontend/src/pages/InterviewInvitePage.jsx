@@ -67,6 +67,18 @@ export default function InterviewInvitePage() {
     return data
   }, [token])
 
+  // What the screen reports while the interview runs (a leave, a return, a key press, a
+  // heartbeat), and "I need to stop". The server times and counts them and says if it ended.
+  const reportStrictEvent = useCallback(async (body) => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/event`, body)
+    return data
+  }, [token])
+
+  const stopStrict = useCallback(async () => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/stop`)
+    return data
+  }, [token])
+
   // Where to send a recording the browser kept across a reload (the server joins the parts).
   const requestPartUploadUrl = useCallback(async () => {
     const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/recording-part`)
@@ -106,11 +118,17 @@ export default function InterviewInvitePage() {
         startInterview={startStrict}
         sendAnswer={sendStrictAnswer}
         requestUploadUrl={requestUploadUrl}
+        reportEvent={reportStrictEvent}
+        stopInterview={stopStrict}
         completeUpload={completeStrict}
         requestPartUploadUrl={requestPartUploadUrl}
         subtitle={subtitle}
         maxMinutes={info.max_duration_minutes}
-        resuming={info.status === 'IN_PROGRESS'}
+        // Started before: reloaded mid-interview (IN_PROGRESS), or reinstated by the employer
+        // (PENDING again, but already started).
+        resuming={Boolean(info.started) || info.status === 'IN_PROGRESS'}
+        reinstated={Boolean(info.started) && info.status === 'PENDING'}
+        endedStatus={['ENDED_CONDUCT', 'STOPPED'].includes(info.status) ? info.status : null}
         completed={['UPLOADED', 'SCORED'].includes(info.status)}
       />
     )

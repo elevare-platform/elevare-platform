@@ -3,6 +3,7 @@ import {
   INTERVIEW_RULES_VERSION,
   MONITORING,
   RULE_GROUPS,
+  STRICT_MONITORING,
   STRICT_RULES_VERSION,
   STRICT_RULE_GROUPS,
   numberedRuleGroups,
@@ -113,23 +114,65 @@ describe('the strict interview rules', () => {
     expect(claimsMonitoring.every((rule) => rule.needs)).toBe(true)
   })
 
-  it('hide the leaving-the-page rule today, because nothing notices it yet', () => {
-    expect(strictIds(MONITORING)).not.toContain('stay-on-page')
-    expect(strictIds({ ...ALL_OFF, tabSwitch: true })).toContain('stay-on-page')
+  it('show the leaving, key and stop rules, because the strict screen really does those', () => {
+    expect(STRICT_MONITORING.tabSwitch).toBe(true)
+    const ids = strictIds(STRICT_MONITORING)
+
+    expect(ids).toEqual(expect.arrayContaining(['stay-on-page', 'keys-noted', 'stop-button', 'if-it-ends']))
+  })
+
+  it('hide those rules when the monitoring is off, so nothing is ever promised that is not done', () => {
+    const ids = strictIds(ALL_OFF)
+
+    for (const id of ['stay-on-page', 'keys-noted', 'stop-button', 'if-it-ends']) expect(ids).not.toContain(id)
+  })
+
+  it('never show a face or gaze rule, since that is not built', () => {
+    expect(STRICT_MONITORING.faceChecks).toBe(false)
+    expect(STRICT_MONITORING.gaze).toBe(false)
+    expect(strictIds(STRICT_MONITORING)).not.toContain('face-visible')
+    expect(strictIds(STRICT_MONITORING)).not.toContain('look-at-screen')
+  })
+
+  it('leave the live interviews own switches alone, so the live rules still claim nothing', () => {
+    expect(MONITORING).toEqual(ALL_OFF)
+  })
+
+  it('state the limits the server enforces: the first three leaves warn, the fourth or 60 seconds ends it', () => {
+    const rule = strictRules.find((r) => r.id === 'stay-on-page')
+
+    expect(rule.text).toContain('first three times you get a warning')
+    expect(rule.text).toContain('The fourth time')
+    expect(rule.text).toContain('60 seconds')
+  })
+
+  it('say the keys that are noted do not end the interview', () => {
+    const rule = strictRules.find((r) => r.id === 'keys-noted')
+
+    expect(rule.text).toContain('does not end the interview')
+    for (const key of ['Esc', 'Alt', 'F11', 'F12']) expect(rule.text).toContain(key)
+  })
+
+  it('say that stopping is the candidates own choice, and what happens after an ending', () => {
+    expect(strictRules.find((r) => r.id === 'stop-button').text).toContain('your choice')
+    expect(strictRules.find((r) => r.id === 'if-it-ends').text).toContain('still sent to the employer')
+    expect(strictRules.find((r) => r.id === 'employer-decides').text).toContain('not proof of anything')
   })
 
   it('state what the screen really does: laptops only, one screen, full screen', () => {
-    const ids = strictIds(MONITORING)
+    const ids = strictIds(STRICT_MONITORING)
 
     expect(ids).toEqual(expect.arrayContaining(['laptop-and-browser', 'one-screen', 'full-screen', 'questions-on-screen', 'follow-up']))
   })
 
   it('are numbered from 1 with no gap', () => {
-    const numbers = numberedRuleGroups(MONITORING, STRICT_RULE_GROUPS).flatMap((group) =>
-      group.rules.map((rule) => rule.number)
-    )
+    for (const monitoring of [ALL_OFF, STRICT_MONITORING]) {
+      const numbers = numberedRuleGroups(monitoring, STRICT_RULE_GROUPS).flatMap((group) =>
+        group.rules.map((rule) => rule.number)
+      )
 
-    expect(numbers).toEqual(numbers.map((_, index) => index + 1))
+      expect(numbers).toEqual(numbers.map((_, index) => index + 1))
+    }
   })
 })
 

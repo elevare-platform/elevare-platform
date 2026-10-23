@@ -19,10 +19,22 @@ from pathlib import Path
 _WIDTH, _HEIGHT, _FPS = 1280, 720, 30
 
 
-def merge_key(interview_id) -> str:
-    """Where the joined recording is stored. A different key from every piece, so a task that
-    stops half way and runs again can never read its own output as an input."""
-    return f"interviews/{interview_id}/recording-merged.webm"
+def final_key(interview_id, attempt: int = 1) -> str:
+    """Where the browser uploads the final recording of attempt ``attempt``. The first attempt
+    keeps the name every interview has always used; a reinstated interview's later attempts
+    get their own, so an earlier attempt's recording is never overwritten."""
+    if attempt <= 1:
+        return f"interviews/{interview_id}/recording.webm"
+    return f"interviews/{interview_id}/recording-a{attempt}.webm"
+
+
+def merge_key(interview_id, attempt: int = 1) -> str:
+    """Where the joined recording of an attempt is stored. A different key from every piece
+    (and from every other attempt's), so a task that stops half way and runs again can never
+    read its own output as an input, and a later attempt never overwrites an earlier one."""
+    if attempt <= 1:
+        return f"interviews/{interview_id}/recording-merged.webm"
+    return f"interviews/{interview_id}/recording-merged-a{attempt}.webm"
 
 
 def part_key(interview_id, part: int) -> str:

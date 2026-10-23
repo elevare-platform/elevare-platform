@@ -6,6 +6,7 @@ the final recording before scoring). The join itself is tested with real ffmpeg 
 ``test_recording_merge.py``; here it is replaced by a fake so the logic around it can be
 checked: which pieces, in which order, what is deleted, and what happens when something fails."""
 
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,7 +17,7 @@ from app.modules.interviews import service as service_module
 from app.modules.interviews import tasks as tasks_module
 from app.modules.interviews.enums import InterviewStatus
 from app.modules.interviews.models import StrictInterviewRun
-from app.modules.interviews.recording_merge import merge_key, part_key
+from app.modules.interviews.recording_merge import final_key, merge_key, part_key
 from app.modules.interviews.repository import InterviewRepository
 
 from .test_strict_interview import _base, _logged_in_strict, make_strict
@@ -217,6 +218,62 @@ async def test_the_parts_and_the_final_recording_become_one_video_in_that_order(
     assert set(join["storage"].deleted) == {part_key(interview.interview.id, 1), part_key(interview.interview.id, 2), original}
     assert set(join["storage"].files) == {new_key}
     assert (await _run(db_session, interview.interview)).recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_the_recordings_of_earlier_attempts_come_first_then_the_parts_then_the_final_one(
+    db_session, join
+):
+    """An interview the employer reinstated: attempt 1's recording, then attempt 2's parts
+    kept across a reload, then attempt 2's final recording, as one video."""
+    interview = await _interview_with_parts(db_session, join, parts=1)
+    run = await _run(db_session, interview.interview)
+    run.attempt = 2
+    first_attempt = f"interviews/{interview.interview.id}/recording.webm.attempt1"
+    run.previous_recordings = [first_attempt]
+    await db_session.commit()
+    join["storage"].files[first_attempt] = b"ATTEMPT1"
+    interview.interview.r2_key = final_key(interview.interview.id, 2)
+    join["storage"].files[interview.interview.r2_key] = b"FINAL2"
+    await db_session.commit()
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == [[b"ATTEMPT1", b"P1", b"FINAL2"]]
+    assert merged.r2_key == merge_key(interview.interview.id, 2)
+    assert join["storage"].files[merged.r2_key] == b"ATTEMPT1+P1+FINAL2"
+    # Attempt 2's joined video never overwrites attempt 1's, and everything joined is deleted.
+    assert merge_key(interview.interview.id, 2) != merge_key(interview.interview.id, 1)
+    assert first_attempt in join["storage"].deleted
+    refreshed = await _run(db_session, interview.interview)
+    assert refreshed.previous_recordings is None and refreshed.recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_an_earlier_attempt_alone_is_still_joined_in_front_of_the_final_recording(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=0)
+    run = await _run(db_session, interview.interview)
+    first_attempt = f"interviews/{interview.interview.id}/recording.webm.attempt1"
+    run.previous_recordings = [first_attempt]
+    await db_session.commit()
+    join["storage"].files[first_attempt] = b"ATTEMPT1"
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == [[b"ATTEMPT1", b"FINAL"]]
+    assert merged.r2_key == merge_key(interview.interview.id, run.attempt)
+
+
+@pytest.mark.asyncio
+async def test_each_attempt_has_its_own_final_and_joined_file():
+    interview_id = uuid.uuid4()
+
+    keys = {final_key(interview_id, n) for n in (1, 2, 3)} | {merge_key(interview_id, n) for n in (1, 2, 3)}
+
+    assert len(keys) == 6
+    # The first attempt keeps the names every interview has always used.
+    assert final_key(interview_id) == f"interviews/{interview_id}/recording.webm"
+    assert merge_key(interview_id) == f"interviews/{interview_id}/recording-merged.webm"
 
 
 @pytest.mark.asyncio

@@ -28,7 +28,6 @@ from app.modules.interviews.models import (
 from app.modules.interviews.service import InterviewService
 from app.modules.interviews.strict import (
     NO_ANSWER_TEXT,
-    StrictInterviewService,
     audio_file_name,
     clean_follow_up,
     valid_rules_version,
@@ -37,6 +36,7 @@ from app.modules.talent_pool.models import TalentPoolProfiles
 from tests.conftest import make_employer, make_job
 
 from .conftest import (
+    LONG_ANSWER,
     make_interview,
     make_interview_list_entry,
     make_talent_pool_profile,
@@ -49,62 +49,21 @@ QUESTIONS = [
     ("How did you handle your last production outage?", 120),
     ("How do you decide what needs a test?", 120),
 ]
-LONG_ANSWER = "I designed the billing service so that every charge was recorded before it was sent."
 AUDIO = b"x" * 3000
 
 
-class FakeSpeech:
-    """Stands in for speech-to-text: hands back queued texts, or fails on demand."""
-
-    def __init__(self):
-        self.texts: list[str] = []
-        self.calls = 0
-        self.fail = False
-        self.seconds = 60.0
-
-    async def __call__(self, audio, filename):
-        self.calls += 1
-        if self.fail:
-            raise RuntimeError("speech to text is down")
-        return (self.texts.pop(0) if self.texts else LONG_ANSWER), self.seconds
+# The fakes for speech-to-text and the follow-up model, and the server's clock, are the
+# `fakes` and `clock` fixtures in conftest.py (shared with test_strict_conduct.py).
 
 
-class FakeAI:
-    """Stands in for the follow-up model: hands back queued replies, or fails on demand."""
-
-    def __init__(self):
-        self.replies: list[str | None] = []
-        self.calls: list[dict] = []
-        self.fail = False
-
-    async def decide_interview_follow_up(self, *, question, answer, interview_brief):
-        self.calls.append({"question": question, "answer": answer, "brief": interview_brief})
-        if self.fail:
-            raise RuntimeError("the model is down")
-        return self.replies.pop(0) if self.replies else None
-
-
-@pytest.fixture
-def fakes(monkeypatch):
-    speech, ai = FakeSpeech(), FakeAI()
-    monkeypatch.setattr(
-        InterviewService,
-        "_strict",
-        lambda self: StrictInterviewService(self._db, self._repo, transcribe=speech, ai_service=ai),
-    )
-    return SimpleNamespace(speech=speech, ai=ai)
-
-
-@pytest.fixture
-def clock(monkeypatch):
-    """The server's clock, starting now and moved by the test."""
-    state = {"now": datetime.now(UTC)}
-    monkeypatch.setattr(strict_module, "_now", lambda: state["now"])
-
-    def advance(seconds):
-        state["now"] += timedelta(seconds=seconds)
-
-    return SimpleNamespace(advance=advance, now=lambda: state["now"])
+@pytest.fixture(autouse=True)
+def _conduct_never_ends_these(monkeypatch):
+    """These tests are about the clock, the answers and the follow-ups. Many of them move the
+    clock by minutes between calls, which the conduct rules (a reload is a leave, 60 seconds
+    away ends the interview) would count as being away, so those limits are lifted here. The
+    conduct rules are tested in ``test_strict_conduct.py``."""
+    monkeypatch.setattr(settings, "strict_max_leaves", 10**6)
+    monkeypatch.setattr(settings, "strict_max_away_seconds", 10**9)
 
 
 async def make_strict(db_session, questions=QUESTIONS, *, strict=True, brief=BRIEF, **overrides):

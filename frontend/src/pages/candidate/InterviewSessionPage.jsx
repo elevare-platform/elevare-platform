@@ -62,6 +62,18 @@ export default function InterviewSessionPage() {
     return data
   }, [applicationId])
 
+  // What the screen reports while the interview runs (a leave, a return, a key press, a
+  // heartbeat), and "I need to stop". The server times and counts them and says if it ended.
+  const reportStrictEvent = useCallback(async (body) => {
+    const { data } = await api.post(`/api/v1/interviews/applications/${applicationId}/strict/event`, body)
+    return data
+  }, [applicationId])
+
+  const stopStrict = useCallback(async () => {
+    const { data } = await api.post(`/api/v1/interviews/applications/${applicationId}/strict/stop`)
+    return data
+  }, [applicationId])
+
   // Where to send a recording the browser kept across a reload (the server joins the parts).
   const requestPartUploadUrl = useCallback(async () => {
     const { data } = await api.post(`/api/v1/interviews/applications/${applicationId}/strict/recording-part`)
@@ -97,6 +109,8 @@ export default function InterviewSessionPage() {
         startInterview={startStrict}
         sendAnswer={sendStrictAnswer}
         requestUploadUrl={requestUploadUrl}
+        reportEvent={reportStrictEvent}
+        stopInterview={stopStrict}
         completeUpload={completeStrict}
         requestPartUploadUrl={requestPartUploadUrl}
         backTo="/candidate/applications"
@@ -105,7 +119,9 @@ export default function InterviewSessionPage() {
           label: 'Back to applications',
           onClick: () => navigate('/candidate/applications'),
         }}
-        resuming={interview.status === 'IN_PROGRESS'}
+        resuming={Boolean(interview.started) || interview.status === 'IN_PROGRESS'}
+        reinstated={Boolean(interview.started) && interview.status === 'PENDING'}
+        endedStatus={['ENDED_CONDUCT', 'STOPPED'].includes(interview.status) ? interview.status : null}
         completed={['UPLOADED', 'SCORED'].includes(interview.status)}
       />
     )

@@ -97,6 +97,52 @@ class StrictInterviewRun(BaseModel):
     recording_parts: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
+    # Which try this is; an employer reinstating an ended interview starts the next one. The
+    # leave count and the time away are counted per attempt.
+    attempt: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    # The last time the candidate's screen was heard from (a heartbeat every 15 seconds).
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set while the candidate is away from the interview screen: when it began and why.
+    away_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    away_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # When the interview was ended or stopped, and why (an ``END_*`` value). Cleared when it is
+    # reinstated; the timeline keeps the history.
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Set when an employer reinstates an interview: the moment its clock stopped. The clock
+    # starts again when the candidate next opens the link, which moves the interview's start and
+    # the open question forward by the time in between. Cleared then.
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The final recordings of earlier attempts (storage keys, oldest first). They are joined in
+    # front of the latest one when the interview finishes.
+    previous_recordings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+
+class InterviewConductEvent(BaseModel):
+    """One row of a strict interview's timeline: a leave, a reload, a key press, a stop, an
+    ending or a reinstatement, with the time the SERVER saw it (so the employer can check it
+    against the recording). Kept after the interview, with the recording."""
+
+    __tablename__ = "interview_conduct_events"
+    __table_args__ = (Index("ix_interview_conduct_events_interview_id", "interview_id"),)
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    attempt: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    # A ConductEventKind value.
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    # What kind of leave (HIDDEN, BLUR, FULLSCREEN), which key, or why it ended.
+    detail: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # How long a leave or reload lasted; None for a leave still open and for other kinds.
+    duration_seconds: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    # Whether it counts towards ending the interview (a key press never does).
+    counted: Mapped[bool] = mapped_column(
+        sa.Boolean, default=False, server_default=sa.false(), nullable=False
+    )
 
 
 class InterviewTurn(BaseModel):

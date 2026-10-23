@@ -62,6 +62,41 @@ describe('InterviewInvitePage, which interview the link opens', () => {
     expect(await screen.findByRole('button', { name: 'Continue the interview' })).toBeInTheDocument()
   })
 
+  it('shows an interview that ended for conduct as ended, with the company, and offers no way to start', async () => {
+    renderPage({ ...INFO, style: 'strict', status: 'ENDED_CONDUCT', started: true })
+
+    expect(await screen.findByTestId('ended-screen')).toBeInTheDocument()
+    expect(screen.getByText('Your interview has ended')).toBeInTheDocument()
+    expect(screen.getByText('Acme Nigeria Ltd · Sales Executive')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Start the interview|Continue the interview/ })).not.toBeInTheDocument()
+  })
+
+  it('shows an interview the candidate stopped as stopped', async () => {
+    renderPage({ ...INFO, style: 'strict', status: 'STOPPED', started: true })
+
+    expect(await screen.findByText('You stopped the interview')).toBeInTheDocument()
+  })
+
+  it('welcomes back a candidate whose interview the employer reinstated (waiting again, but started)', async () => {
+    renderPage({ ...INFO, style: 'strict', status: 'PENDING', started: true })
+
+    expect(await screen.findByText(/The employer has let you carry on/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue the interview' })).toBeInTheDocument()
+  })
+
+  it('offers to continue after a reload, without saying the employer reinstated anything', async () => {
+    renderPage({ ...INFO, style: 'strict', status: 'IN_PROGRESS', started: true })
+
+    expect(await screen.findByText(/counts as leaving the screen once/)).toBeInTheDocument()
+    expect(screen.queryByText(/The employer has let you carry on/)).not.toBeInTheDocument()
+  })
+
+  it('still offers to continue when an older server does not say whether it was started', async () => {
+    renderPage({ ...INFO, style: 'strict', status: 'IN_PROGRESS' })
+
+    expect(await screen.findByRole('button', { name: 'Continue the interview' })).toBeInTheDocument()
+  })
+
   it('shows a finished strict interview as submitted', async () => {
     renderPage({ ...INFO, style: 'strict', status: 'UPLOADED' })
 

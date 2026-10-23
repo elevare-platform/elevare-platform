@@ -166,6 +166,49 @@ class CandidateInterviewDetailResponse(CandidateInterviewResponse):
     matching flow."""
 
     style: Literal["live", "strict"]
+    # A strict interview that has been started (so the screen offers "Continue", not the rules).
+    started: bool = False
+
+
+class StrictConductEvent(BaseModel):
+    """One row of a strict interview's timeline, with the time the server saw it."""
+
+    kind: str  # LEFT_PAGE | RELOAD | KEY_PRESS | STOPPED | ENDED | REINSTATED
+    detail: str | None = None  # the kind of leave, the key, or why it ended
+    occurred_at: datetime
+    duration_seconds: int | None = None
+    attempt: int = 1
+    counted: bool = False
+
+
+class StrictAnswer(BaseModel):
+    """One question or follow-up and what the candidate said, as text."""
+
+    number: int
+    kind: Literal["QUESTION", "FOLLOW_UP"]
+    question: str
+    answer: str | None
+    answered: bool
+
+
+class StrictDetail(BaseModel):
+    """What an employer (and the shared link) sees about a strict interview, next to the
+    recording: the rules the candidate accepted, a conduct summary, the timeline, how it ended,
+    and each answer under its question. These are notes for a person to review, never proof,
+    and no decision is made from them automatically."""
+
+    rules_version: str | None
+    rules_accepted_at: datetime | None
+    attempt: int
+    # Why the interview ended early (TOO_MANY_LEAVES, TOO_LONG_AWAY, STOPPED), or None.
+    ended: str | None
+    ended_at: datetime | None
+    leaves: int
+    away_seconds: int
+    key_presses: int
+    reloads: int
+    events: list[StrictConductEvent]
+    turns: list[StrictAnswer]
 
 
 class InterviewDetailResponse(BaseModel):
@@ -196,6 +239,8 @@ class InterviewDetailResponse(BaseModel):
     cv_strengths: list[str] | None = None
     cv_weaknesses: list[str] | None = None
     cv_fit_summary: str | None = None
+    # Only for a strict interview (None for a live one).
+    strict: StrictDetail | None = None
 
 
 class InterviewPublicInfoResponse(BaseModel):
@@ -211,6 +256,17 @@ class InterviewPublicInfoResponse(BaseModel):
     # Which interview this invitation is: the live voice conversation or the strict,
     # text-question one. Decided when the invite was created; the screen shows the matching flow.
     style: Literal["live", "strict"] = "live"
+    # A strict interview that has been started (so the screen offers "Continue", not the rules).
+    started: bool = False
+
+
+class InterviewReinstateResponse(BaseModel):
+    """What an employer gets back after reinstating an interview that ended early."""
+
+    status: str
+    interview_url: str
+    # Whether the candidate was sent the link again by email (not when no address is on file).
+    email_sent: bool
 
 
 class StrictRecordingPartResponse(BaseModel):
@@ -252,6 +308,25 @@ class StrictInterviewStateResponse(BaseModel):
     total_questions: int
     seconds_left_total: int
     max_seconds_total: int
+    # Why the interview ended early, or None while it is running. When it is set there is no
+    # further question: the screen says so, and sends the recording as it is.
+    ended: Literal["TOO_MANY_LEAVES", "TOO_LONG_AWAY", "STOPPED"] | None = None
+    # Warnings used so far, against what ends the interview.
+    leaves: int = 0
+    max_leaves: int = 4
+    away_seconds: int = 0
+    max_away_seconds: int = 60
+    key_presses: int = 0
+
+
+class StrictEventRequest(BaseModel):
+    """One thing the candidate's screen reports during a strict interview: it is still there
+    (ping), the page was left (left, with its cause), it is back (returned), or a key that tries
+    to leave was pressed (key, with its name). The server times it with its own clock."""
+
+    type: Literal["ping", "left", "returned", "key"]
+    cause: Literal["HIDDEN", "BLUR", "FULLSCREEN"] | None = None
+    key: str | None = Field(default=None, max_length=40)
 
 
 class InterviewScoreRequestResponse(BaseModel):

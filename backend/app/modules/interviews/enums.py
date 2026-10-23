@@ -23,6 +23,32 @@ class InterviewStatus(str, Enum):
     SCORED = "SCORED"
     FAILED = "FAILED"
     EXPIRED = "EXPIRED"
+    # A strict interview the system ended (too many leaves, or too long away), or that the
+    # candidate stopped with "I need to stop". Neither is scored on its own; the employer can
+    # reinstate it, and the candidate then carries on where they stopped.
+    ENDED_CONDUCT = "ENDED_CONDUCT"
+    STOPPED = "STOPPED"
+
+
+# The two "ended early" statuses of a strict interview.
+ENDED_STATUSES = (InterviewStatus.ENDED_CONDUCT.value, InterviewStatus.STOPPED.value)
+
+
+class ConductEventKind(str, Enum):
+    """What a row of a strict interview's timeline records."""
+
+    LEFT_PAGE = "LEFT_PAGE"  # the page hidden, the window out of focus, or full screen exited
+    RELOAD = "RELOAD"  # the page was reloaded or came back after being closed
+    KEY_PRESS = "KEY_PRESS"  # a key that tries to leave (Esc, Alt, F11...), warned, never counted
+    STOPPED = "STOPPED"  # the candidate pressed "I need to stop"
+    ENDED = "ENDED"  # the system ended the interview
+    REINSTATED = "REINSTATED"  # the employer reinstated it
+
+
+# What ended an interview (the detail of an ENDED event, and the run's ``end_reason``).
+END_TOO_MANY_LEAVES = "TOO_MANY_LEAVES"
+END_TOO_LONG_AWAY = "TOO_LONG_AWAY"
+END_STOPPED = "STOPPED"
 
 
 class TurnKind(str, Enum):

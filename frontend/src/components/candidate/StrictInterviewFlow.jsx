@@ -3,10 +3,22 @@ import { Link } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Maximize } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import InterviewRules from '@/components/candidate/InterviewRules'
-import { STRICT_RULES_VERSION, STRICT_RULE_GROUPS } from '@/lib/interviewRules'
+import { useLeaveWatch } from '@/hooks/useLeaveWatch'
+import { STRICT_MONITORING, STRICT_RULES_VERSION, STRICT_RULE_GROUPS } from '@/lib/interviewRules'
 import { MAX_ATTEMPTS, uploadRecording, withRetry } from '@/lib/interviewUpload'
 import { openRecordingStore } from '@/lib/recordingStore'
 import { salvagePreviousRecordings } from '@/lib/recordingSalvage'
+import {
+  ENDED_FOOTER,
+  HEARTBEAT_MS,
+  KEY_REPEAT_MS,
+  KEY_WARNING,
+  WARNING_SHOW_MS,
+  endedMessage,
+  leaveWarning,
+  reasonFromStatus,
+  reportableKey,
+} from '@/lib/strictConduct'
 import {
   checkDevice,
   formatClock,
@@ -57,15 +69,20 @@ function stopRecorder(recorder, chunks, type) {
  *
  *   startInterview({ accepted, rulesVersion }) -> state   start, or resume after a reload
  *   sendAnswer(turnId, audioBlob)              -> state   the next question, a follow-up, or finished
+ *   reportEvent({ type, cause?, key? })        -> state   a leave, a return, a key press, a heartbeat
+ *   stopInterview()                            -> state   "I need to stop", after the confirmation
  *   requestUploadUrl() / completeUpload()                 as for the live interview
  *
- * Built so far: the device check, the rules, full screen, the questions with their timers, the
- * spoken answers and follow-ups. NOT built yet (phase 3): noticing and recording that the
- * candidate left, warnings, ending the interview for it, and "I need to stop".
+ * Every reply is the server's state, and may say the interview has ENDED (too many leaves, too
+ * long away, or stopped): the screen then stops recording, still sends the recording and the
+ * answers (the employer reviews them and can reinstate it), and says so. The first three leaves
+ * warn; what ends an interview, and how long a leave lasted, is decided by the server's clock.
  */
 export default function StrictInterviewFlow({
   startInterview,
   sendAnswer,
+  reportEvent,
+  stopInterview,
   requestUploadUrl,
   completeUpload,
   requestPartUploadUrl,
@@ -74,7 +91,11 @@ export default function StrictInterviewFlow({
   subtitle = null,
   doneAction = null,
   resuming = false,
+  // The employer reinstated an interview that ended: the candidate carries on where they stopped.
+  reinstated = false,
   completed = false,
+  // The status of an interview that has already ended when the page opens (ENDED_CONDUCT or STOPPED).
+  endedStatus = null,
   maxMinutes = 20,
   // Where the recording is kept while it is made, so a reload does not lose it. Left out, the
   // browser's own storage is used; null (no storage) records in memory only, as before.
@@ -82,8 +103,17 @@ export default function StrictInterviewFlow({
 }) {
   const [recordingStore] = useState(() => (providedStore !== undefined ? providedStore : openRecordingStore()))
   // 'gate' | 'starting' | 'question' | 'sending' | 'send_error' | 'ending' | 'uploading'
-  // | 'upload_error' | 'done' | 'error'
-  const [phase, setPhase] = useState(completed ? 'done' : 'gate')
+  // | 'upload_error' | 'done' | 'ended' | 'error'
+  const [endedReason, setEndedReason] = useState(() => reasonFromStatus(endedStatus))
+  const [phase, setPhase] = useState(
+    endedStatus && reasonFromStatus(endedStatus) ? 'ended' : completed ? 'done' : 'gate'
+  )
+  // The warning on screen (about leaving, or about a key), and how the server counts so far.
+  const [warning, setWarning] = useState(null)
+  const [conduct, setConduct] = useState(null)
+  const [confirmStop, setConfirmStop] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [stopError, setStopError] = useState(null)
   const [accepted, setAccepted] = useState(false)
   const [device] = useState(() => checkDevice())
   const [state, setState] = useState(null)
@@ -113,6 +143,11 @@ export default function StrictInterviewFlow({
   const interviewIdRef = useRef(null)
   const segmentRef = useRef(null)
   const salvageRef = useRef(null)
+  // Why the interview ended, once it has: read by the code that finishes and uploads.
+  const endedReasonRef = useRef(reasonFromStatus(endedStatus))
+  const warningTimerRef = useRef(null)
+  const lastKeyRef = useRef({ name: null, at: 0 })
+  const sendEventRef = useRef(null)
 
   const isLive = LIVE_PHASES.includes(phase)
   const guardAgainstLeaving = isLive || ['ending', 'uploading', 'upload_error'].includes(phase)
@@ -135,6 +170,17 @@ export default function StrictInterviewFlow({
     if (!isLive) return undefined
     const stop = (event) => event.preventDefault()
     const onKey = (event) => {
+      // A key that tries to leave is told to the server (once, not for every repeat of a held
+      // key) and warned about on screen. It never ends the interview.
+      const name = reportableKey(event)
+      if (name) {
+        const last = lastKeyRef.current
+        const now = Date.now()
+        if (name !== last.name || now - last.at > KEY_REPEAT_MS) {
+          lastKeyRef.current = { name, at: now }
+          sendEventRef.current?.({ type: 'key', key: name })
+        }
+      }
       if (shouldBlockKey(event)) {
         event.preventDefault()
         event.stopPropagation()
@@ -150,7 +196,7 @@ export default function StrictInterviewFlow({
   }, [isLive])
 
   // Leaving full screen puts a block in front of the questions until the candidate returns.
-  // (Recording that it happened is phase 3.)
+  // (It is also one of the ways of leaving that the server counts: see useLeaveWatch below.)
   useEffect(() => {
     if (!isLive) return undefined
     const onChange = () => setFullscreenLost(!document.fullscreenElement)
@@ -179,7 +225,10 @@ export default function StrictInterviewFlow({
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
   }, [])
 
-  useEffect(() => () => releaseEverything(), [releaseEverything])
+  useEffect(() => () => {
+    releaseEverything()
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current)
+  }, [releaseEverything])
 
   // ── Recording ────────────────────────────────────────────────────────────
 
@@ -244,7 +293,7 @@ export default function StrictInterviewFlow({
       recordingBlobRef.current = null
       // The interview is over and the server has it all, so nothing needs keeping here.
       recordingStore?.deleteInterview(interviewIdRef.current)
-      setPhase('done')
+      setPhase(endedReasonRef.current ? 'ended' : 'done')
     } catch (err) {
       if (err?.response?.data?.code === 'RECORDING_NOT_RECEIVED') fileUploadedRef.current = false
       setError(serverMessage(err, 'We could not upload your recording. Your connection may have dropped.'))
@@ -252,9 +301,18 @@ export default function StrictInterviewFlow({
     }
   }, [requestUploadUrl, completeUpload, recordingStore])
 
-  const finishInterview = useCallback(async () => {
+  // The questions are done, or the interview ended early (`reason` is the server's: too many
+  // leaves, too long away, or stopped). Either way the recording is sent and the interview
+  // completed; an ended interview then shows the ended screen instead of "submitted".
+  const finishInterview = useCallback(async (reason = null) => {
     if (finishingRef.current) return
     finishingRef.current = true
+    if (reason) {
+      endedReasonRef.current = reason
+      setEndedReason(reason)
+    }
+    setConfirmStop(false)
+    setWarning(null)
     if (timerRef.current) clearInterval(timerRef.current)
     setPhase('ending')
     if (answerRecorderRef.current && answerRecorderRef.current.state !== 'inactive') {
@@ -279,7 +337,12 @@ export default function StrictInterviewFlow({
 
   const beginTurn = useCallback((next) => {
     setState(next)
+    setConduct(next)
     totalDeadlineRef.current = Date.now() + next.seconds_left_total * 1000
+    if (next.ended) {
+      finishInterview(next.ended)
+      return
+    }
     if (next.finished || !next.turn) {
       finishInterview()
       return
@@ -331,6 +394,68 @@ export default function StrictInterviewFlow({
     submitAnswerRef.current = submitAnswer
   }, [submitAnswer])
 
+  // ── Leaving, warnings, stopping ──────────────────────────────────────────
+
+  const showWarning = useCallback((text) => {
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current)
+    setWarning(text)
+    if (text) warningTimerRef.current = setTimeout(() => setWarning(null), WARNING_SHOW_MS)
+  }, [])
+
+  // Tells the server something happened (a leave, a return, a key, a heartbeat) and acts on its
+  // reply: it may say the interview has ended. A failure is not shown: the screen carries on and
+  // the next event or heartbeat tells the server. A return is retried, since the server keeps
+  // counting a leave until it hears the candidate is back.
+  const sendEvent = useCallback(async (body) => {
+    if (!reportEvent || finishingRef.current) return
+    if (body.type === 'key') showWarning(KEY_WARNING)
+    try {
+      const next = body.type === 'returned'
+        ? await withRetry(() => reportEvent(body))
+        : await reportEvent(body)
+      setConduct(next)
+      if (next.ended) {
+        finishInterview(next.ended)
+        return
+      }
+      if (body.type === 'returned') showWarning(leaveWarning(next))
+    } catch {
+      /* carry on */
+    }
+  }, [reportEvent, finishInterview, showWarning])
+
+  useEffect(() => {
+    sendEventRef.current = sendEvent
+  }, [sendEvent])
+
+  useLeaveWatch({
+    active: isLive && Boolean(reportEvent),
+    onLeft: (cause) => sendEvent({ type: 'left', cause }),
+    onReturned: () => sendEvent({ type: 'returned' }),
+  })
+
+  // The server times a reload from the last time the screen was heard from.
+  useEffect(() => {
+    if (!isLive || !reportEvent) return undefined
+    const id = setInterval(() => sendEvent({ type: 'ping' }), HEARTBEAT_MS)
+    return () => clearInterval(id)
+  }, [isLive, reportEvent, sendEvent])
+
+  const stopNow = async () => {
+    if (!stopInterview) return
+    setStopping(true)
+    setStopError(null)
+    try {
+      const next = await stopInterview()
+      setConduct(next)
+      await finishInterview(next.ended ?? 'STOPPED')
+    } catch (err) {
+      setStopError(serverMessage(err, 'We could not stop the interview. Please try again.'))
+    } finally {
+      setStopping(false)
+    }
+  }
+
   // ── Starting ─────────────────────────────────────────────────────────────
 
   const requestFullscreen = async () => {
@@ -366,6 +491,14 @@ export default function StrictInterviewFlow({
       }
       streamRef.current = stream
       const next = await startInterview({ accepted: true, rulesVersion: STRICT_RULES_VERSION })
+      if (next.ended) {
+        // It already ended (the employer has not reinstated it): nothing to record.
+        releaseEverything()
+        endedReasonRef.current = next.ended
+        setEndedReason(next.ended)
+        setPhase('ended')
+        return
+      }
       interviewIdRef.current = next.interview_id
       startInterviewRecording(stream, next.interview_id)
       // After a reload, what was recorded before it is still in storage. Send it in the
@@ -419,6 +552,24 @@ export default function StrictInterviewFlow({
           </div>
         </header>
 
+        {warning && (
+          <div
+            role="status"
+            className="flex items-start justify-center gap-3 border-b border-amber-300 bg-amber-50 px-6 py-3 text-sm text-amber-900"
+          >
+            <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-amber-600" aria-hidden="true" />
+            <p className="max-w-3xl">{warning}</p>
+            <button
+              type="button"
+              onClick={() => showWarning(null)}
+              aria-label="Dismiss the warning"
+              className="flex-shrink-0 text-xs font-semibold text-amber-800 underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
           <div className="relative w-full max-w-xl overflow-hidden rounded-xl bg-black aspect-video">
             <video ref={videoRef} autoPlay muted playsInline className="h-full w-full -scale-x-100 object-cover" />
@@ -438,9 +589,27 @@ export default function StrictInterviewFlow({
 
         <footer className="border-t border-border bg-surface px-6 py-4">
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
-            <p className="text-xs text-text-muted">
-              Whole interview: {formatClock(totalLeft)} left of {maxMinutes} minutes
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs text-text-muted">
+                Whole interview: {formatClock(totalLeft)} left of {maxMinutes} minutes
+              </p>
+              {conduct?.leaves > 0 && (
+                <p className="text-xs text-amber-700" data-testid="warnings-used">
+                  Warnings used: {Math.min(conduct.leaves, conduct.max_leaves - 1)} of {conduct.max_leaves - 1}.
+                  Time away: {conduct.away_seconds} of {conduct.max_away_seconds} seconds.
+                </p>
+              )}
+              {stopInterview && (
+                <button
+                  type="button"
+                  onClick={() => { setStopError(null); setConfirmStop(true) }}
+                  disabled={phase === 'sending'}
+                  className="text-xs text-text-muted underline hover:text-text disabled:opacity-50"
+                >
+                  I need to stop
+                </button>
+              )}
+            </div>
             <Button onClick={submitAnswer} disabled={busy}>
               {phase === 'sending' ? (
                 <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Sending your answer…</span>
@@ -464,6 +633,37 @@ export default function StrictInterviewFlow({
                 Return to full screen to see the question. The time keeps running.
               </p>
               <Button onClick={returnToFullScreen} className="w-full">Return to full screen</Button>
+            </div>
+          </div>
+        )}
+
+        {confirmStop && (
+          // Our own box, not window.confirm: the browser's would take the page out of full screen.
+          <div
+            role="alertdialog"
+            aria-label="Stop the interview"
+            className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 px-6"
+          >
+            <div className="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 text-center">
+              <p className="font-semibold text-text">Stop the interview?</p>
+              <p className="text-sm text-text-muted">
+                The interview ends now. Your answers and your recording so far are sent to the
+                employer, who is told you stopped and can let you carry on later.
+              </p>
+              {stopError && <p role="alert" className="text-sm text-red-700">{stopError}</p>}
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setConfirmStop(false)}
+                  disabled={stopping}
+                >
+                  Keep going
+                </Button>
+                <Button variant="destructive" className="flex-1" onClick={stopNow} disabled={stopping}>
+                  {stopping ? 'Stopping…' : 'Stop the interview'}
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -509,10 +709,19 @@ export default function StrictInterviewFlow({
             {resuming ? (
               <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3.5">
                 <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-amber-800 leading-relaxed">
-                  <strong>You started this interview earlier.</strong> Continue to return to the
-                  question you were on. The time that passed has not been paused.
-                </p>
+                {reinstated ? (
+                  <p className="text-sm text-amber-800 leading-relaxed">
+                    <strong>The employer has let you carry on with this interview.</strong> Continue
+                    to return to the question you were on, with the time you had left. You start
+                    again with all your warnings, and the answers you gave are kept.
+                  </p>
+                ) : (
+                  <p className="text-sm text-amber-800 leading-relaxed">
+                    <strong>You started this interview earlier.</strong> Continue to return to the
+                    question you were on. The time that passed has not been paused, and coming back
+                    counts as leaving the screen once.
+                  </p>
+                )}
               </div>
             ) : (
               <>
@@ -520,7 +729,7 @@ export default function StrictInterviewFlow({
                   <p className="text-sm text-text-muted leading-relaxed mb-4">
                     Please read these rules. You need to accept them before you can start.
                   </p>
-                  <InterviewRules groups={STRICT_RULE_GROUPS} />
+                  <InterviewRules groups={STRICT_RULE_GROUPS} monitoring={STRICT_MONITORING} />
                 </div>
                 <label
                   htmlFor="accept-interview-rules"
@@ -558,14 +767,18 @@ export default function StrictInterviewFlow({
         {phase === 'ending' && (
           <div className="rounded-xl border border-border bg-surface p-10 text-center space-y-3">
             <div className="w-8 h-8 border-2 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-sm text-text-muted">Your interview is finished. Wrapping up…</p>
+            <p className="text-sm text-text-muted">
+              {endedReason ? 'Your interview has ended. Sending what you recorded…' : 'Your interview is finished. Wrapping up…'}
+            </p>
           </div>
         )}
 
         {phase === 'uploading' && (
           <div className="rounded-xl border border-border bg-surface p-8 text-center space-y-5">
             <div>
-              <p className="font-semibold text-text">Your interview is finished.</p>
+              <p className="font-semibold text-text">
+                {endedReason ? 'Your interview has ended.' : 'Your interview is finished.'}
+              </p>
               <p className="text-sm text-text-muted mt-1">
                 {uploadStep === 'confirming'
                   ? 'Almost done. Confirming your submission…'
@@ -604,7 +817,7 @@ export default function StrictInterviewFlow({
             <AlertCircle size={32} className="text-amber-600 mx-auto" />
             <div className="space-y-1">
               <p className="text-sm font-semibold text-amber-900">
-                Your interview is finished, but the recording hasn&apos;t uploaded yet.
+                {endedReason ? 'Your interview has ended' : 'Your interview is finished'}, but the recording hasn&apos;t uploaded yet.
               </p>
               <p className="text-sm text-amber-800">{error}</p>
             </div>
@@ -625,6 +838,21 @@ export default function StrictInterviewFlow({
                 The employer will review your recording along with your application. You can now
                 safely close this page.
               </p>
+            </div>
+            {doneAction && (
+              <Button onClick={doneAction.onClick} className="w-full">{doneAction.label}</Button>
+            )}
+          </div>
+        )}
+
+        {phase === 'ended' && (
+          <div className="rounded-xl border border-border bg-surface p-10 text-center space-y-4" data-testid="ended-screen">
+            <AlertCircle size={40} className="text-amber-600 mx-auto" />
+            <div className="space-y-2">
+              <p className="font-semibold text-text">{endedMessage(endedReason).title}</p>
+              {subtitle && <p className="text-xs text-text-muted">{subtitle}</p>}
+              <p className="text-sm text-text-muted">{endedMessage(endedReason).body}</p>
+              <p className="text-sm text-text-muted">{ENDED_FOOTER}</p>
             </div>
             {doneAction && (
               <Button onClick={doneAction.onClick} className="w-full">{doneAction.label}</Button>

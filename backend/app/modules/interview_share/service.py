@@ -26,7 +26,11 @@ from app.modules.interview_share.schemas import (
     ShareLinkStatus,
 )
 from app.modules.interview_share.transcript import parse_turns, questions_asked
-from app.modules.interviews.enums import InterviewStatus, TranscriptCheckStatus
+from app.modules.interviews.enums import (
+    ENDED_STATUSES,
+    InterviewStatus,
+    TranscriptCheckStatus,
+)
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.service import InterviewService
 from app.modules.jobs.models import Job
@@ -44,6 +48,9 @@ VIDEO_LINK_SECONDS = 15 * 60
 MAX_CANDIDATES = 100
 
 _COMPLETED = (InterviewStatus.UPLOADED.value, InterviewStatus.SCORED.value)
+# An interview that ended early is shown like a finished one: its recording, the answers so far
+# and the conduct notes are what the client needs to judge it.
+_HAS_DETAIL = (*_COMPLETED, *ENDED_STATUSES)
 
 # What the client sees for an interview's state. No interview at all is NOT_INVITED.
 _STATUS = {
@@ -51,16 +58,19 @@ _STATUS = {
     InterviewStatus.IN_PROGRESS.value: "IN_PROGRESS",
     InterviewStatus.UPLOADED.value: "COMPLETED",
     InterviewStatus.SCORED.value: "COMPLETED",
+    InterviewStatus.ENDED_CONDUCT.value: "ENDED",
+    InterviewStatus.STOPPED.value: "ENDED",
     InterviewStatus.FAILED.value: "NOT_COMPLETED",
     InterviewStatus.EXPIRED.value: "NOT_COMPLETED",
 }
 # Completed interviews first (best score first), then the rest in order of progress.
 _STATUS_ORDER = {
     "COMPLETED": 0,
-    "IN_PROGRESS": 1,
-    "INVITED": 2,
-    "NOT_COMPLETED": 3,
-    "NOT_INVITED": 4,
+    "ENDED": 1,
+    "IN_PROGRESS": 2,
+    "INVITED": 3,
+    "NOT_COMPLETED": 4,
+    "NOT_INVITED": 5,
 }
 
 _MISMATCH_NOTE = (
@@ -200,7 +210,7 @@ class InterviewShareService:
         interview_service: InterviewService,
     ) -> SharedCandidate:
         interview = await interviews.get_by_job_and_profile(job.id, profile.id)
-        completed = interview is not None and interview.status in _COMPLETED
+        completed = interview is not None and interview.status in _HAS_DETAIL
 
         # Completing the interview (on camera) is what identifies a candidate to the
         # employer; until then a name they have not shared stays masked.
@@ -239,6 +249,7 @@ class InterviewShareService:
         candidate.cv_strengths = detail.cv_strengths
         candidate.cv_weaknesses = detail.cv_weaknesses
         candidate.video_url = detail.video_url
+        candidate.strict = detail.strict
         candidate.questions = questions_asked(turns)
         candidate.turns = [SharedTurn(speaker=t.speaker, text=t.text) for t in turns]
         if not turns:

@@ -189,6 +189,11 @@ class Settings(BaseSettings):
     # it as a separate part, to be joined into one video. This bounds how many parts one
     # interview may have (each reload makes one).
     strict_recording_max_parts: int = 8
+    # Leaving the interview screen (the page hidden, the window out of focus, full screen
+    # exited): the 1st to 3rd leave warns, the 4th ends the interview, and so does 60 seconds
+    # away in total (the user's decisions, option B "Balanced"). Key presses only warn.
+    strict_max_leaves: int = 4
+    strict_max_away_seconds: int = 60
     # Minimum share (0.0-1.0) of the submitted transcript's word pairs that must
     # also appear in the recording's own transcript. An unmeasured starting
     # point: calibrate it against real interviews via the match_score stored in

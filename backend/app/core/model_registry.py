@@ -41,6 +41,7 @@ from app.modules.interview_list.models import InterviewListEntry
 from app.modules.interview_share.models import InterviewShareLink
 from app.modules.interviews.models import (
     Interview,
+    InterviewConductEvent,
     InterviewCost,
     InterviewTurn,
     JobInterviewQuestion,
@@ -91,6 +92,7 @@ __all__ = [
     "JobInterviewQuestion",
     "StrictInterviewRun",
     "InterviewTurn",
+    "InterviewConductEvent",
     "InterviewShareLink",
     "UserOnboarding",
     "Interview",

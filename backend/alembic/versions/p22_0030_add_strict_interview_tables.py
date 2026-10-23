@@ -63,6 +63,25 @@ def upgrade() -> None:
         # separate parts. The server joins them with the final recording into one video
         # before scoring, then sets this back to 0.
         sa.Column("recording_parts", sa.Integer(), nullable=False, server_default="0"),
+        # Which try this is. An employer reinstating an interview that ended starts the next
+        # one; the leave count and the time away are counted per attempt.
+        sa.Column("attempt", sa.Integer(), nullable=False, server_default="1"),
+        # The last time the candidate's screen was heard from (a heartbeat every 15 seconds),
+        # so a reload is timed from when the page was last seen.
+        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
+        # Set while the candidate is away from the interview screen: when it began and why.
+        sa.Column("away_since", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("away_kind", sa.String(20), nullable=True),
+        # When the interview was ended or stopped, and why. Cleared when it is reinstated.
+        sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("end_reason", sa.String(20), nullable=True),
+        # Set when an employer reinstates an interview: the moment its clock stopped. The clock
+        # starts again when the candidate next opens the link, which moves the interview's
+        # start and the open question forward by the time in between. Cleared then.
+        sa.Column("paused_at", sa.DateTime(timezone=True), nullable=True),
+        # The final recordings of earlier attempts (storage keys, oldest first), joined in front
+        # of the latest one when the interview finishes.
+        sa.Column("previous_recordings", postgresql.JSONB(), nullable=True),
         sa.UniqueConstraint("interview_id", name="uq_interview_strict_runs_interview"),
     )
 
@@ -89,8 +108,37 @@ def upgrade() -> None:
     )
     op.create_index("ix_interview_turns_interview_id", "interview_turns", ["interview_id"])
 
+    # The timeline of a strict interview: every leave, reload, key press, stop, ending and
+    # reinstatement, with the time the SERVER saw it, so the employer can check each against
+    # the recording. Kept after the interview, with the recording.
+    op.create_table(
+        "interview_conduct_events",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        *_timestamps(),
+        sa.Column(
+            "interview_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("interviews.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("attempt", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("kind", sa.String(20), nullable=False),
+        sa.Column("detail", sa.String(40), nullable=True),
+        sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("duration_seconds", sa.Float(), nullable=True),
+        # Whether it counts towards ending the interview (a key press never does).
+        sa.Column("counted", sa.Boolean(), nullable=False, server_default=sa.false()),
+    )
+    op.create_index(
+        "ix_interview_conduct_events_interview_id", "interview_conduct_events", ["interview_id"]
+    )
+
 
 def downgrade() -> None:
+    op.drop_index(
+        "ix_interview_conduct_events_interview_id", table_name="interview_conduct_events"
+    )
+    op.drop_table("interview_conduct_events")
     op.drop_index("ix_interview_turns_interview_id", table_name="interview_turns")
     op.drop_table("interview_turns")
     op.drop_table("interview_strict_runs")

@@ -130,10 +130,20 @@ export const RULE_GROUPS = [
 // A separate list from RULE_GROUPS above because most of those describe the live voice
 // interview (headphones, the interviewer's voice, one restart), which would be untrue here.
 // Same convention: a rule that describes monitoring carries `needs` and waits for its flag. Only
-// what the screen really does today is stated: it asks for full screen and switches off
-// right-click, copy and paste, but it does NOT yet notice a candidate leaving the page, so that
-// rule stays hidden until `tabSwitch` is switched on (phase 3).
-export const STRICT_RULES_VERSION = 'S1'
+// what the screen really does is stated. Version S2 (phase 3): it notices a candidate leaving
+// the screen, warns, ends the interview after repeated or long absences, notes the keys that
+// try to leave, and has a stop button. The numbers in the text (4 leaves, 60 seconds) are the
+// server's (settings `strict_max_leaves` and `strict_max_away_seconds`); change both together.
+// Change STRICT_RULES_VERSION whenever the wording of a visible rule changes.
+export const STRICT_RULES_VERSION = 'S2'
+
+// The strict interview's own monitoring switches. Separate from MONITORING above, which belongs
+// to the live interview (whose rules must never claim anything it does not do).
+export const STRICT_MONITORING = {
+  tabSwitch: true, // leaving the screen is noted, warned about, and can end the interview
+  faceChecks: false, // phase 4, not built
+  gaze: false, // phase 4, not built
+}
 
 export const STRICT_RULE_GROUPS = [
   {
@@ -187,7 +197,17 @@ export const STRICT_RULE_GROUPS = [
       {
         id: 'stay-on-page',
         needs: 'tabSwitch',
-        text: 'Stay on the interview page. Leaving full screen, switching to another tab, window or app is noted and shown to the employer, with the time and how long you were away. After repeated or long absences the interview ends.',
+        text: 'Stay on the interview screen, in full screen. Leaving it (to another tab, window or app, or by leaving full screen) is noted and shown to the employer, with the time and how long you were away. The first three times you get a warning. The fourth time, or being away for more than 60 seconds in total, ends the interview.',
+      },
+      {
+        id: 'keys-noted',
+        needs: 'tabSwitch',
+        text: 'Pressing a key that tries to leave the interview (Esc, Alt, the Windows or Command key, F11, F12, or Ctrl with T, W, N or Tab) is also noted and shown to the employer. It does not end the interview.',
+      },
+      {
+        id: 'stop-button',
+        needs: 'tabSwitch',
+        text: 'If you need to stop, press the I need to stop button and confirm. The interview ends, the employer is told, and they can let you carry on later. Stopping is your choice and is not a mark against you.',
       },
       {
         id: 'own-words',
@@ -212,7 +232,12 @@ export const STRICT_RULE_GROUPS = [
     rules: [
       {
         id: 'dropped',
-        text: 'If your page reloads or your connection drops, open the same link again. You return to the question you were on. The time that passed is not given back.',
+        text: 'If your page reloads or your connection drops, open the same link again. You return to the question you were on. The time that passed is not given back, and a reload counts as leaving the screen once.',
+      },
+      {
+        id: 'if-it-ends',
+        needs: 'tabSwitch',
+        text: 'If the interview ends, your answers and your recording up to that point are still sent to the employer. If you think it should not have ended, contact the employer who invited you. They can let you carry on where you stopped.',
       },
       {
         id: 'cannot-meet-a-rule',
@@ -237,7 +262,7 @@ export const STRICT_RULE_GROUPS = [
       },
       {
         id: 'employer-decides',
-        text: 'The AI assessment helps the employer. Nothing is decided automatically: the employer makes the decision.',
+        text: 'The AI assessment helps the employer. The only thing decided automatically is ending the interview as described above. The notes about leaving the screen are for the employer to review and are not proof of anything. The employer makes every other decision.',
       },
     ],
   },

@@ -108,6 +108,9 @@ async function acceptAndStart() {
   fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
   fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
   await screen.findByTestId('question-text')
+  // The question is on screen before React has attached the screen's listeners (its effects);
+  // let those run, as they have by the time a person could press anything.
+  await act(async () => {})
 }
 
 beforeEach(() => {
@@ -144,10 +147,13 @@ describe('StrictInterviewFlow, before it starts', () => {
     expect(screen.queryByText(/earphones or headphones/i)).not.toBeInTheDocument()
   })
 
-  it('does not tell the candidate that leaving the page is noted, since nothing notes it yet', () => {
+  it('tells the candidate that leaving the screen is noted, warned about, and can end the interview', () => {
     setup()
 
-    expect(screen.queryByText(/is noted and shown to the employer/)).not.toBeInTheDocument()
+    expect(screen.getByText(/The first three times you get a warning/)).toBeInTheDocument()
+    expect(screen.getByText(/more than 60 seconds in total, ends the interview/)).toBeInTheDocument()
+    expect(screen.getByText(/does not end the interview/)).toBeInTheDocument()
+    expect(screen.getByText(/I need to stop button/)).toBeInTheDocument()
   })
 
   it('will not start until the rules are accepted', () => {
@@ -668,5 +674,484 @@ describe('StrictInterviewFlow, keeping the recording across a reload', () => {
 
     expect(await screen.findByText('Interview submitted')).toBeInTheDocument()
     expect(uploadRecording.mock.calls[0][0].blob.size).toBeGreaterThan(0)
+  })
+})
+
+// ── Leaving, warnings, ending, stopping ─────────────────────────────────────
+
+const CONDUCT = { leaves: 0, max_leaves: 4, away_seconds: 0, max_away_seconds: 60, key_presses: 0, ended: null }
+const reply = (over = {}) => ({ ...FIRST, ...CONDUCT, ...over })
+const ENDED = (reason) => ({ ...FIRST, ...CONDUCT, ended: reason, turn: null, finished: false })
+
+let focused
+function setFocus(value) {
+  focused = value
+}
+function away(cause = 'FULLSCREEN') {
+  if (cause === 'FULLSCREEN') act(() => setFullscreen(null))
+  if (cause === 'BLUR') {
+    setFocus(false)
+    act(() => { window.dispatchEvent(new Event('blur')) })
+  }
+}
+function back() {
+  setFocus(true)
+  act(() => {
+    window.dispatchEvent(new Event('focus'))
+    setFullscreen(document.documentElement)
+  })
+}
+
+describe('StrictInterviewFlow, leaving the screen', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    setFocus(true)
+    document.hasFocus = () => focused
+  })
+
+  async function running(props = {}) {
+    const reportEvent = vi.fn(async () => reply())
+    const handlers = setup({ reportEvent, ...props })
+    await acceptAndStart()
+    return { reportEvent, ...handlers }
+  }
+
+  const wait = (ms) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+
+  it('tells the server after a second away, with the cause, and again when the candidate is back', async () => {
+    const { reportEvent } = await running()
+
+    away('BLUR')
+    await wait(1100)
+    expect(reportEvent).toHaveBeenCalledWith({ type: 'left', cause: 'BLUR' })
+    back()
+    await wait(10)
+
+    expect(reportEvent).toHaveBeenCalledWith({ type: 'returned' })
+  })
+
+  it('says nothing about a blip shorter than a second', async () => {
+    const { reportEvent } = await running()
+
+    away('BLUR')
+    await wait(400)
+    back()
+    await wait(3000)
+
+    expect(reportEvent).not.toHaveBeenCalledWith({ type: 'left', cause: 'BLUR' })
+    expect(reportEvent).not.toHaveBeenCalledWith({ type: 'returned' })
+  })
+
+  it('warns the candidate on their return, with how many warnings and how much time are used', async () => {
+    const reportEvent = vi.fn(async (body) =>
+      body.type === 'returned' ? reply({ leaves: 2, away_seconds: 31 }) : reply({ leaves: 2 })
+    )
+    setup({ reportEvent })
+    await acceptAndStart()
+
+    away('FULLSCREEN')
+    await wait(1100)
+    back()
+    await wait(10)
+
+    const warning = await screen.findByRole('status')
+    expect(warning).toHaveTextContent('You have left the interview screen 2 times')
+    expect(warning).toHaveTextContent('If you leave it 4 times')
+    expect(screen.getByTestId('warnings-used')).toHaveTextContent('Warnings used: 2 of 3')
+    expect(screen.getByTestId('warnings-used')).toHaveTextContent('Time away: 31 of 60 seconds')
+  })
+
+  it('lets the candidate dismiss a warning', async () => {
+    const reportEvent = vi.fn(async (body) => (body.type === 'returned' ? reply({ leaves: 1, away_seconds: 3 }) : reply()))
+    setup({ reportEvent })
+    await acceptAndStart()
+    away('BLUR')
+    await wait(1100)
+    back()
+    await wait(10)
+    await screen.findByRole('status')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss the warning' }))
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('takes a warning down by itself after a while', async () => {
+    const reportEvent = vi.fn(async (body) => (body.type === 'returned' ? reply({ leaves: 1, away_seconds: 3 }) : reply()))
+    setup({ reportEvent })
+    await acceptAndStart()
+    away('BLUR')
+    await wait(1100)
+    back()
+    await wait(10)
+    await screen.findByRole('status')
+
+    await wait(13_000)
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('ends the interview, sends what was recorded, and says so when the server says it ended', async () => {
+    const reportEvent = vi.fn(async (body) => (body.type === 'left' ? ENDED('TOO_MANY_LEAVES') : reply()))
+    const { completeUpload } = setup({ reportEvent })
+    await acceptAndStart()
+
+    away('FULLSCREEN')
+    await wait(1100)
+
+    expect(await screen.findByTestId('ended-screen')).toBeInTheDocument()
+    expect(screen.getByText('Your interview has ended')).toBeInTheDocument()
+    expect(screen.getByText(/too many times/)).toBeInTheDocument()
+    expect(screen.getByText(/contact the employer who invited you/)).toBeInTheDocument()
+    expect(screen.queryByText('Interview submitted')).not.toBeInTheDocument()
+    // The recording and the answers are still sent: the employer reviews them.
+    expect(uploadRecording).toHaveBeenCalledTimes(1)
+    expect(uploadRecording.mock.calls[0][0].blob.size).toBeGreaterThan(0)
+    expect(completeUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it('says the time away was the reason when that is what ended it', async () => {
+    const reportEvent = vi.fn(async (body) => (body.type === 'returned' ? ENDED('TOO_LONG_AWAY') : reply()))
+    setup({ reportEvent })
+    await acceptAndStart()
+    away('BLUR')
+    await wait(1100)
+    back()
+    await wait(10)
+
+    expect(await screen.findByText(/away from the interview screen for too long/)).toBeInTheDocument()
+  })
+
+  it('stops the camera and the recording once it has ended, and leaves full screen', async () => {
+    const camera = fakeCamera()
+    navigator.mediaDevices.getUserMedia = vi.fn(async () => camera)
+    const reportEvent = vi.fn(async (body) => (body.type === 'left' ? ENDED('TOO_MANY_LEAVES') : reply()))
+    setup({ reportEvent })
+    await acceptAndStart()
+
+    away('FULLSCREEN')
+    await wait(1100)
+    await screen.findByTestId('ended-screen')
+
+    expect(camera.getTracks().every((track) => track.stop.mock.calls.length >= 1)).toBe(true)
+    expect(FakeMediaRecorder.instances.every((recorder) => recorder.state === 'inactive')).toBe(true)
+  })
+
+  it('reports nothing more once the interview has ended', async () => {
+    const reportEvent = vi.fn(async (body) => (body.type === 'left' ? ENDED('TOO_MANY_LEAVES') : reply()))
+    setup({ reportEvent })
+    await acceptAndStart()
+    away('FULLSCREEN')
+    await wait(1100)
+    await screen.findByTestId('ended-screen')
+    const calls = reportEvent.mock.calls.length
+
+    back()
+    away('BLUR')
+    await wait(20_000)
+
+    expect(reportEvent).toHaveBeenCalledTimes(calls)
+  })
+
+  it('retries telling the server it is back, since the server keeps counting a leave until it hears', async () => {
+    const reportEvent = vi
+      .fn()
+      .mockResolvedValueOnce(reply()) // left
+      .mockRejectedValueOnce(new Error('network')) // returned, first try
+      .mockResolvedValue(reply({ leaves: 1 }))
+    setup({ reportEvent })
+    await acceptAndStart()
+
+    away('BLUR')
+    await wait(1100)
+    back()
+    await wait(3000)
+
+    expect(reportEvent.mock.calls.filter(([body]) => body.type === 'returned')).toHaveLength(2)
+  })
+
+  it('carries on when telling the server fails, and does not show an error for it', async () => {
+    const reportEvent = vi.fn(async () => { throw new Error('network') })
+    setup({ reportEvent })
+    await acceptAndStart()
+
+    away('BLUR')
+    await wait(1100)
+
+    expect(screen.getByTestId('question-text')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('says it is still there every 15 seconds', async () => {
+    const { reportEvent } = await running()
+
+    await wait(15_100)
+    await wait(15_000)
+
+    expect(reportEvent.mock.calls.filter(([body]) => body.type === 'ping').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('watches nothing when the screen was given no way to report', async () => {
+    setup()
+    await acceptAndStart()
+
+    away('BLUR')
+    await wait(5000)
+
+    expect(screen.getByTestId('question-text')).toBeInTheDocument()
+  })
+})
+
+describe('StrictInterviewFlow, key presses that try to leave', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    setFocus(true)
+    document.hasFocus = () => focused
+  })
+
+  const press = (init) => {
+    const event = new KeyboardEvent('keydown', { cancelable: true, bubbles: true, ...init })
+    act(() => { document.body.dispatchEvent(event) })
+    return event
+  }
+
+  async function running() {
+    const reportEvent = vi.fn(async () => reply({ key_presses: 1 }))
+    setup({ reportEvent })
+    await acceptAndStart()
+    return reportEvent
+  }
+
+  it('reports Escape and warns, without ending the interview', async () => {
+    const reportEvent = await running()
+
+    press({ key: 'Escape' })
+
+    expect(reportEvent).toHaveBeenCalledWith({ type: 'key', key: 'Escape' })
+    expect(await screen.findByRole('status')).toHaveTextContent('does not end the interview')
+    expect(screen.getByTestId('question-text')).toBeInTheDocument()
+  })
+
+  it.each([
+    [{ key: 'F12' }, 'F12'],
+    [{ key: 'Alt' }, 'Alt'],
+    [{ key: 't', ctrlKey: true }, 'Ctrl+T'],
+    [{ key: 'Tab', ctrlKey: true }, 'Ctrl+Tab'],
+  ])('reports %j as %s', async (init, name) => {
+    const reportEvent = await running()
+
+    press(init)
+
+    expect(reportEvent).toHaveBeenCalledWith({ type: 'key', key: name })
+  })
+
+  it('still blocks the key as well as reporting it', async () => {
+    await running()
+
+    expect(press({ key: 't', ctrlKey: true }).defaultPrevented).toBe(true)
+  })
+
+  it('reports a held key once, not for every repeat', async () => {
+    const reportEvent = await running()
+
+    for (let i = 0; i < 8; i += 1) press({ key: 'Escape', repeat: true })
+
+    expect(reportEvent.mock.calls.filter(([body]) => body.type === 'key')).toHaveLength(1)
+  })
+
+  it('reports the same key again after a couple of seconds', async () => {
+    const reportEvent = await running()
+
+    press({ key: 'Escape' })
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500) })
+    press({ key: 'Escape' })
+
+    expect(reportEvent.mock.calls.filter(([body]) => body.type === 'key')).toHaveLength(2)
+  })
+
+  it('does not report ordinary keys', async () => {
+    const reportEvent = await running()
+
+    press({ key: 'a' })
+    press({ key: 'Enter' })
+    press({ key: 'c', ctrlKey: true })
+
+    expect(reportEvent.mock.calls.filter(([body]) => body.type === 'key')).toHaveLength(0)
+  })
+})
+
+describe('StrictInterviewFlow, "I need to stop"', () => {
+  beforeEach(() => {
+    setFocus(true)
+    document.hasFocus = () => focused
+  })
+
+  async function running(props = {}) {
+    const stopInterview = vi.fn(async () => ENDED('STOPPED'))
+    const reportEvent = vi.fn(async () => reply())
+    const handlers = setup({ stopInterview, reportEvent, ...props })
+    await acceptAndStart()
+    return { stopInterview, reportEvent, ...handlers }
+  }
+
+  it('has a small button, and asks before it stops anything', async () => {
+    const { stopInterview } = await running()
+
+    fireEvent.click(screen.getByRole('button', { name: 'I need to stop' }))
+
+    expect(screen.getByRole('alertdialog', { name: 'Stop the interview' })).toBeInTheDocument()
+    expect(stopInterview).not.toHaveBeenCalled()
+  })
+
+  it('does not use the browsers own confirm box, which would take the page out of full screen', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await running()
+
+    fireEvent.click(screen.getByRole('button', { name: 'I need to stop' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stop the interview' }))
+
+    expect(confirm).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('goes back to the question when the candidate keeps going', async () => {
+    const { stopInterview } = await running()
+    fireEvent.click(screen.getByRole('button', { name: 'I need to stop' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep going' }))
+
+    expect(screen.queryByRole('alertdialog', { name: 'Stop the interview' })).not.toBeInTheDocument()
+    expect(stopInterview).not.toHaveBeenCalled()
+    expect(screen.getByTestId('question-text')).toBeInTheDocument()
+  })
+
+  it('ends the interview as the candidates own choice, sends the recording and says so', async () => {
+    const { stopInterview, completeUpload } = await running()
+    fireEvent.click(screen.getByRole('button', { name: 'I need to stop' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop the interview' }))
+
+    expect(await screen.findByTestId('ended-screen')).toBeInTheDocument()
+    expect(screen.getByText('You stopped the interview')).toBeInTheDocument()
+    expect(screen.getByText(/The employer has been told/)).toBeInTheDocument()
+    expect(stopInterview).toHaveBeenCalledTimes(1)
+    expect(uploadRecording).toHaveBeenCalledTimes(1)
+    expect(completeUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays on the question and says so when stopping fails', async () => {
+    const stopInterview = vi.fn(async () => {
+      throw { response: { data: { message: 'We could not stop the interview. Please try again.' } } }
+    })
+    await running({ stopInterview })
+    fireEvent.click(screen.getByRole('button', { name: 'I need to stop' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop the interview' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('We could not stop the interview')
+    expect(screen.getByRole('alertdialog', { name: 'Stop the interview' })).toBeInTheDocument()
+    expect(uploadRecording).not.toHaveBeenCalled()
+  })
+
+  it('is not offered when the screen was given no way to stop', async () => {
+    setup()
+    await acceptAndStart()
+
+    expect(screen.queryByRole('button', { name: 'I need to stop' })).not.toBeInTheDocument()
+  })
+
+  it('is not offered while an answer is being sent', async () => {
+    let release
+    const sendAnswer = vi.fn(() => new Promise((resolve) => { release = () => resolve(SECOND) }))
+    setup({ stopInterview: vi.fn(), sendAnswer })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText('Sending your answer…')
+
+    expect(screen.getByRole('button', { name: 'I need to stop' })).toBeDisabled()
+    release()
+  })
+})
+
+describe('StrictInterviewFlow, an interview that has ended', () => {
+  beforeEach(() => {
+    setFocus(true)
+    document.hasFocus = () => focused
+  })
+
+  it('shows the ended screen straight away for a conduct ending, without asking for the camera or full screen', () => {
+    setup({ endedStatus: 'ENDED_CONDUCT', subtitle: 'Acme · Sales Executive' })
+
+    expect(screen.getByTestId('ended-screen')).toBeInTheDocument()
+    expect(screen.getByText('Your interview has ended')).toBeInTheDocument()
+    expect(screen.getByText('Acme · Sales Executive')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start the interview' })).not.toBeInTheDocument()
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled()
+  })
+
+  it('shows the stopped wording for an interview the candidate stopped', () => {
+    setup({ endedStatus: 'STOPPED' })
+
+    expect(screen.getByText('You stopped the interview')).toBeInTheDocument()
+  })
+
+  it('shows the ended screen, and records nothing, when starting finds the interview already ended', async () => {
+    const camera = fakeCamera()
+    navigator.mediaDevices.getUserMedia = vi.fn(async () => camera)
+    const startInterview = vi.fn(async () => ENDED('TOO_LONG_AWAY'))
+    setup({ startInterview, resuming: true })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+
+    expect(await screen.findByTestId('ended-screen')).toBeInTheDocument()
+    expect(camera.getTracks().every((track) => track.stop.mock.calls.length >= 1)).toBe(true)
+    expect(FakeMediaRecorder.instances).toHaveLength(0)
+    expect(uploadRecording).not.toHaveBeenCalled()
+  })
+
+  it('ends when the answer that was sent comes back saying the interview ended', async () => {
+    const sendAnswer = vi.fn(async () => ENDED('TOO_MANY_LEAVES'))
+    const { completeUpload } = setup({ sendAnswer })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByTestId('ended-screen')).toBeInTheDocument()
+    expect(completeUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it('never calls an ending cheating, failing or a violation', async () => {
+    setup({ endedStatus: 'ENDED_CONDUCT' })
+
+    expect(screen.getByTestId('ended-screen').textContent).not.toMatch(/cheat|fail|violat|suspicio|caught/i)
+  })
+
+  it('says the recording could not be sent, in the ended wording, and lets the candidate retry', async () => {
+    uploadRecording.mockRejectedValueOnce({ response: { status: 422, data: { message: 'We did not receive your recording.' } } })
+    setup({ sendAnswer: vi.fn(async () => ENDED('TOO_MANY_LEAVES')) })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByText(/Your interview has ended, but the recording/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry upload' }))
+
+    expect(await screen.findByTestId('ended-screen')).toBeInTheDocument()
+  })
+})
+
+describe('StrictInterviewFlow, coming back to a reloaded or reinstated interview', () => {
+  it('tells someone who reloaded that coming back counts as leaving once', () => {
+    setup({ resuming: true })
+
+    expect(screen.getByText(/counts as leaving the screen once/)).toBeInTheDocument()
+  })
+
+  it('tells someone the employer reinstated that they carry on with the time they had left and fresh warnings', () => {
+    setup({ resuming: true, reinstated: true })
+
+    expect(screen.getByText(/The employer has let you carry on/)).toBeInTheDocument()
+    expect(screen.getByText(/with the time you had left/)).toBeInTheDocument()
+    expect(screen.queryByText(/counts as leaving the screen once/)).not.toBeInTheDocument()
   })
 })

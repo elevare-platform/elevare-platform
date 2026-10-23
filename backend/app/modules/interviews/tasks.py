@@ -151,26 +151,36 @@ async def _merge_recording_parts(db, repo, interview):
             select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
         )
     ).scalar_one_or_none()
-    if run is None or run.recording_parts <= 0 or not interview.r2_key:
+    earlier_attempts = list(run.previous_recordings or []) if run is not None else []
+    if (
+        run is None
+        or (run.recording_parts <= 0 and not earlier_attempts)
+        or not interview.r2_key
+    ):
         return interview
 
     storage = get_storage_service()
-    part_keys: list[str] = []
+    # In the order they happened: the final recordings of earlier attempts (an interview the
+    # employer reinstated), then this attempt's parts (kept across reloads), then its final one.
+    used_keys: list[str] = []
     new_key: str | None = None
     try:
         pieces: list[bytes] = []
-        for number in range(1, run.recording_parts + 1):
-            key = part_key(interview.id, number)
-            # A part that was reserved but never uploaded (the browser went away) is skipped.
+        wanted = [
+            *earlier_attempts,
+            *[part_key(interview.id, number) for number in range(1, run.recording_parts + 1)],
+        ]
+        for key in wanted:
+            # A piece that was reserved but never uploaded (the browser went away) is skipped.
             if not await storage.get_object_size(key):
                 logger.warning(
-                    "merge_recording_parts: part %s of interview %s was never uploaded",
-                    number,
+                    "merge_recording_parts: %s of interview %s is not in storage",
+                    key,
                     interview.id,
                 )
                 continue
             pieces.append(await storage.download_file(key))
-            part_keys.append(key)
+            used_keys.append(key)
 
         if pieces:
             pieces.append(await storage.download_file(interview.r2_key))
@@ -178,16 +188,16 @@ async def _merge_recording_parts(db, repo, interview):
                 joined = await concat_recordings(pieces)
             except RuntimeError:
                 # The final recording can be nearly empty (a reload just after the last
-                # answer), and a nearly empty file may not join. The parts are the real
-                # interview, so join them alone rather than lose them.
+                # answer), and a nearly empty file may not join. The earlier pieces are the
+                # real interview, so join them alone rather than lose them.
                 logger.warning(
                     "merge_recording_parts: the final recording of interview %s would not "
-                    "join, joining the parts alone",
+                    "join, joining the earlier pieces alone",
                     interview.id,
                     exc_info=True,
                 )
                 joined = await concat_recordings(pieces[:-1])
-            new_key = merge_key(interview.id)
+            new_key = merge_key(interview.id, run.attempt)
             await storage.upload_file(joined, new_key, "video/webm")
     except Exception:
         # Scoring does not depend on the video, so it carries on with the final recording.
@@ -202,9 +212,10 @@ async def _merge_recording_parts(db, repo, interview):
     if new_key is not None:
         interview = await repo.update(interview.id, {"r2_key": new_key})
     run.recording_parts = 0
+    run.previous_recordings = None
     await db.commit()
 
-    for key in [*part_keys, *([old_key] if new_key is not None else [])]:
+    for key in [*used_keys, *([old_key] if new_key is not None else [])]:
         try:
             await storage.delete_file(key)
         except Exception:
@@ -676,6 +687,29 @@ async def _transcribe_and_score_interview_async(
                     interview_id,
                 )
             raise
+        finally:
+            await engine.dispose()
+
+
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def merge_interview_recording_task(self, interview_id: str) -> None:
+    """Join the pieces of the recording of a strict interview that ended early (the parts kept
+    across reloads, and the final recording), so the employer has one video to look at. An
+    interview that finishes normally does this at the start of its scoring task; one that was
+    ended or stopped is not scored, so it needs this on its own. Safe to run again."""
+    asyncio.run(_merge_interview_recording_async(uuid.UUID(interview_id)))
+
+
+async def _merge_interview_recording_async(interview_id: uuid.UUID) -> None:
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    sessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessionLocal() as db:
+        try:
+            repo = InterviewRepository(db)
+            interview = await repo.get_by_id(interview_id)
+            if interview is None:
+                return
+            await _merge_recording_parts(db, repo, interview)
         finally:
             await engine.dispose()
 

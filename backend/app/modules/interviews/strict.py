@@ -28,6 +28,7 @@ from app.core.ai_pricing import compute_transcription_cost_usd
 from app.core.config import settings
 from app.core.exceptions import ValidationException
 from app.modules.interviews.enums import (
+    ENDED_STATUSES,
     InterviewCostComponent,
     InterviewStatus,
     TurnKind,
@@ -39,6 +40,7 @@ from app.modules.interviews.models import (
     StrictInterviewRun,
 )
 from app.modules.interviews.repository import InterviewRepository
+from app.modules.interviews.strict_conduct import ConductMixin
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +126,10 @@ async def whisper_transcribe(audio: bytes, filename: str) -> tuple[str, float]:
     return response.text, response.duration
 
 
-class StrictInterviewService:
+class StrictInterviewService(ConductMixin):
     """Runs one strict interview. Every method that changes anything is called inside the
     request's transaction and takes the interview's row lock first, so a double click or two
-    tabs take turns."""
+    tabs take turns. Leaving, ending, stopping and reinstating are in ``ConductMixin``."""
 
     def __init__(
         self,
@@ -202,16 +204,25 @@ class StrictInterviewService:
     def _deadline(self, run: StrictInterviewRun) -> datetime:
         return run.started_at + timedelta(seconds=self._max_seconds())
 
-    def _state(
+    @staticmethod
+    def _clock() -> datetime:
+        """The server's time. Looked up at call time, so a test can replace ``_now``."""
+        return _now()
+
+    async def _state(
         self,
         interview: Interview,
         run: StrictInterviewRun,
         turns: list[InterviewTurn],
         now: datetime,
     ) -> dict:
+        summary = await self._conduct_summary(interview.id, run, now)
+        # Set once the interview was ended or stopped. Nothing else is then shown: an ended
+        # interview must not leak the next question.
+        ended = run.end_reason if run.ended_at is not None else None
         current = turns[-1] if turns and turns[-1].answered_at is None else None
         turn = None
-        if current is not None:
+        if current is not None and ended is None:
             ends_at = current.opened_at + timedelta(seconds=current.time_limit_seconds)
             turn = {
                 "id": current.id,
@@ -225,11 +236,19 @@ class StrictInterviewService:
             }
         return {
             "interview_id": interview.id,
-            "finished": current is None,
+            "finished": current is None and ended is None,
             "turn": turn,
             "total_questions": len(run.questions or []),
             "seconds_left_total": seconds_between(self._deadline(run), now),
             "max_seconds_total": self._max_seconds(),
+            # Why the interview ended early (TOO_MANY_LEAVES, TOO_LONG_AWAY or STOPPED), or None.
+            "ended": ended,
+            # How many warnings have been used, against what ends it.
+            "leaves": summary["leaves"],
+            "max_leaves": settings.strict_max_leaves,
+            "away_seconds": int(summary["away_seconds"]),
+            "max_away_seconds": settings.strict_max_away_seconds,
+            "key_presses": summary["key_presses"],
         }
 
     # ------------------------------------------------------------------
@@ -323,7 +342,11 @@ class StrictInterviewService:
         comes back with the time the server says is left.
         """
         status = await self._repo.lock_status(interview.id)
-        if status not in (InterviewStatus.PENDING.value, InterviewStatus.IN_PROGRESS.value):
+        if status not in (
+            InterviewStatus.PENDING.value,
+            InterviewStatus.IN_PROGRESS.value,
+            *ENDED_STATUSES,
+        ):
             raise ValidationException("This interview has already been completed")
 
         run = await self.get_run(interview.id)
@@ -334,6 +357,12 @@ class StrictInterviewService:
 
         now = _now()
         turns = await self._turns(interview.id)
+        if status in ENDED_STATUSES:
+            # Ended early: the screen says so, and nothing else changes.
+            return await self._state(interview, run, turns, now)
+        was_started = run.started_at is not None
+        # A reinstated interview: the clock starts again now that the candidate is back.
+        await self.resume_clock(run, turns, now)
 
         if run.started_at is None:
             if not accepted or not valid_rules_version(rules_version):
@@ -369,8 +398,14 @@ class StrictInterviewService:
         if interview.started_at is None:
             update["started_at"] = now
         await self._repo.update(interview.id, update)
+        if was_started:
+            # A page that comes back is one leave (a reload, or the link opened again). It may
+            # be the one that ends the interview.
+            await self.note_return(interview, run, now)
+        else:
+            run.last_seen_at = now
         await self._db.commit()
-        return self._state(interview, run, turns, now)
+        return await self._state(interview, run, turns, now)
 
     # ------------------------------------------------------------------
     # Recording pieces that survived a reload
@@ -429,7 +464,7 @@ class StrictInterviewService:
                 "That question is not part of this interview.", code="INTERVIEW_TURN_UNKNOWN"
             )
         if turn.answered_at is not None:
-            return self._state(interview, run, turns, _now())
+            return await self._state(interview, run, turns, _now())
 
         # The slow part (speech to text) happens before the row is locked, so a reload on
         # another tab is not held up behind it. The lock below then settles who got there first.
@@ -449,14 +484,19 @@ class StrictInterviewService:
                 )
 
         status = await self._repo.lock_status(interview.id)
+        if status in ENDED_STATUSES:
+            # It ended while this answer was on its way: the answer is dropped (the recording
+            # has it) and the screen is told.
+            return await self._state(interview, run, await self._turns(interview.id), _now())
         if status != InterviewStatus.IN_PROGRESS.value:
             raise ValidationException("This interview is not in progress.")
         await self._db.refresh(turn)
         if turn.answered_at is not None:
             turns = await self._turns(interview.id)
-            return self._state(interview, run, turns, _now())
+            return await self._state(interview, run, turns, _now())
 
         now = _now()
+        run.last_seen_at = now
         turn.answered_at = now
         turn.answer_text = text
         turn.answer_seconds = audio_seconds
@@ -490,7 +530,7 @@ class StrictInterviewService:
             )
 
         await self._db.commit()
-        return self._state(interview, run, turns, now)
+        return await self._state(interview, run, turns, now)
 
     async def _follow_up_for(
         self,
