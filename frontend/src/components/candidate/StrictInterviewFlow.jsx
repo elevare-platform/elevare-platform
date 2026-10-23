@@ -834,6 +834,16 @@ export default function StrictInterviewFlow({
               </p>
             </div>
 
+            {/* What the assessment looks for, in three lines (the scorecard's opening prompt). */}
+            <div className="rounded-lg border border-brand-blue/30 bg-brand-blue/5 p-3.5" data-testid="how-to-answer">
+              <p className="text-sm font-semibold text-text">How to answer</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-text-muted">
+                <li>Use specific examples. Say what you did yourself, as distinct from your team, and the result, with numbers if you have them.</li>
+                <li>If a question asks what you would do, say what you are assuming and why.</li>
+                <li>Every candidate for this role gets the same questions and is rated the same way.</li>
+              </ul>
+            </div>
+
             {!device.ok && (
               <div role="alert" className="space-y-2 rounded-lg border border-red-300 bg-red-50 p-3.5">
                 {device.problems.map((problem) => (

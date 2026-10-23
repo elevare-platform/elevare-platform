@@ -117,6 +117,11 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const total = totalSeconds(questions)
   const overTime = limits ? total > limits.max_total_seconds : false
   const atLimit = limits ? questions.length >= limits.max_questions : false
+  // The standard closing question is already in the list (the draft adds it, or it was added
+  // here), so it is not offered twice. Matched on its text, which the employer may have edited.
+  const hasClosing = Boolean(
+    limits?.closing_question && questions.some((q) => q.text.trim() === limits.closing_question.text),
+  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
@@ -254,14 +259,32 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
               </ol>
 
               <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => edit((list) => [...list, blankQuestion(newKey())])}
-                  disabled={atLimit}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-surface-muted disabled:opacity-50"
-                >
-                  <Plus size={13} /> Add a question
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => edit((list) => [...list, blankQuestion(newKey())])}
+                    disabled={atLimit}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-surface-muted disabled:opacity-50"
+                  >
+                    <Plus size={13} /> Add a question
+                  </button>
+                  {limits.closing_question && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        edit((list) => [
+                          ...list,
+                          { ...blankQuestion(newKey()), ...limits.closing_question },
+                        ])
+                      }
+                      disabled={atLimit || hasClosing}
+                      title="Asks about motivation, notice period, start date and pay, which the scorecard collects at the end. You can change or remove it."
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-surface-muted disabled:opacity-50"
+                    >
+                      <Plus size={13} /> Add the standard closing question
+                    </button>
+                  )}
+                </div>
                 <span className="text-xs text-text-muted">
                   {questions.length} of {limits.max_questions} questions
                 </span>

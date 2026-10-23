@@ -99,6 +99,14 @@ class InterviewScoringResult:
     weaknesses: list[str] = field(default_factory=list)
     missing_evidence: list[str] = field(default_factory=list)
     contradictions: list[str] = field(default_factory=list)
+    # The scorecard report (docs/08_DECISIONS.md, item 31). All optional: a reply without them
+    # is still a valid score, shown as before.
+    role_assessed: str = ""
+    competencies: list[dict] = field(default_factory=list)
+    recommendation: str | None = None
+    claims_to_verify: list[str] = field(default_factory=list)
+    candidate_reported: list[str] = field(default_factory=list)
+    follow_up_questions: list[str] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
     failed: bool = False

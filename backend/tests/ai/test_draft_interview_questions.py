@@ -110,6 +110,16 @@ def test_the_prompt_keeps_the_job_between_job_tags_and_marks_what_is_missing():
     assert "Find out how they close deals." in prompt
 
 
+def test_the_scorecard_interviewer_rules_are_in_the_drafting_prompt():
+    rules = " ".join(INTERVIEW_QUESTIONS_SYSTEM_PROMPT.split())
+
+    assert "rated from 1 to 5 against the same scorecard for every candidate" in rules
+    assert "what they personally did, as distinct from their team" in rules
+    assert "should say what they assume" in rules
+    assert "confidential information, trade secrets or protected personal information" in rules
+    assert "standard closing question" in rules
+
+
 def test_the_prompt_tells_the_model_how_long_the_whole_interview_is():
     """The times must add up to the interview's length, so the model has to be told it."""
     prompt = build_interview_questions_prompt(

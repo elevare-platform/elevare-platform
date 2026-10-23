@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.modules.auth.jwt_handler import create_token_pair
 from app.modules.interviews.models import JobInterviewQuestion
+from app.modules.interviews.question_rules import CLOSING_QUESTION_TEXT
 from tests.conftest import (
     make_admin,
     make_employer,
@@ -82,6 +83,7 @@ async def test_a_job_with_no_questions_returns_an_empty_list_and_the_limits(clie
         "max_questions": 6,
         "default_questions": 5,
         "max_total_seconds": 1200,
+        "closing_question": {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90},
         "style": "live",
     }
 
@@ -342,8 +344,10 @@ async def test_a_draft_is_cleaned_marked_as_ai_and_never_saved(client, db_sessio
     assert body["questions"] == [
         {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI"},
         {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI"},
+        # The scorecard's standard closing question is always the last one.
+        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI"},
     ]
-    assert body["total_seconds"] == 210
+    assert body["total_seconds"] == 300
     assert await _rows(db_session, job) == []  # a draft is only ever returned
 
 
@@ -357,13 +361,13 @@ async def test_the_draft_is_asked_for_from_the_job_and_five_questions_by_default
     await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
 
     [asked] = fake.asked
-    assert asked["count"] == 5
+    assert asked["count"] == 4  # five in all, the fifth being the standard closing question
     assert asked["interview_brief"] == BRIEF
     assert asked["title"] == job.title
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("sent", "asked"), [(3, 3), (6, 6), (40, 6), (1, 1)])
+@pytest.mark.parametrize(("sent", "asked"), [(3, 2), (6, 5), (40, 5), (2, 1), (1, 1)])
 async def test_the_count_is_never_more_than_an_interview_may_have(client, db_session, ai, sent, asked):
     owner, _teammate, job = await _company(db_session)
     fake = ai([("Describe a system you designed and why.", 90)])
@@ -383,7 +387,9 @@ async def test_the_model_is_told_how_long_the_interview_is(client, db_session, a
 
     response = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
 
-    assert fake.asked[0]["total_seconds"] == 180
+    # The closing question's 90 seconds are kept out of what the AI may share between its own
+    # (here that leaves less than the 30 seconds each of its four need, so the least they can take).
+    assert fake.asked[0]["total_seconds"] == 120
     assert response["max_total_seconds"] == 180
     # Even if the model ignores it, what comes back fits and can be saved.
     assert response["total_seconds"] <= 180
@@ -401,7 +407,50 @@ async def test_a_short_interview_is_not_asked_for_more_questions_than_have_room(
 
     await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
 
-    assert fake.asked[0]["count"] == 2
+    assert fake.asked[0]["count"] == 1  # one by the AI, and the closing question
+
+
+@pytest.mark.asyncio
+async def test_the_draft_ends_with_the_standard_closing_question_and_the_editor_is_told_it(
+    client, db_session, ai
+):
+    owner, _teammate, job = await _company(db_session)
+    ai([("Describe a system you designed and why.", 120), ("How do you test a risky change?", 90)])
+
+    body = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
+
+    assert body["questions"][-1]["text"] == CLOSING_QUESTION_TEXT
+    assert body["closing_question"] == {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90}
+    assert (await _save(client, owner, job, body["questions"])).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_draft_of_one_question_has_no_closing_question(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    ai([("Describe a system you designed and why.", 120)])
+
+    body = (await client.post(_url(job, "/draft"), json={"count": 1}, headers=_headers(owner))).json()
+
+    assert [q["text"] for q in body["questions"]] == ["Describe a system you designed and why."]
+
+
+@pytest.mark.asyncio
+async def test_a_draft_that_gives_nothing_usable_gets_no_closing_question_alone(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    ai([("Why?", 60)])
+
+    response = await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
+
+    assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_the_saved_list_also_carries_the_closing_question_for_the_editor(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+
+    body = (await client.get(_url(job), headers=_headers(owner))).json()
+
+    assert body["closing_question"]["text"] == CLOSING_QUESTION_TEXT
 
 
 @pytest.mark.asyncio

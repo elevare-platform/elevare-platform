@@ -162,7 +162,7 @@ describe('the strict interview rules', () => {
   it('state what the screen really does: laptops only, one screen, full screen', () => {
     const ids = strictIds(STRICT_MONITORING)
 
-    expect(ids).toEqual(expect.arrayContaining(['laptop-and-browser', 'one-screen', 'full-screen', 'questions-on-screen', 'follow-up']))
+    expect(ids).toEqual(expect.arrayContaining(['laptop-and-browser', 'one-screen', 'full-screen', 'questions-on-screen', 'time-away']))
   })
 
   it('are numbered from 1 with no gap', () => {

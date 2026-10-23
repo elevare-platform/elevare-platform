@@ -23,6 +23,7 @@ from app.core.email import get_email_service
 from app.core.exceptions import PlanUpgradeRequiredException
 from app.core.storage import get_storage_service
 from app.modules.ai.service import AnthropicCVExtractionService
+from app.modules.interviews.assessment_text import format_assessment
 from app.modules.interviews.credits import refund_if_unused, refund_interview_credits
 from app.modules.interviews.enums import (
     STALE_INTERVIEW_TIMEOUT,
@@ -604,35 +605,12 @@ async def _transcribe_and_score_interview_async(
                         result.score,
                     )
 
-                    rationale_parts = [result.summary]
-                    if result.strengths:
-                        rationale_parts.append(
-                            "Strengths:\n"
-                            + "\n".join(f"- {s}" for s in result.strengths)
-                        )
-                    if result.weaknesses:
-                        rationale_parts.append(
-                            "Weaknesses:\n"
-                            + "\n".join(f"- {w}" for w in result.weaknesses)
-                        )
-                    if result.missing_evidence:
-                        rationale_parts.append(
-                            "Not covered in this interview:\n"
-                            + "\n".join(f"- {m}" for m in result.missing_evidence)
-                        )
-                    if result.contradictions:
-                        rationale_parts.append(
-                            "Contradictions:\n"
-                            + "\n".join(f"- {c}" for c in result.contradictions)
-                        )
-
                     await repo.update(
                         interview.id,
                         {
                             "ai_score": result.score,
-                            "ai_rationale": "\n\n".join(
-                                p for p in rationale_parts if p
-                            ),
+                            # The scorecard laid out as the text the employer reads.
+                            "ai_rationale": format_assessment(result),
                             "ai_scored_at": datetime.now(UTC),
                         },
                     )

@@ -18,6 +18,22 @@ MAX_SECONDS = 600
 STEP_SECONDS = 30
 
 
+# The standard closing question of the assessment scorecard (docs/08_DECISIONS.md, item 31):
+# motivation, notice period, earliest start date and compensation expectations are asked at the
+# end if the interview has not covered them. One combined question, so it takes one place of the
+# employer's limit; the employer can change or remove it like any other question.
+CLOSING_QUESTION_TEXT = (
+    "Before we finish, please tell us briefly what motivates you to apply for this role, "
+    "your notice period, your earliest start date and your compensation expectations."
+)
+CLOSING_QUESTION_SECONDS = 90
+
+
+def closing_question() -> dict:
+    """The standard closing question, as the screen shows and adds it."""
+    return {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": CLOSING_QUESTION_SECONDS}
+
+
 def max_total_seconds() -> int:
     """The whole interview's cap, which the answer times of the list must fit inside."""
     return settings.interview_max_duration_minutes * 60
@@ -77,13 +93,16 @@ def problems_with(questions: list[QuestionDraft]) -> list[str]:
     return found
 
 
-def tidy_drafted(raw: list[tuple[str, int]], count: int) -> list[QuestionDraft]:
+def tidy_drafted(
+    raw: list[tuple[str, int]], count: int, closing: QuestionDraft | None = None
+) -> list[QuestionDraft]:
     """Turn what the AI drafted into a list that is safe to show and save.
 
     Cleans each question, drops blank, too short and repeated ones, keeps at most ``count``,
     snaps each time to a valid step, and if the times add up to more than the interview allows,
     shortens them evenly (never below the minimum) until they fit. The AI is asked to follow
-    these limits, but its output is checked here and never trusted.
+    these limits, but its output is checked here and never trusted. ``closing``, when given, is
+    added last (after the ``count`` limit, and counted in the total time).
     """
     seen: set[str] = set()
     kept: list[QuestionDraft] = []
@@ -98,6 +117,8 @@ def tidy_drafted(raw: list[tuple[str, int]], count: int) -> list[QuestionDraft]:
         )
         if len(kept) == count:
             break
+    if closing is not None and kept:
+        kept.append(closing)
     return _fit_to_cap(kept)
 
 

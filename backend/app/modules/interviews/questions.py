@@ -57,6 +57,7 @@ class InterviewQuestionService:
             "max_questions": settings.strict_interview_max_questions,
             "default_questions": settings.strict_interview_default_questions,
             "max_total_seconds": rules.max_total_seconds(),
+            "closing_question": rules.closing_question(),
             "style": settings.interview_style,
         }
 
@@ -127,6 +128,13 @@ class InterviewQuestionService:
             ),
         )
 
+        # The last place goes to the scorecard's standard closing question (motivation, notice
+        # period, start date, compensation), which the employer can change or remove. The AI
+        # drafts the others, with the time that is left once the closing question has its own.
+        with_closing = wanted >= 2
+        ai_count = wanted - 1 if with_closing else wanted
+        ai_seconds = total_seconds - rules.CLOSING_QUESTION_SECONDS if with_closing else total_seconds
+
         ai_service = self._ai_service
         made_here = ai_service is None
         if made_here:
@@ -141,14 +149,19 @@ class InterviewQuestionService:
                 requirements=job.requirements,
                 about_the_role=job.about_the_role,
                 interview_brief=brief,
-                count=wanted,
-                total_seconds=total_seconds,
+                count=ai_count,
+                total_seconds=max(ai_seconds, rules.MIN_SECONDS * ai_count),
             )
         finally:
             if made_here:
                 # Close the HTTP client we opened, so nothing is left for garbage collection.
                 await ai_service._client.close()
-        drafts = rules.tidy_drafted(raw or [], wanted)
+        closing = (
+            rules.QuestionDraft(rules.CLOSING_QUESTION_TEXT, rules.CLOSING_QUESTION_SECONDS)
+            if with_closing
+            else None
+        )
+        drafts = rules.tidy_drafted(raw or [], ai_count, closing=closing)
         if not drafts:
             raise QuestionDraftFailedException()
 
@@ -162,5 +175,6 @@ class InterviewQuestionService:
             "max_questions": settings.strict_interview_max_questions,
             "default_questions": settings.strict_interview_default_questions,
             "max_total_seconds": rules.max_total_seconds(),
+            "closing_question": rules.closing_question(),
             "style": settings.interview_style,
         }

@@ -124,6 +124,9 @@ async function acceptAndStart() {
   // The question is on screen before React has attached the screen's listeners (its effects);
   // let those run, as they have by the time a person could press anything.
   await act(async () => {})
+  // Leaving counts once the screen has been calm for a moment after the start: where the test
+  // runs on a fake clock, let that moment pass, as it has by the time a person could leave.
+  if (vi.isFakeTimers()) await act(async () => { await vi.advanceTimersByTimeAsync(1700) })
 }
 
 beforeEach(() => {
@@ -167,6 +170,26 @@ describe('StrictInterviewFlow, before it starts', () => {
     expect(screen.getByText(/more than 60 seconds in total, ends the interview/)).toBeInTheDocument()
     expect(screen.getByText(/does not end the interview/)).toBeInTheDocument()
     expect(screen.getByText(/I need to stop button/)).toBeInTheDocument()
+  })
+
+  it('says how to answer in three short lines before the rules, and the rule list has no repeated rule for it', () => {
+    setup()
+
+    const box = screen.getByTestId('how-to-answer')
+    expect(box).toHaveTextContent('Say what you did yourself, as distinct from your team')
+    expect(box).toHaveTextContent('say what you are assuming and why')
+    expect(box).toHaveTextContent('same questions and is rated the same way')
+    expect(box.querySelectorAll('li')).toHaveLength(3)
+    // It comes before the rules the candidate accepts.
+    expect(box.compareDocumentPosition(screen.getByTestId('interview-rules')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('keeps the rule list short: the follow-up and the speak-aloud rules are part of the rules they belong to', () => {
+    setup()
+
+    expect(screen.getByText(/the AI may ask one short follow-up, which has its own, shorter time/)).toBeInTheDocument()
+    expect(screen.getByText(/Do not read a prepared text, and do not use notes/)).toBeInTheDocument()
+    expect(screen.queryByText('Speak your answers out loud. Do not read a prepared text.')).not.toBeInTheDocument()
   })
 
   it('gives the 60 seconds away in total a rule of its own, highlighted, saying it can end it with no earlier warning', () => {

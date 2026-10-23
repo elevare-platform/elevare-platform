@@ -11,8 +11,10 @@ export const KEY_REPEAT_MS = 2000
 export const WARNING_SHOW_MS = 12000
 // How often the screen says it is still there (the server times a reload from this).
 export const HEARTBEAT_MS = 15000
-// Nothing counts as a leave until the screen has settled once after the interview starts (full
-// screen taking effect, a browser pop-up), or this long has passed.
+// Nothing counts as a leave until the screen has been calm (visible, in focus, full screen) for
+// CALM_MS in a row after the interview starts (full screen taking effect, a browser pop-up), or
+// SETTLE_MS has passed, whichever is first.
+export const CALM_MS = 1500
 export const SETTLE_MS = 15000
 // The tab's title while the candidate is away, so they see it in the tab list and the taskbar.
 export const AWAY_TITLE = 'Return to your interview'

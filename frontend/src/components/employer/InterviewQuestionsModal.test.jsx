@@ -7,7 +7,14 @@ import api from '@/lib/api'
 import InterviewQuestionsModal from './InterviewQuestionsModal'
 
 const URL = '/api/v1/interviews/jobs/job-1/questions'
-const LIMITS = { max_questions: 6, default_questions: 5, max_total_seconds: 1200, style: 'strict' }
+const CLOSING = { text: 'Before we finish, tell us what motivates you, your notice period, start date and pay.', time_limit_seconds: 90 }
+const LIMITS = {
+  max_questions: 6,
+  default_questions: 5,
+  max_total_seconds: 1200,
+  closing_question: CLOSING,
+  style: 'strict',
+}
 
 const saved = (position, text, seconds = 120, source = 'EMPLOYER') => ({
   id: `id-${position}`,
@@ -41,6 +48,47 @@ describe('InterviewQuestionsModal', () => {
     confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
   afterEach(() => confirmSpy.mockRestore())
+
+  it('adds the standard closing question with its own text and time, and offers it only once', async () => {
+    api.get.mockResolvedValueOnce(loaded([saved(1, 'Describe a system you designed.', 180)]))
+    renderModal()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Add the standard closing question/ }))
+
+    expect(boxes()[1]).toHaveValue(CLOSING.text)
+    expect(screen.getByRole('button', { name: /Add the standard closing question/ })).toBeDisabled()
+  })
+
+  it('does not offer the closing question again when the list already has it, even edited slightly in spacing', async () => {
+    api.get.mockResolvedValueOnce(loaded([saved(1, 'Describe a system.', 120), saved(2, `  ${CLOSING.text}  `, 90)]))
+    renderModal()
+
+    expect(await screen.findByRole('button', { name: /Add the standard closing question/ })).toBeDisabled()
+  })
+
+  it('offers the closing question again once it has been removed or reworded', async () => {
+    api.get.mockResolvedValueOnce(loaded([saved(1, 'Describe a system.', 120), saved(2, 'Anything else to add?', 90)]))
+    renderModal()
+
+    expect(await screen.findByRole('button', { name: /Add the standard closing question/ })).toBeEnabled()
+  })
+
+  it('does not offer the closing question when the list is full', async () => {
+    api.get.mockResolvedValueOnce(
+      loaded(Array.from({ length: 6 }, (_, i) => saved(i + 1, `Question number ${i + 1} about the job.`, 60)))
+    )
+    renderModal()
+
+    expect(await screen.findByRole('button', { name: /Add the standard closing question/ })).toBeDisabled()
+  })
+
+  it('works with a server that does not send a closing question', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...LIMITS, closing_question: undefined, questions: [], total_seconds: 0 } })
+    renderModal()
+
+    await screen.findByRole('button', { name: /Add a question/ })
+    expect(screen.queryByRole('button', { name: /Add the standard closing question/ })).not.toBeInTheDocument()
+  })
 
   it('loads the job\'s saved questions, in order, with their times and the limits', async () => {
     api.get.mockResolvedValueOnce(

@@ -681,7 +681,15 @@ class AnthropicCVExtractionService(AIService):
         job_context: str = "",
     ) -> "InterviewScoringResult":
         """Score an interview transcript against the employer's brief via Claude."""
+        from app.modules.ai.interview_scorecard import (
+            clean_competencies,
+            clean_list,
+            clean_recommendation,
+            clean_text,
+            score_from_competencies,
+        )
         from app.modules.ai.prompts.interview_scoring import (
+            SCORECARD_RUBRIC,
             build_interview_scoring_prompt,
         )
         from app.modules.ai.schema import InterviewScoringResult
@@ -689,7 +697,7 @@ class AnthropicCVExtractionService(AIService):
         system_prompt, user_prompt = build_interview_scoring_prompt(
             interview_brief=interview_brief,
             transcript=transcript,
-            scoring_rubric=interview_brief,
+            scoring_rubric=SCORECARD_RUBRIC,
             job_context=job_context,
         )
 
@@ -700,7 +708,9 @@ class AnthropicCVExtractionService(AIService):
         try:
             response = await self._client.messages.create(
                 model=settings.anthropic_model,
-                max_tokens=4096,
+                # The scorecard report (competencies, claims, follow-ups) is longer than the
+                # old summary, so it gets more room before being cut off.
+                max_tokens=6000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
             )
@@ -720,13 +730,28 @@ class AnthropicCVExtractionService(AIService):
             if not isinstance(data, dict) or data.get("score") is None:
                 raise ValueError("response contained no usable score")
 
+            competencies = clean_competencies(data.get("competencies"))
+            # The overall score is the average of the assessed competencies on the scorecard
+            # (1 to 5) times 20, as the prompt says. It is worked out here from the model's own
+            # ratings so the number always agrees with the table the employer reads; with no
+            # usable ratings the model's own overall score stands.
+            score = score_from_competencies(competencies)
+            if score is None:
+                score = max(0, min(100, int(data["score"])))
+
             return InterviewScoringResult(
-                score=max(0, min(100, int(data["score"]))),
+                score=score,
                 summary=data.get("summary", ""),
                 strengths=data.get("strengths", []),
                 weaknesses=data.get("weaknesses", []),
                 missing_evidence=data.get("missing_evidence", []),
                 contradictions=data.get("contradictions", []),
+                role_assessed=clean_text(data.get("role_assessed")),
+                competencies=competencies,
+                recommendation=clean_recommendation(data.get("recommendation")),
+                claims_to_verify=clean_list(data.get("claims_to_verify")),
+                candidate_reported=clean_list(data.get("candidate_reported")),
+                follow_up_questions=clean_list(data.get("follow_up_questions")),
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
             )

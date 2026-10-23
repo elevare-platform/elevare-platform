@@ -1,4 +1,39 @@
-"""Prompt construction for post-interview candidate scoring."""
+"""Prompt construction for post-interview candidate scoring.
+
+The scoring rubric is Elevare's AI Assessment Scorecard (docs/08_DECISIONS.md, item 31): each
+competency is rated 1 to 5 against fixed evidence standards, the same for every candidate, and
+the report carries a recommendation, claims to verify and follow-up questions for a human.
+"""
+
+# The anchors of the scorecard, word for word where the scorecard has them.
+SCORECARD_RUBRIC = """AI ASSESSMENT SCORECARD
+
+Rate each competency from 1 to 5 using evidence in the candidate's answers.
+Provide a brief rationale for each rating and flag claims requiring
+verification.
+
+1 = Insufficient evidence: answer absent, unclear or unrelated to the
+    competency.
+2 = Limited: some relevant understanding, but little ownership, structure or
+    evidence.
+3 = Competent: reasonable approach with relevant examples and some measurable
+    evidence.
+4 = Strong: clear ownership, sound judgement, relevant examples and
+    measurable outcomes.
+5 = Exceptional: structured, commercially grounded answer with strong
+    evidence, trade-off analysis and learning.
+
+For hypothetical questions, assess reasoning, prioritisation, assumptions,
+risks and proposed measures rather than expecting one exact answer. Look for
+the candidate's own contribution, as distinct from their team's work, and for
+quantified results where possible.
+
+Required output after the interview: role assessed; concise candidate
+summary; competency scores with supporting evidence; key strengths; gaps and
+risks; claims requiring validation; overall recommendation (Strongly
+Recommend / Recommend / Further Assessment / Not Recommended); and suggested
+follow-up questions for a human interviewer. Clearly distinguish
+candidate-reported claims from verified facts."""
 
 INTERVIEW_SCORING_SYSTEM_PROMPT = """
 You are a strict recruitment interview analyst evaluating a candidate's
@@ -444,18 +479,84 @@ framework:
 {scoring_rubric}
 
 ==================================================
+FAIRNESS AND USE LIMITATIONS
+==================================================
+
+Apply the same scoring anchors to every candidate for the same role.
+
+Never score, mention as a strength or weakness, or let your judgement be
+influenced by: accent, how the candidate looks, personality style, or any
+protected characteristic (age, gender, marriage or family plans, pregnancy,
+religion, ethnicity, tribe, nationality or place of origin, disability or
+health, politics). If the transcript contains such information, ignore it.
+
+Your output is decision support only. A qualified human reviewer must
+consider the full application, the interview evidence and the role
+requirements before any recruitment decision. Never write that a
+candidate should or should not be hired as a final decision; the
+recommendation field below is a recommendation for that reviewer.
+
+==================================================
+CLAIMS REQUIRING VALIDATION
+==================================================
+
+Everything in the transcript is what the candidate SAID. Nothing in it is
+a verified fact. List the specific claims a human should check before
+relying on them: employers and job titles, dates and durations,
+qualifications, figures and results (revenue, savings, team size, uptime),
+and who did what. Quote or closely paraphrase each claim so the reviewer
+can find it. Never describe a claim as verified or confirmed.
+
+==================================================
+THE STANDARD CLOSING QUESTION
+==================================================
+
+An interview may end with a standard question about the candidate's
+motivation, notice period, earliest start date and compensation
+expectations. These are logistics, not competencies. Do not rate them and
+do not count them in the score. Record what the candidate said, as
+candidate-reported, in the candidate_reported field. If a topic was not
+answered, leave it out; do not guess.
+
+==================================================
 OUTPUT SCHEMA
 ==================================================
 
 Return JSON matching this schema exactly:
 
-{{"score": 42, "summary": "Two to four sentence overall assessment, explicitly noting any significant coverage limitations.", "strengths": ["..."], "weaknesses": ["..."], "missing_evidence": ["..."], "contradictions": ["..."]}}
+{{"role_assessed": "Senior Backend Engineer", "score": 70, "recommendation": "Recommend", "summary": "Two to four sentence overall assessment, explicitly noting any significant coverage limitations.", "competencies": [{{"name": "Ownership of delivery", "score": 4, "coverage": "FULLY_ASSESSED", "rationale": "One or two sentences.", "evidence": "A short direct quote from the candidate."}}], "strengths": ["..."], "weaknesses": ["..."], "missing_evidence": ["..."], "contradictions": ["..."], "claims_to_verify": ["..."], "candidate_reported": ["Notice period: one month"], "follow_up_questions": ["..."]}}
 
 Field notes:
 
-- score: integer 0-100, per the supplied scoring rubric.
+- role_assessed: the job title, from the job context.
+- competencies: one entry for each competency or probe of the interview
+  brief that is a real competency (at most 8; group closely related
+  probes; leave out the closing question). name says what is tested, not
+  the question number. score is the integer 1 to 5 from the scorecard,
+  or null when coverage is NOT_ASSESSED. coverage is FULLY_ASSESSED,
+  PARTIALLY_ASSESSED or NOT_ASSESSED. rationale is brief and says why
+  that score. evidence is a short direct quote from the candidate, or an
+  empty string when there is none.
+- score: integer 0-100. It is the average of the scores of the
+  competencies that were assessed, multiplied by 20 and rounded (an
+  average of 3.5 is 70). Competencies that were not assessed are left out
+  of the average, never counted as zero. If no competency could be
+  assessed, use 20.
+- recommendation: exactly one of "Strongly Recommend", "Recommend",
+  "Further Assessment" or "Not Recommended". Use "Further Assessment"
+  when the evidence is too thin or too mixed to decide. This is a
+  recommendation for a human reviewer, not a decision.
 - summary: overall assessment, states fit level and the most critical
   strength or gap; must note coverage limitations where significant.
+- claims_to_verify: the claims requiring validation described above;
+  empty list if there are none.
+- candidate_reported: what the candidate said in answer to the standard
+  closing question, one short entry per topic; empty list if it was not
+  asked.
+- follow_up_questions: two to four questions a human interviewer could
+  ask next, aimed at the gaps, evidence gaps and claims above. Plain
+  questions; never about a protected characteristic; never asking for a
+  previous employer's confidential information.
 - strengths: demonstrated strengths, grounded in transcript evidence.
 - weaknesses: demonstrated weaknesses (candidate gaps), not evidence gaps.
 - missing_evidence: topics or probes from the brief that this interview
@@ -486,8 +587,8 @@ The JSON must conform exactly to the supplied output schema.
 
 Populate every field required by the schema.
 
-Write summary, strengths, weaknesses, and missing_evidence in plain,
-natural prose, like a human recruiter's notes. No em dashes or en dashes;
+Write summary, rationale, strengths, weaknesses, missing_evidence and
+follow_up_questions in plain, natural prose, like a human recruiter's notes. No em dashes or en dashes;
 use commas or periods instead. Avoid stock AI phrasing (e.g. "leverage",
 "seamless", "delve into").
 

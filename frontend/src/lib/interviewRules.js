@@ -186,11 +186,7 @@ export const STRICT_RULE_GROUPS = [
       },
       {
         id: 'questions-on-screen',
-        text: 'Each question appears at the top of the screen, with the time you have to answer it. Read it, then answer out loud, looking at the camera. You can press Next when you have finished, and the next question opens when the time is up.',
-      },
-      {
-        id: 'follow-up',
-        text: 'After an answer the AI may ask one short follow-up question if it needs a little more detail. A follow-up has its own, shorter time.',
+        text: 'Each question appears at the top of the screen, with the time you have to answer it. Read it, then answer out loud, looking at the camera. Press Next when you have finished; the next question opens when the time is up. After an answer the AI may ask one short follow-up, which has its own, shorter time.',
       },
       {
         id: 'full-screen',
@@ -219,11 +215,7 @@ export const STRICT_RULE_GROUPS = [
       },
       {
         id: 'own-words',
-        text: 'Answer in your own words, from your own knowledge and experience. Do not use notes, a script, a phone, a second screen, a chatbot or any AI assistant, and do not have anyone whisper or message you answers.',
-      },
-      {
-        id: 'speak-aloud',
-        text: 'Speak your answers out loud. Do not read a prepared text.',
+        text: 'Answer out loud, in your own words, from your own knowledge and experience. Do not read a prepared text, and do not use notes, a phone, a second screen, a chatbot or any AI assistant, or have anyone whisper or message you answers.',
       },
       {
         id: 'no-sharing',

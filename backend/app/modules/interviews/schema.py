@@ -51,6 +51,11 @@ class DraftedInterviewQuestion(BaseModel):
     source: QuestionSource = "AI"
 
 
+class ClosingQuestion(BaseModel):
+    text: str
+    time_limit_seconds: int
+
+
 class _QuestionLimits(BaseModel):
     """What the screen shows next to a list of questions."""
 
@@ -58,6 +63,8 @@ class _QuestionLimits(BaseModel):
     max_questions: int
     default_questions: int
     max_total_seconds: int
+    # The standard closing question the editor offers to add (its text and answer time).
+    closing_question: "ClosingQuestion"
     # Which interview new invitations use ("live" or "strict"). The questions editor is only
     # shown when it is "strict".
     style: Literal["live", "strict"]

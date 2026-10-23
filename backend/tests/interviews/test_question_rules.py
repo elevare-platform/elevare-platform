@@ -120,6 +120,38 @@ def test_a_very_long_drafted_question_is_cut_to_the_limit():
     assert len(drafted.text) <= rules.MAX_QUESTION_CHARS
 
 
+def test_the_closing_question_is_added_last_and_does_not_use_up_the_count():
+    raw = [(f"Question number {n}: describe how you would handle it.", 90) for n in range(8)]
+    closing = QuestionDraft(rules.CLOSING_QUESTION_TEXT, rules.CLOSING_QUESTION_SECONDS)
+
+    drafted = tidy_drafted(raw, count=3, closing=closing)
+
+    assert len(drafted) == 4 and drafted[-1] == closing
+
+
+def test_the_closing_question_counts_in_the_total_time():
+    raw = [(f"Describe how you handled situation number {n} at work.", 600) for n in range(4)]
+    closing = QuestionDraft(rules.CLOSING_QUESTION_TEXT, rules.CLOSING_QUESTION_SECONDS)
+
+    drafted = tidy_drafted(raw, count=4, closing=closing)
+
+    assert sum(d.time_limit_seconds for d in drafted) <= rules.max_total_seconds()
+    assert problems_with(drafted) == []
+
+
+def test_there_is_no_closing_question_when_nothing_else_was_drafted():
+    assert tidy_drafted([("Why?", 60)], count=3, closing=QuestionDraft(rules.CLOSING_QUESTION_TEXT, 90)) == []
+
+
+def test_the_closing_question_asks_about_motivation_notice_start_date_and_pay():
+    text = rules.CLOSING_QUESTION_TEXT.lower()
+
+    for topic in ["motivates", "notice period", "start date", "compensation"]:
+        assert topic in text, topic
+    assert rules.MIN_QUESTION_CHARS < len(rules.CLOSING_QUESTION_TEXT) <= rules.MAX_QUESTION_CHARS
+    assert rules.CLOSING_QUESTION_SECONDS % rules.STEP_SECONDS == 0
+
+
 def test_drafted_times_that_do_not_fit_the_interview_are_shortened_evenly_until_they_do():
     raw = [(f"Describe how you handled situation number {n} at work.", 600) for n in range(4)]  # 40 minutes
 

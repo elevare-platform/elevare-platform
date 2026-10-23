@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import { CALM_MS } from '@/lib/strictConduct'
 import { useLeaveWatch } from './useLeaveWatch'
 
 // The page state the hook reads, set by the tests.
@@ -30,6 +31,11 @@ function watch(props = {}) {
   const view = renderHook((current) => useLeaveWatch({ active: true, onLeft, onReturned, ...current }), {
     initialProps: props,
   })
+  // The watch counts once the screen has been calm for a moment; a screen that starts calm gets
+  // there before anything a test does next.
+  if (page.visibilityState === 'visible' && page.focused && page.fullscreen) {
+    act(() => { vi.advanceTimersByTime(CALM_MS + 100) })
+  }
   return { onLeft, onReturned, ...view }
 }
 
@@ -146,11 +152,28 @@ describe('useLeaveWatch', () => {
     expect(onReturned).not.toHaveBeenCalled()
   })
 
+  it('arms only after the screen has been calm for a moment, so a pop-up just after full screen is not a leave', () => {
+    const onLeft = vi.fn()
+    renderHook(() => useLeaveWatch({ active: true, onLeft, onReturned: vi.fn() }))
+
+    // Calm at the start, then a pop-up takes the focus 300 ms later and gives it back at 4 s.
+    act(() => { vi.advanceTimersByTime(300) })
+    setPage({ focused: false })
+    fire(window, 'blur')
+    act(() => { vi.advanceTimersByTime(3700) })
+    setPage({ focused: true })
+    fire(window, 'focus')
+    act(() => { vi.advanceTimersByTime(3000) })
+
+    expect(onLeft).not.toHaveBeenCalled()
+  })
+
   it('counts a leave normally once the screen has settled', () => {
     setPage({ focused: false })
     const { onLeft } = watch()
     setPage({ focused: true })
     fire(window, 'focus')
+    act(() => { vi.advanceTimersByTime(CALM_MS + 100) })
 
     setPage({ focused: false })
     fire(window, 'blur')
@@ -207,6 +230,7 @@ describe('useLeaveWatch', () => {
     })
 
     rerender({ onLeft: second })
+    act(() => { vi.advanceTimersByTime(CALM_MS + 100) })
     setPage({ focused: false })
     fire(window, 'blur')
     act(() => { vi.advanceTimersByTime(1200) })
