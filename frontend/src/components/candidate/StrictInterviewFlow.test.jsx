@@ -188,7 +188,7 @@ describe('StrictInterviewFlow, before it starts', () => {
     setup()
 
     const items = within(screen.getByTestId('interview-rules')).getAllByRole('listitem')
-    expect(items.length).toBeLessThanOrEqual(14)
+    expect(items.length).toBeLessThanOrEqual(12)
     expect(items.length).toBeGreaterThanOrEqual(10)
     expect(screen.getByText(/The AI may ask one short follow-up/)).toBeInTheDocument()
     expect(screen.getByText(/Do not read a prepared text, use notes, a phone, a chatbot/)).toBeInTheDocument()

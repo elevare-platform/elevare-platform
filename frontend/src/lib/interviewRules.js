@@ -135,7 +135,7 @@ export const RULE_GROUPS = [
 // try to leave, and has a stop button. Version S3: a warning dims the screen and must be
 // confirmed, and every shortcut is noted with its full combination. Version S4: the 60 seconds
 // away in total is a rule of its own, highlighted, and the screen shows the time used. Version
-// S5: the same rules in about half the words (24 rules became 13), nothing dropped. The numbers in the text (4 leaves, 60 seconds) are the
+// S5: the same rules in about half the words (24 rules became 11), nothing dropped. The numbers in the text (4 leaves, 60 seconds) are the
 // server's (settings `strict_max_leaves` and `strict_max_away_seconds`); change both together.
 // Change STRICT_RULES_VERSION whenever the wording of a visible rule changes.
 export const STRICT_RULES_VERSION = 'S5'
@@ -174,13 +174,9 @@ export const STRICT_RULE_GROUPS = [
         text: 'Each question appears on screen with its time. Answer out loud, looking at the camera. Press Next when you finish; the next one opens when the time is up. The AI may ask one short follow-up.',
       },
       {
-        id: 'full-screen',
-        text: 'The interview runs in full screen. Right-click, copy, paste and most shortcuts are switched off, and you cannot pause it.',
-      },
-      {
         id: 'stay-on-page',
         needs: 'tabSwitch',
-        text: 'Stay on the interview screen. Leaving it (to another tab, window or app, or out of full screen) is noted and shown to the employer. The first three times you get a warning: the screen dims and you must confirm it. The fourth time, or being away for more than 60 seconds in total, ends the interview.',
+        text: 'The interview runs in full screen: right-click, copy, paste and most shortcuts are switched off, and you cannot pause it. Stay on the screen. Leaving it (to another tab, window or app, or out of full screen) is noted and shown to the employer. The first three times you get a warning: the screen dims and you must confirm it. The fourth time, or being away for more than 60 seconds in total, ends the interview.',
       },
       {
         id: 'time-away',
@@ -218,12 +214,8 @@ export const STRICT_RULE_GROUPS = [
     title: 'What you agree to',
     rules: [
       {
-        id: 'recorded-and-reviewed',
-        text: 'This interview is run by an AI, which turns what you say into text. Your camera and microphone record the whole session. The employer who invited you reviews the recording, your answers and an AI assessment, and the recording is kept for a limited time.',
-      },
-      {
         id: 'employer-decides',
-        text: 'The AI assessment only helps the employer, who makes every decision. The only thing decided automatically is ending the interview as described above. The notes about leaving the screen are for review and are not proof of anything.',
+        text: 'This interview is run by an AI, which turns what you say into text. Your camera and microphone record the whole session, and the recording is kept for a limited time. The employer who invited you reviews the recording, your answers and an AI assessment, and makes every decision. The only thing decided automatically is ending the interview as described above, and the notes about leaving the screen are for review and are not proof of anything.',
       },
     ],
   },

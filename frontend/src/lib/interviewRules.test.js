@@ -162,15 +162,15 @@ describe('the strict interview rules', () => {
   it('state what the screen really does: laptops only, one screen, full screen', () => {
     const ids = strictIds(STRICT_MONITORING)
 
-    expect(ids).toEqual(expect.arrayContaining(['laptop-and-browser', 'full-screen', 'questions-on-screen', 'time-away']))
+    expect(ids).toEqual(expect.arrayContaining(['laptop-and-browser', 'stay-on-page', 'questions-on-screen', 'time-away']))
   })
 
   it('are short: about a dozen rules, each a sentence or three, and no longer than the page can carry', () => {
     const rules = strictRules
 
-    expect(rules.length).toBeLessThanOrEqual(14)
-    expect(Math.max(...rules.map((rule) => rule.text.length))).toBeLessThanOrEqual(340)
-    expect(rules.reduce((sum, rule) => sum + rule.text.length, 0)).toBeLessThanOrEqual(3300)
+    expect(rules.length).toBeLessThanOrEqual(12)
+    expect(Math.max(...rules.map((rule) => rule.text.length))).toBeLessThanOrEqual(460)
+    expect(rules.reduce((sum, rule) => sum + rule.text.length, 0)).toBeLessThanOrEqual(3200)
   })
 
   it('still cover the device, the single screen, the camera, being alone and no AI help', () => {
