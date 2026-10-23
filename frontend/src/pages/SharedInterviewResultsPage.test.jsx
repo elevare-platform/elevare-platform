@@ -62,6 +62,94 @@ function renderPage() {
   )
 }
 
+const STRICT_NOTES = {
+  rules_version: 'S2',
+  rules_accepted_at: '2026-10-20T09:00:05Z',
+  attempt: 1,
+  ended: 'TOO_LONG_AWAY',
+  ended_at: '2026-10-20T09:07:00Z',
+  leaves: 2,
+  away_seconds: 70,
+  key_presses: 1,
+  reloads: 0,
+  events: [{ kind: 'ENDED', detail: 'TOO_LONG_AWAY', occurred_at: '2026-10-20T09:07:00Z', duration_seconds: null, attempt: 1, counted: false }],
+  turns: [{ number: 1, kind: 'QUESTION', question: 'Tell us about a system.', answer: 'I built billing.', answered: true }],
+}
+const ENDED_EARLY = {
+  name: 'Bola Ade',
+  current_title: 'Account Manager',
+  status: 'ENDED',
+  completed_at: '2026-10-20T09:08:00Z',
+  interview_score: null,
+  interview_assessment: null,
+  cv_score: 60,
+  cv_summary: 'Solid.',
+  cv_strengths: [],
+  cv_weaknesses: [],
+  video_url: 'https://signed.example/ended',
+  questions: ['Tell us about a system.'],
+  turns: [
+    { speaker: 'AI', text: 'Tell us about a system.' },
+    { speaker: 'Candidate', text: 'I built billing.' },
+  ],
+  transcript: null,
+  transcript_note: null,
+  strict: STRICT_NOTES,
+}
+
+describe('SharedInterviewResultsPage, strict interviews', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('shows an interview that ended early as ended, and opens to its recording, notes and answers', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [ENDED_EARLY] } })
+    renderPage()
+
+    expect(await screen.findByText('Ended early')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Bola Ade/ }))
+
+    expect(screen.getByRole('region', { name: 'Interview notes' })).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('away from the interview screen for too long')
+    expect(screen.getByText(/version S2, on/)).toBeInTheDocument()
+    expect(screen.getByText('Interview conversation')).toBeInTheDocument()
+    expect(document.querySelector('video')).toHaveAttribute('src', 'https://signed.example/ended')
+  })
+
+  it('shows no interview assessment for an interview that ended early, only the CV one', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [ENDED_EARLY] } })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /Bola Ade/ }))
+
+    expect(screen.queryByText('Interview assessment')).not.toBeInTheDocument()
+    expect(screen.getByText('CV assessment')).toBeInTheDocument()
+  })
+
+  it('says the notes are not proof and that no decision was made for the client', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [ENDED_EARLY] } })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /Bola Ade/ }))
+
+    expect(screen.getByText(/They are not proof of anything/)).toBeInTheDocument()
+    expect(screen.getByText(/no decision has been made for you/)).toBeInTheDocument()
+  })
+
+  it('shows the rules record and conduct notes on a finished strict interview too', async () => {
+    const finished = { ...COMPLETED, strict: { ...STRICT_NOTES, ended: null, leaves: 0, away_seconds: 0, key_presses: 0, events: [] } }
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [finished] } })
+    renderPage()
+
+    expect(await screen.findByRole('region', { name: 'Interview notes' })).toBeInTheDocument()
+    expect(screen.getByText(/Nothing was noted: the candidate stayed on the screen/)).toBeInTheDocument()
+  })
+
+  it('shows no notes for a live interview', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [COMPLETED] } })
+    renderPage()
+
+    await screen.findByText('Ada Obi')
+    expect(screen.queryByRole('region', { name: 'Interview notes' })).not.toBeInTheDocument()
+  })
+})
+
 describe('SharedInterviewResultsPage', () => {
   beforeEach(() => vi.clearAllMocks())
 

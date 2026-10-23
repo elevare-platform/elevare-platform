@@ -5,10 +5,12 @@ import { ChevronDown, ChevronUp, MessageCircleQuestion, User } from 'lucide-reac
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { parseAssessment } from '@/lib/interviewAssessment'
+import StrictInterviewNotes from '@/components/employer/StrictInterviewNotes'
 
 // What the client is told about each candidate's interview.
 const STATUS = {
   COMPLETED: { label: 'Completed', className: 'bg-green-50 text-green-700 border-green-200' },
+  ENDED: { label: 'Ended early', className: 'bg-amber-50 text-amber-800 border-amber-200' },
   IN_PROGRESS: { label: 'Interview in progress', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   INVITED: { label: 'Invited', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   NOT_COMPLETED: { label: 'Not completed', className: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -150,8 +152,11 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
   const status = STATUS[candidate.status] ?? STATUS.NOT_INVITED
   const interview = parseAssessment(candidate.interview_assessment)
   const interviewed = candidate.status === 'COMPLETED'
+  // An interview that ended early has a recording, answers and notes worth opening, but no
+  // assessment of the interview.
+  const endedEarly = candidate.status === 'ENDED'
   const hasDetail =
-    interviewed || candidate.cv_score != null || candidate.cv_summary || candidate.cv_strengths?.length
+    interviewed || endedEarly || candidate.cv_score != null || candidate.cv_summary || candidate.cv_strengths?.length
 
   return (
     <div className="rounded-xl border border-border bg-white overflow-hidden">
@@ -193,6 +198,8 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
             </div>
           )}
 
+          <StrictInterviewNotes strict={candidate.strict} />
+
           <Questions questions={candidate.questions ?? []} />
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -215,7 +222,7 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
             />
           </div>
 
-          {interviewed && (
+          {(interviewed || endedEarly) && (
             <div>
               <h4 className="text-sm font-semibold text-text mb-2">Interview conversation</h4>
               {candidate.transcript_note && (

@@ -1135,6 +1135,10 @@ const INTERVIEW_STATUS_META = {
   SCORED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
   EXPIRED: { button: 'Resend', badge: 'Link expired', badgeClass: 'text-red-600' },
   FAILED: { button: 'Resend', badge: 'Scoring failed', badgeClass: 'text-red-600' },
+  // A strict interview that ended early: no Resend (the link would only show the candidate that
+  // it ended). The employer reviews it and can reinstate it from the review window.
+  ENDED_CONDUCT: { button: null, reviewLabel: 'Review and reinstate', badge: 'Ended early', badgeClass: 'text-amber-600' },
+  STOPPED: { button: null, reviewLabel: 'Review and reinstate', badge: 'Stopped by the candidate', badgeClass: 'text-amber-600' },
 }
 
 function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited }) {
@@ -1329,7 +1333,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
             onClick={() => setShowInterviewDetail(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue/5 transition-colors"
           >
-            <PlayCircle size={13} /> Review AI Interview
+            <PlayCircle size={13} /> {statusMeta.reviewLabel ?? 'Review AI Interview'}
           </button>
           <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
         </div>
@@ -1383,6 +1387,8 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
           jobId={jobId}
           talentPoolProfileId={item.talent_pool_profile_id}
           candidateName={item.candidate_name}
+          // Reinstated: the candidate has the interview again, so the row is back to "sent".
+          onReinstated={() => setStatusOverride('PENDING')}
           onClose={() => setShowInterviewDetail(false)}
         />
       )}

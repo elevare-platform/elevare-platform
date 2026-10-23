@@ -169,3 +169,148 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     expect(generateButton()).toBeInTheDocument()
   })
 })
+
+// ── A strict interview that ended early ─────────────────────────────────────
+
+const STRICT = {
+  rules_version: 'S2',
+  rules_accepted_at: '2026-10-20T09:00:05Z',
+  attempt: 1,
+  ended: 'TOO_MANY_LEAVES',
+  ended_at: '2026-10-20T09:07:00Z',
+  leaves: 4,
+  away_seconds: 20,
+  key_presses: 0,
+  reloads: 0,
+  events: [{ kind: 'ENDED', detail: 'TOO_MANY_LEAVES', occurred_at: '2026-10-20T09:07:00Z', duration_seconds: null, attempt: 1, counted: false }],
+  turns: [{ number: 1, kind: 'QUESTION', question: 'Tell us about a system.', answer: 'I built billing.', answered: true }],
+}
+const ENDED = { ...BASE, status: 'ENDED_CONDUCT', completed_at: '2026-10-20T09:08:00Z', strict: STRICT }
+
+function renderEnded(props = {}) {
+  const onReinstated = vi.fn()
+  const onClose = vi.fn()
+  render(
+    <MemoryRouter>
+      <InterviewDetailModal
+        jobId="job-1"
+        talentPoolProfileId="profile-1"
+        candidateName="Ada"
+        onClose={onClose}
+        onReinstated={onReinstated}
+        {...props}
+      />
+    </MemoryRouter>
+  )
+  return { onReinstated, onClose }
+}
+
+describe('InterviewDetailModal: an interview that ended early', () => {
+  beforeEach(() => {
+    api.get.mockReset()
+    api.post.mockReset()
+  })
+
+  it('says it ended early and has not been scored, and shows the notes with it', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    renderEnded()
+
+    expect(await screen.findByText(/Ended early\. It has not been scored/)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Interview notes' })).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('left the interview screen too many times')
+  })
+
+  it('says it was the candidate who stopped it, when they did', async () => {
+    api.get.mockResolvedValue({ data: { ...ENDED, status: 'STOPPED', strict: { ...STRICT, ended: 'STOPPED' } } })
+    renderEnded()
+
+    expect(await screen.findByText(/Stopped by the candidate\. It has not been scored/)).toBeInTheDocument()
+  })
+
+  it('reinstates it with the job and the candidate, tells the owner the candidate was emailed, and tells the list', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    api.post.mockResolvedValue({ data: { status: 'PENDING', interview_url: 'https://x/i/t', email_sent: true } })
+    const { onReinstated } = renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reinstate this interview' }))
+
+    expect(await screen.findByText('The interview was reinstated')).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/profile-1/reinstate', null, { params: { job_id: 'job-1' } })
+    expect(screen.getByText(/emailed the same link/)).toBeInTheDocument()
+    expect(onReinstated).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells the owner to send the link themselves when there is no email on file', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    api.post.mockResolvedValue({ data: { status: 'PENDING', interview_url: 'https://x/i/t', email_sent: false } })
+    renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reinstate this interview' }))
+
+    expect(await screen.findByText(/no email address on file/)).toBeInTheDocument()
+  })
+
+  it("shows the server's message when it cannot be reinstated, and keeps the button", async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    api.post.mockRejectedValue({
+      response: { data: { message: 'The recording of this interview is still being prepared. Please try again in a minute.' } },
+    })
+    const { onReinstated } = renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reinstate this interview' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('still being prepared')
+    expect(screen.getByRole('button', { name: 'Reinstate this interview' })).toBeEnabled()
+    expect(onReinstated).not.toHaveBeenCalled()
+  })
+
+  it('offers no reinstate button for an interview that finished', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, strict: { ...STRICT, ended: null } } })
+    renderEnded()
+
+    await screen.findByRole('region', { name: 'Interview notes' })
+    expect(screen.queryByRole('button', { name: 'Reinstate this interview' })).not.toBeInTheDocument()
+  })
+
+  it('shows no notes for a live interview', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, strict: null } })
+    renderEnded()
+
+    await screen.findByText(/Transcript/)
+    expect(screen.queryByRole('region', { name: 'Interview notes' })).not.toBeInTheDocument()
+  })
+
+  it('asks before scoring what was recorded, because that closes the interview', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Score what was recorded' }))
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('can no longer carry on'))
+    expect(api.post).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('scores what was recorded once the owner agrees', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    api.post.mockResolvedValue({ data: { queued: true } })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Score what was recorded' }))
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/score', null, { params: { job_id: 'job-1', talent_pool_profile_id: 'profile-1' } })
+    )
+    confirm.mockRestore()
+  })
+
+  it('does not offer a score for an interview that has not finished or ended', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    renderEnded()
+
+    await screen.findByText(/Ended early/)
+    expect(screen.queryByRole('button', { name: /generate ai score/i })).not.toBeInTheDocument()
+  })
+})

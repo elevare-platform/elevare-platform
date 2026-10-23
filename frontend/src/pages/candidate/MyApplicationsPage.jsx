@@ -42,6 +42,10 @@ function ApplicationCard({ application, onWithdraw }) {
   const canWithdraw = application.status === 'SUBMITTED' || application.status === 'REVIEWING'
   const interviewCompleted = application.interview_status === 'UPLOADED'
     || application.interview_status === 'SCORED'
+  // A strict interview that ended early (or that the candidate stopped): its page says so and
+  // who to contact, instead of offering to start it.
+  const interviewEnded = application.interview_status === 'ENDED_CONDUCT'
+    || application.interview_status === 'STOPPED'
   const canInterview = application.has_ai_interview
     && !interviewCompleted
     && application.status !== 'REJECTED'
@@ -100,7 +104,7 @@ function ApplicationCard({ application, onWithdraw }) {
           <Button size="sm" asChild>
             <Link to={`/candidate/applications/${application.id}/interview`} className="inline-flex items-center gap-1.5">
               <Sparkles size={14} />
-              Start AI Interview
+              {interviewEnded ? 'See interview status' : 'Start AI Interview'}
             </Link>
           </Button>
         )}
