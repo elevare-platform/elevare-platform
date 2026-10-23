@@ -149,7 +149,7 @@ describe('the strict interview rules', () => {
   it('say the keys that are noted do not end the interview', () => {
     const rule = strictRules.find((r) => r.id === 'keys-noted')
 
-    expect(rule.text).toContain('does not end the interview')
+    expect(rule.text).toContain('do not end the interview')
     for (const key of ['Esc', 'Alt', 'F11', 'F12']) expect(rule.text).toContain(key)
   })
 
@@ -162,7 +162,31 @@ describe('the strict interview rules', () => {
   it('state what the screen really does: laptops only, one screen, full screen', () => {
     const ids = strictIds(STRICT_MONITORING)
 
-    expect(ids).toEqual(expect.arrayContaining(['laptop-and-browser', 'one-screen', 'full-screen', 'questions-on-screen', 'time-away']))
+    expect(ids).toEqual(expect.arrayContaining(['laptop-and-browser', 'full-screen', 'questions-on-screen', 'time-away']))
+  })
+
+  it('are short: about a dozen rules, each a sentence or three, and no longer than the page can carry', () => {
+    const rules = strictRules
+
+    expect(rules.length).toBeLessThanOrEqual(14)
+    expect(Math.max(...rules.map((rule) => rule.text.length))).toBeLessThanOrEqual(340)
+    expect(rules.reduce((sum, rule) => sum + rule.text.length, 0)).toBeLessThanOrEqual(3300)
+  })
+
+  it('still cover the device, the single screen, the camera, being alone and no AI help', () => {
+    const text = strictRules.map((rule) => rule.text).join(' ')
+
+    for (const part of ['laptop or desktop', 'one screen only', 'camera on', 'alone', 'chatbot or any AI assistant', 'record or share']) {
+      expect(text, part).toContain(part)
+    }
+  })
+
+  it('still say the interview is run by an AI, recorded, kept for a limited time, and decided by the employer', () => {
+    const text = strictRules.map((rule) => rule.text).join(' ')
+
+    for (const part of ['run by an AI', 'record the whole session', 'kept for a limited time', 'makes every decision']) {
+      expect(text, part).toContain(part)
+    }
   })
 
   it('are numbered from 1 with no gap', () => {

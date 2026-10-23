@@ -134,10 +134,11 @@ export const RULE_GROUPS = [
 // the screen, warns, ends the interview after repeated or long absences, notes the keys that
 // try to leave, and has a stop button. Version S3: a warning dims the screen and must be
 // confirmed, and every shortcut is noted with its full combination. Version S4: the 60 seconds
-// away in total is a rule of its own, highlighted, and the screen shows the time used. The numbers in the text (4 leaves, 60 seconds) are the
+// away in total is a rule of its own, highlighted, and the screen shows the time used. Version
+// S5: the same rules in about half the words (24 rules became 13), nothing dropped. The numbers in the text (4 leaves, 60 seconds) are the
 // server's (settings `strict_max_leaves` and `strict_max_away_seconds`); change both together.
 // Change STRICT_RULES_VERSION whenever the wording of a visible rule changes.
-export const STRICT_RULES_VERSION = 'S4'
+export const STRICT_RULES_VERSION = 'S5'
 
 // The strict interview's own monitoring switches. Separate from MONITORING above, which belongs
 // to the live interview (whose rules must never claim anything it does not do).
@@ -153,23 +154,11 @@ export const STRICT_RULE_GROUPS = [
     rules: [
       {
         id: 'laptop-and-browser',
-        text: 'Use a laptop or desktop computer with a working camera and microphone, and the latest Chrome or Edge. This interview cannot be taken on a phone or a tablet.',
+        text: 'Use a laptop or desktop with a working camera and microphone, the latest Chrome or Edge, and one screen only (disconnect any second monitor). It cannot be taken on a phone or a tablet.',
       },
       {
-        id: 'one-screen',
-        text: 'Use one screen only. If a second monitor is connected, disconnect it before you start. The interview cannot start while a second screen is detected.',
-      },
-      {
-        id: 'quiet-and-light',
-        text: 'Choose a quiet place with good light. Face the light, with no bright window behind you.',
-      },
-      {
-        id: 'connection',
-        text: 'Check your connection. Your answers are sent as you go, so a stable internet connection matters. Wi-Fi is better than mobile data.',
-      },
-      {
-        id: 'close-everything',
-        text: 'Close other tabs and apps, and turn on Do Not Disturb, so nothing pops up and pulls you away.',
+        id: 'quiet-place',
+        text: 'Sit somewhere quiet and well lit, on a stable connection (Wi-Fi is better than mobile data). Close other tabs and apps and turn on Do Not Disturb.',
       },
     ],
   },
@@ -177,53 +166,37 @@ export const STRICT_RULE_GROUPS = [
     title: 'During the interview',
     rules: [
       {
-        id: 'alone',
-        text: 'You must be the person who was invited, and you must be alone. No one else may be in the room, speak to you, or help you with answers.',
-      },
-      {
-        id: 'camera-on',
-        text: 'Keep your camera on for the whole interview, with your face fully visible and the camera at about eye level. Do not cover or turn off the camera.',
+        id: 'own-words',
+        text: 'Be the person invited, alone, with your camera on and your face in view the whole time. Answer out loud, in your own words. Do not read a prepared text, use notes, a phone, a chatbot or any AI assistant, or have anyone help you. Do not record or share the interview or the link.',
       },
       {
         id: 'questions-on-screen',
-        text: 'Each question appears at the top of the screen, with the time you have to answer it. Read it, then answer out loud, looking at the camera. Press Next when you have finished; the next question opens when the time is up. After an answer the AI may ask one short follow-up, which has its own, shorter time.',
+        text: 'Each question appears on screen with its time. Answer out loud, looking at the camera. Press Next when you finish; the next one opens when the time is up. The AI may ask one short follow-up.',
       },
       {
         id: 'full-screen',
-        text: 'The interview runs in full screen. While it runs, right-click, copy, paste and most keyboard shortcuts are switched off. You cannot pause it.',
+        text: 'The interview runs in full screen. Right-click, copy, paste and most shortcuts are switched off, and you cannot pause it.',
       },
       {
         id: 'stay-on-page',
         needs: 'tabSwitch',
-        text: 'Stay on the interview screen, in full screen. Leaving it (to another tab, window or app, or by leaving full screen) is noted and shown to the employer, with the time and how long you were away. The first three times you get a warning: the screen dims and you must confirm it before you carry on. The fourth time, or being away for more than 60 seconds in total, ends the interview, so keep track of how long you are away.',
+        text: 'Stay on the interview screen. Leaving it (to another tab, window or app, or out of full screen) is noted and shown to the employer. The first three times you get a warning: the screen dims and you must confirm it. The fourth time, or being away for more than 60 seconds in total, ends the interview.',
       },
       {
         id: 'time-away',
         needs: 'tabSwitch',
         emphasis: true,
-        text: 'You have 60 seconds away from the interview screen in total, for the whole interview. Every time you leave is added to the same total, so a few seconds here and there add up. When the total goes past 60 seconds, the interview ends as soon as you are back, even if that is your first time leaving. The screen shows how much of the 60 seconds you have used.',
+        text: 'You have 60 seconds away from the screen in total, for the whole interview. Every time you leave adds to the same total. When it goes past 60 seconds, the interview ends as soon as you are back, even if that is your first time leaving. The screen shows how much you have used.',
       },
       {
         id: 'keys-noted',
         needs: 'tabSwitch',
-        text: 'Pressing a shortcut (a key held with Ctrl, Alt or the Windows or Command key, such as Ctrl+T, Alt+Tab or Ctrl+Shift+I), Esc, or a function key such as F11 or F12 is also noted and shown to the employer, with the full combination. It does not end the interview.',
+        text: 'Shortcuts (such as Ctrl+T, Alt+Tab, Ctrl+Shift+I), Esc and F11 or F12 are also noted and shown to the employer, with the full combination. They do not end the interview.',
       },
       {
         id: 'stop-button',
         needs: 'tabSwitch',
-        text: 'If you need to stop, press the I need to stop button and confirm. The interview ends, the employer is told, and they can let you carry on later. Stopping is your choice and is not a mark against you.',
-      },
-      {
-        id: 'own-words',
-        text: 'Answer out loud, in your own words, from your own knowledge and experience. Do not read a prepared text, and do not use notes, a phone, a second screen, a chatbot or any AI assistant, or have anyone whisper or message you answers.',
-      },
-      {
-        id: 'no-sharing',
-        text: 'Do not record, photograph, copy or share the interview, the questions or the recording. The link is yours alone. Do not pass it to anyone.',
-      },
-      {
-        id: 'it-ends',
-        text: 'The interview has a time limit for each question and an overall time limit, both shown on screen. It ends by itself when the questions are done or the time is up.',
+        text: 'If you need to stop, press I need to stop and confirm. The employer is told and can let you carry on later. Stopping is your choice and is not a mark against you.',
       },
     ],
   },
@@ -231,13 +204,9 @@ export const STRICT_RULE_GROUPS = [
     title: 'If something goes wrong',
     rules: [
       {
-        id: 'dropped',
-        text: 'If your page reloads or your connection drops, open the same link again. You return to the question you were on. The time that passed is not given back, and a reload counts as leaving the screen once.',
-      },
-      {
         id: 'if-it-ends',
         needs: 'tabSwitch',
-        text: 'If the interview ends, your answers and your recording up to that point are still sent to the employer. If you think it should not have ended, contact the employer who invited you. They can let you carry on where you stopped.',
+        text: 'If your page reloads or your connection drops, open the same link to return to your question; the time that passed is not given back. If the interview ends, your answers and recording are still sent to the employer. If you think it should not have ended, contact the employer who invited you.',
       },
       {
         id: 'cannot-meet-a-rule',
@@ -249,20 +218,12 @@ export const STRICT_RULE_GROUPS = [
     title: 'What you agree to',
     rules: [
       {
-        id: 'ai-interviewer',
-        text: 'This interview is run by an AI, not a person. It chooses whether to ask a follow-up, and an automated service turns what you say into text.',
-      },
-      {
         id: 'recorded-and-reviewed',
-        text: 'Your camera and microphone record the whole session. The employer who invited you reviews the recording, the text of your answers and an AI assessment of them.',
-      },
-      {
-        id: 'kept-for-a-while',
-        text: 'The recording is kept for a limited time and is only shown to the employer through links that expire.',
+        text: 'This interview is run by an AI, which turns what you say into text. Your camera and microphone record the whole session. The employer who invited you reviews the recording, your answers and an AI assessment, and the recording is kept for a limited time.',
       },
       {
         id: 'employer-decides',
-        text: 'The AI assessment helps the employer. The only thing decided automatically is ending the interview as described above. The notes about leaving the screen are for the employer to review and are not proof of anything. The employer makes every other decision.',
+        text: 'The AI assessment only helps the employer, who makes every decision. The only thing decided automatically is ending the interview as described above. The notes about leaving the screen are for review and are not proof of anything.',
       },
     ],
   },

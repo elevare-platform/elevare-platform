@@ -168,8 +168,8 @@ describe('StrictInterviewFlow, before it starts', () => {
 
     expect(screen.getByText(/The first three times you get a warning/)).toBeInTheDocument()
     expect(screen.getByText(/more than 60 seconds in total, ends the interview/)).toBeInTheDocument()
-    expect(screen.getByText(/does not end the interview/)).toBeInTheDocument()
-    expect(screen.getByText(/I need to stop button/)).toBeInTheDocument()
+    expect(screen.getByText(/They do not end the interview/)).toBeInTheDocument()
+    expect(screen.getByText(/press I need to stop and confirm/)).toBeInTheDocument()
   })
 
   it('says how to answer in three short lines before the rules, and the rule list has no repeated rule for it', () => {
@@ -184,20 +184,22 @@ describe('StrictInterviewFlow, before it starts', () => {
     expect(box.compareDocumentPosition(screen.getByTestId('interview-rules')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('keeps the rule list short: the follow-up and the speak-aloud rules are part of the rules they belong to', () => {
+  it('keeps the rules short: a dozen numbered rules, not twenty, each in plain words', () => {
     setup()
 
-    expect(screen.getByText(/the AI may ask one short follow-up, which has its own, shorter time/)).toBeInTheDocument()
-    expect(screen.getByText(/Do not read a prepared text, and do not use notes/)).toBeInTheDocument()
-    expect(screen.queryByText('Speak your answers out loud. Do not read a prepared text.')).not.toBeInTheDocument()
+    const items = within(screen.getByTestId('interview-rules')).getAllByRole('listitem')
+    expect(items.length).toBeLessThanOrEqual(14)
+    expect(items.length).toBeGreaterThanOrEqual(10)
+    expect(screen.getByText(/The AI may ask one short follow-up/)).toBeInTheDocument()
+    expect(screen.getByText(/Do not read a prepared text, use notes, a phone, a chatbot/)).toBeInTheDocument()
   })
 
   it('gives the 60 seconds away in total a rule of its own, highlighted, saying it can end it with no earlier warning', () => {
     setup()
 
-    const rule = screen.getByText(/You have 60 seconds away from the interview screen in total/)
+    const rule = screen.getByText(/You have 60 seconds away from the screen in total/)
     expect(rule).toHaveTextContent('even if that is your first time leaving')
-    expect(rule).toHaveTextContent('shows how much of the 60 seconds you have used')
+    expect(rule).toHaveTextContent('The screen shows how much you have used')
     expect(rule.closest('li').className).toContain('bg-amber-50')
   })
 
