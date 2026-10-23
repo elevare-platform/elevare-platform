@@ -199,7 +199,7 @@ class StrictInterviewService(ConductMixin):
 
     @staticmethod
     def _max_seconds() -> int:
-        return settings.strict_interview_max_minutes * 60
+        return settings.interview_max_duration_minutes * 60
 
     def _deadline(self, run: StrictInterviewRun) -> datetime:
         return run.started_at + timedelta(seconds=self._max_seconds())

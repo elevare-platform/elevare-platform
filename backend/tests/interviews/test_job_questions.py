@@ -374,6 +374,37 @@ async def test_the_count_is_never_more_than_an_interview_may_have(client, db_ses
 
 
 @pytest.mark.asyncio
+async def test_the_model_is_told_how_long_the_interview_is(client, db_session, ai, monkeypatch):
+    """INTERVIEW_MAX_DURATION_MINUTES is the one setting for the interview's length, so the
+    draft has to follow it (the user changed it to 3 and still got ten minutes of questions)."""
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 3)
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([(f"Describe how you handled situation number {n} at work.", 120) for n in range(5)])
+
+    response = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
+
+    assert fake.asked[0]["total_seconds"] == 180
+    assert response["max_total_seconds"] == 180
+    # Even if the model ignores it, what comes back fits and can be saved.
+    assert response["total_seconds"] <= 180
+    assert (await _save(client, owner, job, response["questions"])).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_short_interview_is_not_asked_for_more_questions_than_have_room(
+    client, db_session, ai, monkeypatch
+):
+    """One minute holds two questions of the shortest answer time, not five."""
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 1)
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([("Describe a system you designed and why.", 60)])
+
+    await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))
+
+    assert fake.asked[0]["count"] == 2
+
+
+@pytest.mark.asyncio
 async def test_drafted_times_are_shortened_so_the_list_can_always_be_saved(client, db_session, ai):
     owner, _teammate, job = await _company(db_session)
     ai([(f"Describe how you handled situation number {n} at work.", 600) for n in range(5)])  # 50 minutes

@@ -187,7 +187,7 @@ async def test_the_invite_page_says_which_style_the_interview_is(client, db_sess
     live_info = (await client.get(_base(live.token))).json()
 
     assert strict_info["style"] == "strict"
-    assert strict_info["max_duration_minutes"] == settings.strict_interview_max_minutes
+    assert strict_info["max_duration_minutes"] == settings.interview_max_duration_minutes
     assert live_info["style"] == "live"
     assert live_info["max_duration_minutes"] == settings.interview_max_duration_minutes
 
@@ -232,7 +232,7 @@ async def test_starting_shows_the_first_question_with_its_time(client, db_sessio
     assert body["turn"]["text"] == QUESTIONS[0][0]
     assert body["turn"]["time_limit_seconds"] == 180
     assert body["turn"]["seconds_left"] == 180
-    assert body["max_seconds_total"] == settings.strict_interview_max_minutes * 60
+    assert body["max_seconds_total"] == settings.interview_max_duration_minutes * 60
 
 
 @pytest.mark.asyncio
@@ -585,7 +585,7 @@ async def test_the_last_question_is_cut_to_the_time_the_interview_has_left(
 ):
     interview = await make_strict(db_session, questions=[QUESTIONS[0], QUESTIONS[1]])
     first = (await start(client, interview.token)).json()
-    clock.advance(settings.strict_interview_max_minutes * 60 - 40)
+    clock.advance(settings.interview_max_duration_minutes * 60 - 40)
 
     body = (await answer(client, interview.token, first["turn"]["id"])).json()
 
@@ -598,7 +598,7 @@ async def test_the_last_question_is_cut_to_the_time_the_interview_has_left(
 async def test_no_new_question_opens_when_almost_no_time_is_left(client, db_session, fakes, clock):
     interview = await make_strict(db_session)
     first = (await start(client, interview.token)).json()
-    clock.advance(settings.strict_interview_max_minutes * 60 - (strict_module.MIN_TURN_SECONDS - 1))
+    clock.advance(settings.interview_max_duration_minutes * 60 - (strict_module.MIN_TURN_SECONDS - 1))
 
     body = (await answer(client, interview.token, first["turn"]["id"])).json()
 
@@ -718,7 +718,7 @@ async def test_no_follow_up_when_little_time_is_left(client, db_session, fakes, 
     interview = await make_strict(db_session, questions=[QUESTIONS[0]])
     first = (await start(client, interview.token)).json()
     clock.advance(
-        settings.strict_interview_max_minutes * 60
+        settings.interview_max_duration_minutes * 60
         - (settings.strict_follow_up_min_remaining_seconds - 1)
     )
     fakes.ai.replies = [FOLLOW_UP]

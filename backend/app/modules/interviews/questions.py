@@ -115,9 +115,16 @@ class InterviewQuestionService:
             raise ValidationException(
                 message="Write the interview brief first. The questions are drafted from it."
             )
-        wanted = min(
-            count or settings.strict_interview_default_questions,
-            settings.strict_interview_max_questions,
+        # The whole interview has a length (INTERVIEW_MAX_DURATION_MINUTES): the AI is told it,
+        # and never asked for more questions than can each get the shortest answer time.
+        total_seconds = rules.max_total_seconds()
+        wanted = max(
+            1,
+            min(
+                count or settings.strict_interview_default_questions,
+                settings.strict_interview_max_questions,
+                total_seconds // rules.MIN_SECONDS,
+            ),
         )
 
         ai_service = self._ai_service
@@ -135,6 +142,7 @@ class InterviewQuestionService:
                 about_the_role=job.about_the_role,
                 interview_brief=brief,
                 count=wanted,
+                total_seconds=total_seconds,
             )
         finally:
             if made_here:

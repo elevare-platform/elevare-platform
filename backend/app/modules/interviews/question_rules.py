@@ -20,7 +20,7 @@ STEP_SECONDS = 30
 
 def max_total_seconds() -> int:
     """The whole interview's cap, which the answer times of the list must fit inside."""
-    return settings.strict_interview_max_minutes * 60
+    return settings.interview_max_duration_minutes * 60
 
 
 @dataclass(frozen=True)

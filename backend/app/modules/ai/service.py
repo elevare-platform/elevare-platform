@@ -349,6 +349,7 @@ class AnthropicCVExtractionService(AIService):
         about_the_role: str | None,
         interview_brief: str,
         count: int,
+        total_seconds: int,
     ) -> list[tuple[str, int]] | None:
         """Draft a job's strict-interview questions from its interview brief.
 
@@ -378,6 +379,7 @@ class AnthropicCVExtractionService(AIService):
                     about_the_role=about_the_role,
                     interview_brief=interview_brief,
                     count=count,
+                    total_seconds=total_seconds,
                 ),
                 output_type=DraftedInterviewQuestions,
             )

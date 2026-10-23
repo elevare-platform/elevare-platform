@@ -25,6 +25,15 @@ from app.modules.interviews.strict import StrictInterviewService
 from app.modules.talent_pool.models import TalentPoolProfiles
 from tests.conftest import make_user
 
+
+@pytest.fixture(autouse=True)
+def _interview_is_twenty_minutes_long(monkeypatch):
+    """The interview's length comes from INTERVIEW_MAX_DURATION_MINUTES in the developer's own
+    .env (10, 3, whatever they are trying). The tests here are written for 20, so they must not
+    depend on it; a test that cares about another length sets it itself."""
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 20)
+
+
 # What the fake speech-to-text hears unless a test queues something else.
 LONG_ANSWER = "I designed the billing service so that every charge was recorded before it was sent."
 

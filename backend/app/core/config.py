@@ -172,9 +172,9 @@ class Settings(BaseSettings):
     # so this can be switched back with no rebuild. An interview keeps the style it was
     # invited with.
     interview_style: Literal["live", "strict"] = "live"
-    # The strict interview's limits (the user's decisions): 20 minutes in all, and the
-    # employer sets 5 questions by default, up to 6, which fits that cap.
-    strict_interview_max_minutes: int = 20
+    # The strict interview's limits (the user's decisions). Its length in all is
+    # interview_max_duration_minutes above, the same setting the live interview uses, so there
+    # is one number to change. The employer sets 5 questions by default, up to 6.
     strict_interview_max_questions: int = 6
     strict_interview_default_questions: int = 5
     # A follow-up question gets its own, shorter allowance. It is only asked while the

@@ -82,7 +82,7 @@ def test_times_that_add_up_to_exactly_the_cap_are_allowed():
 
 
 def test_the_cap_follows_the_setting(monkeypatch):
-    monkeypatch.setattr(settings, "strict_interview_max_minutes", 10)
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 10)
 
     assert any("limited to 10 minutes" in p for p in problems_with([q(seconds=300), q(seconds=360)]))
 
@@ -131,7 +131,7 @@ def test_drafted_times_that_do_not_fit_the_interview_are_shortened_evenly_until_
 
 
 def test_times_are_never_shortened_below_the_minimum(monkeypatch):
-    monkeypatch.setattr(settings, "strict_interview_max_minutes", 1)  # an impossible cap for 3 questions
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 1)  # an impossible cap for 3 questions
     raw = [(f"Describe how you handled situation number {n} at work.", 120) for n in range(3)]
 
     drafted = tidy_drafted(raw, count=5)

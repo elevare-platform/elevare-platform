@@ -694,7 +694,7 @@ async def test_the_owner_reinstates_and_the_candidate_carries_on_where_they_stop
     # expired allowance. Total: 20 minutes minus the 100 seconds used.
     assert state["turn"]["id"] == first["turn"]["id"]
     assert state["turn"]["seconds_left"] == 80
-    assert state["seconds_left_total"] == settings.strict_interview_max_minutes * 60 - 100
+    assert state["seconds_left_total"] == settings.interview_max_duration_minutes * 60 - 100
 
 
 @pytest.mark.asyncio

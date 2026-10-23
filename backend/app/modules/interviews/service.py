@@ -394,11 +394,7 @@ class InterviewService:
             job_title=job.title,
             company_name=employer_profile.company_name if employer_profile else None,
             status=interview.status,
-            max_duration_minutes=(
-                settings.strict_interview_max_minutes
-                if strict
-                else settings.interview_max_duration_minutes
-            ),
+            max_duration_minutes=settings.interview_max_duration_minutes,
             session_start_count=interview.session_start_count,
             style="strict" if strict else "live",
             started=bool(run and run.started_at is not None),
