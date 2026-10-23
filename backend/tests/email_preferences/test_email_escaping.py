@@ -43,6 +43,21 @@ HOSTILE_EMAILS = {
     "send_job_moderation_status (rejected)": lambda s: s.send_job_moderation_status(
         TO, {"id": "job-1", "title": HOSTILE}, "REJECTED", HOSTILE
     ),
+    "send_job_moderation_status (approved and published)": lambda s: s.send_job_moderation_status(
+        TO, {"id": "job-1", "title": HOSTILE}, "APPROVED_AND_PUBLISHED"
+    ),
+    "send_job_moderation_status (approved, not published)": lambda s: s.send_job_moderation_status(
+        TO, {"id": "job-1", "title": HOSTILE}, "APPROVED_NOT_PUBLISHED", HOSTILE
+    ),
+    "send_job_switched_off (applicant limit)": lambda s: s.send_job_switched_off(
+        TO, {"id": "job-1", "title": HOSTILE}, "APPLICANT_LIMIT", 3
+    ),
+    "send_job_switched_off (expired)": lambda s: s.send_job_switched_off(
+        TO, {"id": "job-1", "title": HOSTILE}, "EXPIRED", 30
+    ),
+    "send_job_switched_off (plan lapsed)": lambda s: s.send_job_switched_off(
+        TO, {"id": "job-1", "title": HOSTILE}, "PLAN_LAPSED"
+    ),
     "send_contact_notification": lambda s: s.send_contact_notification(
         TO, HOSTILE, "v@example.com", HOSTILE, HOSTILE, "general"
     ),

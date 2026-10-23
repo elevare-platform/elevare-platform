@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import InterviewFlow from '@/components/candidate/InterviewFlow'
+import StrictInterviewFlow from '@/components/candidate/StrictInterviewFlow'
 import api from '@/lib/api'
 
 /**
@@ -48,6 +49,46 @@ export default function InterviewInvitePage() {
     return data
   }, [token])
 
+  // The strict interview: start (or resume), send a spoken answer, and finish the same way.
+  const startStrict = useCallback(async ({ accepted, rulesVersion }) => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/start`, {
+      accepted,
+      rules_version: rulesVersion,
+    })
+    return data
+  }, [token])
+
+  const sendStrictAnswer = useCallback(async (turnId, audio) => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/answer`, audio, {
+      params: { turn_id: turnId },
+      headers: { 'Content-Type': audio.type || 'audio/webm' },
+      timeout: 90_000,
+    })
+    return data
+  }, [token])
+
+  // What the screen reports while the interview runs (a leave, a return, a key press, a
+  // heartbeat), and "I need to stop". The server times and counts them and says if it ended.
+  const reportStrictEvent = useCallback(async (body) => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/event`, body)
+    return data
+  }, [token])
+
+  const stopStrict = useCallback(async () => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/stop`)
+    return data
+  }, [token])
+
+  // Where to send a recording the browser kept across a reload (the server joins the parts).
+  const requestPartUploadUrl = useCallback(async () => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/recording-part`)
+    return data
+  }, [token])
+
+  const completeStrict = useCallback(async () => {
+    await api.post(`/api/v1/public/interviews/${token}/complete`, {})
+  }, [token])
+
   if (loadError) {
     return (
       <main className="min-h-screen bg-background flex items-center justify-center px-4 py-10">
@@ -70,6 +111,28 @@ export default function InterviewInvitePage() {
   const subtitle = info.company_name
     ? `${info.company_name} · ${info.job_title}`
     : info.job_title
+
+  if (info.style === 'strict') {
+    return (
+      <StrictInterviewFlow
+        startInterview={startStrict}
+        sendAnswer={sendStrictAnswer}
+        requestUploadUrl={requestUploadUrl}
+        reportEvent={reportStrictEvent}
+        stopInterview={stopStrict}
+        completeUpload={completeStrict}
+        requestPartUploadUrl={requestPartUploadUrl}
+        subtitle={subtitle}
+        maxMinutes={info.max_duration_minutes}
+        // Started before: reloaded mid-interview (IN_PROGRESS), or reinstated by the employer
+        // (PENDING again, but already started).
+        resuming={Boolean(info.started) || info.status === 'IN_PROGRESS'}
+        reinstated={Boolean(info.started) && info.status === 'PENDING'}
+        endedStatus={['ENDED_CONDUCT', 'STOPPED'].includes(info.status) ? info.status : null}
+        completed={['UPLOADED', 'SCORED'].includes(info.status)}
+      />
+    )
+  }
 
   return (
     <InterviewFlow

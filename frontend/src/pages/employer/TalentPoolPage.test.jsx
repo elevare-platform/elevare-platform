@@ -289,4 +289,35 @@ describe('TalentPoolPage, uploading a CV that may already be in the pool', () =>
 
     expect(await screen.findByText('bad.pdf is not a valid PDF')).toBeInTheDocument()
   })
+
+  it('says when this month\'s upload allowance is spent, with a way to upgrade', async () => {
+    const message = 'Your plan includes 10 CV uploads a month and you have used 10. It resets on 1 December. Upgrade your plan to continue.'
+    await uploadAndGet([
+      { filename: 'full.pdf', status: 'limit_reached', error: message },
+      { filename: 'known.pdf', status: 'duplicate', profile_id: 'p1', submission_id: null, linked_job_id: null },
+    ])
+
+    expect(await screen.findByText(/10 CV uploads a month/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Upgrade plan' })).toHaveAttribute('href', '/pricing')
+    // A duplicate in the same batch is still reported as added to nothing, not as a failure.
+    expect(screen.getByText('Already in pool')).toBeInTheDocument()
+  })
+
+  it('shows the plan\'s own message when the whole upload is refused', async () => {
+    api.post.mockRejectedValueOnce({
+      response: {
+        status: 403,
+        data: { code: 'PLAN_LIMIT_REACHED', message: 'Your plan includes 10 CV uploads a month and you have used 10. It resets on 1 December. Upgrade your plan to continue.' },
+      },
+    })
+    render(<MemoryRouter><TalentPoolPage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /add cv/i }))
+    const pdf = new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' })
+    fireEvent.change(document.getElementById('tp-drawer-file'), { target: { files: [pdf] } })
+    fireEvent.click(await screen.findByRole('button', { name: /add 1 cv to talent pool/i }))
+
+    expect(await screen.findByText(/10 CV uploads a month/)).toBeInTheDocument()
+    expect(screen.queryByText('Upload failed. Please try again.')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Upgrade plan' })).toBeInTheDocument()
+  })
 })

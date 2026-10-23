@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Brain, FileText, FileCheck2, Loader2, Sparkles } from 'lucide-react'
+import { X, Brain, FileText, FileCheck2, Loader2, RotateCcw, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { matchScoreBand } from '@/lib/matchScore'
 import { isPlanLimitMessage } from '@/lib/planErrors'
+import { endedBadge, isEndedStatus } from '@/lib/strictNotes'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
+import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
+import RecordingClips from '@/components/employer/RecordingClips'
+import { showsClips } from '@/lib/recordingClips'
 
 // Scoring runs in the background, so after asking for it we check the interview
 // every few seconds, for up to two minutes.
@@ -84,10 +88,14 @@ function AssessmentCard({ icon: Icon, title, score, summary, strengths, weakness
  * by (job_id, talent_pool_profile_id) - the natural key already on hand
  * from the Interview List row this is opened from.
  */
-export default function InterviewDetailModal({ jobId, talentPoolProfileId, candidateName, onClose }) {
+export default function InterviewDetailModal({ jobId, talentPoolProfileId, candidateName, onClose, onReinstated }) {
   const [detail, setDetail] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // An interview that ended early can be reinstated: the candidate carries on where they stopped.
+  const [reinstating, setReinstating] = useState(false)
+  const [reinstateError, setReinstateError] = useState(null)
+  const [reinstated, setReinstated] = useState(null)
   // Asking for a score after the fact (for example an interview taken on the
   // Starter plan): 'scoring' while we wait for it, and a message if it fails.
   const [scoring, setScoring] = useState(false)
@@ -130,7 +138,32 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
     check(1)
   }, [jobId, talentPoolProfileId])
 
+  const handleReinstate = async () => {
+    setReinstateError(null)
+    setReinstating(true)
+    try {
+      const { data } = await api.post(`/api/v1/interviews/${talentPoolProfileId}/reinstate`, null, {
+        params: { job_id: jobId },
+      })
+      setReinstated(data)
+      onReinstated?.(data)
+    } catch (err) {
+      setReinstateError(err?.response?.data?.message ?? 'Something went wrong. Please try again.')
+    } finally {
+      setReinstating(false)
+    }
+  }
+
   const handleScore = async () => {
+    // Scoring an interview that ended early closes it: it can no longer be reinstated.
+    if (
+      isEndedStatus(detail?.status)
+      && !window.confirm(
+        'Scoring what was recorded closes this interview, so the candidate can no longer carry on. Score it anyway?'
+      )
+    ) {
+      return
+    }
     setScoreError(null)
     setScoring(true)
     try {
@@ -198,9 +231,46 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
             <p className="text-sm text-text-muted text-center py-10">Interview detail not available.</p>
           )}
 
-          {!loading && !error && detail && (
+          {!loading && !error && detail && reinstated && (
+            <div role="status" className="space-y-2 rounded-xl border border-green-200 bg-green-50 p-5 text-center">
+              <p className="font-semibold text-green-800">The interview was reinstated</p>
+              <p className="text-sm text-green-800">
+                {reinstated.email_sent
+                  ? 'The candidate has been emailed the same link. They carry on where they stopped, with the time they had left.'
+                  : 'There is no email address on file for the candidate, so send them the link yourself (Copy link on the Interview List). They carry on where they stopped, with the time they had left.'}
+              </p>
+              <button type="button" onClick={onClose} className="text-xs font-semibold text-green-800 underline">Close</button>
+            </div>
+          )}
+
+          {!loading && !error && detail && !reinstated && (
             <>
-              {detail.video_url ? (
+              {isEndedStatus(detail.status) && (
+                <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-semibold text-amber-900">
+                    {endedBadge(detail.status)}. It has not been scored.
+                  </p>
+                  <p className="text-xs text-amber-900">
+                    Look at the recording and the notes below, then decide. If you reinstate it, the
+                    candidate is emailed the same link and carries on where they stopped, with the time
+                    they had left and their warnings started again. Nothing more is charged.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleReinstate}
+                    disabled={reinstating}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand-blue px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-blue/90 disabled:opacity-50"
+                  >
+                    {reinstating ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                    {reinstating ? 'Reinstating…' : 'Reinstate this interview'}
+                  </button>
+                  {reinstateError && <p role="alert" className="text-xs text-red-600">{reinstateError}</p>}
+                </div>
+              )}
+
+              {showsClips(detail.recordings, detail.video_url) ? (
+                <RecordingClips recordings={detail.recordings} />
+              ) : detail.video_url ? (
                 <video
                   src={detail.video_url}
                   controls
@@ -208,11 +278,21 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                 >
                   Your browser does not support inline video playback.
                 </video>
+              ) : detail.strict?.recording_pending ? (
+                <RecordingNotice strict={detail.strict} />
               ) : (
                 <p className="text-xs text-text-muted text-center py-6 border border-dashed border-border rounded-lg">
                   No recording is available for this interview.
                 </p>
               )}
+              {/* Says "being put together" or "may be only part": next to the video, or, for a
+                  reinstated interview whose latest pieces are being joined, under the earlier clips. */}
+              {(detail.video_url || showsClips(detail.recordings, detail.video_url)) && (
+                <RecordingNotice strict={detail.strict} />
+              )}
+
+              {/* A strict interview: the rules accepted, how it went on the screen, each answer. */}
+              <StrictInterviewNotes strict={detail.strict} />
 
               {/* Interview + CV assessments, side by side */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -221,7 +301,11 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                   title="Interview Assessment"
                   score={detail.ai_score}
                   summary={detail.ai_rationale}
-                  emptyMessage="No AI score is available for this interview. It may not be included in your plan, scoring may still be running, or it could not be completed. Please review the recording and transcript directly."
+                  emptyMessage={
+                    isEndedStatus(detail.status)
+                      ? 'This interview ended early, so it has not been scored. Reinstate it so the candidate can finish, or score what was recorded.'
+                      : 'No AI score is available for this interview. It may not be included in your plan, scoring may still be running, or it could not be completed. Please review the recording and transcript directly.'
+                  }
                   action={
                     // Offered once the interview is finished but has no score.
                     // While it is being scored (or we are waiting for it), say so instead.
@@ -230,7 +314,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                         <Loader2 size={13} className="animate-spin" />
                         Scoring this interview…
                       </p>
-                    ) : detail.status === 'SCORED' || detail.status === 'UPLOADED' ? (
+                    ) : detail.status === 'SCORED' || detail.status === 'UPLOADED' || isEndedStatus(detail.status) ? (
                       <div className="space-y-1.5">
                         <button
                           type="button"
@@ -238,7 +322,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
                         >
                           <Sparkles size={13} />
-                          Generate AI score
+                          {isEndedStatus(detail.status) ? 'Score what was recorded' : 'Generate AI score'}
                         </button>
                         {scoreError && (
                           <p className="text-xs text-red-600">

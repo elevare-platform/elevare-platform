@@ -233,6 +233,21 @@ class Organization(BaseModel):
         default=False,
         server_default=sa.false(),
     )
+    # The company's free taste of Professional (full AI scoring on its first job, see
+    # docs/08_DECISIONS.md): the first job it publishes. A company has one, which is what
+    # "used once" means. NULL until the company publishes its first job.
+    taste_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        # use_alter: jobs already point at users, which point at organizations; this
+        # column points back at jobs, so its foreign key is added after the tables.
+        ForeignKey(
+            "jobs.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_organizations_taste_job_id",
+        ),
+        nullable=True,
+    )
 
     # =================== KYC ===========================
     kyc_status: Mapped[KYCStatus] = mapped_column(

@@ -11,6 +11,8 @@ import Footer from '@/components/layout/Footer'
 import { useToast } from '@/components/admin/Toast'
 import { useAuth } from '@/context/AuthContext'
 import { useReportStep } from '@/hooks/useOnboarding'
+import PlanUpgradeLink from '@/components/PlanUpgradeLink'
+import { isPlanLimitMessage } from '@/lib/planErrors'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
@@ -162,7 +164,11 @@ function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
     } catch (err) {
       const status = err.response?.status
       const detail = err.response?.data?.detail
-      if (status === 413) {
+      const message = err.response?.data?.message
+      if (status === 403 && typeof message === 'string') {
+        // The plan's own message, for example "Your plan includes 10 CV uploads a month..."
+        setError(message)
+      } else if (status === 413) {
         setError('Files are too large. Each CV should be under 10 MB. Try compressing or splitting the batch.')
       } else if (status === 415 || (typeof detail === 'string' && detail.toLowerCase().includes('pdf'))) {
         setError('Only PDF files are accepted. Please check your files and try again.')
@@ -269,6 +275,8 @@ function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
                         : r.status === 'duplicate'
                         ? (r.linked_job_id ? 'Already in pool, for a job' : 'Already in pool')
                         : r.error}
+                      {/* This month's upload allowance is spent: say how to get more. */}
+                      {r.status === 'limit_reached' && <PlanUpgradeLink />}
                     </span>
                   </div>
                 )
@@ -346,7 +354,10 @@ function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
           {error && (
             <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700">
               <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-              {error}
+              <span>
+                {error}
+                {isPlanLimitMessage(error) && <PlanUpgradeLink />}
+              </span>
             </div>
           )}
         </div>

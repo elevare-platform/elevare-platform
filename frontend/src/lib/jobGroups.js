@@ -10,7 +10,8 @@ export function groupJobsByStatus(jobs, selectedId) {
   const drafts = []
   const closed = []
   for (const job of jobs ?? []) {
-    if (job.status === 'CLOSED') {
+    // A job the platform switched off takes no applications, so it is grouped with closed ones.
+    if (job.status === 'CLOSED' || job.status === 'DISABLED') {
       if (job.id === selectedId) closed.push(job)
     } else if (job.status === 'DRAFT') {
       drafts.push(job)

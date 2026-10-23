@@ -89,6 +89,32 @@ def send_verification_email(
 
 
 @celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def send_job_switched_off_email(
+    self,
+    employer_email: str,
+    job_id: str,
+    job_title: str,
+    reason: str,
+    detail: int | None = None,
+) -> None:
+    """Tell an employer a job was switched off by their plan's rules (see jobs/disabling.py)."""
+    import asyncio
+
+    async def _send():
+        service = get_email_service()
+        await service.send_job_switched_off(
+            employer_email, {"id": job_id, "title": job_title}, reason, detail
+        )
+
+    try:
+        asyncio.run(_send())
+        logger.info("Job switched-off email sent to %s (reason=%s)", employer_email, reason)
+    except Exception as exc:
+        logger.error("Failed to send job switched-off email to %s: %s", employer_email, exc)
+        raise self.retry(exc=exc) from exc
+
+
+@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def send_job_moderation_email(
     self,
     employer_email: str,

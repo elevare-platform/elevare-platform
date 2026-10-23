@@ -29,6 +29,7 @@ const jobSchema = z
     technical_competencies: z.string().min(10, 'Technical Competencies must be at least 10 characters').optional().or(z.literal('')),
     what_we_offer: z.string().optional().or(z.literal('')),
     interview_brief: z.string().optional().or(z.literal('')),
+    publish_when_approved: z.boolean().optional(),
     location: z.string().min(1, 'Location is required'),
     contract_type: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT', 'FREELANCE', 'INTERNSHIP'], {
       error: 'Select a contract type',
@@ -159,6 +160,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
     technical_competencies: '',
     what_we_offer: '',
     interview_brief: '',
+    publish_when_approved: false,
     location: '',
     contract_type: undefined,
     work_model: '',
@@ -503,6 +505,28 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
           <FormMessage>{errors.application_deadline?.message}</FormMessage>
         </FormField>
       </div>
+
+      {/* Every job is reviewed before it goes live. This saves the employer coming back to
+          press Publish once it is approved. */}
+      <label
+        htmlFor="publish_when_approved"
+        className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3.5 cursor-pointer"
+      >
+        <input
+          id="publish_when_approved"
+          type="checkbox"
+          className="mt-1 h-4 w-4 flex-shrink-0"
+          {...register('publish_when_approved')}
+        />
+        <span>
+          <span className="block text-sm font-medium text-text">Publish it as soon as it is approved</span>
+          <span className="block text-xs text-text-muted mt-0.5">
+            Every job is reviewed by our team before candidates can see it. Tick this and it goes live
+            the moment it is approved, so you do not have to come back and press Publish. Your plan's
+            limits still apply.
+          </span>
+        </span>
+      </label>
 
       {error && (
         <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">

@@ -6,11 +6,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import paginate_cursor
 from app.modules.candidates.models import CandidateProfile
+from app.modules.talent_pool.enums import SourceType
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.users.enums import UserRole
 
@@ -55,6 +56,20 @@ class TalentPoolRepository:
             select(TalentPoolProfiles).where(
                 TalentPoolProfiles.candidate_profile_id == candidate_profile_id
             )
+        )
+        return result.scalar_one_or_none()
+
+    async def find_interview_invite(
+        self, employer_id: uuid.UUID, email: str
+    ) -> uuid.UUID | None:
+        """The id of the email-only row this employer made for ``email`` (lower case) before, so
+        typing the same address again never makes a second one."""
+        result = await self._db.execute(
+            select(TalentPoolProfiles.id)
+            .where(TalentPoolProfiles.source == SourceType.INTERVIEW_INVITE.value)
+            .where(TalentPoolProfiles.added_by == employer_id)
+            .where(func.lower(TalentPoolProfiles.override_email) == email)
+            .limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -126,6 +141,10 @@ class TalentPoolRepository:
             stmt = stmt.where(TalentPoolProfiles.status == status)
         if source:
             stmt = stmt.where(TalentPoolProfiles.source == source)
+        else:
+            # An email typed in only to send an interview to has no CV: it lives on the job's
+            # interview list, not in the Talent Pool page.
+            stmt = stmt.where(TalentPoolProfiles.source != SourceType.INTERVIEW_INVITE.value)
         if job_id:
             stmt = stmt.where(TalentPoolProfiles.sourced_for_job_id == job_id)
         if added_within_days:

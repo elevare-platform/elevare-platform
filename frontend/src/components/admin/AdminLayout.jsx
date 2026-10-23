@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Briefcase, FileText, FilePlus2,
@@ -6,6 +6,7 @@ import {
   DollarSign, Crown
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import api from '@/lib/api'
 import NotificationBell from '@/components/layout/NotificationBell'
 import ehsLogo from '@/assets/ehs-logo.png'
 
@@ -32,6 +33,16 @@ export default function AdminLayout({ children }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  // How many jobs are waiting for review: the badge on the Jobs link. A failed call just
+  // means no badge.
+  const [waiting, setWaiting] = useState(0)
+
+  useEffect(() => {
+    api
+      .get('/api/v1/admin/jobs/pending-count')
+      .then(({ data }) => setWaiting(data?.count ?? 0))
+      .catch(() => {})
+  }, [])
 
   const handleLogout = async () => {
     await logout()
@@ -57,6 +68,15 @@ export default function AdminLayout({ children }) {
           <NavLink key={to} to={to} className={linkClass} onClick={() => setOpen(false)}>
             <Icon size={16} aria-hidden="true" />
             <span>{label}</span>
+            {/* Jobs waiting for an admin to approve them or ask for changes */}
+            {to === '/admin/jobs' && waiting > 0 && (
+              <span
+                className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white"
+                aria-label={`${waiting} waiting for review`}
+              >
+                {waiting > 99 ? '99+' : waiting}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

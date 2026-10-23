@@ -295,6 +295,113 @@ class AnthropicCVExtractionService(AIService):
 
         self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
+    async def decide_interview_follow_up(
+        self, *, question: str, answer: str, interview_brief: str
+    ) -> str | None:
+        """Decide whether a strict-interview answer needs a follow-up question.
+
+        Returns the follow-up exactly as the model wrote it, or ``None`` when none is needed
+        OR the call failed or its reply cannot be used: a follow-up is a nicety, so any
+        trouble means the interview simply carries on to the next question. The caller checks
+        the wording before the candidate sees it. A cheap, fast model is enough. The answer
+        is the candidate's own speech and goes to the model as data (see the prompt).
+        """
+        from app.modules.ai.prompts.interview_follow_up import (
+            INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
+            build_interview_follow_up_prompt,
+        )
+
+        from .schema import InterviewFollowUpDecision
+
+        try:
+            result = await call_structured(
+                self._client,
+                model=settings.anthropic_model_fast,
+                max_tokens=400,
+                system=INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
+                user=build_interview_follow_up_prompt(
+                    question=question, answer=answer, interview_brief=interview_brief
+                ),
+                output_type=InterviewFollowUpDecision,
+            )
+        except Exception as e:
+            logger.error("LLM interview follow-up decision failed: %s", e)
+            report_if_credit_exhausted(e, where="interview_follow_up")
+            return None
+
+        if not result.ok:
+            logger.error(
+                "LLM interview follow-up returned no usable answer: %s (stop_reason=%s)",
+                result.error,
+                result.stop_reason,
+            )
+            return None
+        decision = result.parsed
+        return decision.question if decision.needs_follow_up else None
+
+    async def draft_interview_questions(
+        self,
+        *,
+        title: str,
+        seniority: str | None,
+        required_skills: list[str] | None,
+        requirements: str | None,
+        about_the_role: str | None,
+        interview_brief: str,
+        count: int,
+        total_seconds: int,
+    ) -> list[tuple[str, int]] | None:
+        """Draft a job's strict-interview questions from its interview brief.
+
+        Returns ``(question, seconds)`` pairs exactly as the model gave them, or ``None`` when
+        the call failed or the reply cannot be used. The caller cleans and limits them
+        (``interviews/question_rules.py``) and the employer edits them: nothing here is
+        trusted. A cheap, fast model is enough for a short draft the employer reviews.
+        """
+        from app.modules.ai.prompts.interview_questions import (
+            INTERVIEW_QUESTIONS_SYSTEM_PROMPT,
+            build_interview_questions_prompt,
+        )
+
+        from .schema import DraftedInterviewQuestions
+
+        try:
+            result = await call_structured(
+                self._client,
+                model=settings.anthropic_model_fast,
+                max_tokens=1500,
+                system=INTERVIEW_QUESTIONS_SYSTEM_PROMPT,
+                user=build_interview_questions_prompt(
+                    title=title,
+                    seniority=seniority,
+                    required_skills=required_skills,
+                    requirements=requirements,
+                    about_the_role=about_the_role,
+                    interview_brief=interview_brief,
+                    count=count,
+                    total_seconds=total_seconds,
+                ),
+                output_type=DraftedInterviewQuestions,
+            )
+        except Exception as e:
+            logger.error("LLM interview question drafting failed: %s", e)
+            report_if_credit_exhausted(e, where="interview_questions")
+            return None
+
+        if not result.ok:
+            logger.error(
+                "LLM interview question drafting returned no usable answer: %s (stop_reason=%s)",
+                result.error,
+                result.stop_reason,
+            )
+            return None
+        logger.info(
+            "Drafted interview questions: %d tokens in, %d out",
+            result.input_tokens,
+            result.output_tokens,
+        )
+        return [(item.question, item.seconds) for item in result.parsed.questions]
+
     # Stub for the existing method - this class only handles CV extraction
     async def compute_match_score(
         self,
@@ -574,7 +681,15 @@ class AnthropicCVExtractionService(AIService):
         job_context: str = "",
     ) -> "InterviewScoringResult":
         """Score an interview transcript against the employer's brief via Claude."""
+        from app.modules.ai.interview_scorecard import (
+            clean_competencies,
+            clean_list,
+            clean_recommendation,
+            clean_text,
+            score_from_competencies,
+        )
         from app.modules.ai.prompts.interview_scoring import (
+            SCORECARD_RUBRIC,
             build_interview_scoring_prompt,
         )
         from app.modules.ai.schema import InterviewScoringResult
@@ -582,7 +697,7 @@ class AnthropicCVExtractionService(AIService):
         system_prompt, user_prompt = build_interview_scoring_prompt(
             interview_brief=interview_brief,
             transcript=transcript,
-            scoring_rubric=interview_brief,
+            scoring_rubric=SCORECARD_RUBRIC,
             job_context=job_context,
         )
 
@@ -593,7 +708,9 @@ class AnthropicCVExtractionService(AIService):
         try:
             response = await self._client.messages.create(
                 model=settings.anthropic_model,
-                max_tokens=4096,
+                # The scorecard report (competencies, claims, follow-ups) is longer than the
+                # old summary, so it gets more room before being cut off.
+                max_tokens=6000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
             )
@@ -613,13 +730,28 @@ class AnthropicCVExtractionService(AIService):
             if not isinstance(data, dict) or data.get("score") is None:
                 raise ValueError("response contained no usable score")
 
+            competencies = clean_competencies(data.get("competencies"))
+            # The overall score is the average of the assessed competencies on the scorecard
+            # (1 to 5) times 20, as the prompt says. It is worked out here from the model's own
+            # ratings so the number always agrees with the table the employer reads; with no
+            # usable ratings the model's own overall score stands.
+            score = score_from_competencies(competencies)
+            if score is None:
+                score = max(0, min(100, int(data["score"])))
+
             return InterviewScoringResult(
-                score=max(0, min(100, int(data["score"]))),
+                score=score,
                 summary=data.get("summary", ""),
                 strengths=data.get("strengths", []),
                 weaknesses=data.get("weaknesses", []),
                 missing_evidence=data.get("missing_evidence", []),
                 contradictions=data.get("contradictions", []),
+                role_assessed=clean_text(data.get("role_assessed")),
+                competencies=competencies,
+                recommendation=clean_recommendation(data.get("recommendation")),
+                claims_to_verify=clean_list(data.get("claims_to_verify")),
+                candidate_reported=clean_list(data.get("candidate_reported")),
+                follow_up_questions=clean_list(data.get("follow_up_questions")),
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
             )

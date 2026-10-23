@@ -438,12 +438,17 @@ class AdminService:
             job = await self._repo.set_job_moderation_status(job, action, reason)
             from app.modules.applications.tasks import send_job_moderation_email
 
+            email_action, email_reason = action, reason
+            if action == "APPROVED" and job.publish_when_approved and job.status == "DRAFT":
+                email_action, email_reason = await self._publish_on_approval(job)
+                job = await self._repo.get_job_by_id(job_id)
+
             send_job_moderation_email.delay(
                 job.employer.email,
                 str(job.id),
                 job.title,
-                action,
-                reason,
+                email_action,
+                email_reason,
             )
 
         await self._repo.write_audit_log(
@@ -465,6 +470,30 @@ class AdminService:
         from app.modules.jobs.schemas import JobResponse
 
         return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
+
+    async def count_jobs_waiting_for_review(self) -> int:
+        """How many jobs are waiting for an admin's review (the badge on the Jobs menu)."""
+        return await self._repo.count_jobs_waiting_for_review()
+
+    async def _publish_on_approval(self, job) -> tuple[str, str | None]:
+        """Publish a just-approved job for its owner, who asked for that when posting it.
+
+        Runs the owner's own publish, so every plan limit applies: a Starter company that
+        has already published this month, or has a live job, is refused. A refusal writes
+        nothing, so the approval stays, and nothing is rolled back (that would undo the
+        approval). Returns the email action and the reason to show with it.
+        """
+        from app.core.exceptions import PlatformError
+        from app.modules.jobs.service import JobService
+
+        try:
+            await JobService(self._db).publish_job(job.id, job.employer)
+        except PlatformError as exc:
+            logger.info(
+                "Approved job %s was not published for its owner: %s", job.id, exc.message
+            )
+            return "APPROVED_NOT_PUBLISHED", exc.message
+        return "APPROVED_AND_PUBLISHED", None
 
     async def bulk_update_job_status(
         self, admin_id: UUID, job_ids: list[UUID], action: str

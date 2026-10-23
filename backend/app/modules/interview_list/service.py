@@ -17,6 +17,7 @@ from app.modules.interview_list.schemas import (
     InterviewListIdsResponse,
     InterviewListResponse,
 )
+from app.modules.talent_pool.enums import SourceType
 
 
 class InterviewListService:
@@ -130,6 +131,11 @@ class InterviewListService:
             profile = entry.talent_pool_profile
             fields = await resolve_match_display_fields(self._db, profile, employer_id)
 
+            email_only = (
+                profile.source == SourceType.INTERVIEW_INVITE.value
+                and profile.candidate_profile_id is None
+                and profile.parsed_submission_id is None
+            )
             if profile.candidate_profile_id:
                 ownership = "self_registered"
                 has_cv_access = True
@@ -150,7 +156,8 @@ class InterviewListService:
                     candidate_profile_id=profile.candidate_profile_id,
                     ownership=ownership,
                     has_cv_access=has_cv_access,
-                    candidate_name=fields["name"],
+                    email_only=email_only,
+                    candidate_name=profile.override_email if email_only else fields["name"],
                     current_title=fields["current_title"],
                     location=fields["location"],
                     years_of_experience=fields["years_of_experience"],

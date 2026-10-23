@@ -25,11 +25,13 @@ from app.modules.candidates.repository import CandidateRepository
 from app.modules.credits.service import CreditsService
 from app.modules.interview_list.repository import InterviewListRepository
 from app.modules.interviews.enums import (
+    ENDED_STATUSES,
     InterviewCostComponent,
     InterviewStatus,
     TranscriptCheckStatus,
 )
 from app.modules.interviews.models import Interview
+from app.modules.interviews.recording_merge import attempt_of_key, final_key, part_key
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.schema import (
     InterviewDetailResponse,
@@ -37,9 +39,13 @@ from app.modules.interviews.schema import (
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
     RealtimeUsageDetail,
+    RecordingClip,
+    StrictRecordingPartResponse,
 )
 from app.modules.interviews.scoring_access import assert_can_score_interviews
+from app.modules.interviews.strict import StrictInterviewService
 from app.modules.interviews.tasks import (
+    merge_interview_recording_task,
     send_ai_interview_invite_email,
     send_interview_restart_request_email,
     transcribe_and_score_interview_task,
@@ -56,6 +62,10 @@ logger = logging.getLogger(__name__)
 _SCORING_STUCK_AFTER = timedelta(minutes=15)
 
 _UPLOAD_URL_EXPIRES_SECONDS = 60 * 30
+_ENDED_EARLY_MESSAGE = (
+    "This interview ended early. Reinstate it to let the candidate carry on, "
+    "instead of sending the link again."
+)
 _VIDEO_CONTENT_TYPE = "video/webm"
 _INVITE_TOKEN_EXPIRY_DAYS = 14
 
@@ -175,6 +185,10 @@ class InterviewService:
         if self._client is not None:
             await self._client.close()
 
+    def _strict(self) -> StrictInterviewService:
+        """The strict interview's own logic (tests replace this to avoid real API calls)."""
+        return StrictInterviewService(self._db, self._repo)
+
     def _get_client(self) -> AsyncOpenAI:
         """Lazily construct the OpenAI client so most code paths (which never
         touch the realtime API) don't require OPENAI_API_KEY to be set."""
@@ -213,6 +227,11 @@ class InterviewService:
             await self._repo.lock_status(interview.id)
             await self._db.refresh(interview)
         if interview is None:
+            # The style is decided here, once, for this interview. A strict interview
+            # needs the job's questions, so that is checked before anything is charged.
+            strict = settings.interview_style == "strict"
+            if strict:
+                await self._strict().require_questions(job.id)
             # Charge before anything is saved: the id is decided first, so when
             # the credits are short nothing exists to clean up, and the charge and
             # the interview are committed together below or not at all.
@@ -227,12 +246,17 @@ class InterviewService:
                 application_id=application_id,
                 interview_id=new_interview_id,
             )
+            if strict:
+                await self._strict().create_run(interview.id)
         elif interview.status in (
             InterviewStatus.UPLOADED.value,
             InterviewStatus.SCORED.value,
         ):
             # Already completed — nothing new to invite them to.
             return None
+        elif interview.status in ENDED_STATUSES:
+            # Sending the link again would only show the candidate that it has ended.
+            raise ValidationException(_ENDED_EARLY_MESSAGE, code="INTERVIEW_ENDED_EARLY")
         else:
             # A resend or a re-invite. Free while the interview is still paid; an
             # interview whose credits were refunded (the invite expired unused) is
@@ -365,12 +389,16 @@ class InterviewService:
         interview = await self._resolve_interview_by_token(token)
         job = interview.job
         employer_profile = getattr(getattr(job, "employer", None), "organization", None)
+        run = await self._strict().get_run(interview.id)
+        strict = run is not None
         return InterviewPublicInfoResponse(
             job_title=job.title,
             company_name=employer_profile.company_name if employer_profile else None,
             status=interview.status,
             max_duration_minutes=settings.interview_max_duration_minutes,
             session_start_count=interview.session_start_count,
+            style="strict" if strict else "live",
+            started=bool(run and run.started_at is not None),
         )
 
     async def create_session_by_token(self, token: str) -> InterviewSessionResponse:
@@ -401,6 +429,181 @@ class InterviewService:
         return await self._complete_upload(
             interview, transcript=transcript, realtime_usage=realtime_usage
         )
+
+    # ------------------------------------------------------------------
+    # The strict interview: start or resume it, and answer a question. Both ways in (the
+    # emailed link and the logged-in candidate) end in the same two calls.
+    # ------------------------------------------------------------------
+
+    async def style_of(self, interview: Interview) -> str:
+        """"strict" or "live": which interview this one is, fixed when it was invited."""
+        return "strict" if await self._strict().is_strict(interview.id) else "live"
+
+    async def is_started(self, interview: Interview) -> bool:
+        """Whether this is a strict interview that has been started."""
+        run = await self._strict().get_run(interview.id)
+        return bool(run and run.started_at is not None)
+
+    async def _record_strict_event(
+        self, interview: Interview, event_type: str, cause: str | None, key: str | None
+    ) -> dict:
+        self._assert_interviews_enabled()
+        return await self._strict().record_event(
+            interview, event_type=event_type, cause=cause, key=key
+        )
+
+    async def strict_event_by_token(
+        self, token: str, event_type: str, cause: str | None, key: str | None
+    ) -> dict:
+        """The candidate's screen reports a leave, a return, a key press or a heartbeat."""
+        interview = await self._resolve_interview_by_token(token)
+        return await self._record_strict_event(interview, event_type, cause, key)
+
+    async def strict_event(
+        self,
+        application_id: uuid.UUID,
+        candidate_id: uuid.UUID,
+        event_type: str,
+        cause: str | None,
+        key: str | None,
+    ) -> dict:
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        return await self._record_strict_event(interview, event_type, cause, key)
+
+    async def stop_strict_by_token(self, token: str) -> dict:
+        """The candidate pressed "I need to stop" and confirmed."""
+        interview = await self._resolve_interview_by_token(token)
+        self._assert_interviews_enabled()
+        return await self._strict().stop(interview)
+
+    async def stop_strict(self, application_id: uuid.UUID, candidate_id: uuid.UUID) -> dict:
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        self._assert_interviews_enabled()
+        return await self._strict().stop(interview)
+
+    async def reinstate(
+        self, user: User, job_id: uuid.UUID, talent_pool_profile_id: uuid.UUID
+    ) -> dict:
+        """The employer who owns the job lets a candidate carry on with an interview that
+        ended early (by the system, or because the candidate stopped it).
+
+        Organization-level ownership (decision D2): anyone in the company that owns the job;
+        an Elevare admin gets nothing extra from that rule. Nothing is charged. The candidate
+        is sent the same link again, valid for 14 more days.
+        """
+        from app.modules.jobs.repository import JobRepository
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+        interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
+        if interview is None:
+            raise InterviewNotFound()
+        updated = await self._strict().reinstate(interview)
+
+        sent = False
+        profile = await self._talent_pool_repo.get_by_id_joined_with_other_data(
+            talent_pool_profile_id
+        )
+        candidate_email = resolve_candidate_email(profile) if profile else None
+        if candidate_email and updated.token:
+            organization = job.employer.organization if job.employer else None
+            company_name = (
+                organization.company_name if organization and organization.company_name else None
+            )
+            from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME
+
+            send_ai_interview_invite_email.delay(
+                candidate_email=candidate_email,
+                interview_url=f"{settings.app_url}/interview/{updated.token}",
+                job_title=job.title,
+                company_name=company_name or PLATFORM_COMPANY_NAME,
+                strict=True,
+            )
+            sent = True
+        return {
+            "status": updated.status,
+            "interview_url": f"{settings.app_url}/interview/{updated.token}",
+            "email_sent": sent,
+        }
+
+    async def _start_strict(
+        self, interview: Interview, accepted: bool, rules_version: str | None
+    ) -> dict:
+        self._assert_interviews_enabled()
+        return await self._strict().start(
+            interview, accepted=accepted, rules_version=rules_version
+        )
+
+    async def _answer_strict(
+        self,
+        interview: Interview,
+        turn_id: uuid.UUID,
+        audio: bytes,
+        content_type: str | None,
+    ) -> dict:
+        self._assert_interviews_enabled()
+        return await self._strict().answer(
+            interview, turn_id=turn_id, audio=audio, content_type=content_type
+        )
+
+    async def _recording_part_url(self, interview: Interview) -> StrictRecordingPartResponse:
+        self._assert_interviews_enabled()
+        part = await self._strict().reserve_recording_part(interview)
+        upload_url = await get_storage_service().generate_presigned_upload_url(
+            part_key(interview.id, part), _VIDEO_CONTENT_TYPE, _UPLOAD_URL_EXPIRES_SECONDS
+        )
+        return StrictRecordingPartResponse(
+            upload_url=upload_url, expires_in_seconds=_UPLOAD_URL_EXPIRES_SECONDS, part=part
+        )
+
+    async def recording_part_url_by_token(self, token: str) -> StrictRecordingPartResponse:
+        """An upload URL for an earlier recording kept across a reload, from an emailed link."""
+        return await self._recording_part_url(await self._resolve_interview_by_token(token))
+
+    async def recording_part_url(
+        self, application_id: uuid.UUID, candidate_id: uuid.UUID
+    ) -> StrictRecordingPartResponse:
+        """The same, for a logged-in candidate."""
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        return await self._recording_part_url(interview)
+
+    async def start_strict_by_token(
+        self, token: str, accepted: bool, rules_version: str | None
+    ) -> dict:
+        """Start or resume the strict interview from an emailed invite link."""
+        interview = await self._resolve_interview_by_token(token)
+        return await self._start_strict(interview, accepted, rules_version)
+
+    async def answer_strict_by_token(
+        self, token: str, turn_id: uuid.UUID, audio: bytes, content_type: str | None
+    ) -> dict:
+        """Save one spoken answer of the strict interview, from an emailed invite link."""
+        interview = await self._resolve_interview_by_token(token)
+        return await self._answer_strict(interview, turn_id, audio, content_type)
+
+    async def start_strict(
+        self,
+        application_id: uuid.UUID,
+        candidate_id: uuid.UUID,
+        accepted: bool,
+        rules_version: str | None,
+    ) -> dict:
+        """Start or resume the strict interview for a logged-in candidate."""
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        return await self._start_strict(interview, accepted, rules_version)
+
+    async def answer_strict(
+        self,
+        application_id: uuid.UUID,
+        candidate_id: uuid.UUID,
+        turn_id: uuid.UUID,
+        audio: bytes,
+        content_type: str | None,
+    ) -> dict:
+        """Save one spoken answer of the strict interview for a logged-in candidate."""
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        return await self._answer_strict(interview, turn_id, audio, content_type)
 
     async def _resolve_interview_by_token(self, token: str) -> Interview:
         interview = await self._repo.get_by_token(token)
@@ -437,6 +640,12 @@ class InterviewService:
             InterviewStatus.SCORED.value,
         ):
             raise ValidationException("This interview has already been completed")
+
+        # A strict interview has no live voice session to mint.
+        if await self._strict().is_strict(interview.id):
+            raise ValidationException(
+                "This is a strict interview, not a live one.", code="INTERVIEW_WRONG_STYLE"
+            )
 
         # Each call mints a brand-new Realtime conversation — reloading
         # mid-interview would otherwise let a candidate hear the AI's
@@ -577,13 +786,18 @@ class InterviewService:
     async def _generate_upload_url(
         self, interview: Interview
     ) -> InterviewUploadUrlResponse:
+        # An interview that ended early still sends the recording it has, as evidence.
         if interview.status not in (
             InterviewStatus.PENDING.value,
             InterviewStatus.IN_PROGRESS.value,
+            *ENDED_STATUSES,
         ):
             raise ValidationException("This interview has already been uploaded")
 
-        key = f"interviews/{interview.id}/recording.webm"
+        # A reinstated strict interview records again; each attempt has its own file, so the
+        # earlier recording is never overwritten.
+        run = await self._strict().get_run(interview.id)
+        key = final_key(interview.id, run.attempt if run else 1)
         storage = get_storage_service()
         upload_url = await storage.generate_presigned_upload_url(
             key, _VIDEO_CONTENT_TYPE, _UPLOAD_URL_EXPIRES_SECONDS
@@ -596,14 +810,21 @@ class InterviewService:
             expires_in_seconds=_UPLOAD_URL_EXPIRES_SECONDS,
         )
 
-    async def _assert_recording_uploaded(self, r2_key: str) -> None:
+    async def _assert_recording_uploaded(self, interview: Interview) -> bool:
         """Refuse to complete an interview whose recording never arrived.
 
         r2_key is set when the upload URL is *issued*, so it proves nothing
         about a file existing. Only a definitive "missing or empty" blocks;
         if storage itself cannot be asked (network, permissions) we let the
         candidate through rather than lose a real interview to an outage.
+
+        A strict interview that already has earlier recordings (kept across a reload, or from
+        before it was reinstated) may end with nothing new to record, for example when the
+        page comes back to find the last answer already given. It then completes with those.
+        Returns False in that case when the final file is not to be used at all (the caller
+        clears ``r2_key``, so no clip points at a file that is not there), True otherwise.
         """
+        r2_key = interview.r2_key
         try:
             size = await get_storage_service().get_object_size(r2_key)
         except Exception:
@@ -612,12 +833,18 @@ class InterviewService:
                 r2_key,
                 exc_info=True,
             )
-            return
+            return True
         if not size:
+            run = await self._strict().get_run(interview.id)
+            if run is not None and run.recording_parts > 0:
+                return True  # the earlier parts are joined in, so the key stays
+            if run is not None and run.previous_recordings:
+                return False  # the earlier attempts' clips are the recording; nothing new
             raise ValidationException(
                 "We did not receive your recording. Please try uploading again.",
                 code="RECORDING_NOT_RECEIVED",
             )
+        return True
 
     async def _complete_upload(
         self,
@@ -640,6 +867,8 @@ class InterviewService:
             # saved transcript, so treat it as a successful no-op.
             await self._db.refresh(interview)
             return interview
+        if status in ENDED_STATUSES:
+            return await self._complete_ended(interview)
         if status not in (
             InterviewStatus.PENDING.value,
             InterviewStatus.IN_PROGRESS.value,
@@ -650,7 +879,17 @@ class InterviewService:
 
         if not interview.r2_key:
             raise ValidationException("No upload was started for this interview")
-        await self._assert_recording_uploaded(interview.r2_key)
+        keep_recording = await self._assert_recording_uploaded(interview)
+
+        # A strict interview's transcript is built here from the answers the server saved,
+        # never taken from the browser, and there is no live voice session to cost.
+        answers_complete = False
+        if await self._strict().is_strict(interview.id):
+            built = await self._strict().build_transcript(interview.id)
+            if built is None:
+                raise ValidationException("This interview has not been started.")
+            transcript, answers_complete = built
+            realtime_usage = None
 
         now = datetime.now(UTC)
         update_data: dict = {
@@ -659,12 +898,23 @@ class InterviewService:
             "video_expires_at": now
             + timedelta(days=settings.interview_video_retention_days),
         }
+        if not keep_recording:
+            update_data["r2_key"] = None
         # Only set if present — never overwrite an already-saved transcript
         # with a blank one on a defensive resend/retry.
         if transcript:
             update_data["transcript"] = transcript
 
         interview = await self._repo.update(interview.id, update_data)
+
+        if answers_complete:
+            # Every answer was transcribed from the audio here, so there is nothing sent by
+            # the browser to check. This is recorded so the recording is not transcribed
+            # (and paid for) a second time. When an answer is missing no check is recorded,
+            # and the recording is transcribed to fill the gap.
+            await self._repo.create_transcript_check(
+                interview.id, TranscriptCheckStatus.SERVER_ONLY.value
+            )
 
         if realtime_usage and (
             realtime_usage.input_tokens or realtime_usage.output_tokens
@@ -684,6 +934,41 @@ class InterviewService:
 
         await self._db.commit()
         transcribe_and_score_interview_task.delay(str(interview.id))
+        return interview
+
+    async def _complete_ended(self, interview: Interview):
+        """The recording of a strict interview that ended early has arrived.
+
+        Keeps the evidence: the recording (joined with any parts kept across reloads), and the
+        text of the answers as the server saved them. The interview stays ENDED_CONDUCT or
+        STOPPED and is NOT scored, because the employer decides what happens to it (decision
+        item 25). Safe to repeat: a second call changes nothing.
+        """
+        if interview.completed_at is not None:
+            await self._db.refresh(interview)
+            return interview
+        if not interview.r2_key:
+            raise ValidationException("No upload was started for this interview")
+        keep_recording = await self._assert_recording_uploaded(interview)
+
+        strict = self._strict()
+        built = await strict.build_transcript(interview.id)
+        now = datetime.now(UTC)
+        update_data: dict = {
+            "completed_at": now,
+            "video_expires_at": now + timedelta(days=settings.interview_video_retention_days),
+        }
+        if not keep_recording:
+            update_data["r2_key"] = None
+        if built is not None:
+            update_data["transcript"] = built[0]
+        interview = await self._repo.update(interview.id, update_data)
+
+        run = await strict.get_run(interview.id)
+        needs_join = bool(run and run.recording_parts > 0)
+        await self._db.commit()
+        if needs_join:
+            merge_interview_recording_task.delay(str(interview.id))
         return interview
 
     def _assert_interviews_enabled(self) -> None:
@@ -777,6 +1062,13 @@ class InterviewService:
             invite = await self.create_invite(job, talent_pool_profile_id)
         except InsufficientCreditsException as exc:
             return {"sent": False, "reason": exc.message}
+        except ValidationException as exc:
+            # A strict interview needs the job's questions, and one that ended early is
+            # reinstated, not re-sent. Like short credits, that is said for this one
+            # candidate, so a bulk send does not stop for everyone else.
+            if exc.code not in ("INTERVIEW_QUESTIONS_MISSING", "INTERVIEW_ENDED_EARLY"):
+                raise
+            return {"sent": False, "reason": exc.message}
         if invite is None:
             return {"sent": False, "reason": "Interview already completed or not configured"}
 
@@ -797,23 +1089,39 @@ class InterviewService:
         # from Candidate Search / Talent Matches) — routing them to the
         # dashboard instead is a dead end whenever that's the case, so the
         # token link is the one path that's guaranteed to work for anyone.
+        is_strict = await self._strict().is_strict(_interview.id)
+        # Only a strict interview's email says what device it needs; a live one is sent
+        # exactly as it always was.
+        extra = {"strict": True} if is_strict else {}
         send_ai_interview_invite_email.delay(
             candidate_email=candidate_email,
             interview_url=interview_url,
             job_title=job.title,
             company_name=company_name,
+            **extra,
         )
 
         if is_first_invite and is_self_registered:
+            if is_strict:
+                what_it_is = (
+                    "The questions appear on your screen and you answer each one out "
+                    "loud to your camera. Use a laptop or desktop computer with Chrome "
+                    "or Edge. The employer reviews it afterward."
+                )
+                kind = "an AI interview"
+            else:
+                what_it_is = (
+                    "It's a real-time voice conversation with an AI interviewer, "
+                    "reviewed by the employer afterward."
+                )
+                kind = "a live AI interview"
             await NotificationRepository(self._db).create(
                 recipient_id=profile.candidate_profile.user_id,
                 type="AI_INTERVIEW_INVITE",
                 title=f"AI interview invite: {job.title}",
                 body=(
-                    f"{company_name} has invited you to a live AI interview "
-                    f"for the {job.title} role. It's a real-time voice "
-                    "conversation with an AI interviewer, reviewed by the "
-                    f"employer afterward.\n\nStart here: {interview_url}"
+                    f"{company_name} has invited you to {kind} for the "
+                    f"{job.title} role. {what_it_is}\n\nStart here: {interview_url}"
                 ),
                 entity_type="APPLICATION" if _interview.application_id else None,
                 entity_id=_interview.application_id,
@@ -843,6 +1151,65 @@ class InterviewService:
 
         return await self._send_invite_for_profile(job, talent_pool_profile_id)
 
+    async def invite_by_email(self, user: User, job_id: uuid.UUID, email: str) -> dict:
+        """Send a job's AI interview to an email address, with no CV and no account needed.
+
+        The address gets a row in the talent pool of its own (source ``interview_invite``) so
+        the interview works like any other, and goes on the job's interview list, where it
+        stays even when the email could not be sent (no credits, say) so it can be sent again
+        from there. An address that belongs to a registered candidate uses their existing
+        profile, and one typed before is reused, so there is never a second row for it.
+        """
+        from app.core.exceptions import JobNotFoundError
+        from app.modules.jobs.repository import JobRepository
+        from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
+
+        self._assert_interviews_enabled()
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError()
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+        if not job.interview_brief:
+            raise ValidationException("This job does not have an AI interview configured")
+
+        address = email.strip().lower()
+        profile_id = await self._profile_for_email(user, address)
+        if profile_id is None:
+            profile = await self._talent_pool_repo.create(
+                {
+                    "source": SourceType.INTERVIEW_INVITE.value,
+                    "source_note": "Invited to an AI interview by email",
+                    "override_email": address,
+                    "added_by": user.id,
+                    "status": TalentPoolStatus.NEW.value,
+                    "sourced_for_job_id": job.id,
+                }
+            )
+            profile_id = profile.id
+
+        await self._interview_list_repo.add(user.id, profile_id, job.id, None)
+        await self._db.commit()
+
+        result = await self._send_invite_for_profile(job, profile_id)
+        return {**result, "talent_pool_profile_id": profile_id}
+
+    async def _profile_for_email(self, user: User, address: str) -> uuid.UUID | None:
+        """The pool row an email already has: a registered candidate's own, or one this employer
+        made for it before. None when it has neither."""
+        from app.modules.candidates.repository import CandidateRepository
+        from app.modules.users.repository import UserRepository
+
+        registered = await UserRepository(self._db).get_user_by_email(address)
+        if registered is not None:
+            candidate = await CandidateRepository(self._db).get_by_user_id(registered.id)
+            if candidate is not None:
+                existing = await self._talent_pool_repo.get_by_candidate_profile_id(candidate.id)
+                if existing is not None:
+                    return existing.id
+        return await self._talent_pool_repo.find_interview_invite(user.id, address)
+
     async def get_pricing(self, user: User) -> dict:
         """What an AI interview costs the caller's organization, and its balance,
         so the screen can show both before an invite is sent. Uses the same rules
@@ -860,6 +1227,7 @@ class InterviewService:
                 "included_in_plan": False,
                 "plan_credits": None,
                 "purchased_credits": None,
+                "style": settings.interview_style,
             }
         balances = await CreditsService(self._db).get_balances(user.organization_id)
         return {
@@ -871,6 +1239,7 @@ class InterviewService:
             "included_in_plan": False,
             "plan_credits": balances["plan_credits"],
             "purchased_credits": balances["purchased_credits"],
+            "style": settings.interview_style,
         }
 
     async def get_interview_link(
@@ -914,6 +1283,8 @@ class InterviewService:
             InterviewStatus.SCORED.value,
         ):
             raise ValidationException("This interview has already been completed")
+        elif interview.status in ENDED_STATUSES:
+            raise ValidationException(_ENDED_EARLY_MESSAGE, code="INTERVIEW_ENDED_EARLY")
         elif (
             interview.status
             in (InterviewStatus.PENDING.value, InterviewStatus.IN_PROGRESS.value)
@@ -1007,6 +1378,18 @@ class InterviewService:
             if interview.updated_at > datetime.now(UTC) - _SCORING_STUCK_AFTER:
                 raise ValidationException(
                     "This interview is still being processed. Please check back in a minute.",
+                    code="INTERVIEW_PROCESSING",
+                )
+        elif interview.status in ENDED_STATUSES:
+            # The employer asks for a score of an interview that ended early (decision item
+            # 25: never automatic). It then counts as finished, so it can no longer be
+            # reinstated; the notes about how it ended stay with it. The recording must have
+            # arrived and any joining of its parts be done first.
+            run = await self._strict().get_run(interview.id)
+            if interview.completed_at is None or (run and run.recording_parts > 0):
+                raise ValidationException(
+                    "The recording of this interview is still being prepared. "
+                    "Please check back in a minute.",
                     code="INTERVIEW_PROCESSING",
                 )
         elif interview.status != InterviewStatus.SCORED.value:
@@ -1140,9 +1523,12 @@ class InterviewService:
             raise PermissionDeniedException("You do not have access to this job")
 
         interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
+        # An interview that ended early is shown too: the employer needs its recording and its
+        # conduct notes to decide whether to reinstate it.
         if interview is None or interview.status not in (
             InterviewStatus.UPLOADED.value,
             InterviewStatus.SCORED.value,
+            *ENDED_STATUSES,
         ):
             raise InterviewNotFound()
 
@@ -1159,11 +1545,29 @@ class InterviewService:
         both show exactly the same thing. ``video_seconds`` is how long the recording
         link works; a link meant to be passed around uses a much shorter one.
         """
+        strict = await self._strict().strict_detail(interview)
         video_url = None
-        if interview.r2_key:
+        # While the pieces of the recording are being joined the file on record is only the last
+        # piece: showing it would look like the whole interview, so nothing is shown yet.
+        joining = bool(strict and strict["recording_pending"])
+        if interview.r2_key and not joining:
             video_url = await get_storage_service().generate_presigned_url(
                 interview.r2_key, expires_seconds=video_seconds,
             )
+        # A reinstated interview keeps each attempt's recording as its own clip.
+        clips: list[RecordingClip] = []
+        run = await self._strict().get_run(interview.id)
+        for key in (run.previous_recordings or []) if run is not None else []:
+            clips.append(
+                RecordingClip(
+                    attempt=attempt_of_key(key),
+                    video_url=await get_storage_service().generate_presigned_url(
+                        key, expires_seconds=video_seconds,
+                    ),
+                )
+            )
+        if video_url:
+            clips.append(RecordingClip(attempt=run.attempt if run else 1, video_url=video_url))
 
         cv_score, cv_strengths, cv_weaknesses, cv_fit_summary = (
             await self.resolve_cv_assessment(
@@ -1191,11 +1595,13 @@ class InterviewService:
             ai_rationale=interview.ai_rationale,
             ai_scored_at=interview.ai_scored_at,
             video_url=video_url,
+            recordings=clips,
             completed_at=interview.completed_at,
             cv_score=cv_score,
             cv_strengths=cv_strengths,
             cv_weaknesses=cv_weaknesses,
             cv_fit_summary=cv_fit_summary,
+            strict=strict,
         )
 
     async def _resolve_cv_assessment(

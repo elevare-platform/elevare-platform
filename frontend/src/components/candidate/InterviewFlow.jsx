@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Mic, Video, AlertCircle, ArrowLeft, CheckCircle2, Headphones, Wifi } from 'lucide-react'
+import { AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import InterviewRules from '@/components/candidate/InterviewRules'
 import { MAX_ATTEMPTS, uploadRecording, withRetry } from '@/lib/interviewUpload'
 import {
   END_AFTER_AUDIO_MS,
@@ -84,6 +85,8 @@ export default function InterviewFlow({
   // 'upload_error' means the interview itself is over and only the recording
   // still has to reach us; the candidate retries that without a new session.
   const [phase, setPhase] = useState('consent')
+  // The candidate has ticked "I have read these rules and I accept them" (docs/14).
+  const [accepted, setAccepted] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   // 'sending' while the file goes up, then 'confirming' while we tell the server
   // it has arrived. Both count as "do not leave yet".
@@ -606,64 +609,35 @@ export default function InterviewFlow({
               </div>
             )}
 
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3.5 space-y-2.5">
-              <p className="text-sm font-semibold text-blue-900">Before you start</p>
-              <ul className="text-sm text-blue-900 space-y-2">
-                <li className="flex items-start gap-2">
-                  <Headphones size={16} className="mt-0.5 flex-shrink-0" />
-                  <span>
-                    <strong>Use earphones or headphones</strong> for the best quality. Without them,
-                    the interviewer's voice can echo back into your microphone and spoil the
-                    recording.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Wifi size={16} className="mt-0.5 flex-shrink-0" />
-                  <span>
-                    <strong>Be somewhere with a good, stable internet connection.</strong> The interview
-                    is live, and your recording is sent to the employer when it ends. Wi-Fi is best.
-                    Choose a quiet place too.
-                  </span>
-                </li>
-              </ul>
+            <div>
+              <p className="text-sm text-text-muted leading-relaxed mb-4">
+                Please read these rules. You need to accept them before you can start.
+              </p>
+              <InterviewRules />
             </div>
 
-            <p className="text-sm text-text-muted leading-relaxed">
-              You'll be speaking with an <strong>AI interviewer</strong>, not a human.
-              It will ask you questions and follow up based on what you say, the same
-              way a real interview would.
-            </p>
-            <ul className="text-sm text-text-muted space-y-2">
-              <li className="flex items-start gap-2">
-                <Video size={16} className="mt-0.5 flex-shrink-0" />
-                Your camera will record the full session, including the AI
-                interviewer's spoken questions. The employer reviews this
-                recording.
-              </li>
-              <li className="flex items-start gap-2">
-                <Mic size={16} className="mt-0.5 flex-shrink-0" />
-                Your microphone stays on for the length of the interview so the AI can
-                hear and respond to you live.
-              </li>
-              <li className="flex items-start gap-2">
-                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                This is a <strong>single continuous session</strong>. Leaving or
-                reloading the page ends your connection to the AI interviewer. You
-                get one restart if something goes wrong (a dropped connection, a
-                closed tab), but a second restart will lock you out of completing the
-                interview.
-              </li>
-            </ul>
             <p className="text-xs text-text-muted">
               Keep your answers focused. The AI will guide the conversation to cover
               every topic in the time available.
             </p>
-            <p className="text-xs text-text-muted">
-              The session is processed by AI and reviewed by the employer. It will
-              automatically end after the maximum interview length.
-            </p>
-            <Button onClick={startInterview} className="w-full">
-              I understand, start the interview
+
+            <label
+              htmlFor="accept-interview-rules"
+              className="flex items-start gap-2.5 rounded-lg border border-border bg-background p-3.5 cursor-pointer"
+            >
+              <input
+                id="accept-interview-rules"
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 flex-shrink-0"
+                checked={accepted}
+                onChange={(event) => setAccepted(event.target.checked)}
+              />
+              <span className="text-sm text-text">
+                I have read these rules and I accept them.
+              </span>
+            </label>
+            <Button onClick={startInterview} disabled={!accepted} className="w-full">
+              Start the interview
             </Button>
           </div>
         )}

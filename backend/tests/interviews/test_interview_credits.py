@@ -470,6 +470,7 @@ async def test_pricing_shows_a_subscriber_both_pots(db_session):
         "included_in_plan": False,
         "plan_credits": 40,
         "purchased_credits": 7,
+        "style": "live",
     }
 
 
@@ -490,6 +491,7 @@ async def test_pricing_tells_an_employer_the_cost_and_their_balance(db_session):
         "included_in_plan": False,
         "plan_credits": 0,
         "purchased_credits": 42,
+        "style": "live",
     }
 
 

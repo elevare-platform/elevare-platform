@@ -189,6 +189,7 @@ async def test_an_employer_can_see_what_an_interview_costs_and_their_balance(
         "included_in_plan": False,
         "plan_credits": 0,
         "purchased_credits": 35,
+        "style": "live",
     }
 
 

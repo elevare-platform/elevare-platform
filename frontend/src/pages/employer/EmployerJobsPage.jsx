@@ -44,6 +44,7 @@ const STATUS_FILTERS = [
   { value: 'approved', label: 'Ready to publish' },
   { value: 'pending',  label: 'Pending review' },
   { value: 'rejected', label: 'Rejected' },
+  { value: 'disabled', label: 'Switched off' },
   { value: 'closed',   label: 'Closed' },
 ]
 
@@ -182,7 +183,7 @@ export default function EmployerJobsPage() {
 
           {/* Company profile banner */}
           {profile && (
-            <div className="flex items-center gap-4 mb-8 p-4 rounded-xl border border-border bg-surface">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 mb-8 p-4 rounded-xl border border-border bg-surface">
               {profile.company_logo_url ? (
                 <img
                   src={profile.company_logo_url}
@@ -212,7 +213,8 @@ export default function EmployerJobsPage() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-3 flex-shrink-0">
+              {/* On a phone these drop to their own line under the company name */}
+              <div className="flex items-center justify-between gap-3 w-full sm:w-auto sm:flex-shrink-0">
                 <Link to="/employer/verification" className="flex items-center gap-1.5">
                   <span className="text-xs text-text-muted">Verification:</span>
                   <StatusBadge value={profile.kyc_status ?? 'NOT_SUBMITTED'} />

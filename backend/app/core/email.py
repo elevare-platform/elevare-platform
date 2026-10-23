@@ -183,6 +183,21 @@ class EmailService(ABC):
         ...
 
     @abstractmethod
+    async def send_job_switched_off(
+        self,
+        employer_email: str,
+        job_data: dict,
+        reason: str,
+        detail: int | None = None,
+    ) -> None:
+        """Tell an employer the platform switched one of their jobs off (a plan rule).
+
+        ``reason`` is ``APPLICANT_LIMIT``, ``EXPIRED`` or ``PLAN_LAPSED``; ``detail`` is the
+        applicant limit or the number of days the message quotes.
+        """
+        ...
+
+    @abstractmethod
     async def send_contact_notification(
         self,
         recipient: str,
@@ -213,8 +228,12 @@ class EmailService(ABC):
         interview_url: str,
         job_title: str,
         company_name: str,
+        strict: bool = False,
     ) -> None:
-        """Invite a candidate to a live AI video interview, no login required."""
+        """Invite a candidate to a live AI video interview, no login required.
+
+        ``strict`` is the strict, text-question interview, which needs a laptop or desktop
+        computer with Chrome or Edge, so its email says so."""
         ...
 
     @abstractmethod
@@ -912,6 +931,32 @@ class ResendEmailService(EmailService):
 
             {_render_button("Publish job", cta_url)}
             """
+        elif action == "APPROVED_AND_PUBLISHED":
+            # The employer asked for it to be published as soon as it was approved.
+            subject = f"Your job is live: {job_title}"
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
+
+            body_content_html = f"""
+            <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your job is live</h2>
+            <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've approved <strong>{job_title}</strong> and published it, as you asked. Candidates can see it and apply now.</p>
+
+            {_render_button("See your applicants", cta_url)}
+            """
+        elif action == "APPROVED_NOT_PUBLISHED":
+            # Approved, but the plan does not allow publishing it yet: say why, and how to go on.
+            subject = f"Your job listing was approved: {job_title}"
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
+
+            body_content_html = f"""
+            <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your job listing was approved</h2>
+            <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">We've approved <strong>{job_title}</strong>. You asked us to publish it as soon as it was approved, but we couldn't do that yet.</p>
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 0 0 24px 0;">
+              <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #0F172A;">{reason}</p>
+            </div>
+            <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The job is saved. You can publish it yourself when you are able to.</p>
+
+            {_render_button("Publish job", cta_url)}
+            """
         else:
             subject = f"Your job listing needs changes: {job_title}"
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
@@ -941,6 +986,46 @@ class ResendEmailService(EmailService):
             preheader=f"An update on your job listing: {job_title}.",
             body_content_html=body_content_html,
             footer_note="You received this email because you have an active job posting on Elevare.",
+        )
+
+        await self._send_html(
+            subject=subject, recipients=[employer_email], html_body=html_body
+        )
+
+    async def send_job_switched_off(
+        self,
+        employer_email: str,
+        job_data: dict,
+        reason: str,
+        detail: int | None = None,
+    ) -> None:
+        """Tell an employer a job was switched off by their plan's rules, with what to do next."""
+        job_id = job_data["id"]
+        job_title = _h(job_data["title"])
+        why = {
+            "APPLICANT_LIMIT": (
+                f"it reached {detail} applicants, the most your plan allows for one job"
+            ),
+            "EXPIRED": f"it ran for {detail} days, the longest your plan allows",
+        }.get(reason, "your plan has ended and the plan you are on now allows fewer jobs")
+        subject = f"Your job has been switched off: {job_title}"
+        applicants_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
+        plans_url = f"{settings.app_url}/pricing"
+
+        body_content_html = f"""
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Your job has been switched off</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{job_title}</strong> was switched off because {why}. It is no longer shown to candidates, and it takes no new applications.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Nothing is lost. Every applicant is kept and you can still review them. To re-publish the same job and take more applicants, upgrade your plan.</p>
+
+        {_render_button("Review your applicants", applicants_url)}
+        <p style="margin: 16px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: #334155;"><a href="{plans_url}" style="color: #1A4D8F;">See the plans</a></p>
+        """
+
+        html_body = _render_email_layout(
+            title=subject,
+            preheader=f"{job_title} was switched off. Your applicants are kept.",
+            body_content_html=body_content_html,
+            footer_note="You received this email because you have a job posting on Elevare.",
         )
 
         await self._send_html(
@@ -982,6 +1067,7 @@ class ResendEmailService(EmailService):
         interview_url: str,
         job_title: str,
         company_name: str,
+        strict: bool = False,
     ) -> None:
         """Invite a candidate to a live AI video interview, no login required.
 
@@ -992,10 +1078,18 @@ class ResendEmailService(EmailService):
         whenever that's the case.
         """
         job_title, company_name = _h(job_title), _h(company_name)
+        # A strict interview cannot be taken on a phone, a tablet or another browser, so the
+        # email says so before the candidate opens the link on the wrong device.
+        device_html = (
+            """<p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>Use a laptop or desktop computer with Chrome or Edge.</strong> This interview cannot be taken on a phone or a tablet. Questions appear on the screen and you answer them out loud to your camera, so find a quiet place and plan for about 20 minutes.</p>"""
+            if strict
+            else ""
+        )
         body_content_html = f"""
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You're invited to an AI video interview</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_name}</strong> would like to interview you for the <strong>{job_title}</strong> role.</p>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The interview is conducted by an AI interviewer, not a person. It asks you questions and follows up on your answers. Your camera records the session so the employer can review it afterwards.</p>
+        {device_html}
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You don't need to log in. Open the link when you're ready, with your camera and microphone available.</p>
         {_render_button("Start interview", interview_url, is_primary=True)}
         """
@@ -1531,9 +1625,12 @@ class StubEmailService(EmailService):
     ) -> None:
         """Log stub job moderation status with the correct action link."""
         job_id = job_data["id"]
-        if action == "APPROVED":
+        if action in ("APPROVED", "APPROVED_NOT_PUBLISHED"):
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/publish"
             label = "Publish link"
+        elif action == "APPROVED_AND_PUBLISHED":
+            cta_url = f"{settings.app_url}/employer/jobs/{job_id}/applicants"
+            label = "Applicants link"
         else:
             cta_url = f"{settings.app_url}/employer/jobs/{job_id}/edit"
             label = "Edit link"
@@ -1545,6 +1642,23 @@ class StubEmailService(EmailService):
             reason,
             label,
             cta_url,
+        )
+
+    async def send_job_switched_off(
+        self,
+        employer_email: str,
+        job_data: dict,
+        reason: str,
+        detail: int | None = None,
+    ) -> None:
+        """Log a stub job-switched-off email with the link to the applicants."""
+        logger.info(
+            "STUB JOB SWITCHED OFF to %s: Job '%s' reason=%s detail=%s\nApplicants link: %s",
+            employer_email,
+            job_data["title"],
+            reason,
+            detail,
+            f"{settings.app_url}/employer/jobs/{job_data['id']}/applicants",
         )
 
     async def send_contact_notification(
@@ -1587,6 +1701,7 @@ class StubEmailService(EmailService):
         interview_url: str,
         job_title: str,
         company_name: str,
+        strict: bool = False,
     ) -> None:
         """Log a stub AI interview invite email."""
         logger.info(

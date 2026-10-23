@@ -94,6 +94,8 @@ class JobCreateRequest(BaseModel):
     # Topics/goals for the AI video interviewer to probe — leave unset to
     # keep the AI interview off for this job. Not a fixed question list.
     interview_brief: str | None = None
+    # Publish the job automatically as soon as an admin approves it.
+    publish_when_approved: bool = False
 
     @model_validator(mode="after")
     def validate_salary_range(self) -> "JobCreateRequest":
@@ -131,6 +133,7 @@ class JobUpdateRequest(BaseModel):
     openings_count: int | None = Field(default=None, ge=1, le=999)
     required_years_experience: int | None = Field(default=None, ge=0, le=50)
     interview_brief: str | None = None
+    publish_when_approved: bool | None = None
 
     @model_validator(mode="after")
     def validate_salary_range(self) -> "JobUpdateRequest":
@@ -204,6 +207,12 @@ class JobResponse(BaseModel):
     work_location: WorkLocation
     created_at: datetime | None = None
     application_deadline: datetime | None = None
+    # Whether the employer asked for it to be published as soon as it is approved.
+    publish_when_approved: bool = False
+    # When the job last went live, and, while it is DISABLED, which rule switched it off.
+    published_at: datetime | None = None
+    disabled_reason: str | None = None
+    disabled_at: datetime | None = None
     application_count: int = 0
     pipeline_count: int = 0  # talent pool profiles sourced for this job
     required_skills: list[str] | None = None
@@ -280,6 +289,10 @@ class JobResponse(BaseModel):
             employer_phone=employer.phone_number if employer and include_contact_info else None,
             created_at=job.created_at,
             application_deadline=job.application_deadline,
+            publish_when_approved=job.publish_when_approved,
+            published_at=job.published_at,
+            disabled_reason=job.disabled_reason,
+            disabled_at=job.disabled_at,
             application_count=getattr(job, "application_count", 0),
             pipeline_count=getattr(job, "pipeline_count", 0),
             required_skills=job.required_skills,

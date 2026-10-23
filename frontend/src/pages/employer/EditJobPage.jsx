@@ -65,6 +65,7 @@ export default function EditJobPage() {
     technical_competencies:     job.technical_competencies ?? '',
     what_we_offer:              job.what_we_offer ?? '',
     interview_brief:            job.interview_brief ?? '',
+    publish_when_approved:      job.publish_when_approved ?? false,
     location:                   job.location ?? '',
     contract_type:              job.contract_type ?? undefined,
     work_model:                 job.work_model ?? '',

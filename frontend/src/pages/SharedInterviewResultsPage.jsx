@@ -5,10 +5,14 @@ import { ChevronDown, ChevronUp, MessageCircleQuestion, User } from 'lucide-reac
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { parseAssessment } from '@/lib/interviewAssessment'
+import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
+import RecordingClips from '@/components/employer/RecordingClips'
+import { showsClips } from '@/lib/recordingClips'
 
 // What the client is told about each candidate's interview.
 const STATUS = {
   COMPLETED: { label: 'Completed', className: 'bg-green-50 text-green-700 border-green-200' },
+  ENDED: { label: 'Ended early', className: 'bg-amber-50 text-amber-800 border-amber-200' },
   IN_PROGRESS: { label: 'Interview in progress', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   INVITED: { label: 'Invited', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   NOT_COMPLETED: { label: 'Not completed', className: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -150,8 +154,11 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
   const status = STATUS[candidate.status] ?? STATUS.NOT_INVITED
   const interview = parseAssessment(candidate.interview_assessment)
   const interviewed = candidate.status === 'COMPLETED'
+  // An interview that ended early has a recording, answers and notes worth opening, but no
+  // assessment of the interview.
+  const endedEarly = candidate.status === 'ENDED'
   const hasDetail =
-    interviewed || candidate.cv_score != null || candidate.cv_summary || candidate.cv_strengths?.length
+    interviewed || endedEarly || candidate.cv_score != null || candidate.cv_summary || candidate.cv_strengths?.length
 
   return (
     <div className="rounded-xl border border-border bg-white overflow-hidden">
@@ -183,15 +190,31 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
 
       {open && hasDetail && (
         <div className="border-t border-border px-4 py-4 bg-surface-muted space-y-4">
-          {candidate.video_url && (
+          {showsClips(candidate.recordings, candidate.video_url) && (
+            <div>
+              <RecordingClips recordings={candidate.recordings} videoClassName="w-full rounded-lg bg-black" />
+              <p className="text-[11px] text-text-muted mt-1">
+                The video links are refreshed each time this page opens and stop working after about 15
+                minutes. Reload the page if one stops playing.
+              </p>
+              <RecordingNotice strict={candidate.strict} />
+            </div>
+          )}
+          {!candidate.video_url && !showsClips(candidate.recordings, candidate.video_url) && (
+            <RecordingNotice strict={candidate.strict} />
+          )}
+          {candidate.video_url && !showsClips(candidate.recordings, candidate.video_url) && (
             <div>
               <video controls preload="metadata" src={candidate.video_url} className="w-full rounded-lg bg-black" />
               <p className="text-[11px] text-text-muted mt-1">
                 The video link is refreshed each time this page opens and stops working after about 15
                 minutes. Reload the page if it stops playing.
               </p>
+              <RecordingNotice strict={candidate.strict} />
             </div>
           )}
+
+          <StrictInterviewNotes strict={candidate.strict} />
 
           <Questions questions={candidate.questions ?? []} />
 
@@ -215,7 +238,7 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
             />
           </div>
 
-          {interviewed && (
+          {(interviewed || endedEarly) && (
             <div>
               <h4 className="text-sm font-semibold text-text mb-2">Interview conversation</h4>
               {candidate.transcript_note && (

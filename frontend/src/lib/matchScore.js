@@ -43,6 +43,15 @@ const FAILURE_BANDS = {
     className: 'bg-orange-50 text-orange-700 border-orange-200',
     help: 'Scoring did not complete, so there is no score. This is not a low score.',
   },
+  // The company's monthly AI-scoring allowance is used up. Not a failure and not a low score:
+  // the candidate is saved and visible, just not scored yet.
+  PLAN_LIMIT: {
+    key: 'plan_limit',
+    label: 'Not scored: plan limit',
+    className: 'bg-violet-50 text-violet-700 border-violet-200',
+    help:
+      "This month's AI scoring on your plan is used up, so this candidate was not scored. They are saved and you can still read their CV. Upgrade your plan, or rescore after the month turns over.",
+  },
 }
 
 /** The sentence that explains a failure, or null when there is none. */

@@ -219,6 +219,15 @@ async def list_jobs(
     )
 
 
+@router.get("/jobs/pending-count", status_code=200)
+async def jobs_waiting_for_review_count(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role("ADMIN")),
+):
+    """How many jobs are waiting for review: a cheap count for the badge on the Jobs menu."""
+    return {"count": await AdminService(db).count_jobs_waiting_for_review()}
+
+
 @router.patch("/jobs/{job_id}/moderate", status_code=200)
 async def moderate_job(
     job_id: UUID = Path(...),

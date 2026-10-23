@@ -122,7 +122,17 @@ class CVParsingService:
         pool makes the profile together with the submission, so a concurrent upload of
         the same CV finds both or neither). After committing, call ``dispatch()``: the
         background work must not start before the row is visible to the workers.
+
+        This is the one place every employer upload creates a submission, so it is also
+        where the company's monthly CV-upload allowance is checked. A duplicate never gets
+        here (it is found before), so it costs no allowance. Admins are not limited, and a
+        candidate uploading their own CV has no company, so neither is affected.
         """
+        if uploaded_by.role != UserRole.ADMIN.value:
+            from app.modules.billing.allowance import AllowanceService
+
+            await AllowanceService(self._db).require_cv_upload(uploaded_by.organization_id)
+
         cache_key = f"cv_parse:{cv_text_hash}"
 
         # Cache hit — return immediately, no pipeline needed

@@ -9,6 +9,7 @@ from fastapi.requests import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db, get_redis_client, require_role
+from app.core.exceptions import PlanLimitReachedException
 from app.core.storage import StorageService, get_storage_service
 from app.modules.ai.cv_parsing_service import CVParsingService
 from app.modules.ai.enums import CVParsingStatus
@@ -121,11 +122,26 @@ async def submit_pdf_batch(
         raise HTTPException(status_code=400, detail="Maximum 20 files per batch")
 
     results = []
+    limit_message = None
     for file in files:
+        if limit_message is not None:
+            # This month's allowance ran out earlier in this batch: the rest are not read.
+            results.append(
+                {"filename": file.filename, "status": "limit_reached", "error": limit_message}
+            )
+            continue
         file_bytes = await file.read()
-        submission = await service.submit_cv_for_parsing(
-            current_user, file_bytes, file.filename
-        )
+        try:
+            submission = await service.submit_cv_for_parsing(
+                current_user, file_bytes, file.filename
+            )
+        except PlanLimitReachedException as e:
+            await db.commit()  # nothing was written for this file; just ends the transaction
+            limit_message = e.message
+            results.append(
+                {"filename": file.filename, "status": "limit_reached", "error": limit_message}
+            )
+            continue
         results.append(submission)
     return results
 

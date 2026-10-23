@@ -132,6 +132,11 @@ celery.conf.update(
             "schedule": 60 * 60,  # every hour
             "options": {"expires": 60 * 55},
         },
+        "disable-expired-starter-jobs": {
+            "task": "app.modules.billing.tasks.disable_expired_starter_jobs_task",
+            "schedule": 60 * 60,  # every hour
+            "options": {"expires": 60 * 55},
+        },
         "expire-interview-videos": {
             "task": "app.modules.interviews.tasks.expire_interview_videos_task",
             "schedule": 60 * 60 * 6,  # every 6 hours

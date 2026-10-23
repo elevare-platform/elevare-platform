@@ -286,6 +286,24 @@ class AdminRepository:
         }
 
     # -----------------------------------------------------------------------
+    # Jobs waiting for review
+    # -----------------------------------------------------------------------
+
+    async def count_jobs_waiting_for_review(self) -> int:
+        """Jobs an admin has yet to approve or reject: drafts whose moderation is pending.
+
+        The hidden "General Interest" placeholder job every employer gets is never published
+        and never reviewed, so it is not counted (the dashboard's older "pending moderation"
+        figure counts by moderation status alone and includes it).
+        """
+        stmt = select(func.count(Job.id)).where(
+            Job.status == JobStatus.DRAFT.value,
+            Job.moderation_status == ModerationStatus.PENDING.value,
+            Job.is_general_interest.is_(False),
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    # -----------------------------------------------------------------------
     # Plan exemptions
     # -----------------------------------------------------------------------
 

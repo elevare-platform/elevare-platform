@@ -22,6 +22,7 @@ from app.modules.ai.enums import CVParsingStatus
 from app.modules.ai.repository import AIRepository
 from app.modules.ai.scoring_outcome import (
     CV_UNREADABLE,
+    PLAN_LIMIT,
     SCORING_FAILED,
     ScoringFailed,
     failure_fields,
@@ -136,13 +137,51 @@ async def _save_unscored(db, repo, row, reason: str) -> None:
     if fields:
         await repo.update(row.id, fields)
         # Only when something was recorded: a row that keeps its real score is not news.
-        report_quality_signal(
-            SCORE_NOT_SAVED,
-            reason=reason,
-            kind=type(row).__name__,
-            row_id=row.id,
-        )
+        # And not for a spent allowance: that is expected, not something to be warned about.
+        if reason != PLAN_LIMIT:
+            report_quality_signal(
+                SCORE_NOT_SAVED,
+                reason=reason,
+                kind=type(row).__name__,
+                row_id=row.id,
+            )
     await db.commit()
+
+
+async def _scoring_room(db, job) -> int | None:
+    """How many more AI scores the company that owns ``job`` has this month, or None when it
+    has no limit (an admin's job, a job whose owner has no company record, a plan without a
+    limit, or plan gating switched off)."""
+    from app.modules.billing.allowance import AllowanceService
+    from app.modules.users.models import User
+
+    employer = await db.get(User, job.employer_id)
+    if employer is None or employer.role == "ADMIN" or employer.organization_id is None:
+        return None
+    return (await AllowanceService(db).ai_scores(employer.organization_id)).remaining
+
+
+async def _may_score(
+    db, job, *, application_id=None, talent_pool_profile_id=None
+) -> bool:
+    """Whether the company that owns ``job`` may have one more candidate AI-scored this month.
+
+    Admins, and a job whose owner has no company record, are not limited. The rule itself
+    (and the exception for a candidate already scored on this job this month) is in
+    ``billing/allowance.py``. While plan gating is switched off nothing is limited.
+    """
+    from app.modules.billing.allowance import AllowanceService
+    from app.modules.users.models import User
+
+    employer = await db.get(User, job.employer_id)
+    if employer is None or employer.role == "ADMIN" or employer.organization_id is None:
+        return True
+    return await AllowanceService(db).may_score(
+        employer.organization_id,
+        job.id,
+        application_id=application_id,
+        talent_pool_profile_id=talent_pool_profile_id,
+    )
 
 
 class _ParsingInProgress(Exception):
@@ -672,6 +711,16 @@ async def _score_application_async(
                 )
                 return
 
+            # The company's monthly AI-scoring allowance is used up: save the applicant as
+            # "not scored, plan limit reached" and make no model call.
+            if not await _may_score(db, job, application_id=application.id):
+                logger.info(
+                    "score_application: monthly AI-scoring allowance spent; not scoring application %s",
+                    application_id,
+                )
+                await _save_unscored(db, app_repo, application, PLAN_LIMIT)
+                return
+
             # --- Hash-based cache check - skip LLM if nothing changed
             from app.modules.jobs.schemas import build_full_description
 
@@ -959,6 +1008,16 @@ async def _score_talent_pool_profile_async(
                 logger.warning(
                     f"score_talent_pool_profile: Job not found for talent pool profile {profile_id}. Skipping."
                 )
+                return
+
+            # The company's monthly AI-scoring allowance is used up: save the profile as
+            # "not scored, plan limit reached" and make no model call.
+            if not await _may_score(db, job, talent_pool_profile_id=talent_pool.id):
+                logger.info(
+                    "score_talent_pool_profile: monthly AI-scoring allowance spent; not scoring profile %s",
+                    profile_id,
+                )
+                await _save_unscored(db, talent_pool_repo, talent_pool, PLAN_LIMIT)
                 return
 
             # --- Hash-based cache check - skip LLM if nothing changed
@@ -1898,6 +1957,23 @@ async def _notify_candidate_new_matches(db, user_id, candidate_embedding) -> Non
     await db.commit()
 
 
+async def _employer_has_ai_matching(db, employer_id) -> bool:
+    """Whether this employer's company may use AI Talent Matches (Professional and above).
+
+    Admins, and an employer with no company record, are not restricted: the same
+    exceptions the plan gates on the matches endpoints make. The plan is read through
+    ``get_effective_plan``, so the exemption list and the gating switch both apply.
+    """
+    from app.modules.billing.service import BillingService
+    from app.modules.users.models import User
+
+    employer = await db.get(User, employer_id)
+    if employer is None or employer.role == "ADMIN" or employer.organization_id is None:
+        return True
+    plan = await BillingService(db).get_effective_plan(employer.organization_id)
+    return plan.code != "starter"
+
+
 async def _notify_employer_new_matches(
     db, employer_id, job_id, job_embedding, job_title: str
 ) -> None:
@@ -1916,6 +1992,11 @@ async def _notify_employer_new_matches(
     from app.modules.talent_pool.models import TalentPoolProfiles
 
     if job_embedding is None or len(job_embedding) == 0:
+        return
+
+    # AI Talent Matches are a Professional feature, so a Starter company is not told about
+    # matches it cannot open. (Same helper the matches endpoints use.)
+    if not await _employer_has_ai_matching(db, employer_id):
         return
 
     await db.execute(_text("SET ivfflat.probes = 10"))
@@ -2047,7 +2128,20 @@ async def _score_job_against_talent_pool_async(
             # Use the same scoring logic as the API — embedding * modulator,
             # floor filter, top 20. Only these profiles get LLM scoring queued.
             employer_id = job.employer_id
-            top_matches = await get_top_matches_for_job(db, job, employer_id, limit=20)
+
+            # Never queue more scorings than the company has room for this month. On Starter
+            # that is none, so a publish no longer costs 20 model calls (plan 15.2, gap G2).
+            room = await _scoring_room(db, job)
+            how_many = 20 if room is None else min(20, room)
+            if how_many == 0:
+                logger.info(
+                    "score_job_against_talent_pool: no AI-scoring allowance left; not scoring the pool for job %s",
+                    job_id,
+                )
+                return
+            top_matches = await get_top_matches_for_job(
+                db, job, employer_id, limit=how_many
+            )
 
             for profile, _, _matched in top_matches:
                 score_talent_pool_profile_task.delay(str(profile.id), job_id_str)

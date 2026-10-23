@@ -50,12 +50,27 @@ EVERY_EMAIL = {
         lambda s: s.send_job_moderation_status(
             TO, {"id": "job-1", "title": JOB}, "REJECTED", "The salary range is missing."
         ),
+        lambda s: s.send_job_moderation_status(TO, {"id": "job-1", "title": JOB}, "APPROVED_AND_PUBLISHED"),
+        lambda s: s.send_job_moderation_status(
+            TO,
+            {"id": "job-1", "title": JOB},
+            "APPROVED_NOT_PUBLISHED",
+            "Your plan allows one new job a month.",
+        ),
+    ],
+    "send_job_switched_off": [
+        lambda s: s.send_job_switched_off(TO, {"id": "job-1", "title": JOB}, "APPLICANT_LIMIT", 3),
+        lambda s: s.send_job_switched_off(TO, {"id": "job-1", "title": JOB}, "EXPIRED", 30),
+        lambda s: s.send_job_switched_off(TO, {"id": "job-1", "title": JOB}, "PLAN_LAPSED"),
     ],
     "send_contact_notification": [
         lambda s: s.send_contact_notification(TO, "Visitor", "v@example.com", COMPANY, "Hello", "general")
     ],
     "send_introduction_request": [lambda s: s.send_introduction_request(TO, LINK, LINK, JOB)],
-    "send_ai_interview_invite": [lambda s: s.send_ai_interview_invite(TO, LINK, JOB, COMPANY)],
+    "send_ai_interview_invite": [
+        lambda s: s.send_ai_interview_invite(TO, LINK, JOB, COMPANY),
+        lambda s: s.send_ai_interview_invite(TO, LINK, JOB, COMPANY, strict=True),
+    ],
     "send_interview_restart_request": [
         lambda s: s.send_interview_restart_request(TO, "Chidi Okafor", JOB, COMPANY, LINK)
     ],

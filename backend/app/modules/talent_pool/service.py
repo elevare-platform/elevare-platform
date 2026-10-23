@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     JobNotFoundError,
     PermissionDeniedException,
+    PlanLimitReachedException,
     ProfileNotFoundException,
     SubmissionNotFound,
     ValidationException,
@@ -226,21 +227,31 @@ class TalentPoolService:
             response.candidate_email = profile.override_email
         return response
 
-    async def _can_auto_score(self, current_user: User) -> bool:
+    async def _can_auto_score(
+        self, current_user: User, job_id: uuid.UUID | None = None
+    ) -> bool:
         """Whether uploads for this org may trigger LLM scoring as a
         side effect. Scoring is a paid-tier feature (see the gates on
         POST /score-against-job and POST /{id}/score) — without this check,
         attaching a job to an upload would silently score it for free and
         bypass those gates entirely.
+
+        The one exception on Starter is the company's free taste: an upload attached to its
+        taste job (its first job, once the company is verified) is scored.
         """
         if current_user.role == UserRole.ADMIN.value:
             return True
         from app.modules.billing.service import BillingService
+        from app.modules.billing.starter_rules import is_taste_job
 
         plan = await BillingService(self._db).get_effective_plan(
             current_user.organization_id
         )
-        return plan.code != "starter"
+        if plan.code != "starter":
+            return True
+        return job_id is not None and await is_taste_job(
+            self._db, current_user.organization_id, job_id
+        )
 
     async def submit(
         self,
@@ -254,7 +265,11 @@ class TalentPoolService:
         A CV that is already in the pool is not added again: the existing profile is
         returned with ``already_in_pool`` set (see ``dedupe`` for the rule)."""
         added = await self._add_cv(
-            file, filename, data, current_user, await self._can_auto_score(current_user)
+            file,
+            filename,
+            data,
+            current_user,
+            await self._can_auto_score(current_user, data.sourced_for_job_id),
         )
         response = TalentPoolProfileResponse.model_validate(added.profile)
         response.already_in_pool = added.status == "duplicate"
@@ -323,7 +338,7 @@ class TalentPoolService:
         current_user: User,
     ) -> list[dict]:
         """Upload multiple CVs in one request. Returns per-file status."""
-        can_auto_score = await self._can_auto_score(current_user)
+        can_auto_score = await self._can_auto_score(current_user, data.sourced_for_job_id)
         results = []
         for file_bytes, filename in files:
             try:
@@ -344,6 +359,15 @@ class TalentPoolService:
                         if added.profile.sourced_for_job_id
                         else None,
                     }
+                )
+            except PlanLimitReachedException as e:
+                # This month's allowance is spent. A CV that is already in the pool still
+                # goes through (it costs nothing), so only the new ones report this.
+                # Nothing was written for this file (the check comes first), so a commit
+                # just ends the transaction and releases its lock, as the duplicate path does.
+                await self._db.commit()
+                results.append(
+                    {"filename": filename, "status": "limit_reached", "error": e.message}
                 )
             except Exception as e:
                 logger.error("Batch submit failed for %s: %s", filename, e)

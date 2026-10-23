@@ -53,6 +53,12 @@ class Plan(BaseModel):
     interval: Mapped[str] = mapped_column(String(10), nullable=False)
     job_posting_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     included_credits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Monthly allowances, counted over the calendar month in Lagos time. NULL means
+    # unlimited and 0 means none. Starter 10 uploads and 0 AI scores (the free taste of
+    # AI scoring is handled separately), Professional 100 and 500, Enterprise unlimited
+    # until it is set for a customer.
+    monthly_cv_uploads: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    monthly_ai_scores: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )

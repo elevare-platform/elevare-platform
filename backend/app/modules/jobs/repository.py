@@ -209,6 +209,8 @@ class JobRepository:
             )
         elif status_filter == "closed":
             stmt = stmt.where(Job.status == JobStatus.CLOSED.value)
+        elif status_filter == "disabled":
+            stmt = stmt.where(Job.status == JobStatus.DISABLED.value)
         # "all" — no additional filter
         if search:
             stmt = stmt.where(Job.title.ilike(f"%{search}%"))

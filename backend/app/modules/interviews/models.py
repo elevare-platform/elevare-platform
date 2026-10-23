@@ -29,6 +29,158 @@ if TYPE_CHECKING:
     from app.modules.talent_pool.models import TalentPoolProfiles
 
 
+class JobInterviewQuestion(BaseModel):
+    """One question of a job's strict interview, with the time a candidate has to answer it.
+
+    A job has one list, in ``position`` order, the same for every candidate (decision: the
+    questions are made once per job, so candidates can be compared fairly). The AI drafts
+    the list from the job's interview brief and the employer edits it; ``source`` says who
+    wrote each question. Replacing the list deletes and re-adds the rows in one transaction.
+    """
+
+    __tablename__ = "job_interview_questions"
+    __table_args__ = (
+        UniqueConstraint("job_id", "position", name="uq_job_interview_questions_position"),
+    )
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # 1, 2, 3 ... the order the candidate sees them.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # How long the candidate has to answer this question (a follow-up gets its own,
+    # shorter allowance on top). Set by the AI when it drafts, and changeable by the employer.
+    time_limit_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    # "AI" (drafted) or "EMPLOYER" (written or edited by the employer).
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="EMPLOYER")
+
+
+class StrictInterviewRun(BaseModel):
+    """The state of one interview that uses the strict, text-question style.
+
+    Having a row is what makes an interview strict: the style is decided when the invite is
+    created and an interview with no row is the existing live interview. Kept in its own
+    table, not as columns on ``Interview``, so adding it never touches the live interview
+    schema (see migration p22_0030).
+
+    ``questions`` is a copy of the job's questions taken when the interview starts: the
+    employer editing the list afterwards never changes an interview that has begun.
+    """
+
+    __tablename__ = "interview_strict_runs"
+    __table_args__ = (
+        UniqueConstraint("interview_id", name="uq_interview_strict_runs_interview"),
+    )
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # The version of the rules text the candidate saw when they accepted it, and when.
+    rules_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    rules_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # [{"text": ..., "time_limit_seconds": ...}, ...] in the order asked. None until started.
+    questions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # When the interview's own clock began. The whole interview ends this long after.
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Earlier recordings that survived a reload and were uploaded as separate parts
+    # (interviews/<id>/part-<n>.webm). Joined into one video before scoring, then back to 0.
+    recording_parts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    # Which try this is; an employer reinstating an ended interview starts the next one. The
+    # leave count and the time away are counted per attempt.
+    attempt: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    # The last time the candidate's screen was heard from (a heartbeat every 15 seconds).
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set while the candidate is away from the interview screen: when it began and why.
+    away_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    away_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # When the interview was ended or stopped, and why (an ``END_*`` value). Cleared when it is
+    # reinstated; the timeline keeps the history.
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Set when an employer reinstates an interview: the moment its clock stopped. The clock
+    # starts again when the candidate next opens the link, which moves the interview's start and
+    # the open question forward by the time in between. Cleared then.
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The final recordings of earlier attempts (storage keys, oldest first). They are joined in
+    # front of the latest one when the interview finishes.
+    previous_recordings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+
+class InterviewConductEvent(BaseModel):
+    """One row of a strict interview's timeline: a leave, a reload, a key press, a stop, an
+    ending or a reinstatement, with the time the SERVER saw it (so the employer can check it
+    against the recording). Kept after the interview, with the recording."""
+
+    __tablename__ = "interview_conduct_events"
+    __table_args__ = (Index("ix_interview_conduct_events_interview_id", "interview_id"),)
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    attempt: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    # A ConductEventKind value.
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    # What kind of leave (HIDDEN, BLUR, FULLSCREEN), which key, or why it ended.
+    detail: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # How long a leave or reload lasted; None for a leave still open and for other kinds.
+    duration_seconds: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    # Whether it counts towards ending the interview (a key press never does).
+    counted: Mapped[bool] = mapped_column(
+        sa.Boolean, default=False, server_default=sa.false(), nullable=False
+    )
+
+
+class InterviewTurn(BaseModel):
+    """One question or follow-up the candidate was shown, and what they said.
+
+    The server opens one turn at a time and records when it was shown, so the time left is
+    the server's, not the browser's. Only the text of the answer is kept here (the whole
+    interview is recorded as one video). ``answer_text`` stays empty when the answer could
+    not be transcribed; the recording still has it.
+    """
+
+    __tablename__ = "interview_turns"
+    __table_args__ = (
+        UniqueConstraint("interview_id", "position", name="uq_interview_turns_position"),
+        Index("ix_interview_turns_interview_id", "interview_id"),
+    )
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # 1, 2, 3 ... the order shown, follow-ups included.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    # A TurnKind value.
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Which of the job's questions this turn belongs to (a follow-up shares its question's).
+    question_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    time_limit_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    answered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer_seconds: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+
+
 class Interview(BaseModel):
     """A candidate's live AI video interview for one job.
 

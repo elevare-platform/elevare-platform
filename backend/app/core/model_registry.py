@@ -39,7 +39,14 @@ from app.modules.employer.models import KYCDocument
 from app.modules.ingestion.models import IngestionImportRun, MailIntegration
 from app.modules.interview_list.models import InterviewListEntry
 from app.modules.interview_share.models import InterviewShareLink
-from app.modules.interviews.models import Interview, InterviewCost
+from app.modules.interviews.models import (
+    Interview,
+    InterviewConductEvent,
+    InterviewCost,
+    InterviewTurn,
+    JobInterviewQuestion,
+    StrictInterviewRun,
+)
 from app.modules.introductions.models import IntroductionRequest
 from app.modules.jobs.models import Job, JobAccessTokens
 from app.modules.notifications.models import Notification
@@ -82,6 +89,10 @@ __all__ = [
     "Notification",
     "SavedCandidate",
     "InterviewListEntry",
+    "JobInterviewQuestion",
+    "StrictInterviewRun",
+    "InterviewTurn",
+    "InterviewConductEvent",
     "InterviewShareLink",
     "UserOnboarding",
     "Interview",

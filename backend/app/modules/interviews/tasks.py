@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from openai import AsyncOpenAI
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -22,12 +23,20 @@ from app.core.email import get_email_service
 from app.core.exceptions import PlanUpgradeRequiredException
 from app.core.storage import get_storage_service
 from app.modules.ai.service import AnthropicCVExtractionService
+from app.modules.interviews.assessment_text import format_assessment
 from app.modules.interviews.credits import refund_if_unused, refund_interview_credits
 from app.modules.interviews.enums import (
     STALE_INTERVIEW_TIMEOUT,
     InterviewCostComponent,
     InterviewStatus,
     TranscriptCheckStatus,
+)
+from app.modules.interviews.models import StrictInterviewRun
+from app.modules.interviews.recording_merge import (
+    JoinTimedOut,
+    concat_recordings,
+    merge_key,
+    part_key,
 )
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.scoring_access import assert_can_score_interviews
@@ -129,6 +138,124 @@ async def _transcribe_recording(r2_key: str) -> tuple[str, float]:
     return response.text, response.duration
 
 
+# Scoring has 240 s in all (the task's soft limit), so a join that has to re-encode is given
+# only this long there. A join that is too slow is handed to its own task, which has time.
+SCORING_JOIN_SECONDS = 90
+# Re-encoding runs at about 0.7 times real time, so a recording as long as the longest interview
+# (INTERVIEW_MAX_DURATION_MINUTES) needs about 1.4 times its length; twice leaves room for a slow
+# worker. Read from the setting, so changing the interview length changes this too.
+REENCODE_HEADROOM = 2
+BACKGROUND_JOIN_SECONDS = settings.interview_max_duration_minutes * 60 * REENCODE_HEADROOM
+
+
+async def _pieces_waiting(db, interview_id) -> bool:
+    """True while an interview still has recording pieces that have not been joined."""
+    run = (
+        await db.execute(
+            select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview_id)
+        )
+    ).scalar_one_or_none()
+    return bool(run is not None and run.recording_parts > 0)
+
+
+async def _merge_recording_parts(db, repo, interview, reencode_timeout=None, queue_if_slow=False):
+    """Join an interview's earlier recording parts and its final recording into one video.
+
+    Returns the interview as it should be read from here on: with ``r2_key`` pointing at the
+    joined video when a join happened, unchanged otherwise. Safe to run again after any
+    failure: the output has its own key, the interview is only pointed at it (and the part
+    count reset) in one commit, and the pieces are deleted only after that. A join that fails
+    never blocks scoring: the final recording is still there, the parts stay in storage, and
+    the failure is logged. A join that has to re-encode and takes longer than
+    ``reencode_timeout`` seconds is stopped the same way; with ``queue_if_slow`` it is then
+    handed to ``merge_interview_recording_task``, which has the time.
+    """
+    run = (
+        await db.execute(
+            select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
+        )
+    ).scalar_one_or_none()
+    if run is None or run.recording_parts <= 0 or not interview.r2_key:
+        return interview
+
+    storage = get_storage_service()
+    # In the order they happened: this attempt's parts (kept across reloads), then its final
+    # recording. The recordings of earlier attempts (an interview the employer reinstated) are
+    # NOT joined in: each attempt stays its own clip, shown separately to the employer.
+    used_keys: list[str] = []
+    new_key: str | None = None
+    try:
+        pieces: list[bytes] = []
+        wanted = [part_key(interview.id, number) for number in range(1, run.recording_parts + 1)]
+        for key in wanted:
+            # A piece that was reserved but never uploaded (the browser went away) is skipped.
+            if not await storage.get_object_size(key):
+                logger.warning(
+                    "merge_recording_parts: %s of interview %s is not in storage",
+                    key,
+                    interview.id,
+                )
+                continue
+            pieces.append(await storage.download_file(key))
+            used_keys.append(key)
+
+        if pieces:
+            # The final recording can be missing altogether: a page that came back to find
+            # nothing left to record sends none. The earlier pieces are then the interview.
+            has_final = bool(await storage.get_object_size(interview.r2_key))
+            if has_final:
+                pieces.append(await storage.download_file(interview.r2_key))
+            try:
+                joined = await concat_recordings(pieces, reencode_timeout=reencode_timeout)
+            except RuntimeError:
+                if not has_final:
+                    raise  # nothing but real pieces were joined, so there is nothing to drop
+                # The final recording can be nearly empty (a reload just after the last
+                # answer), and a nearly empty file may not join. The earlier pieces are the
+                # real interview, so join them alone rather than lose them.
+                logger.warning(
+                    "merge_recording_parts: the final recording of interview %s would not "
+                    "join, joining the earlier pieces alone",
+                    interview.id,
+                    exc_info=True,
+                )
+                joined = await concat_recordings(pieces[:-1], reencode_timeout=reencode_timeout)
+            new_key = merge_key(interview.id, run.attempt)
+            await storage.upload_file(joined, new_key, "video/webm")
+    except JoinTimedOut:
+        logger.warning(
+            "merge_recording_parts: joining the recordings of interview %s took longer than %ss; "
+            "%s",
+            interview.id,
+            reencode_timeout,
+            "handing it to its own task" if queue_if_slow else "leaving the pieces as they are",
+        )
+        if queue_if_slow:
+            merge_interview_recording_task.delay(str(interview.id))
+        return interview
+    except Exception:
+        # Scoring does not depend on the video, so it carries on with the final recording.
+        # The parts stay in storage so the join can be run again.
+        logger.exception(
+            "merge_recording_parts: could not join the recordings of interview %s", interview.id
+        )
+        return interview
+
+    # The database change is not guarded: if it fails the task fails and runs again.
+    old_key = interview.r2_key
+    if new_key is not None:
+        interview = await repo.update(interview.id, {"r2_key": new_key})
+    run.recording_parts = 0
+    await db.commit()
+
+    for key in [*used_keys, *([old_key] if new_key is not None else [])]:
+        try:
+            await storage.delete_file(key)
+        except Exception:
+            logger.warning("merge_recording_parts: could not delete %s", key, exc_info=True)
+    return interview
+
+
 async def _record_scoring_cost(repo, interview_id, result) -> None:
     """Write the scoring cost row for a call that was actually billed,
     including failed attempts (a response we could not parse still cost tokens)."""
@@ -155,6 +282,7 @@ def send_ai_interview_invite_email(
     interview_url: str,
     job_title: str,
     company_name: str,
+    strict: bool = False,
 ) -> None:
     """Send an AI interview invite email with a no-login magic link.
 
@@ -172,6 +300,7 @@ def send_ai_interview_invite_email(
             interview_url=interview_url,
             job_title=job_title,
             company_name=company_name,
+            strict=strict,
         )
 
     try:
@@ -297,6 +426,16 @@ async def _transcribe_and_score_interview_async(
                 )
                 return
 
+            # A strict interview whose page reloaded has earlier recordings uploaded as
+            # separate parts. Join them into the one video the employer plays; the
+            # steps below then read the joined recording.
+            interview = await _merge_recording_parts(
+                db, repo, interview, reencode_timeout=SCORING_JOIN_SECONDS, queue_if_slow=True
+            )
+            # Pieces that could not be joined (yet) leave a recording that holds only the last
+            # part, which would never match the whole transcript: no cross-check against it.
+            pieces_waiting = await _pieces_waiting(db, interview.id)
+
             # The transcript the browser submitted (diarized, both speakers) is
             # captured on the candidate's own device, so it is checked against
             # a server-side transcription of the recording. A check already on
@@ -308,6 +447,7 @@ async def _transcribe_and_score_interview_async(
                 settings.interview_transcript_crosscheck_enabled
                 and check is None
                 and bool(interview.r2_key)
+                and not pieces_waiting
             )
 
             if needs_server_transcript:
@@ -465,35 +605,12 @@ async def _transcribe_and_score_interview_async(
                         result.score,
                     )
 
-                    rationale_parts = [result.summary]
-                    if result.strengths:
-                        rationale_parts.append(
-                            "Strengths:\n"
-                            + "\n".join(f"- {s}" for s in result.strengths)
-                        )
-                    if result.weaknesses:
-                        rationale_parts.append(
-                            "Weaknesses:\n"
-                            + "\n".join(f"- {w}" for w in result.weaknesses)
-                        )
-                    if result.missing_evidence:
-                        rationale_parts.append(
-                            "Not covered in this interview:\n"
-                            + "\n".join(f"- {m}" for m in result.missing_evidence)
-                        )
-                    if result.contradictions:
-                        rationale_parts.append(
-                            "Contradictions:\n"
-                            + "\n".join(f"- {c}" for c in result.contradictions)
-                        )
-
                     await repo.update(
                         interview.id,
                         {
                             "ai_score": result.score,
-                            "ai_rationale": "\n\n".join(
-                                p for p in rationale_parts if p
-                            ),
+                            # The scorecard laid out as the text the employer reads.
+                            "ai_rationale": format_assessment(result),
                             "ai_scored_at": datetime.now(UTC),
                         },
                     )
@@ -590,6 +707,39 @@ async def _transcribe_and_score_interview_async(
             await engine.dispose()
 
 
+@celery.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=3,
+    # Re-encoding takes about as long as the video, far more than the default 4 minutes.
+    soft_time_limit=BACKGROUND_JOIN_SECONDS + 240,
+    time_limit=BACKGROUND_JOIN_SECONDS + 300,
+)
+def merge_interview_recording_task(self, interview_id: str) -> None:
+    """Join the pieces of the recording of a strict interview that ended early (the parts kept
+    across reloads, and the final recording), so the employer has one video to look at. An
+    interview that finishes normally does this at the start of its scoring task; one that was
+    ended or stopped is not scored, so it needs this on its own. Safe to run again."""
+    asyncio.run(_merge_interview_recording_async(uuid.UUID(interview_id)))
+
+
+async def _merge_interview_recording_async(interview_id: uuid.UUID) -> None:
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    sessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessionLocal() as db:
+        try:
+            repo = InterviewRepository(db)
+            interview = await repo.get_by_id(interview_id)
+            if interview is None:
+                return
+            await _merge_recording_parts(
+                db, repo, interview, reencode_timeout=BACKGROUND_JOIN_SECONDS
+            )
+        finally:
+            await engine.dispose()
+
+
 @celery.task
 def expire_interview_videos_task() -> None:
     """Celery Beat task — deletes R2 video objects past their retention window."""
@@ -617,6 +767,19 @@ async def _expire_interview_videos_async() -> None:
             for interview in expired:
                 try:
                     await get_storage_service().delete_file(interview.r2_key)
+                    # A reinstated strict interview also keeps the recording of each earlier
+                    # attempt as its own file, which expires with the rest.
+                    run = (
+                        await db.execute(
+                            select(StrictInterviewRun).where(
+                                StrictInterviewRun.interview_id == interview.id
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if run is not None and run.previous_recordings:
+                        for key in run.previous_recordings:
+                            await get_storage_service().delete_file(key)
+                        run.previous_recordings = None
                     await repo.update(interview.id, {"r2_key": None})
                     await db.commit()
                     deleted += 1

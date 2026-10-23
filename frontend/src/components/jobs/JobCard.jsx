@@ -4,6 +4,7 @@ import { Building2, MapPin, Clock, Bookmark, BookmarkCheck, Share2, Check } from
 import { cn, formatSalary, timeAgo } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ApplyButton } from '@/components/jobs/ApplyButton'
+import { disabledNote } from '@/lib/jobDisabled'
 
 // ─── Badge colour mapping ─────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ const BADGE_CLASSES = {
   DRAFT:         'bg-gray-100 text-gray-500',
   ACTIVE:        'bg-emerald-50 text-emerald-700',
   CLOSED:        'bg-red-50 text-red-600',
+  DISABLED:      'bg-amber-50 text-amber-700',
   FULL_TIME:     'bg-blue-50 text-blue-700',
   PART_TIME:     'bg-blue-50 text-blue-700',
   CONTRACT:      'bg-purple-50 text-purple-700',
@@ -37,6 +39,7 @@ const LABELS = {
   DRAFT:         'Draft',
   ACTIVE:        'Active',
   CLOSED:        'Closed',
+  DISABLED:      'Switched off',
 }
 
 /**
@@ -120,6 +123,9 @@ export function getJobActions(status) {
     edit:    status === 'DRAFT' || status === 'ACTIVE',
     delete:  status === 'DRAFT',
     view:    true,
+    // Switched off by the platform (applicant limit, 30 days, lapsed plan): can come back
+    // once the plan allows it. The same publish call; the server asks Starter to upgrade.
+    republish: status === 'DISABLED',
   }
 }
 
@@ -145,6 +151,18 @@ function EmployerActions({ job, onPublish, onClose, onDelete, onResubmit }) {
 
   return (
     <div className="flex flex-wrap gap-2 pt-3 border-t border-border" role="group" aria-label="Job actions">
+      {actions.republish && (
+        <>
+          <p className="w-full text-xs text-amber-700">{disabledNote(job)}</p>
+          <Button
+            size="sm"
+            onClick={(e) => { e.preventDefault(); onPublish?.(job) }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 transition-colors"
+          >
+            Re-publish
+          </Button>
+        </>
+      )}
       {actions.publish && (
         isPendingApproval ? (
           <span
@@ -217,8 +235,10 @@ function EmployerActions({ job, onPublish, onClose, onDelete, onResubmit }) {
           <Button size="sm" variant="ghost" className="transition-colors">View</Button>
         </Link>
       )}
-      <Link to={`/employer/jobs/${job.id}/applicants`}>
-        <Button size="sm" variant="ghost" className="transition-colors">
+      {/* The main action. On a phone it is a full-width button on top of the smaller ones
+          (`order-first`); from `sm` up it is back in reading order. */}
+      <Link to={`/employer/jobs/${job.id}/applicants`} className="order-first w-full sm:order-none sm:w-auto">
+        <Button size="sm" variant="ghost" className="transition-colors w-full sm:w-auto border border-border sm:border-0">
           View Applicants
           {job.application_count != null && (
             <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-brand-blue text-white text-[10px] font-bold leading-none">

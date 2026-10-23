@@ -66,6 +66,19 @@ describe('EmployerJobsPage', () => {
     expect(tabs).toContain('Pending review')
   })
 
+  it('has a tab for the jobs the plan switched off, and asks the server for exactly those', async () => {
+    const SWITCHED_OFF = { id: 'j-3', title: 'Sales Executive', status: 'DISABLED', moderation_status: 'APPROVED' }
+    mockJobs({ all: [ACTIVE, SWITCHED_OFF], disabled: [SWITCHED_OFF] })
+    renderPage()
+    await screen.findByText('Accountant')
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Switched off' }))
+
+    await waitFor(() => expect(lastListFilter()).toBe('disabled'))
+    expect(await screen.findByText('Sales Executive')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('Accountant')).not.toBeInTheDocument())
+  })
+
   it('still lets the employer narrow to one status', async () => {
     mockJobs({ all: [DRAFT, ACTIVE], active: [ACTIVE] })
     renderPage()

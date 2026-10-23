@@ -47,6 +47,9 @@ class InterviewListEntryResponse(BaseModel):
     candidate_profile_id: UUID | None = None
     ownership: str  # "self_registered" | "own_sourced" | "admin_sourced"
     has_cv_access: bool = True
+    # An email typed in to send the interview to: no CV and no profile exist, so the row shows
+    # the email as its name and offers nothing to open.
+    email_only: bool = False
     candidate_name: str | None = None
     current_title: str | None = None
     location: str | None = None

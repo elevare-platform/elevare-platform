@@ -1,0 +1,549 @@
+"""A strict interview whose page reloads must not lose what was recorded before the reload.
+
+The browser keeps the recording in its own storage and, when the candidate comes back, uploads
+it as a separate "part" (this file: asking for where to upload it, and joining the parts with
+the final recording before scoring). The join itself is tested with real ffmpeg in
+``test_recording_merge.py``; here it is replaced by a fake so the logic around it can be
+checked: which pieces, in which order, what is deleted, and what happens when something fails."""
+
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from sqlalchemy import select
+
+from app.core.config import settings
+from app.modules.interviews import service as service_module
+from app.modules.interviews import tasks as tasks_module
+from app.modules.interviews.enums import InterviewStatus
+from app.modules.interviews.models import StrictInterviewRun
+from app.modules.interviews.recording_merge import (
+    JoinTimedOut,
+    attempt_of_key,
+    final_key,
+    merge_key,
+    part_key,
+)
+from app.modules.interviews.repository import InterviewRepository
+
+from .test_strict_interview import _base, _logged_in_strict, make_strict
+
+
+async def _run(db_session, interview):
+    return (
+        await db_session.execute(
+            select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
+        )
+    ).scalar_one()
+
+
+# ---------------------------------------------------------------------------
+# Asking where to upload an earlier recording
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def storage_urls(monkeypatch):
+    storage = MagicMock()
+    storage.generate_presigned_upload_url = AsyncMock(side_effect=lambda key, *_: f"https://r2.test/{key}")
+    monkeypatch.setattr(service_module, "get_storage_service", lambda: storage)
+    return storage
+
+
+async def part(client, token):
+    return await client.post(f"{_base(token)}/strict/recording-part")
+
+
+@pytest.mark.asyncio
+async def test_each_ask_gets_the_next_part_number_and_its_own_upload_address(
+    client, db_session, storage_urls
+):
+    interview = await make_strict(db_session)
+
+    first = (await part(client, interview.token)).json()
+    second = (await part(client, interview.token)).json()
+
+    assert (first["part"], second["part"]) == (1, 2)
+    assert first["upload_url"] == f"https://r2.test/{part_key(interview.interview.id, 1)}"
+    assert second["upload_url"] == f"https://r2.test/{part_key(interview.interview.id, 2)}"
+    assert first["expires_in_seconds"] > 0
+    assert (await _run(db_session, interview.interview)).recording_parts == 2
+
+
+@pytest.mark.asyncio
+async def test_a_part_is_asked_for_in_a_started_or_a_waiting_interview_only(
+    client, db_session, storage_urls
+):
+    done = await make_strict(db_session, status=InterviewStatus.UPLOADED.value)
+
+    resp = await part(client, done.token)
+
+    assert resp.status_code == 422
+    storage_urls.generate_presigned_upload_url.assert_not_called()
+    assert (await _run(db_session, done.interview)).recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_a_live_interview_has_no_parts(client, db_session, storage_urls):
+    live = await make_strict(db_session, strict=False)
+
+    resp = await part(client, live.token)
+
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "INTERVIEW_WRONG_STYLE"
+
+
+@pytest.mark.asyncio
+async def test_the_number_of_parts_is_capped(client, db_session, storage_urls, monkeypatch):
+    monkeypatch.setattr(settings, "strict_recording_max_parts", 2)
+    interview = await make_strict(db_session)
+    await part(client, interview.token)
+    await part(client, interview.token)
+
+    resp = await part(client, interview.token)
+
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "INTERVIEW_TOO_MANY_PARTS"
+    assert (await _run(db_session, interview.interview)).recording_parts == 2
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_link_gets_no_upload_address(client, storage_urls):
+    resp = await part(client, "no-such-token")
+
+    assert resp.status_code == 404
+    storage_urls.generate_presigned_upload_url.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_off_switch_stops_this_too(client, db_session, storage_urls, monkeypatch):
+    interview = await make_strict(db_session)
+    monkeypatch.setattr(settings, "interview_enabled", False)
+
+    resp = await part(client, interview.token)
+
+    assert resp.status_code >= 400
+    storage_urls.generate_presigned_upload_url.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_logged_in_candidate_asks_the_same_way_and_another_candidate_cannot(
+    client, db_session, storage_urls
+):
+    from .test_interview_router import register_and_promote
+
+    token, application = await _logged_in_strict(client, db_session)
+    url = f"/api/v1/interviews/applications/{application.id}/strict/recording-part"
+
+    own = await client.post(url, headers={"Authorization": f"Bearer {token}"})
+    intruder_token, _ = await register_and_promote(client, db_session, "CANDIDATE")
+    other = await client.post(url, headers={"Authorization": f"Bearer {intruder_token}"})
+
+    assert own.status_code == 201 and own.json()["part"] == 1
+    assert other.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Joining the parts before scoring
+# ---------------------------------------------------------------------------
+
+
+class MemoryStorage:
+    """A bucket in a dict, that records what was joined and what was deleted."""
+
+    def __init__(self, files=None):
+        self.files = dict(files or {})
+        self.deleted = []
+        self.fail_upload = False
+
+    async def get_object_size(self, key):
+        return len(self.files[key]) if key in self.files else None
+
+    async def download_file(self, key):
+        return self.files[key]
+
+    async def upload_file(self, data, key, content_type):
+        if self.fail_upload:
+            raise RuntimeError("the bucket is down")
+        self.files[key] = data
+        return key
+
+    async def delete_file(self, key):
+        self.deleted.append(key)
+        self.files.pop(key, None)
+
+
+@pytest.fixture
+def join(monkeypatch):
+    """The bucket and the join, replaced. The fake join glues the bytes in the order given."""
+    state = {"storage": MemoryStorage(), "calls": [], "timeouts": [], "fail": False, "slow": False}
+
+    async def fake_concat(recordings, reencode_timeout=None):
+        state["calls"].append(list(recordings))
+        state["timeouts"].append(reencode_timeout)
+        if state["slow"]:
+            raise JoinTimedOut("too slow")
+        if state["fail"]:
+            raise RuntimeError("ffmpeg could not join the recordings")
+        return b"+".join(recordings)
+
+    monkeypatch.setattr(tasks_module, "get_storage_service", lambda: state["storage"])
+    monkeypatch.setattr(tasks_module, "concat_recordings", fake_concat)
+    return state
+
+
+async def _interview_with_parts(db_session, join_state, parts, *, uploaded=(1, 2, 3)):
+    interview = await make_strict(db_session, status=InterviewStatus.UPLOADED.value)
+    interview.interview.r2_key = f"interviews/{interview.interview.id}/recording.webm"
+    run = await _run(db_session, interview.interview)
+    run.recording_parts = parts
+    await db_session.commit()
+    files = {interview.interview.r2_key: b"FINAL"}
+    for number in uploaded:
+        if number <= parts:
+            files[part_key(interview.interview.id, number)] = f"P{number}".encode()
+    join_state["storage"].files.update(files)
+    return interview
+
+
+async def _merge(db_session, interview):
+    repo = InterviewRepository(db_session)
+    loaded = await repo.get_by_id(interview.interview.id)
+    return await tasks_module._merge_recording_parts(db_session, repo, loaded)
+
+
+@pytest.mark.asyncio
+async def test_the_parts_and_the_final_recording_become_one_video_in_that_order(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    original = interview.interview.r2_key
+
+    merged = await _merge(db_session, interview)
+
+    new_key = merge_key(interview.interview.id)
+    assert join["calls"] == [[b"P1", b"P2", b"FINAL"]]
+    assert merged.r2_key == new_key
+    assert join["storage"].files[new_key] == b"P1+P2+FINAL"
+    # The pieces are gone once the joined video is in place, and nothing else was touched.
+    assert set(join["storage"].deleted) == {part_key(interview.interview.id, 1), part_key(interview.interview.id, 2), original}
+    assert set(join["storage"].files) == {new_key}
+    assert (await _run(db_session, interview.interview)).recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_the_recordings_of_earlier_attempts_are_left_alone_as_their_own_clips(
+    db_session, join
+):
+    """An interview the employer reinstated: attempt 2's parts (kept across a reload) and its
+    final recording are joined; attempt 1's recording stays a clip of its own."""
+    interview = await _interview_with_parts(db_session, join, parts=1)
+    run = await _run(db_session, interview.interview)
+    run.attempt = 2
+    first_attempt = f"interviews/{interview.interview.id}/recording.webm.attempt1"
+    run.previous_recordings = [first_attempt]
+    await db_session.commit()
+    join["storage"].files[first_attempt] = b"ATTEMPT1"
+    interview.interview.r2_key = final_key(interview.interview.id, 2)
+    join["storage"].files[interview.interview.r2_key] = b"FINAL2"
+    await db_session.commit()
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == [[b"P1", b"FINAL2"]]
+    assert merged.r2_key == merge_key(interview.interview.id, 2)
+    assert join["storage"].files[merged.r2_key] == b"P1+FINAL2"
+    # Attempt 2's joined video never overwrites attempt 1's, and attempt 1's is not touched.
+    assert merge_key(interview.interview.id, 2) != merge_key(interview.interview.id, 1)
+    assert first_attempt not in join["storage"].deleted
+    assert join["storage"].files[first_attempt] == b"ATTEMPT1"
+    refreshed = await _run(db_session, interview.interview)
+    assert refreshed.previous_recordings == [first_attempt] and refreshed.recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_an_earlier_attempt_alone_has_nothing_to_join(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=0)
+    run = await _run(db_session, interview.interview)
+    first_attempt = f"interviews/{interview.interview.id}/recording.webm.attempt1"
+    run.previous_recordings = [first_attempt]
+    await db_session.commit()
+    join["storage"].files[first_attempt] = b"ATTEMPT1"
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == []
+    assert merged.r2_key == interview.interview.r2_key
+
+
+@pytest.mark.asyncio
+async def test_when_the_video_expires_every_attempts_clip_goes_with_it(db_session, join, monkeypatch):
+    """The clips of earlier attempts are separate files now; none may outlive the retention."""
+    from datetime import UTC, datetime, timedelta
+
+    interview = await _interview_with_parts(db_session, join, parts=0)
+    run = await _run(db_session, interview.interview)
+    first = f"interviews/{interview.interview.id}/recording.webm"
+    run.previous_recordings = [first]
+    interview.interview.r2_key = final_key(interview.interview.id, 2)
+    interview.interview.video_expires_at = datetime.now(UTC) - timedelta(days=1)
+    await db_session.commit()
+    join["storage"].files[first] = b"ATTEMPT1"
+    join["storage"].files[interview.interview.r2_key] = b"FINAL2"
+
+    class SameSession:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(tasks_module, "create_async_engine", lambda *a, **k: AsyncMock(dispose=AsyncMock()))
+    monkeypatch.setattr(tasks_module, "async_sessionmaker", lambda *a, **k: SameSession)
+
+    await tasks_module._expire_interview_videos_async()
+
+    assert set(join["storage"].deleted) == {first, final_key(interview.interview.id, 2)}
+    await db_session.refresh(interview.interview)
+    assert interview.interview.r2_key is None
+    assert (await _run(db_session, interview.interview)).previous_recordings is None
+
+
+def test_the_attempt_a_recording_belongs_to_is_read_from_its_name():
+    interview_id = uuid.uuid4()
+
+    assert attempt_of_key(final_key(interview_id, 1)) == 1
+    assert attempt_of_key(merge_key(interview_id, 1)) == 1
+    assert attempt_of_key(final_key(interview_id, 2)) == 2
+    assert attempt_of_key(merge_key(interview_id, 3)) == 3
+    assert attempt_of_key(part_key(interview_id, 2)) == 1  # a part is never asked about
+
+
+@pytest.mark.asyncio
+async def test_each_attempt_has_its_own_final_and_joined_file():
+    interview_id = uuid.uuid4()
+
+    keys = {final_key(interview_id, n) for n in (1, 2, 3)} | {merge_key(interview_id, n) for n in (1, 2, 3)}
+
+    assert len(keys) == 6
+    # The first attempt keeps the names every interview has always used.
+    assert final_key(interview_id) == f"interviews/{interview_id}/recording.webm"
+    assert merge_key(interview_id) == f"interviews/{interview_id}/recording-merged.webm"
+
+
+@pytest.mark.asyncio
+async def test_an_interview_that_was_never_interrupted_is_left_alone(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=0)
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == [] and join["storage"].deleted == []
+    assert merged.r2_key == interview.interview.r2_key
+
+
+@pytest.mark.asyncio
+async def test_a_live_interview_is_left_alone(db_session, join):
+    live = await make_strict(db_session, strict=False, status=InterviewStatus.UPLOADED.value, r2_key="x/recording.webm")
+    join["storage"].files["x/recording.webm"] = b"FINAL"
+
+    merged = await _merge(db_session, live)
+
+    assert join["calls"] == [] and merged.r2_key == "x/recording.webm"
+
+
+@pytest.mark.asyncio
+async def test_a_part_that_never_arrived_is_skipped_and_the_rest_are_joined(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=3, uploaded=(2, 3))
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == [[b"P2", b"P3", b"FINAL"]]
+    assert merged.r2_key == merge_key(interview.interview.id)
+    assert (await _run(db_session, interview.interview)).recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_when_no_part_arrived_the_final_recording_stays_as_it_is(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=2, uploaded=())
+    original = interview.interview.r2_key
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == [] and join["storage"].deleted == []
+    assert merged.r2_key == original
+    assert join["storage"].files[original] == b"FINAL"
+    assert (await _run(db_session, interview.interview)).recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_a_join_that_fails_keeps_every_piece_and_never_stops_the_scoring(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    original = interview.interview.r2_key
+    join["fail"] = True
+
+    merged = await _merge(db_session, interview)
+
+    assert merged.r2_key == original
+    assert join["storage"].deleted == []
+    assert set(join["storage"].files) == {
+        original, part_key(interview.interview.id, 1), part_key(interview.interview.id, 2)
+    }
+    # Still marked as having parts, so the join can be run again.
+    assert (await _run(db_session, interview.interview)).recording_parts == 2
+
+
+@pytest.mark.asyncio
+async def test_a_final_recording_that_will_not_join_does_not_cost_the_real_parts(
+    db_session, join, monkeypatch
+):
+    """A reload just after the last answer leaves a nearly empty final recording."""
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    original = interview.interview.r2_key
+    calls = []
+
+    async def concat_that_chokes_on_the_final(recordings, reencode_timeout=None):
+        calls.append(list(recordings))
+        if b"FINAL" in recordings:
+            raise RuntimeError("ffmpeg could not join the recordings")
+        return b"+".join(recordings)
+
+    monkeypatch.setattr(tasks_module, "concat_recordings", concat_that_chokes_on_the_final)
+
+    merged = await _merge(db_session, interview)
+
+    assert calls == [[b"P1", b"P2", b"FINAL"], [b"P1", b"P2"]]
+    assert merged.r2_key == merge_key(interview.interview.id)
+    assert join["storage"].files[merged.r2_key] == b"P1+P2"
+    # The unusable final recording is deleted too, so nothing outlives the retention period.
+    assert original in join["storage"].deleted
+    assert (await _run(db_session, interview.interview)).recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_a_join_that_is_too_slow_changes_nothing_and_is_handed_to_its_own_task(
+    db_session, join, monkeypatch
+):
+    """Scoring has four minutes in all. A join that would take longer is stopped, scoring goes
+    on with the final recording, and the join is queued where it has the time."""
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    original = interview.interview.r2_key
+    join["slow"] = True
+    queued = MagicMock()
+    monkeypatch.setattr(tasks_module, "merge_interview_recording_task", queued)
+    repo = InterviewRepository(db_session)
+    loaded = await repo.get_by_id(interview.interview.id)
+
+    merged = await tasks_module._merge_recording_parts(
+        db_session, repo, loaded, reencode_timeout=tasks_module.SCORING_JOIN_SECONDS, queue_if_slow=True
+    )
+
+    assert merged.r2_key == original
+    assert join["timeouts"] == [tasks_module.SCORING_JOIN_SECONDS]
+    queued.delay.assert_called_once_with(str(interview.interview.id))
+    # Nothing was deleted or changed, so the join can be run again.
+    assert join["storage"].deleted == []
+    assert (await _run(db_session, interview.interview)).recording_parts == 2
+    assert await tasks_module._pieces_waiting(db_session, interview.interview.id) is True
+
+
+@pytest.mark.asyncio
+async def test_the_task_that_joins_in_the_background_is_not_queued_again_when_it_is_slow(
+    db_session, join, monkeypatch
+):
+    interview = await _interview_with_parts(db_session, join, parts=1)
+    join["slow"] = True
+    queued = MagicMock()
+    monkeypatch.setattr(tasks_module, "merge_interview_recording_task", queued)
+
+    await _merge(db_session, interview)
+
+    queued.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pieces_are_waiting_only_while_they_have_not_been_joined(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=1)
+    assert await tasks_module._pieces_waiting(db_session, interview.interview.id) is True
+
+    await _merge(db_session, interview)
+
+    assert await tasks_module._pieces_waiting(db_session, interview.interview.id) is False
+
+
+@pytest.mark.asyncio
+async def test_scoring_checks_the_transcript_only_against_a_whole_recording(db_session, join, monkeypatch):
+    """With the pieces still apart, the recording holds only the last part, which would never
+    match the whole transcript. Scoring must not compare against it."""
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    join["slow"] = True
+    monkeypatch.setattr(tasks_module, "merge_interview_recording_task", MagicMock())
+    monkeypatch.setattr(settings, "interview_transcript_crosscheck_enabled", True)
+    transcribed = AsyncMock(return_value=("text", 10.0))
+    monkeypatch.setattr(tasks_module, "_transcribe_recording", transcribed)
+    monkeypatch.setattr(tasks_module, "assert_can_score_interviews", AsyncMock(side_effect=tasks_module.PlanUpgradeRequiredException("x")))
+    interview.interview.transcript = "Interviewer: hello\nCandidate: hi"
+    await db_session.commit()
+
+    class SameSession:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(tasks_module, "create_async_engine", lambda *a, **k: AsyncMock(dispose=AsyncMock()))
+    monkeypatch.setattr(tasks_module, "async_sessionmaker", lambda *a, **k: SameSession)
+
+    await tasks_module._transcribe_and_score_interview_async(str(interview.interview.id), notify=False)
+
+    transcribed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_without_a_final_recording_the_earlier_pieces_are_the_interview(db_session, join):
+    """A page that came back to nothing left to record sends no final recording."""
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    original = interview.interview.r2_key
+    del join["storage"].files[original]
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == [[b"P1", b"P2"]]
+    assert merged.r2_key == merge_key(interview.interview.id)
+    assert join["storage"].files[merged.r2_key] == b"P1+P2"
+    assert (await _run(db_session, interview.interview)).recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_a_failed_upload_of_the_joined_video_changes_nothing(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=1)
+    original = interview.interview.r2_key
+    join["storage"].fail_upload = True
+
+    merged = await _merge(db_session, interview)
+
+    assert merged.r2_key == original
+    assert join["storage"].deleted == []
+    assert (await _run(db_session, interview.interview)).recording_parts == 1
+
+
+@pytest.mark.asyncio
+async def test_joining_twice_joins_once(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=2)
+
+    await _merge(db_session, interview)
+    second = await _merge(db_session, interview)
+
+    assert len(join["calls"]) == 1
+    assert second.r2_key == merge_key(interview.interview.id)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_join_can_be_run_again_and_then_succeeds(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=1)
+    join["fail"] = True
+    await _merge(db_session, interview)
+    join["fail"] = False
+
+    merged = await _merge(db_session, interview)
+
+    assert merged.r2_key == merge_key(interview.interview.id)
+    assert join["storage"].files[merge_key(interview.interview.id)] == b"P1+FINAL"

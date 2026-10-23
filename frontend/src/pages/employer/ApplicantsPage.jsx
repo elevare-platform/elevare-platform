@@ -4,7 +4,7 @@ import {
   User, ArrowLeft, ChevronDown, X,
   Share2, Link as LinkIcon, Copy, Check as CheckIcon,
   Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3, Sparkles, Coins,
-  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil,
+  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil, ListOrdered,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -19,12 +19,14 @@ import { useInterviewList } from '@/hooks/useInterviewList'
 import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
+import InviteByEmailForm from '@/components/employer/InviteByEmailForm'
 import TalentMatchCard from '@/components/employer/TalentMatchCard'
 import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
 import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
 import SaveHeartButton from '@/components/employer/SaveHeartButton'
 import InterviewListButton from '@/components/employer/InterviewListButton'
 import InterviewBriefSetupModal from '@/components/employer/InterviewBriefSetupModal'
+import InterviewQuestionsModal from '@/components/employer/InterviewQuestionsModal'
 import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
 import ShareInterviewResults from '@/components/employer/ShareInterviewResults'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
@@ -1026,9 +1028,29 @@ function AiMatchesSkeletonCard() {
 }
 
 function AiMatchesTab({
-  matches, loading, error, notReady, onRefresh, onScored,
+  matches, loading, error, notReady, planRequired, onRefresh, onScored,
   jobId, creditsBalance, creditsLoading, onCreditSpent, onError, savedCandidates, interviewList,
 }) {
+  // Starter: AI matching is a Professional feature, so explain that instead of showing a
+  // list or an error.
+  if (planRequired) {
+    return (
+      <div className="text-center py-16 px-4 rounded-xl border border-dashed border-border bg-white">
+        <Sparkles size={28} className="mx-auto text-brand-blue mb-3" />
+        <p className="font-medium text-text text-sm mb-1">AI Talent Matches is part of the Professional plan</p>
+        <p className="text-xs text-text-muted mb-4 max-w-sm mx-auto">
+          Upgrade to see the talent pool candidates ranked by how well they fit this job.
+        </p>
+        <Link
+          to="/pricing"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-blue px-4 py-2 rounded-lg hover:bg-brand-blue-dark transition-colors"
+        >
+          See plans
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1114,6 +1136,10 @@ const INTERVIEW_STATUS_META = {
   SCORED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
   EXPIRED: { button: 'Resend', badge: 'Link expired', badgeClass: 'text-red-600' },
   FAILED: { button: 'Resend', badge: 'Scoring failed', badgeClass: 'text-red-600' },
+  // A strict interview that ended early: no Resend (the link would only show the candidate that
+  // it ended). The employer reviews it and can reinstate it from the review window.
+  ENDED_CONDUCT: { button: null, reviewLabel: 'Review and reinstate', badge: 'Ended early', badgeClass: 'text-amber-600' },
+  STOPPED: { button: null, reviewLabel: 'Review and reinstate', badge: 'Stopped by the candidate', badgeClass: 'text-amber-600' },
 }
 
 function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited }) {
@@ -1250,17 +1276,20 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={handleViewClick}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors flex-shrink-0"
-      >
-        {isSelfRegistered
-          ? <><Eye size={13} /> View Profile</>
-          : canViewCv
-            ? <><FileText size={13} /> View CV</>
-            : <><FileText size={13} /> Request Introduction</>}
-      </button>
+      {/* An email typed in to send the interview to has no CV or profile to open. */}
+      {!item.email_only && (
+        <button
+          type="button"
+          onClick={handleViewClick}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors flex-shrink-0"
+        >
+          {isSelfRegistered
+            ? <><Eye size={13} /> View Profile</>
+            : canViewCv
+              ? <><FileText size={13} /> View CV</>
+              : <><FileText size={13} /> Request Introduction</>}
+        </button>
+      )}
 
       <InterviewListButton onList onToggle={handleRemove} className={removing ? 'opacity-50' : ''} />
 
@@ -1308,7 +1337,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
             onClick={() => setShowInterviewDetail(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue/5 transition-colors"
           >
-            <PlayCircle size={13} /> Review AI Interview
+            <PlayCircle size={13} /> {statusMeta.reviewLabel ?? 'Review AI Interview'}
           </button>
           <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
         </div>
@@ -1362,6 +1391,8 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
           jobId={jobId}
           talentPoolProfileId={item.talent_pool_profile_id}
           candidateName={item.candidate_name}
+          // Reinstated: the candidate has the interview again, so the row is back to "sent".
+          onReinstated={() => setStatusOverride('PENDING')}
           onClose={() => setShowInterviewDetail(false)}
         />
       )}
@@ -1376,6 +1407,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
   const [sendingAll, setSendingAll] = useState(false)
   const [bulkSummary, setBulkSummary] = useState(null)
   const [showBriefModal, setShowBriefModal] = useState(false)
+  const [showQuestionsModal, setShowQuestionsModal] = useState(false)
   // What an interview costs and the balance, shown before anything is sent and
   // refreshed after each send (a send takes credits).
   const [pricing, setPricing] = useState(null)
@@ -1463,16 +1495,54 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
     />
   )
 
+  // The strict interview shows each candidate the same list of questions. Only offered when the
+  // platform's interview style is "strict"; with the live interview there are no questions to edit.
+  const questionsButton = pricing?.style === 'strict' && (
+    <button
+      type="button"
+      onClick={() => setShowQuestionsModal(true)}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
+    >
+      <ListOrdered size={13} />
+      Interview questions
+    </button>
+  )
+
+  const questionsModal = showQuestionsModal && (
+    <InterviewQuestionsModal
+      jobId={jobId}
+      hasBrief={hasInterviewBrief}
+      onClose={() => setShowQuestionsModal(false)}
+    />
+  )
+
+  // Send the interview to an email address with no CV. Only once the interview is set up, since
+  // there is nothing to send before; the address then appears in the list below.
+  const inviteByEmail = hasInterviewBrief && (
+    <InviteByEmailForm
+      jobId={jobId}
+      onInvited={() => {
+        load()
+        loadPricing()
+      }}
+    />
+  )
+
   if (items.length === 0) {
     return (
       <div className="space-y-3">
-        {editBriefButton && <div className="flex justify-end">{editBriefButton}</div>}
+        {(editBriefButton || questionsButton) && (
+          <div className="flex flex-wrap justify-end gap-2">{editBriefButton}{questionsButton}</div>
+        )}
+        {inviteByEmail}
         {briefModal}
+        {questionsModal}
         <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
           <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
           <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
           <p className="text-xs text-text-muted">
-            Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above.
+            Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above
+            {hasInterviewBrief ? ', or send the interview to an email address.' : '.'}
           </p>
         </div>
       </div>
@@ -1496,6 +1566,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
         <div className="flex flex-col items-end gap-1">
           <div className="flex flex-wrap justify-end gap-2">
             {editBriefButton}
+            {questionsButton}
             <button
               type="button"
               onClick={handleSendAll}
@@ -1509,7 +1580,8 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           {bulkSummary && <span className="text-[11px] text-text-muted">{bulkSummary}</span>}
         </div>
       ) : (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          {questionsButton}
           <button
             type="button"
             onClick={() => setShowBriefModal(true)}
@@ -1519,7 +1591,9 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           </button>
         </div>
       )}
+      {inviteByEmail}
       {briefModal}
+      {questionsModal}
       {items.map((item) => (
         <InterviewListRow
           key={item.id}
@@ -1573,6 +1647,7 @@ export default function ApplicantsPage() {
     loading: aiMatchesLoading,
     error: aiMatchesError,
     notReady: aiMatchesNotReady,
+    planRequired: aiMatchesPlanRequired,
     fetchTalentMatches,
   } = useTalentMatches(jobId)
   const { balance: creditsBalance, loading: creditsLoading, refetch: refetchCredits } = useCredits()
@@ -1781,6 +1856,7 @@ export default function ApplicantsPage() {
               loading={aiMatchesLoading}
               error={aiMatchesError}
               notReady={aiMatchesNotReady}
+              planRequired={aiMatchesPlanRequired}
               onRefresh={() => fetchTalentMatches()}
               onScored={() => fetchTalentMatches(20, { silent: true })}
               jobId={jobId}

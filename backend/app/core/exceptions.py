@@ -467,6 +467,23 @@ class ValidationException(PlatformError):
 # ---------------------------------------------------------------------------
 # Job Exceptions
 # ---------------------------------------------------------------------------
+class JobNotAcceptingApplications(PlatformError):
+    """Raised when a job has been switched off (status DISABLED) and takes no more applications.
+
+    Different from ``JobApplicationEnded``, which is about the deadline the employer set.
+    """
+
+    def __init__(
+        self,
+        message: str = "This job is no longer accepting applications.",
+        code: str = "JOB_NOT_ACCEPTING_APPLICATIONS",
+        status_code: int = 422,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
 class JobApplicationEnded(PlatformError):
     """Raised when the job application deadline has passed."""
 
@@ -664,6 +681,42 @@ class PlanUpgradeRequiredException(PlatformError):
         message: str = "This feature requires a Professional plan or above",
         code: str = "PLAN_UPGRADE_REQUIRED",
         status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class PlanLimitReachedException(PlatformError):
+    """Raised when a company has used up a monthly allowance of its plan.
+
+    Different from ``PlanUpgradeRequiredException``, which says the plan does not include a
+    feature at all. Here the feature is included, but this month's allowance is spent. The
+    message says how much was used and when it resets, so it can be shown as it is.
+    """
+
+    def __init__(
+        self,
+        message: str = "Your plan's monthly limit has been reached",
+        code: str = "PLAN_LIMIT_REACHED",
+        status_code: int = 403,
+        details: list | None = None,
+    ) -> None:
+        """Initialise with platform error defaults."""
+        super().__init__(message, code, status_code, details)
+
+
+class QuestionDraftFailedException(PlatformError):
+    """Raised when the AI could not draft interview questions (the service was unavailable or
+    its reply was unusable). The employer can try again or write the questions themselves."""
+
+    def __init__(
+        self,
+        message: str = (
+            "We could not draft the questions just now. Please try again, or write them yourself."
+        ),
+        code: str = "INTERVIEW_QUESTIONS_DRAFT_FAILED",
+        status_code: int = 503,
         details: list | None = None,
     ) -> None:
         """Initialise with platform error defaults."""

@@ -1,6 +1,7 @@
 """Business logic for the jobs module."""
 
 import logging
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +32,10 @@ logger = logging.getLogger(__name__)
 # Valid status transitions — enforced in the service layer
 _VALID_TRANSITIONS: dict[JobStatus, list[JobStatus]] = {
     JobStatus.DRAFT: [JobStatus.ACTIVE],
-    JobStatus.ACTIVE: [JobStatus.CLOSED],
+    # The platform switches a job off (DISABLED) when a plan rule is hit; the employer closes it.
+    JobStatus.ACTIVE: [JobStatus.CLOSED, JobStatus.DISABLED],
+    # A disabled job can come back (re-published once the plan allows it) or be closed.
+    JobStatus.DISABLED: [JobStatus.ACTIVE, JobStatus.CLOSED],
     JobStatus.CLOSED: [],  # closed jobs cannot be re-opened without admin action
 }
 
@@ -95,9 +99,14 @@ class JobService:
 
         if is_admin:
             job.status = JobStatus.ACTIVE.value
+            job.published_at = datetime.now(UTC)
             job.moderation_status = ModerationStatus.APPROVED.value
 
         await self._db.commit()
+
+        if not is_admin:
+            # A new employer job waits for an admin's review: tell the admins.
+            await self._notify_admins_job_waiting(job, "posted a job")
 
         from app.modules.ai.tasks import generate_job_embedding_task
 
@@ -145,6 +154,22 @@ class JobService:
             self._check_ownership(job, current_user)
 
         self._check_transition(job, JobStatus.ACTIVE)
+
+        # A job the platform switched off (its applicant limit, its 30 days, a lapsed plan) can
+        # come back, but only on a plan that allows it: on Starter it would just be switched
+        # off again, so the employer is asked to upgrade instead.
+        if job.status == JobStatus.DISABLED.value and current_user.role != "ADMIN":
+            from app.core.exceptions import PlanUpgradeRequiredException
+            from app.modules.billing.service import BillingService
+
+            plan = await BillingService(self._db).get_effective_plan(
+                current_user.organization_id
+            )
+            if plan.code == "starter":
+                raise PlanUpgradeRequiredException(
+                    "Upgrade your plan to re-publish this job. Its applicants are kept."
+                )
+
         if job.moderation_status == ModerationStatus.APPROVED.value:
             # Quota check comes last, right before the state change it
             # gates — a job that isn't approved yet, or is already ACTIVE
@@ -158,8 +183,21 @@ class JobService:
                 from app.modules.billing.service import BillingService
 
                 billing_service = BillingService(self._db)
-                await billing_service.assert_can_post_job(current_user.organization_id)
+                await billing_service.assert_can_post_job(
+                    current_user.organization_id, job_id=job.id
+                )
 
+            # The date the Starter rules count from; and a re-published job is no longer disabled.
+            from app.modules.billing.starter_rules import claim_taste_if_first
+
+            # The job owner's company, not the caller's: an admin may publish for a client.
+            owner = await self._db.get(User, job.employer_id) if job.employer_id else None
+            await claim_taste_if_first(
+                self._db, owner.organization_id if owner else None, job.id
+            )
+            job.published_at = datetime.now(UTC)
+            job.disabled_reason = None
+            job.disabled_at = None
             job = await self._repo.set_status(job, JobStatus.ACTIVE)
             await self._db.commit()
 
@@ -197,6 +235,7 @@ class JobService:
         job.moderation_status = ModerationStatus.PENDING.value
         job.moderation_reason = None
         await self._db.commit()
+        await self._notify_admins_job_waiting(job, "sent a job back for review")
         return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
 
     async def close_job(self, job_id: UUID, current_user: User) -> JobResponse:
@@ -249,7 +288,8 @@ class JobService:
         # AI interview brief is not public listing content, so changing it alone
         # does not send a live job back for review; admins are told instead (below).
         changed = _changed_fields(job, update_data)
-        needs_review = bool(changed - {"interview_brief"})
+        # Neither the brief nor "publish when approved" is part of the public listing.
+        needs_review = bool(changed - {"interview_brief", "publish_when_approved"})
         brief_changed = "interview_brief" in changed
 
         # REJECTED is a terminal state the employer must explicitly resubmit
@@ -287,6 +327,10 @@ class JobService:
 
         job = await self._repo.update(job, data)
         await self._db.commit()
+
+        if was_sent_for_review:
+            # A live job was pulled offline by this edit and needs the admins' review again.
+            await self._notify_admins_job_waiting(job, "edited a live job, which needs review again")
 
         if (
             brief_changed
@@ -328,6 +372,42 @@ class JobService:
                 )
 
         return JobResponse.from_job(job, include_interview_brief=True, include_contact_info=True)
+
+    async def _notify_admins_job_waiting(self, job, what_happened: str) -> None:
+        """Tell every admin that a job is waiting for their review.
+
+        Until now nobody was told: a new job just sat as a draft until an admin happened to open
+        the Jobs page. In-app only (no email, to protect the daily email quota). Runs after the
+        job is committed and never raises, so a notification problem cannot undo a job.
+        ``what_happened`` finishes the sentence: "posted a job", "sent a job back for review".
+        """
+        from app.modules.employer.repository import EmployerRepository
+        from app.modules.notifications.repository import NotificationRepository
+
+        try:
+            organization = job.employer.organization if job.employer else None
+            company = (
+                organization.company_name
+                if organization and organization.company_name
+                else "An employer"
+            )
+            notification_repo = NotificationRepository(self._db)
+            for admin in await EmployerRepository(self._db).list_admin_users():
+                await notification_repo.create(
+                    recipient_id=admin.id,
+                    type="JOB_AWAITING_REVIEW",
+                    title=f"{company} {what_happened}: {job.title}",
+                    body="It is waiting for review. Open Jobs to approve it or ask for changes.",
+                    entity_type="JOB",
+                    entity_id=job.id,
+                )
+            await self._db.commit()
+        except Exception:
+            logger.warning(
+                "Could not tell the admins that job %s is waiting for review",
+                job.id,
+                exc_info=True,
+            )
 
     async def _notify_admins_brief_changed(self, job) -> None:
         """Tell every admin that a live job's private interview brief changed.

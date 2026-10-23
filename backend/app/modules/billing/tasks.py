@@ -118,6 +118,31 @@ def expire_lapsed_subscriptions_task():
     asyncio.run(_run_expire_async())
 
 
+@celery.task(time_limit=60 * 5, soft_time_limit=60 * 4)
+def disable_expired_starter_jobs_task():
+    """Celery Beat task, hourly: switches off the live jobs of Starter companies that have
+    run for 30 days (the other half of "10 applicants or 30 days, whichever comes first").
+    Does nothing while plan gating is off. Safe to run twice: a job already switched off is
+    no longer live, so it is not touched again."""
+    asyncio.run(_run_disable_expired_jobs_async())
+
+
+async def _run_disable_expired_jobs_async() -> None:
+    from app.modules.jobs.disabling import disable_expired_starter_jobs
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
+    try:
+        async with SessionLocal() as db:
+            try:
+                await disable_expired_starter_jobs(db)
+            except Exception:
+                await db.rollback()
+                logger.exception("disable_expired_starter_jobs: sweep failed")
+    finally:
+        await engine.dispose()
+
+
 async def _run_expire_async() -> None:
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)

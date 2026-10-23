@@ -8,6 +8,8 @@ being duplicated across `test_interview_service.py`, `test_interview_tasks.py`,
 and `test_interview_router.py`.
 """
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -16,9 +18,79 @@ from app.core.config import settings
 from app.modules.applications.models import Application
 from app.modules.candidates.models import CandidateProfile
 from app.modules.interview_list.models import InterviewListEntry
+from app.modules.interviews import strict as strict_module
 from app.modules.interviews.models import Interview
+from app.modules.interviews.service import InterviewService
+from app.modules.interviews.strict import StrictInterviewService
 from app.modules.talent_pool.models import TalentPoolProfiles
 from tests.conftest import make_user
+
+
+@pytest.fixture(autouse=True)
+def _interview_is_twenty_minutes_long(monkeypatch):
+    """The interview's length comes from INTERVIEW_MAX_DURATION_MINUTES in the developer's own
+    .env (10, 3, whatever they are trying). The tests here are written for 20, so they must not
+    depend on it; a test that cares about another length sets it itself."""
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 20)
+
+
+# What the fake speech-to-text hears unless a test queues something else.
+LONG_ANSWER = "I designed the billing service so that every charge was recorded before it was sent."
+
+
+class FakeSpeech:
+    """Stands in for speech-to-text: hands back queued texts, or fails on demand."""
+
+    def __init__(self):
+        self.texts: list[str] = []
+        self.calls = 0
+        self.fail = False
+        self.seconds = 60.0
+
+    async def __call__(self, audio, filename):
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("speech to text is down")
+        return (self.texts.pop(0) if self.texts else LONG_ANSWER), self.seconds
+
+
+class FakeAI:
+    """Stands in for the follow-up model: hands back queued replies, or fails on demand."""
+
+    def __init__(self):
+        self.replies: list[str | None] = []
+        self.calls: list[dict] = []
+        self.fail = False
+
+    async def decide_interview_follow_up(self, *, question, answer, interview_brief):
+        self.calls.append({"question": question, "answer": answer, "brief": interview_brief})
+        if self.fail:
+            raise RuntimeError("the model is down")
+        return self.replies.pop(0) if self.replies else None
+
+
+@pytest.fixture
+def fakes(monkeypatch):
+    """The strict interview with its speech-to-text and follow-up model replaced (no API call)."""
+    speech, ai = FakeSpeech(), FakeAI()
+    monkeypatch.setattr(
+        InterviewService,
+        "_strict",
+        lambda self: StrictInterviewService(self._db, self._repo, transcribe=speech, ai_service=ai),
+    )
+    return SimpleNamespace(speech=speech, ai=ai)
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """The server's clock, starting now and moved by the test."""
+    state = {"now": datetime.now(UTC)}
+    monkeypatch.setattr(strict_module, "_now", lambda: state["now"])
+
+    def advance(seconds):
+        state["now"] += timedelta(seconds=seconds)
+
+    return SimpleNamespace(advance=advance, now=lambda: state["now"])
 
 
 @pytest.fixture(autouse=True)

@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.modules.interviews.schema import RecordingClip, StrictDetail
+
 
 class ShareLinkResponse(BaseModel):
     """A job's interview results link, as its owner sees it."""
@@ -36,7 +38,9 @@ class SharedCandidate(BaseModel):
 
     name: str
     current_title: str | None = None
-    # NOT_INVITED | INVITED | IN_PROGRESS | COMPLETED | NOT_COMPLETED
+    # NOT_INVITED | INVITED | IN_PROGRESS | COMPLETED | ENDED | NOT_COMPLETED
+    # (ENDED: the interview ended early, because the candidate left the screen too often or
+    # for too long, or chose to stop. ``strict`` says which and shows the notes.)
     status: str
     completed_at: datetime | None = None
 
@@ -52,6 +56,8 @@ class SharedCandidate(BaseModel):
 
     # The recording link works for minutes only, so passing it on does not share it.
     video_url: str | None = None
+    # One clip per attempt of a reinstated strict interview, oldest first (same short-lived links).
+    recordings: list[RecordingClip] = []
 
     # What the AI asked, one question per entry, then the whole conversation. When the
     # transcript has no speaker labels, ``turns`` is empty and ``transcript`` holds it as
@@ -60,6 +66,11 @@ class SharedCandidate(BaseModel):
     turns: list[SharedTurn] = []
     transcript: str | None = None
     transcript_note: str | None = None
+
+    # A strict interview only: the rules the candidate accepted (version, date and time), a
+    # conduct summary, the timeline and how it ended. Notes for the client to review, never
+    # proof, and nothing is decided from them automatically.
+    strict: StrictDetail | None = None
 
 
 class SharedResults(BaseModel):

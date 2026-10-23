@@ -1,6 +1,7 @@
 """Application settings loaded from environment variables and .env file."""
 
 import logging
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -163,6 +164,36 @@ class Settings(BaseSettings):
     # call per interview (about $0.006 per audio minute). Set to false to fall
     # back to trusting the submitted transcript, without a deploy.
     interview_transcript_crosscheck_enabled: bool = True
+
+    # Which interview NEW invitations use (docs/08_DECISIONS.md, "The new strict, text-only
+    # AI interview"). "live" is the existing live voice conversation, and stays the default
+    # until the strict interview is built and has been through its reviews. "strict" is the
+    # proctored interview with questions shown as text. The old one is kept in the code only
+    # so this can be switched back with no rebuild. An interview keeps the style it was
+    # invited with.
+    interview_style: Literal["live", "strict"] = "live"
+    # The strict interview's limits (the user's decisions). Its length in all is
+    # interview_max_duration_minutes above, the same setting the live interview uses, so there
+    # is one number to change. The employer sets 5 questions by default, up to 6.
+    strict_interview_max_questions: int = 6
+    strict_interview_default_questions: int = 5
+    # A follow-up question gets its own, shorter allowance. It is only asked while the
+    # interview has at least this many seconds left, so it can never squeeze out the next
+    # real question; the allowance is also never longer than the time left.
+    strict_follow_up_seconds: int = 90
+    strict_follow_up_min_remaining_seconds: int = 120
+    # How much audio one answer may upload (the longest answer is 10 minutes of speech,
+    # which is a few MB; this only stops an absurd file).
+    strict_answer_max_bytes: int = 15 * 1024 * 1024
+    # A candidate whose page reloads keeps what was recorded so far in their browser and sends
+    # it as a separate part, to be joined into one video. This bounds how many parts one
+    # interview may have (each reload makes one).
+    strict_recording_max_parts: int = 8
+    # Leaving the interview screen (the page hidden, the window out of focus, full screen
+    # exited): the 1st to 3rd leave warns, the 4th ends the interview, and so does 60 seconds
+    # away in total (the user's decisions, option B "Balanced"). Key presses only warn.
+    strict_max_leaves: int = 4
+    strict_max_away_seconds: int = 60
     # Minimum share (0.0-1.0) of the submitted transcript's word pairs that must
     # also appear in the recording's own transcript. An unmeasured starting
     # point: calibrate it against real interviews via the match_score stored in

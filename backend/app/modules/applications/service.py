@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import BackgroundTasks
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.email import get_email_service
@@ -14,6 +15,7 @@ from app.core.exceptions import (
     CandidateProfileIncompleteException,
     InvalidStatus,
     JobApplicationEnded,
+    JobNotAcceptingApplications,
     PermissionDeniedException,
     ProfileNotFoundException,
 )
@@ -25,8 +27,12 @@ from app.modules.applications.schema import (
     ApplicationList,
     ApplicationResponse,
 )
+from app.modules.billing.starter_rules import applicant_limit
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.interview_list.repository import InterviewListRepository
+from app.modules.jobs.disabling import disable_job, queue_disabled_emails
+from app.modules.jobs.enums import JobDisabledReason, JobStatus
+from app.modules.jobs.models import Job
 from app.modules.jobs.repository import JobRepository
 from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME, build_full_description
 from app.modules.users.enums import UserRole
@@ -115,6 +121,35 @@ class ApplicationService:
         if await self.has_applied(candidate_id, job_id):
             raise AlreadyApplied()
 
+        # A job the platform has switched off (a plan rule) takes no more applications.
+        if job.status == JobStatus.DISABLED.value:
+            raise JobNotAcceptingApplications()
+
+        # The plan may limit how many applicants one job takes (Starter: 10 on the taste job,
+        # 3 on a later one; none for Professional and above, or while gating is off).
+        applicant_cap = await applicant_limit(self._db, job)
+        taken = 0
+        if applicant_cap is not None:
+            # Lock the job row until this application commits, so two candidates applying for
+            # the last place at the same moment cannot both get it. The status is read under
+            # the lock, in case another request has just switched the job off.
+            locked_status = (
+                await self._db.execute(
+                    select(Job.status).where(Job.id == job.id).with_for_update()
+                )
+            ).scalar_one()
+            if locked_status == JobStatus.DISABLED.value:
+                raise JobNotAcceptingApplications()
+            taken = await self._app_repo.count_for_job(job.id)
+            if taken >= applicant_cap:
+                # Should already be off; make sure it is, and refuse.
+                switched_off = await disable_job(
+                    self._db, job, JobDisabledReason.APPLICANT_LIMIT, applicant_cap
+                )
+                await self._db.commit()
+                queue_disabled_emails([switched_off])
+                raise JobNotAcceptingApplications()
+
         # Fall back to the candidate's default CV if none specified
         if cv_id is None:
             cvs = await self._candidate_repo.get_all_cvs(candidate.id)
@@ -129,6 +164,14 @@ class ApplicationService:
             cv_id=cv_id,
             cover_letter=cover_letter,
         )
+
+        # That was the last place the plan allows: switch the job off (and tell the employer)
+        # in the same transaction, so the next candidate is turned away.
+        switched_off = None
+        if applicant_cap is not None and taken + 1 >= applicant_cap:
+            switched_off = await disable_job(
+                self._db, job, JobDisabledReason.APPLICANT_LIMIT, applicant_cap
+            )
 
         # Reload with all relationships eager-loaded so from_application can
         # safely access job, employer_profile, candidate, candidate_profile
@@ -173,6 +216,11 @@ class ApplicationService:
         # application.
         compute_match_score_task.delay(str(application.id))
         score_application_task.delay(str(application.id))
+        # The job took its last allowed applicant: tell the employer by email too, now that
+        # the switch-off is saved.
+        # The job took its last allowed applicant: tell the employer by email too, now that
+        # the switch-off is saved.
+        queue_disabled_emails([switched_off])
 
         return ApplicationResponse.from_application(application, cv_url=cv_url)
 

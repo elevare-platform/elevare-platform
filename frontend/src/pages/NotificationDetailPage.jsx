@@ -31,11 +31,25 @@ function resolveAction(notification) {
       to: `/employer/jobs/${notification.entity_id}/applicants?tab=interview-list`,
     }
   }
+  // A strict interview ended early (the candidate left the screen too often, or stopped): the
+  // employer reviews it from the interview list and can reinstate it.
+  if (notification.type === 'AI_INTERVIEW_ENDED' && notification.entity_type === 'JOB') {
+    return {
+      label: 'Review and reinstate',
+      to: `/employer/jobs/${notification.entity_id}/applicants?tab=interview-list`,
+    }
+  }
   if (notification.type === 'AI_INTERVIEW_RESET_REQUEST' && notification.entity_type === 'JOB') {
     return {
       label: 'View interview list',
       to: `/employer/jobs/${notification.entity_id}/applicants?tab=interview-list`,
     }
+  }
+  if (notification.type === 'JOB_AWAITING_REVIEW' && notification.entity_type === 'JOB') {
+    return { label: 'Review jobs', to: '/admin/jobs' }
+  }
+  if (notification.type === 'JOB_DISABLED' && notification.entity_type === 'JOB') {
+    return { label: 'View applicants', to: `/employer/jobs/${notification.entity_id}/applicants` }
   }
   if (notification.type === 'JOB_BRIEF_CHANGED' && notification.entity_type === 'JOB') {
     return { label: 'Review job', to: '/admin/jobs' }
