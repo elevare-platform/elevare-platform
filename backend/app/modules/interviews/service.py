@@ -1151,6 +1151,65 @@ class InterviewService:
 
         return await self._send_invite_for_profile(job, talent_pool_profile_id)
 
+    async def invite_by_email(self, user: User, job_id: uuid.UUID, email: str) -> dict:
+        """Send a job's AI interview to an email address, with no CV and no account needed.
+
+        The address gets a row in the talent pool of its own (source ``interview_invite``) so
+        the interview works like any other, and goes on the job's interview list, where it
+        stays even when the email could not be sent (no credits, say) so it can be sent again
+        from there. An address that belongs to a registered candidate uses their existing
+        profile, and one typed before is reused, so there is never a second row for it.
+        """
+        from app.core.exceptions import JobNotFoundError
+        from app.modules.jobs.repository import JobRepository
+        from app.modules.talent_pool.enums import SourceType, TalentPoolStatus
+
+        self._assert_interviews_enabled()
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError()
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+        if not job.interview_brief:
+            raise ValidationException("This job does not have an AI interview configured")
+
+        address = email.strip().lower()
+        profile_id = await self._profile_for_email(user, address)
+        if profile_id is None:
+            profile = await self._talent_pool_repo.create(
+                {
+                    "source": SourceType.INTERVIEW_INVITE.value,
+                    "source_note": "Invited to an AI interview by email",
+                    "override_email": address,
+                    "added_by": user.id,
+                    "status": TalentPoolStatus.NEW.value,
+                    "sourced_for_job_id": job.id,
+                }
+            )
+            profile_id = profile.id
+
+        await self._interview_list_repo.add(user.id, profile_id, job.id, None)
+        await self._db.commit()
+
+        result = await self._send_invite_for_profile(job, profile_id)
+        return {**result, "talent_pool_profile_id": profile_id}
+
+    async def _profile_for_email(self, user: User, address: str) -> uuid.UUID | None:
+        """The pool row an email already has: a registered candidate's own, or one this employer
+        made for it before. None when it has neither."""
+        from app.modules.candidates.repository import CandidateRepository
+        from app.modules.users.repository import UserRepository
+
+        registered = await UserRepository(self._db).get_user_by_email(address)
+        if registered is not None:
+            candidate = await CandidateRepository(self._db).get_by_user_id(registered.id)
+            if candidate is not None:
+                existing = await self._talent_pool_repo.get_by_candidate_profile_id(candidate.id)
+                if existing is not None:
+                    return existing.id
+        return await self._talent_pool_repo.find_interview_invite(user.id, address)
+
     async def get_pricing(self, user: User) -> dict:
         """What an AI interview costs the caller's organization, and its balance,
         so the screen can show both before an invite is sent. Uses the same rules

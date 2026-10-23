@@ -11,6 +11,10 @@ class SourceType(str, Enum):
     ZOHO_IMPORT = "zoho_import"
     REFERRAL = "referral"
     LINKEDIN = "linkedin"
+    # An email an employer typed in to send an AI interview to, with no CV and no account. It is
+    # a pool row only so the interview, the interview list and the review all work as they do
+    # for anyone else; it is kept out of the Talent Pool page and the matching.
+    INTERVIEW_INVITE = "interview_invite"
     OTHER = "other"
 
 

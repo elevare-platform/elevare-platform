@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 MAX_TRANSCRIPT_CHARS = 150_000
 
@@ -372,6 +372,19 @@ class InterviewInviteSendResponse(BaseModel):
     """Result of an explicit single-candidate invite send/resend."""
     sent: bool
     reason: str | None
+
+
+class InterviewInviteByEmailRequest(BaseModel):
+    """An email address to send a job's AI interview to, with no CV and no account needed."""
+
+    email: EmailStr
+
+
+class InterviewInviteByEmailResponse(InterviewInviteSendResponse):
+    """The invite result, plus the candidate's row, which is on the job's interview list
+    whether or not the email could be sent (so it can be sent again from there)."""
+
+    talent_pool_profile_id: uuid.UUID
 
 
 class InterviewPricingResponse(BaseModel):

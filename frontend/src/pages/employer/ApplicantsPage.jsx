@@ -19,6 +19,7 @@ import { useInterviewList } from '@/hooks/useInterviewList'
 import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
+import InviteByEmailForm from '@/components/employer/InviteByEmailForm'
 import TalentMatchCard from '@/components/employer/TalentMatchCard'
 import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
 import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
@@ -1275,17 +1276,20 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={handleViewClick}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors flex-shrink-0"
-      >
-        {isSelfRegistered
-          ? <><Eye size={13} /> View Profile</>
-          : canViewCv
-            ? <><FileText size={13} /> View CV</>
-            : <><FileText size={13} /> Request Introduction</>}
-      </button>
+      {/* An email typed in to send the interview to has no CV or profile to open. */}
+      {!item.email_only && (
+        <button
+          type="button"
+          onClick={handleViewClick}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors flex-shrink-0"
+        >
+          {isSelfRegistered
+            ? <><Eye size={13} /> View Profile</>
+            : canViewCv
+              ? <><FileText size={13} /> View CV</>
+              : <><FileText size={13} /> Request Introduction</>}
+        </button>
+      )}
 
       <InterviewListButton onList onToggle={handleRemove} className={removing ? 'opacity-50' : ''} />
 
@@ -1512,19 +1516,33 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
     />
   )
 
+  // Send the interview to an email address with no CV. Only once the interview is set up, since
+  // there is nothing to send before; the address then appears in the list below.
+  const inviteByEmail = hasInterviewBrief && (
+    <InviteByEmailForm
+      jobId={jobId}
+      onInvited={() => {
+        load()
+        loadPricing()
+      }}
+    />
+  )
+
   if (items.length === 0) {
     return (
       <div className="space-y-3">
         {(editBriefButton || questionsButton) && (
           <div className="flex flex-wrap justify-end gap-2">{editBriefButton}{questionsButton}</div>
         )}
+        {inviteByEmail}
         {briefModal}
         {questionsModal}
         <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
           <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
           <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
           <p className="text-xs text-text-muted">
-            Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above.
+            Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above
+            {hasInterviewBrief ? ', or send the interview to an email address.' : '.'}
           </p>
         </div>
       </div>
@@ -1573,6 +1591,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           </button>
         </div>
       )}
+      {inviteByEmail}
       {briefModal}
       {questionsModal}
       {items.map((item) => (

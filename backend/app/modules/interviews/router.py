@@ -18,6 +18,8 @@ from app.modules.interviews.schema import (
     InterviewCompleteRequest,
     InterviewDetailResponse,
     InterviewInviteBulkSendResponse,
+    InterviewInviteByEmailRequest,
+    InterviewInviteByEmailResponse,
     InterviewInviteSendResponse,
     InterviewLinkResponse,
     InterviewPricingResponse,
@@ -309,6 +311,29 @@ async def send_interview_invite(
     service = InterviewService(db)
     try:
         return await service.send_invite(current_user, job_id, talent_pool_profile_id)
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/jobs/{job_id}/invite-by-email",
+    response_model=InterviewInviteByEmailResponse,
+    status_code=200,
+)
+@limiter.limit("60/hour")
+async def invite_to_interview_by_email(
+    request: Request,
+    job_id: uuid.UUID,
+    data: InterviewInviteByEmailRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a job's AI interview to an email address, with no CV or account needed. The address
+    goes on the job's interview list (and stays there if the email could not be sent). Costs
+    credits like any invite. Limited to 60 an hour."""
+    service = InterviewService(db)
+    try:
+        return await service.invite_by_email(current_user, job_id, data.email)
     finally:
         await service.close()
 
