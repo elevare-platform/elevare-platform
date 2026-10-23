@@ -6,11 +6,14 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.dependencies import get_candidate, get_db, require_role
+from app.core.exceptions import ValidationException
 from app.core.limiter import limiter
 from app.modules.candidates.models import CandidateProfile
 from app.modules.interviews.questions import InterviewQuestionService
 from app.modules.interviews.schema import (
+    CandidateInterviewResponse,
     InterviewCompleteRequest,
     InterviewDetailResponse,
     InterviewInviteBulkSendResponse,
@@ -27,13 +30,87 @@ from app.modules.interviews.schema import (
     InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
+    StrictInterviewStateResponse,
+    StrictStartRequest,
 )
 from app.modules.interviews.service import InterviewService
 from app.modules.users.models import User
 
+
+async def _read_answer_audio(request: Request) -> tuple[bytes, str | None]:
+    """The spoken answer sent as the request body, refused as soon as it grows past the limit
+    (the Content-Length header can be missing or wrong, so the bytes are counted as they come)."""
+    limit = settings.strict_answer_max_bytes
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise ValidationException("That recording is too large.", code="INTERVIEW_ANSWER_TOO_LARGE")
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise ValidationException(
+                "That recording is too large.", code="INTERVIEW_ANSWER_TOO_LARGE"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks), request.headers.get("content-type")
+
+
 # ─── Authenticated candidate routes — resolved via application_id + login ───
 
 router = APIRouter()
+
+
+@router.post(
+    "/applications/{application_id}/strict/start",
+    status_code=200,
+    response_model=StrictInterviewStateResponse,
+)
+async def start_strict_interview(
+    application_id: uuid.UUID,
+    body: StrictStartRequest = StrictStartRequest(),
+    candidate: CandidateProfile = Depends(get_candidate),
+    db: AsyncSession = Depends(get_db),
+) -> StrictInterviewStateResponse:
+    """Candidate starts (or resumes, after a reload) their strict interview."""
+    service = InterviewService(db)
+    try:
+        return await service.start_strict(
+            application_id=application_id,
+            candidate_id=candidate.user_id,
+            accepted=body.accepted,
+            rules_version=body.rules_version,
+        )
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/applications/{application_id}/strict/answer",
+    status_code=200,
+    response_model=StrictInterviewStateResponse,
+)
+async def answer_strict_interview(
+    application_id: uuid.UUID,
+    request: Request,
+    turn_id: uuid.UUID = Query(...),
+    candidate: CandidateProfile = Depends(get_candidate),
+    db: AsyncSession = Depends(get_db),
+) -> StrictInterviewStateResponse:
+    """Candidate sends the spoken answer to the question on screen (the request body is the
+    audio). The reply is the next question, a follow-up, or the end of the interview."""
+    audio, content_type = await _read_answer_audio(request)
+    service = InterviewService(db)
+    try:
+        return await service.answer_strict(
+            application_id=application_id,
+            candidate_id=candidate.user_id,
+            turn_id=turn_id,
+            audio=audio,
+            content_type=content_type,
+        )
+    finally:
+        await service.close()
 
 
 @router.post(
@@ -128,18 +205,22 @@ async def complete_interview_upload(
 @router.get(
     "/applications/{application_id}",
     status_code=200,
-    response_model=InterviewResponse,
+    response_model=CandidateInterviewResponse,
 )
 async def get_interview(
     application_id: uuid.UUID,
     candidate: CandidateProfile = Depends(get_candidate),
     db: AsyncSession = Depends(get_db),
-) -> InterviewResponse:
+) -> CandidateInterviewResponse:
     """Candidate views the status of their interview for an application."""
     service = InterviewService(db)
     try:
-        return await service.get_for_application(
+        interview = await service.get_for_application(
             application_id=application_id, candidate_id=candidate.user_id
+        )
+        return CandidateInterviewResponse(
+            **InterviewResponse.model_validate(interview).model_dump(),
+            style=await service.style_of(interview),
         )
     finally:
         await service.close()
@@ -361,6 +442,51 @@ async def create_interview_session_by_token(
     service = InterviewService(db)
     try:
         return await service.create_session_by_token(token)
+    finally:
+        await service.close()
+
+
+@public_router.post(
+    "/{token}/strict/start",
+    status_code=200,
+    response_model=StrictInterviewStateResponse,
+)
+@limiter.limit("20/minute")
+async def start_strict_interview_by_token(
+    request: Request,
+    token: str,
+    body: StrictStartRequest = StrictStartRequest(),
+    db: AsyncSession = Depends(get_db),
+) -> StrictInterviewStateResponse:
+    """Start (or resume, after a reload) the strict interview from an emailed invite link."""
+    service = InterviewService(db)
+    try:
+        return await service.start_strict_by_token(
+            token, accepted=body.accepted, rules_version=body.rules_version
+        )
+    finally:
+        await service.close()
+
+
+@public_router.post(
+    "/{token}/strict/answer",
+    status_code=200,
+    response_model=StrictInterviewStateResponse,
+)
+@limiter.limit("30/minute")
+async def answer_strict_interview_by_token(
+    request: Request,
+    token: str,
+    turn_id: uuid.UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> StrictInterviewStateResponse:
+    """Send the spoken answer to the question on screen (the request body is the audio)."""
+    audio, content_type = await _read_answer_audio(request)
+    service = InterviewService(db)
+    try:
+        return await service.answer_strict_by_token(
+            token, turn_id=turn_id, audio=audio, content_type=content_type
+        )
     finally:
         await service.close()
 

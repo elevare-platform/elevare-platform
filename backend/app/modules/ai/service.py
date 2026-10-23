@@ -295,6 +295,50 @@ class AnthropicCVExtractionService(AIService):
 
         self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
+    async def decide_interview_follow_up(
+        self, *, question: str, answer: str, interview_brief: str
+    ) -> str | None:
+        """Decide whether a strict-interview answer needs a follow-up question.
+
+        Returns the follow-up exactly as the model wrote it, or ``None`` when none is needed
+        OR the call failed or its reply cannot be used: a follow-up is a nicety, so any
+        trouble means the interview simply carries on to the next question. The caller checks
+        the wording before the candidate sees it. A cheap, fast model is enough. The answer
+        is the candidate's own speech and goes to the model as data (see the prompt).
+        """
+        from app.modules.ai.prompts.interview_follow_up import (
+            INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
+            build_interview_follow_up_prompt,
+        )
+
+        from .schema import InterviewFollowUpDecision
+
+        try:
+            result = await call_structured(
+                self._client,
+                model=settings.anthropic_model_fast,
+                max_tokens=400,
+                system=INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
+                user=build_interview_follow_up_prompt(
+                    question=question, answer=answer, interview_brief=interview_brief
+                ),
+                output_type=InterviewFollowUpDecision,
+            )
+        except Exception as e:
+            logger.error("LLM interview follow-up decision failed: %s", e)
+            report_if_credit_exhausted(e, where="interview_follow_up")
+            return None
+
+        if not result.ok:
+            logger.error(
+                "LLM interview follow-up returned no usable answer: %s (stop_reason=%s)",
+                result.error,
+                result.stop_reason,
+            )
+            return None
+        decision = result.parsed
+        return decision.question if decision.needs_follow_up else None
+
     async def draft_interview_questions(
         self,
         *,

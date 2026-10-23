@@ -59,6 +59,77 @@ class JobInterviewQuestion(BaseModel):
     source: Mapped[str] = mapped_column(String(10), nullable=False, default="EMPLOYER")
 
 
+class StrictInterviewRun(BaseModel):
+    """The state of one interview that uses the strict, text-question style.
+
+    Having a row is what makes an interview strict: the style is decided when the invite is
+    created and an interview with no row is the existing live interview. Kept in its own
+    table, not as columns on ``Interview``, so adding it never touches the live interview
+    schema (see migration p22_0030).
+
+    ``questions`` is a copy of the job's questions taken when the interview starts: the
+    employer editing the list afterwards never changes an interview that has begun.
+    """
+
+    __tablename__ = "interview_strict_runs"
+    __table_args__ = (
+        UniqueConstraint("interview_id", name="uq_interview_strict_runs_interview"),
+    )
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # The version of the rules text the candidate saw when they accepted it, and when.
+    rules_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    rules_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # [{"text": ..., "time_limit_seconds": ...}, ...] in the order asked. None until started.
+    questions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # When the interview's own clock began. The whole interview ends this long after.
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class InterviewTurn(BaseModel):
+    """One question or follow-up the candidate was shown, and what they said.
+
+    The server opens one turn at a time and records when it was shown, so the time left is
+    the server's, not the browser's. Only the text of the answer is kept here (the whole
+    interview is recorded as one video). ``answer_text`` stays empty when the answer could
+    not be transcribed; the recording still has it.
+    """
+
+    __tablename__ = "interview_turns"
+    __table_args__ = (
+        UniqueConstraint("interview_id", "position", name="uq_interview_turns_position"),
+        Index("ix_interview_turns_interview_id", "interview_id"),
+    )
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # 1, 2, 3 ... the order shown, follow-ups included.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    # A TurnKind value.
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Which of the job's questions this turn belongs to (a follow-up shares its question's).
+    question_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    time_limit_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    answered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer_seconds: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+
+
 class Interview(BaseModel):
     """A candidate's live AI video interview for one job.
 

@@ -158,6 +158,15 @@ class DraftedInterviewQuestions(BaseModel):
     questions: list[DraftedInterviewQuestion]
 
 
+class InterviewFollowUpDecision(BaseModel):
+    """What the follow-up model must return (sent to the API as a JSON schema). When no
+    follow-up is needed ``question`` is empty. The wording is checked again before the
+    candidate sees it (interviews/strict.py), so this only has to give the API a shape."""
+
+    needs_follow_up: bool
+    question: str
+
+
 class CVExtractionOutput(BaseModel):
     """What the CV extraction model must return. Sent to the API as a JSON schema,
     so the reply always has this shape; "nothing found" is an empty list or null.

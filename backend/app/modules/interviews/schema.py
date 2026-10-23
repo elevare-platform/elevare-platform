@@ -143,6 +143,14 @@ class InterviewResponse(BaseModel):
     session_start_count: int
 
 
+class CandidateInterviewResponse(InterviewResponse):
+    """The interview as the logged-in candidate's own screen loads it: the record, plus which
+    interview it is (the live voice conversation or the strict, text-question one), so the
+    screen opens the matching flow."""
+
+    style: Literal["live", "strict"]
+
+
 class InterviewDetailResponse(BaseModel):
     """Full interview detail for the employer review UI.
 
@@ -183,6 +191,41 @@ class InterviewPublicInfoResponse(BaseModel):
     # Surfaced so the consent screen can warn a returning candidate that
     # they've already used their one free restart — see _start_session.
     session_start_count: int
+    # Which interview this invitation is: the live voice conversation or the strict,
+    # text-question one. Decided when the invite was created; the screen shows the matching flow.
+    style: Literal["live", "strict"] = "live"
+
+
+class StrictStartRequest(BaseModel):
+    """The candidate starting (or resuming) a strict interview. The first call must carry the
+    acceptance of the rules and the version of the rules text the candidate saw."""
+
+    accepted: bool = False
+    rules_version: str | None = Field(default=None, max_length=20)
+
+
+class StrictTurnOut(BaseModel):
+    """The question or follow-up on screen now, with the time the SERVER says is left."""
+
+    id: uuid.UUID
+    kind: Literal["QUESTION", "FOLLOW_UP"]
+    # Which of the job's questions this is (a follow-up carries its question's number).
+    number: int
+    text: str
+    time_limit_seconds: int
+    seconds_left: int
+
+
+class StrictInterviewStateResponse(BaseModel):
+    """Where a strict interview stands. ``finished`` means there is no further question: the
+    screen stops recording, uploads it and completes the interview as it does today."""
+
+    interview_id: uuid.UUID
+    finished: bool
+    turn: StrictTurnOut | None
+    total_questions: int
+    seconds_left_total: int
+    max_seconds_total: int
 
 
 class InterviewScoreRequestResponse(BaseModel):

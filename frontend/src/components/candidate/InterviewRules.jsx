@@ -2,12 +2,13 @@ import { numberedRuleGroups } from '@/lib/interviewRules'
 
 /**
  * The rules a candidate reads and accepts before an AI interview. Numbered in one running
- * sequence across the groups, so a rule can be referred to by its number ("rule 8").
+ * sequence across the groups, so a rule can be referred to by its number ("rule 8"). `groups`
+ * chooses the rule set (the live interview's by default, or the strict interview's).
  */
-export default function InterviewRules({ monitoring }) {
+export default function InterviewRules({ monitoring, groups }) {
   return (
     <div className="space-y-5" data-testid="interview-rules">
-      {numberedRuleGroups(monitoring).map((group) => (
+      {numberedRuleGroups(monitoring, groups).map((group) => (
         <section key={group.title} aria-label={group.title}>
           <h2 className="text-sm font-semibold text-text mb-2">{group.title}</h2>
           <ul className="space-y-2">

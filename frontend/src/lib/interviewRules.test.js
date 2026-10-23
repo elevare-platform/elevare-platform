@@ -3,6 +3,8 @@ import {
   INTERVIEW_RULES_VERSION,
   MONITORING,
   RULE_GROUPS,
+  STRICT_RULES_VERSION,
+  STRICT_RULE_GROUPS,
   numberedRuleGroups,
   visibleRuleGroups,
 } from './interviewRules'
@@ -72,6 +74,62 @@ describe('which rules are shown', () => {
     for (const monitoring of [ALL_OFF, ALL_ON]) {
       expect(visibleRuleGroups(monitoring).every((group) => group.rules.length > 0)).toBe(true)
     }
+  })
+})
+
+describe('the strict interview rules', () => {
+  const strictRules = STRICT_RULE_GROUPS.flatMap((group) => group.rules)
+  const strictIds = (monitoring) =>
+    visibleRuleGroups(monitoring, STRICT_RULE_GROUPS).flatMap((group) => group.rules.map((rule) => rule.id))
+
+  it('have their own version, apart from the live interview rules', () => {
+    expect(STRICT_RULES_VERSION).toBeTruthy()
+    expect(STRICT_RULES_VERSION).not.toBe(INTERVIEW_RULES_VERSION)
+  })
+
+  it('give every rule an id and some text, and no id twice', () => {
+    const ids = strictRules.map((rule) => rule.id)
+
+    expect(strictRules.every((rule) => rule.id && rule.text.length > 20)).toBe(true)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('are written the way the rest of the product is: no dashes, no exclamation marks', () => {
+    for (const rule of strictRules) {
+      expect(rule.text, rule.id).not.toMatch(/[–—!]/)
+    }
+  })
+
+  it('say nothing about the live voice interview, which they replace', () => {
+    for (const rule of strictRules) {
+      expect(rule.text, rule.id).not.toMatch(/headphones|earphones|restart|End interview button|interviewer/i)
+    }
+  })
+
+  it('never tell a candidate something is watched unless the feature that watches it is on', () => {
+    const claimsMonitoring = strictRules.filter((rule) => /\bnoted\b/i.test(rule.text))
+
+    expect(claimsMonitoring.length).toBeGreaterThan(0)
+    expect(claimsMonitoring.every((rule) => rule.needs)).toBe(true)
+  })
+
+  it('hide the leaving-the-page rule today, because nothing notices it yet', () => {
+    expect(strictIds(MONITORING)).not.toContain('stay-on-page')
+    expect(strictIds({ ...ALL_OFF, tabSwitch: true })).toContain('stay-on-page')
+  })
+
+  it('state what the screen really does: laptops only, one screen, full screen', () => {
+    const ids = strictIds(MONITORING)
+
+    expect(ids).toEqual(expect.arrayContaining(['laptop-and-browser', 'one-screen', 'full-screen', 'questions-on-screen', 'follow-up']))
+  })
+
+  it('are numbered from 1 with no gap', () => {
+    const numbers = numberedRuleGroups(MONITORING, STRICT_RULE_GROUPS).flatMap((group) =>
+      group.rules.map((rule) => rule.number)
+    )
+
+    expect(numbers).toEqual(numbers.map((_, index) => index + 1))
   })
 })
 

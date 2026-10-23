@@ -177,6 +177,14 @@ class Settings(BaseSettings):
     strict_interview_max_minutes: int = 20
     strict_interview_max_questions: int = 6
     strict_interview_default_questions: int = 5
+    # A follow-up question gets its own, shorter allowance. It is only asked while the
+    # interview has at least this many seconds left, so it can never squeeze out the next
+    # real question; the allowance is also never longer than the time left.
+    strict_follow_up_seconds: int = 90
+    strict_follow_up_min_remaining_seconds: int = 120
+    # How much audio one answer may upload (the longest answer is 10 minutes of speech,
+    # which is a few MB; this only stops an absurd file).
+    strict_answer_max_bytes: int = 15 * 1024 * 1024
     # Minimum share (0.0-1.0) of the submitted transcript's word pairs that must
     # also appear in the recording's own transcript. An unmeasured starting
     # point: calibrate it against real interviews via the match_score stored in

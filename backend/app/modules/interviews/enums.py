@@ -25,6 +25,13 @@ class InterviewStatus(str, Enum):
     EXPIRED = "EXPIRED"
 
 
+class TurnKind(str, Enum):
+    """What a turn of a strict interview is: one of the job's questions, or a follow-up to it."""
+
+    QUESTION = "QUESTION"
+    FOLLOW_UP = "FOLLOW_UP"
+
+
 class TranscriptCheckStatus(str, Enum):
     """Outcome of comparing the candidate-device transcript with a server-side
     transcription of the recording."""

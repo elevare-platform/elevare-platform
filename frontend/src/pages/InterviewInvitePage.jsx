@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import InterviewFlow from '@/components/candidate/InterviewFlow'
+import StrictInterviewFlow from '@/components/candidate/StrictInterviewFlow'
 import api from '@/lib/api'
 
 /**
@@ -48,6 +49,28 @@ export default function InterviewInvitePage() {
     return data
   }, [token])
 
+  // The strict interview: start (or resume), send a spoken answer, and finish the same way.
+  const startStrict = useCallback(async ({ accepted, rulesVersion }) => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/start`, {
+      accepted,
+      rules_version: rulesVersion,
+    })
+    return data
+  }, [token])
+
+  const sendStrictAnswer = useCallback(async (turnId, audio) => {
+    const { data } = await api.post(`/api/v1/public/interviews/${token}/strict/answer`, audio, {
+      params: { turn_id: turnId },
+      headers: { 'Content-Type': audio.type || 'audio/webm' },
+      timeout: 90_000,
+    })
+    return data
+  }, [token])
+
+  const completeStrict = useCallback(async () => {
+    await api.post(`/api/v1/public/interviews/${token}/complete`, {})
+  }, [token])
+
   if (loadError) {
     return (
       <main className="min-h-screen bg-background flex items-center justify-center px-4 py-10">
@@ -70,6 +93,21 @@ export default function InterviewInvitePage() {
   const subtitle = info.company_name
     ? `${info.company_name} · ${info.job_title}`
     : info.job_title
+
+  if (info.style === 'strict') {
+    return (
+      <StrictInterviewFlow
+        startInterview={startStrict}
+        sendAnswer={sendStrictAnswer}
+        requestUploadUrl={requestUploadUrl}
+        completeUpload={completeStrict}
+        subtitle={subtitle}
+        maxMinutes={info.max_duration_minutes}
+        resuming={info.status === 'IN_PROGRESS'}
+        completed={['UPLOADED', 'SCORED'].includes(info.status)}
+      />
+    )
+  }
 
   return (
     <InterviewFlow

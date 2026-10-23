@@ -39,6 +39,7 @@ from app.modules.interviews.schema import (
     RealtimeUsageDetail,
 )
 from app.modules.interviews.scoring_access import assert_can_score_interviews
+from app.modules.interviews.strict import StrictInterviewService
 from app.modules.interviews.tasks import (
     send_ai_interview_invite_email,
     send_interview_restart_request_email,
@@ -175,6 +176,10 @@ class InterviewService:
         if self._client is not None:
             await self._client.close()
 
+    def _strict(self) -> StrictInterviewService:
+        """The strict interview's own logic (tests replace this to avoid real API calls)."""
+        return StrictInterviewService(self._db, self._repo)
+
     def _get_client(self) -> AsyncOpenAI:
         """Lazily construct the OpenAI client so most code paths (which never
         touch the realtime API) don't require OPENAI_API_KEY to be set."""
@@ -213,6 +218,11 @@ class InterviewService:
             await self._repo.lock_status(interview.id)
             await self._db.refresh(interview)
         if interview is None:
+            # The style is decided here, once, for this interview. A strict interview
+            # needs the job's questions, so that is checked before anything is charged.
+            strict = settings.interview_style == "strict"
+            if strict:
+                await self._strict().require_questions(job.id)
             # Charge before anything is saved: the id is decided first, so when
             # the credits are short nothing exists to clean up, and the charge and
             # the interview are committed together below or not at all.
@@ -227,6 +237,8 @@ class InterviewService:
                 application_id=application_id,
                 interview_id=new_interview_id,
             )
+            if strict:
+                await self._strict().create_run(interview.id)
         elif interview.status in (
             InterviewStatus.UPLOADED.value,
             InterviewStatus.SCORED.value,
@@ -365,12 +377,18 @@ class InterviewService:
         interview = await self._resolve_interview_by_token(token)
         job = interview.job
         employer_profile = getattr(getattr(job, "employer", None), "organization", None)
+        strict = await self._strict().is_strict(interview.id)
         return InterviewPublicInfoResponse(
             job_title=job.title,
             company_name=employer_profile.company_name if employer_profile else None,
             status=interview.status,
-            max_duration_minutes=settings.interview_max_duration_minutes,
+            max_duration_minutes=(
+                settings.strict_interview_max_minutes
+                if strict
+                else settings.interview_max_duration_minutes
+            ),
             session_start_count=interview.session_start_count,
+            style="strict" if strict else "live",
         )
 
     async def create_session_by_token(self, token: str) -> InterviewSessionResponse:
@@ -401,6 +419,72 @@ class InterviewService:
         return await self._complete_upload(
             interview, transcript=transcript, realtime_usage=realtime_usage
         )
+
+    # ------------------------------------------------------------------
+    # The strict interview: start or resume it, and answer a question. Both ways in (the
+    # emailed link and the logged-in candidate) end in the same two calls.
+    # ------------------------------------------------------------------
+
+    async def style_of(self, interview: Interview) -> str:
+        """"strict" or "live": which interview this one is, fixed when it was invited."""
+        return "strict" if await self._strict().is_strict(interview.id) else "live"
+
+    async def _start_strict(
+        self, interview: Interview, accepted: bool, rules_version: str | None
+    ) -> dict:
+        self._assert_interviews_enabled()
+        return await self._strict().start(
+            interview, accepted=accepted, rules_version=rules_version
+        )
+
+    async def _answer_strict(
+        self,
+        interview: Interview,
+        turn_id: uuid.UUID,
+        audio: bytes,
+        content_type: str | None,
+    ) -> dict:
+        self._assert_interviews_enabled()
+        return await self._strict().answer(
+            interview, turn_id=turn_id, audio=audio, content_type=content_type
+        )
+
+    async def start_strict_by_token(
+        self, token: str, accepted: bool, rules_version: str | None
+    ) -> dict:
+        """Start or resume the strict interview from an emailed invite link."""
+        interview = await self._resolve_interview_by_token(token)
+        return await self._start_strict(interview, accepted, rules_version)
+
+    async def answer_strict_by_token(
+        self, token: str, turn_id: uuid.UUID, audio: bytes, content_type: str | None
+    ) -> dict:
+        """Save one spoken answer of the strict interview, from an emailed invite link."""
+        interview = await self._resolve_interview_by_token(token)
+        return await self._answer_strict(interview, turn_id, audio, content_type)
+
+    async def start_strict(
+        self,
+        application_id: uuid.UUID,
+        candidate_id: uuid.UUID,
+        accepted: bool,
+        rules_version: str | None,
+    ) -> dict:
+        """Start or resume the strict interview for a logged-in candidate."""
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        return await self._start_strict(interview, accepted, rules_version)
+
+    async def answer_strict(
+        self,
+        application_id: uuid.UUID,
+        candidate_id: uuid.UUID,
+        turn_id: uuid.UUID,
+        audio: bytes,
+        content_type: str | None,
+    ) -> dict:
+        """Save one spoken answer of the strict interview for a logged-in candidate."""
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        return await self._answer_strict(interview, turn_id, audio, content_type)
 
     async def _resolve_interview_by_token(self, token: str) -> Interview:
         interview = await self._repo.get_by_token(token)
@@ -437,6 +521,12 @@ class InterviewService:
             InterviewStatus.SCORED.value,
         ):
             raise ValidationException("This interview has already been completed")
+
+        # A strict interview has no live voice session to mint.
+        if await self._strict().is_strict(interview.id):
+            raise ValidationException(
+                "This is a strict interview, not a live one.", code="INTERVIEW_WRONG_STYLE"
+            )
 
         # Each call mints a brand-new Realtime conversation — reloading
         # mid-interview would otherwise let a candidate hear the AI's
@@ -652,6 +742,16 @@ class InterviewService:
             raise ValidationException("No upload was started for this interview")
         await self._assert_recording_uploaded(interview.r2_key)
 
+        # A strict interview's transcript is built here from the answers the server saved,
+        # never taken from the browser, and there is no live voice session to cost.
+        answers_complete = False
+        if await self._strict().is_strict(interview.id):
+            built = await self._strict().build_transcript(interview.id)
+            if built is None:
+                raise ValidationException("This interview has not been started.")
+            transcript, answers_complete = built
+            realtime_usage = None
+
         now = datetime.now(UTC)
         update_data: dict = {
             "status": InterviewStatus.UPLOADED.value,
@@ -665,6 +765,15 @@ class InterviewService:
             update_data["transcript"] = transcript
 
         interview = await self._repo.update(interview.id, update_data)
+
+        if answers_complete:
+            # Every answer was transcribed from the audio here, so there is nothing sent by
+            # the browser to check. This is recorded so the recording is not transcribed
+            # (and paid for) a second time. When an answer is missing no check is recorded,
+            # and the recording is transcribed to fill the gap.
+            await self._repo.create_transcript_check(
+                interview.id, TranscriptCheckStatus.SERVER_ONLY.value
+            )
 
         if realtime_usage and (
             realtime_usage.input_tokens or realtime_usage.output_tokens
@@ -777,6 +886,12 @@ class InterviewService:
             invite = await self.create_invite(job, talent_pool_profile_id)
         except InsufficientCreditsException as exc:
             return {"sent": False, "reason": exc.message}
+        except ValidationException as exc:
+            # A strict interview needs the job's questions. Like short credits, that is
+            # said for this one candidate, so a bulk send does not stop for everyone else.
+            if exc.code != "INTERVIEW_QUESTIONS_MISSING":
+                raise
+            return {"sent": False, "reason": exc.message}
         if invite is None:
             return {"sent": False, "reason": "Interview already completed or not configured"}
 
@@ -805,15 +920,26 @@ class InterviewService:
         )
 
         if is_first_invite and is_self_registered:
+            if await self._strict().is_strict(_interview.id):
+                what_it_is = (
+                    "The questions appear on your screen and you answer each one out "
+                    "loud to your camera. Use a laptop or desktop computer with Chrome "
+                    "or Edge. The employer reviews it afterward."
+                )
+                kind = "an AI interview"
+            else:
+                what_it_is = (
+                    "It's a real-time voice conversation with an AI interviewer, "
+                    "reviewed by the employer afterward."
+                )
+                kind = "a live AI interview"
             await NotificationRepository(self._db).create(
                 recipient_id=profile.candidate_profile.user_id,
                 type="AI_INTERVIEW_INVITE",
                 title=f"AI interview invite: {job.title}",
                 body=(
-                    f"{company_name} has invited you to a live AI interview "
-                    f"for the {job.title} role. It's a real-time voice "
-                    "conversation with an AI interviewer, reviewed by the "
-                    f"employer afterward.\n\nStart here: {interview_url}"
+                    f"{company_name} has invited you to {kind} for the "
+                    f"{job.title} role. {what_it_is}\n\nStart here: {interview_url}"
                 ),
                 entity_type="APPLICATION" if _interview.application_id else None,
                 entity_id=_interview.application_id,
