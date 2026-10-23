@@ -337,7 +337,8 @@ class ConductMixin:
 
         The time left when it ended is what they get (the clock was paused), the answers stay,
         the leave count and the time away start again, and nothing more is charged. The earlier
-        recording is kept and joined in front of the next one; the timeline keeps everything.
+        recording is kept as its own clip (the next attempt records a new one), and the timeline
+        keeps everything.
         """
         status = await self._repo.lock_status(interview.id)
         if status not in ENDED_STATUSES:
@@ -355,6 +356,14 @@ class ConductMixin:
             raise ValidationException(
                 "The recording of this interview is still being prepared. Please try again in a minute.",
                 code="INTERVIEW_RECORDING_PROCESSING",
+            )
+        if self._nothing_left_to_do(run, await self._turns(interview.id), run.ended_at):
+            # Seen on a real test: the last answer was sent as the interview ended, so the
+            # candidate came back to a finished interview with nothing to record or answer.
+            raise ValidationException(
+                "This candidate had already answered every question, or the time had run out, "
+                "so there is nothing left to carry on with. Use \"Score what was recorded\" instead.",
+                code="INTERVIEW_NOTHING_LEFT",
             )
         await self._db.refresh(interview)
         now = self._clock()
@@ -419,14 +428,14 @@ class ConductMixin:
     def _recording_state(interview: Interview, run: StrictInterviewRun, now: datetime) -> dict:
         """Whether the recording is still being put together from its pieces.
 
-        Pieces exist when the candidate reloaded (parts) or the employer reinstated the
-        interview (earlier attempts). Once the interview has finished they are joined by a
-        worker; until then the recording on file is only the last piece, so the screen must not
-        show it as if it were all. If the joining has not happened after
-        ``RECORDING_JOIN_GRACE_SECONDS`` it has evidently failed and the last piece is shown
-        with a warning that it is only part of the interview.
+        Pieces exist when the candidate reloaded during this attempt (parts). Once the interview
+        has finished they are joined by a worker; until then the recording on file is only the
+        last piece, so the screen must not show it as if it were all. If the joining has not
+        happened after ``RECORDING_JOIN_GRACE_SECONDS`` it has evidently failed and the last
+        piece is shown with a warning that it is only part of the interview. The recordings of
+        earlier attempts (reinstated interview) are separate clips and are never "in pieces".
         """
-        in_pieces = run.recording_parts > 0 or bool(run.previous_recordings)
+        in_pieces = run.recording_parts > 0
         if not in_pieces or interview.completed_at is None:
             return {"recording_pending": False, "recording_partial": False}
         waiting = _seconds(now, interview.completed_at) < RECORDING_JOIN_GRACE_SECONDS

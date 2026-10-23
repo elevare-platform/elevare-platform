@@ -104,6 +104,8 @@ export function leaveNotice(state) {
     used,
     allowed,
     last,
+    // The time away used out of the total that ends the interview, for the bar in the box.
+    away: { used: Math.min(state.away_seconds, state.max_away_seconds), max: state.max_away_seconds },
     lines: [
       last
         ? `This was your last warning. If you leave the screen again, or are away for more than ${secondsLeft} more seconds in total, the interview ends.`
@@ -111,6 +113,16 @@ export function leaveNotice(state) {
       'The time for your question is still running.',
     ],
   }
+}
+
+/**
+ * How the "time away" line looks: calm at first, amber from half the allowance, bold red from
+ * four fifths of it. `state` is the server's conduct state.
+ */
+export function awayTone({ away_seconds: used, max_away_seconds: max }) {
+  if (used >= max * 0.8) return 'font-semibold text-red-600'
+  if (used >= max * 0.5) return 'font-medium text-amber-700'
+  return 'text-text-muted'
 }
 
 export const KEY_WARNING = 'That key is noted and shown to the employer. It does not end the interview.'

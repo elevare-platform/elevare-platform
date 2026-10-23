@@ -306,6 +306,36 @@ class StrictInterviewService(ConductMixin):
             at=at,
         )
 
+    def _nothing_left_to_do(
+        self, run: StrictInterviewRun, turns: list[InterviewTurn], at: datetime
+    ) -> bool:
+        """True when, as of ``at``, a candidate who came back would have nothing to answer.
+
+        Follows what ``_close_expired`` would do when the interview is opened again: a question
+        whose time had already run out is closed, the next one opens as of when it would have
+        started, and so on, until one still has time or the questions (or the interview's time)
+        are used up. A question the candidate was still answering when it ended counts as
+        time left."""
+        questions = run.questions or []
+        grace = timedelta(seconds=RESUME_GRACE_SECONDS)
+        current = turns[-1] if turns and turns[-1].answered_at is None else None
+        if current is not None:
+            ends = current.opened_at + timedelta(seconds=current.time_limit_seconds)
+            if at <= ends + grace:
+                usable = min(seconds_between(ends, at), seconds_between(self._deadline(run), at))
+                return usable < MIN_TURN_SECONDS
+            number, when = current.question_number + 1, ends
+        else:
+            number, when = (turns[-1].question_number if turns else 0) + 1, at
+        while True:
+            left = seconds_between(self._deadline(run), when)
+            if number > len(questions) or left < MIN_TURN_SECONDS:
+                return True
+            ends = when + timedelta(seconds=min(questions[number - 1]["time_limit_seconds"], left))
+            if at <= ends + grace:
+                return False
+            number, when = number + 1, ends
+
     async def _close_expired(
         self,
         interview_id: uuid.UUID,

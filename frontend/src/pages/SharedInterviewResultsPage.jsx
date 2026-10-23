@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { parseAssessment } from '@/lib/interviewAssessment'
 import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
+import RecordingClips from '@/components/employer/RecordingClips'
+import { showsClips } from '@/lib/recordingClips'
 
 // What the client is told about each candidate's interview.
 const STATUS = {
@@ -188,8 +190,20 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
 
       {open && hasDetail && (
         <div className="border-t border-border px-4 py-4 bg-surface-muted space-y-4">
-          {!candidate.video_url && <RecordingNotice strict={candidate.strict} />}
-          {candidate.video_url && (
+          {showsClips(candidate.recordings, candidate.video_url) && (
+            <div>
+              <RecordingClips recordings={candidate.recordings} videoClassName="w-full rounded-lg bg-black" />
+              <p className="text-[11px] text-text-muted mt-1">
+                The video links are refreshed each time this page opens and stop working after about 15
+                minutes. Reload the page if one stops playing.
+              </p>
+              <RecordingNotice strict={candidate.strict} />
+            </div>
+          )}
+          {!candidate.video_url && !showsClips(candidate.recordings, candidate.video_url) && (
+            <RecordingNotice strict={candidate.strict} />
+          )}
+          {candidate.video_url && !showsClips(candidate.recordings, candidate.video_url) && (
             <div>
               <video controls preload="metadata" src={candidate.video_url} className="w-full rounded-lg bg-black" />
               <p className="text-[11px] text-text-muted mt-1">

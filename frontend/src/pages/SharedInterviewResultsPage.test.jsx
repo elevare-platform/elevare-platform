@@ -132,6 +132,28 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     expect(screen.getByText(/no decision has been made for you/)).toBeInTheDocument()
   })
 
+  it('shows a reinstated interview to the client as one clip per attempt', async () => {
+    const reinstated = {
+      ...ENDED_EARLY,
+      recordings: [
+        { attempt: 1, video_url: 'https://signed.example/one' },
+        { attempt: 2, video_url: 'https://signed.example/two' },
+      ],
+      video_url: 'https://signed.example/two',
+    }
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [reinstated] } })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Bola Ade/ }))
+
+    expect(screen.getByText('Attempt 1')).toBeInTheDocument()
+    expect(screen.getByText('Attempt 2, after the interview was reinstated')).toBeInTheDocument()
+    expect([...document.querySelectorAll('video')].map((v) => v.getAttribute('src'))).toEqual([
+      'https://signed.example/one',
+      'https://signed.example/two',
+    ])
+  })
+
   it('shows the rules record and conduct notes on a finished strict interview too', async () => {
     const finished = { ...COMPLETED, strict: { ...STRICT_NOTES, ended: null, leaves: 0, away_seconds: 0, key_presses: 0, events: [] } }
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [finished] } })

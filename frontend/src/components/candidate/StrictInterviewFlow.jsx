@@ -16,6 +16,7 @@ import {
   WARNING_SHOW_MS,
   endedMessage,
   AWAY_TITLE,
+  awayTone,
   leaveNotice as leaveNoticeFor,
   reasonFromStatus,
   reportableKey,
@@ -663,10 +664,20 @@ export default function StrictInterviewFlow({
               <p className="text-xs text-text-muted">
                 Whole interview: {formatClock(totalLeft)} left of {maxMinutes} minutes
               </p>
+              {Number.isFinite(conduct?.max_away_seconds) && (
+                // Always on screen, so the 60 second limit is never a surprise: it turns amber
+                // at half and red near the limit.
+                <p
+                  className={'text-xs ' + awayTone(conduct)}
+                  data-testid="away-time"
+                >
+                  Time away from this screen: {conduct.away_seconds} of {conduct.max_away_seconds} seconds
+                  in total. At {conduct.max_away_seconds} the interview ends.
+                </p>
+              )}
               {conduct?.leaves > 0 && (
                 <p className="text-xs text-amber-700" data-testid="warnings-used">
                   Warnings used: {Math.min(conduct.leaves, conduct.max_leaves - 1)} of {conduct.max_leaves - 1}.
-                  Time away: {conduct.away_seconds} of {conduct.max_away_seconds} seconds.
                 </p>
               )}
               {stopInterview && (
@@ -735,6 +746,24 @@ export default function StrictInterviewFlow({
                   >
                     Warning {leaveNotice.used} of {leaveNotice.allowed}
                   </p>
+                  <div>
+                    <p className="text-sm font-semibold text-text" data-testid="leave-away-used">
+                      Time away used: {leaveNotice.away.used} of {leaveNotice.away.max} seconds
+                    </p>
+                    <div
+                      role="progressbar"
+                      aria-label="Time away used"
+                      aria-valuemin={0}
+                      aria-valuemax={leaveNotice.away.max}
+                      aria-valuenow={leaveNotice.away.used}
+                      className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200"
+                    >
+                      <div
+                        className={'h-full ' + (leaveNotice.away.used >= leaveNotice.away.max * 0.8 ? 'bg-red-600' : 'bg-amber-500')}
+                        style={{ width: `${Math.min(100, (leaveNotice.away.used / leaveNotice.away.max) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
                   {leaveNotice.lines.map((line) => (
                     <p key={line} className="text-sm text-text-muted">{line}</p>
                   ))}

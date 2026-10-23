@@ -217,6 +217,14 @@ class StrictDetail(BaseModel):
     turns: list[StrictAnswer]
 
 
+class RecordingClip(BaseModel):
+    """One recording of a strict interview: an interview the employer reinstated has one clip
+    per attempt, each only what that attempt recorded."""
+
+    attempt: int
+    video_url: str
+
+
 class InterviewDetailResponse(BaseModel):
     """Full interview detail for the employer review UI.
 
@@ -239,7 +247,12 @@ class InterviewDetailResponse(BaseModel):
     ai_score: int | None
     ai_rationale: str | None
     ai_scored_at: datetime | None
+    # The latest attempt's recording (the only one, for an interview never reinstated).
     video_url: str | None
+    # Every attempt's recording, oldest first. Only more than one clip for a reinstated
+    # interview; empty while the latest attempt's pieces are still being joined and there is
+    # nothing earlier to show.
+    recordings: list[RecordingClip] = []
     completed_at: datetime | None
     cv_score: int | None = None
     cv_strengths: list[str] | None = None

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -39,6 +40,13 @@ def merge_key(interview_id, attempt: int = 1) -> str:
     if attempt <= 1:
         return f"interviews/{interview_id}/recording-merged.webm"
     return f"interviews/{interview_id}/recording-merged-a{attempt}.webm"
+
+
+def attempt_of_key(key: str) -> int:
+    """Which attempt a stored recording belongs to, read from its name (the first attempt has
+    no number in it). Used to label the clips of a reinstated interview."""
+    match = re.search(r"-a(\d+)\.webm$", key)
+    return int(match.group(1)) if match else 1
 
 
 def part_key(interview_id, part: int) -> str:

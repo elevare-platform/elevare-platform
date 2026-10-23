@@ -873,6 +873,105 @@ async def test_an_interview_cannot_be_reinstated_twice(client, db_session, fakes
 
 
 @pytest.mark.asyncio
+async def test_an_interview_with_every_question_answered_cannot_be_reinstated(
+    client, db_session, fakes, clock, invite_email
+):
+    """Seen on a real test: the interview was ended as the last answer was being sent. A
+    reinstated candidate would come back to a finished interview with nothing to record, and
+    the page could never upload (it kept saying the recording was not received)."""
+    interview, first = await started(client, db_session, questions=[("Describe a system you built.", 120)])
+    clock.advance(130)  # the last question's time ran out, and the answer was on its way
+    await stop(client, interview.token)
+    await answer(client, interview.token, first["turn"]["id"])  # dropped: it ended meanwhile
+
+    resp = await client.post(_reinstate_url(interview), headers=_headers(interview.employer))
+
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "INTERVIEW_NOTHING_LEFT"
+    assert "Score what was recorded" in resp.json()["message"]
+    assert await status_of(db_session, interview.interview) == InterviewStatus.STOPPED.value
+    invite_email.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_interview_with_hardly_any_time_left_cannot_be_reinstated(
+    client, db_session, fakes, clock, invite_email, monkeypatch
+):
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 1)
+    interview, _ = await started(client, db_session)
+    clock.advance(50)  # 10 seconds of the minute are left: too little to answer anything
+    await stop(client, interview.token)
+
+    resp = await client.post(_reinstate_url(interview), headers=_headers(interview.employer))
+
+    assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_NOTHING_LEFT"
+
+
+@pytest.mark.asyncio
+async def test_a_question_still_being_answered_when_it_ended_can_be_carried_on(
+    client, db_session, fakes, clock, invite_email
+):
+    interview, _ = await stopped_interview(client, db_session, clock, after=40)
+
+    resp = await client.post(_reinstate_url(interview), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_question_that_ran_out_of_time_when_it_ended_is_not_a_reason_to_refuse_while_others_remain(
+    client, db_session, fakes, clock, invite_email
+):
+    """The first of three questions timed out as the interview ended: the second still waits."""
+    interview, _ = await stopped_interview(client, db_session, clock, after=190)
+
+    resp = await client.post(_reinstate_url(interview), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_recording_that_never_started_again_still_completes_when_earlier_ones_exist(
+    client, db_session, fakes, clock, evidence
+):
+    """The page came back with nothing left to record and sent an empty file: the earlier
+    recording is the interview, so completing must not be refused for ever."""
+    interview, first = await started(client, db_session)
+    await answer(client, interview.token, first["turn"]["id"])
+    await stop(client, interview.token)
+    run = await run_of(db_session, interview.interview)
+    run.previous_recordings = ["interviews/x/recording.webm"]
+    await db_session.commit()
+    evidence.storage.get_object_size = AsyncMock(return_value=0)
+
+    await client.post(f"{_base(interview.token)}/upload-url")
+    complete = await client.post(f"{_base(interview.token)}/complete", json={})
+
+    assert complete.status_code == 200
+    # Nothing new was recorded and the earlier clip is its own: nothing to join, and no clip
+    # points at the empty file.
+    evidence.merging.delay.assert_not_called()
+    await db_session.refresh(interview.interview)
+    assert interview.interview.r2_key is None
+    assert interview.interview.completed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_an_empty_recording_is_still_refused_when_there_is_nothing_else(
+    client, db_session, fakes, clock, evidence
+):
+    interview, first = await started(client, db_session)
+    await answer(client, interview.token, first["turn"]["id"])
+    await stop(client, interview.token)
+    evidence.storage.get_object_size = AsyncMock(return_value=0)
+
+    await client.post(f"{_base(interview.token)}/upload-url")
+    complete = await client.post(f"{_base(interview.token)}/complete", json={})
+
+    assert complete.status_code == 422 and complete.json()["code"] == "RECORDING_NOT_RECEIVED"
+
+
+@pytest.mark.asyncio
 async def test_it_waits_while_the_recording_is_still_being_joined(client, db_session, fakes, clock, invite_email):
     interview, _ = await stopped_interview(client, db_session, clock)
     run = await run_of(db_session, interview.interview)
@@ -1126,14 +1225,52 @@ async def test_while_the_pieces_are_being_joined_no_video_is_shown_and_the_emplo
 
 
 @pytest.mark.asyncio
-async def test_an_interview_the_employer_reinstated_is_also_waiting_for_its_pieces(
+async def test_a_reinstated_interview_shows_one_clip_per_attempt_oldest_first(
     client, db_session, fakes, clock, signed
 ):
-    interview = await finished_in_pieces(db_session, clock, previous=["interviews/x/recording.webm.attempt1"])
+    """Each attempt keeps what it recorded, so the employer sees where the first stopped and
+    where the second carried on; nothing is waiting to be joined."""
+    interview = await finished_in_pieces(db_session, clock, previous=["interviews/x/recording.webm"])
+    run = await run_of(db_session, interview.interview)
+    run.attempt = 2
+    interview.interview.r2_key = "interviews/x/recording-a2.webm"
+    await db_session.commit()
+    signed.generate_presigned_url = AsyncMock(side_effect=lambda key, **_: f"https://signed.example/{key}")
 
     body = await detail_of(client, interview)
 
-    assert body["video_url"] is None and body["strict"]["recording_pending"] is True
+    assert [(clip["attempt"], clip["video_url"]) for clip in body["recordings"]] == [
+        (1, "https://signed.example/interviews/x/recording.webm"),
+        (2, "https://signed.example/interviews/x/recording-a2.webm"),
+    ]
+    assert body["video_url"] == "https://signed.example/interviews/x/recording-a2.webm"
+    assert body["strict"]["recording_pending"] is False and body["strict"]["recording_partial"] is False
+
+
+@pytest.mark.asyncio
+async def test_an_interview_never_reinstated_has_just_the_one_clip(client, db_session, fakes, clock, signed):
+    interview = await finished_in_pieces(db_session, clock)
+
+    body = await detail_of(client, interview)
+
+    assert [clip["attempt"] for clip in body["recordings"]] == [1]
+
+
+@pytest.mark.asyncio
+async def test_an_attempt_with_nothing_new_recorded_shows_only_the_earlier_clips(
+    client, db_session, fakes, clock, signed
+):
+    interview = await finished_in_pieces(db_session, clock, previous=["interviews/x/recording.webm"])
+    run = await run_of(db_session, interview.interview)
+    run.attempt = 2
+    interview.interview.r2_key = None
+    await db_session.commit()
+    signed.generate_presigned_url = AsyncMock(side_effect=lambda key, **_: f"https://signed.example/{key}")
+
+    body = await detail_of(client, interview)
+
+    assert body["video_url"] is None
+    assert [clip["attempt"] for clip in body["recordings"]] == [1]
 
 
 @pytest.mark.asyncio

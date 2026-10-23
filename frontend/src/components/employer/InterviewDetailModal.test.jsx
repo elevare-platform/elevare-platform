@@ -289,6 +289,51 @@ describe('InterviewDetailModal: an interview that ended early', () => {
     expect(await screen.findByText(/only part of this interview/)).toBeInTheDocument()
   })
 
+  it('shows a reinstated interview as one clip per attempt', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...BASE,
+        video_url: 'https://r2/two.webm',
+        recordings: [
+          { attempt: 1, video_url: 'https://r2/one.webm' },
+          { attempt: 2, video_url: 'https://r2/two.webm' },
+        ],
+        strict: { ...STRICT, ended: null, attempt: 2 },
+      },
+    })
+    renderEnded()
+
+    expect(await screen.findByText('Attempt 1')).toBeInTheDocument()
+    expect(screen.getByText('Attempt 2, after the interview was reinstated')).toBeInTheDocument()
+    expect(document.querySelectorAll('video')).toHaveLength(2)
+  })
+
+  it('shows one plain player for an interview that was never reinstated', async () => {
+    api.get.mockResolvedValue({
+      data: { ...BASE, video_url: 'https://r2/v.webm', recordings: [{ attempt: 1, video_url: 'https://r2/v.webm' }] },
+    })
+    renderEnded()
+
+    await screen.findByText(/Transcript/)
+    expect(document.querySelectorAll('video')).toHaveLength(1)
+    expect(screen.queryByText(/each attempt has its own recording/)).not.toBeInTheDocument()
+  })
+
+  it('shows the earlier clip, not "no recording", when the latest attempt recorded nothing new', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...BASE,
+        video_url: null,
+        recordings: [{ attempt: 1, video_url: 'https://r2/one.webm' }],
+        strict: { ...STRICT, ended: null, attempt: 2 },
+      },
+    })
+    renderEnded()
+
+    expect(await screen.findByText('Attempt 1')).toBeInTheDocument()
+    expect(screen.queryByText(/No recording is available/)).not.toBeInTheDocument()
+  })
+
   it('shows no notes for a live interview', async () => {
     api.get.mockResolvedValue({ data: { ...BASE, strict: null } })
     renderEnded()

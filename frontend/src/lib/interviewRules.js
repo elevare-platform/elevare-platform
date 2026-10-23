@@ -133,10 +133,11 @@ export const RULE_GROUPS = [
 // what the screen really does is stated. Version S2 (phase 3): it notices a candidate leaving
 // the screen, warns, ends the interview after repeated or long absences, notes the keys that
 // try to leave, and has a stop button. Version S3: a warning dims the screen and must be
-// confirmed, and every shortcut is noted with its full combination. The numbers in the text (4 leaves, 60 seconds) are the
+// confirmed, and every shortcut is noted with its full combination. Version S4: the 60 seconds
+// away in total is a rule of its own, highlighted, and the screen shows the time used. The numbers in the text (4 leaves, 60 seconds) are the
 // server's (settings `strict_max_leaves` and `strict_max_away_seconds`); change both together.
 // Change STRICT_RULES_VERSION whenever the wording of a visible rule changes.
-export const STRICT_RULES_VERSION = 'S3'
+export const STRICT_RULES_VERSION = 'S4'
 
 // The strict interview's own monitoring switches. Separate from MONITORING above, which belongs
 // to the live interview (whose rules must never claim anything it does not do).
@@ -199,6 +200,12 @@ export const STRICT_RULE_GROUPS = [
         id: 'stay-on-page',
         needs: 'tabSwitch',
         text: 'Stay on the interview screen, in full screen. Leaving it (to another tab, window or app, or by leaving full screen) is noted and shown to the employer, with the time and how long you were away. The first three times you get a warning: the screen dims and you must confirm it before you carry on. The fourth time, or being away for more than 60 seconds in total, ends the interview, so keep track of how long you are away.',
+      },
+      {
+        id: 'time-away',
+        needs: 'tabSwitch',
+        emphasis: true,
+        text: 'You have 60 seconds away from the interview screen in total, for the whole interview. Every time you leave is added to the same total, so a few seconds here and there add up. When the total goes past 60 seconds, the interview ends as soon as you are back, even if that is your first time leaving. The screen shows how much of the 60 seconds you have used.',
       },
       {
         id: 'keys-noted',

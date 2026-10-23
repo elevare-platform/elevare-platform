@@ -154,7 +154,7 @@ async def _pieces_waiting(db, interview_id) -> bool:
             select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview_id)
         )
     ).scalar_one_or_none()
-    return bool(run is not None and (run.recording_parts > 0 or run.previous_recordings))
+    return bool(run is not None and run.recording_parts > 0)
 
 
 async def _merge_recording_parts(db, repo, interview, reencode_timeout=None, queue_if_slow=False):
@@ -174,25 +174,18 @@ async def _merge_recording_parts(db, repo, interview, reencode_timeout=None, que
             select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
         )
     ).scalar_one_or_none()
-    earlier_attempts = list(run.previous_recordings or []) if run is not None else []
-    if (
-        run is None
-        or (run.recording_parts <= 0 and not earlier_attempts)
-        or not interview.r2_key
-    ):
+    if run is None or run.recording_parts <= 0 or not interview.r2_key:
         return interview
 
     storage = get_storage_service()
-    # In the order they happened: the final recordings of earlier attempts (an interview the
-    # employer reinstated), then this attempt's parts (kept across reloads), then its final one.
+    # In the order they happened: this attempt's parts (kept across reloads), then its final
+    # recording. The recordings of earlier attempts (an interview the employer reinstated) are
+    # NOT joined in: each attempt stays its own clip, shown separately to the employer.
     used_keys: list[str] = []
     new_key: str | None = None
     try:
         pieces: list[bytes] = []
-        wanted = [
-            *earlier_attempts,
-            *[part_key(interview.id, number) for number in range(1, run.recording_parts + 1)],
-        ]
+        wanted = [part_key(interview.id, number) for number in range(1, run.recording_parts + 1)]
         for key in wanted:
             # A piece that was reserved but never uploaded (the browser went away) is skipped.
             if not await storage.get_object_size(key):
@@ -206,10 +199,16 @@ async def _merge_recording_parts(db, repo, interview, reencode_timeout=None, que
             used_keys.append(key)
 
         if pieces:
-            pieces.append(await storage.download_file(interview.r2_key))
+            # The final recording can be missing altogether: a page that came back to find
+            # nothing left to record sends none. The earlier pieces are then the interview.
+            has_final = bool(await storage.get_object_size(interview.r2_key))
+            if has_final:
+                pieces.append(await storage.download_file(interview.r2_key))
             try:
                 joined = await concat_recordings(pieces, reencode_timeout=reencode_timeout)
             except RuntimeError:
+                if not has_final:
+                    raise  # nothing but real pieces were joined, so there is nothing to drop
                 # The final recording can be nearly empty (a reload just after the last
                 # answer), and a nearly empty file may not join. The earlier pieces are the
                 # real interview, so join them alone rather than lose them.
@@ -246,7 +245,6 @@ async def _merge_recording_parts(db, repo, interview, reencode_timeout=None, que
     if new_key is not None:
         interview = await repo.update(interview.id, {"r2_key": new_key})
     run.recording_parts = 0
-    run.previous_recordings = None
     await db.commit()
 
     for key in [*used_keys, *([old_key] if new_key is not None else [])]:
@@ -791,6 +789,19 @@ async def _expire_interview_videos_async() -> None:
             for interview in expired:
                 try:
                     await get_storage_service().delete_file(interview.r2_key)
+                    # A reinstated strict interview also keeps the recording of each earlier
+                    # attempt as its own file, which expires with the rest.
+                    run = (
+                        await db.execute(
+                            select(StrictInterviewRun).where(
+                                StrictInterviewRun.interview_id == interview.id
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if run is not None and run.previous_recordings:
+                        for key in run.previous_recordings:
+                            await get_storage_service().delete_file(key)
+                        run.previous_recordings = None
                     await repo.update(interview.id, {"r2_key": None})
                     await db.commit()
                     deleted += 1

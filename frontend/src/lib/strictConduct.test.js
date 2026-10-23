@@ -3,6 +3,7 @@ import {
   ENDED_FOOTER,
   KEY_WARNING,
   awayCause,
+  awayTone,
   endedMessage,
   leaveNotice,
   reasonFromStatus,
@@ -148,6 +149,26 @@ describe('leaveNotice', () => {
 
     expect(text).not.toMatch(/[–—!]/)
     expect(text).not.toMatch(/cheat|violat|suspicio|caught/i)
+  })
+})
+
+describe('awayTone', () => {
+  const at = (seconds) => awayTone({ away_seconds: seconds, max_away_seconds: 60 })
+
+  it.each([
+    [0, 'text-text-muted'],
+    [29, 'text-text-muted'],
+    [30, 'text-amber-700'],
+    [47, 'text-amber-700'],
+    [48, 'text-red-600'],
+    [60, 'text-red-600'],
+  ])('colours %s seconds of 60 as %s', (seconds, colour) => {
+    expect(at(seconds)).toContain(colour)
+  })
+
+  it('follows the limit the server sent, not 60', () => {
+    expect(awayTone({ away_seconds: 45, max_away_seconds: 90 })).toContain('text-amber-700')
+    expect(awayTone({ away_seconds: 72, max_away_seconds: 90 })).toContain('text-red-600')
   })
 })
 

@@ -19,6 +19,7 @@ from app.modules.interviews.enums import InterviewStatus
 from app.modules.interviews.models import StrictInterviewRun
 from app.modules.interviews.recording_merge import (
     JoinTimedOut,
+    attempt_of_key,
     final_key,
     merge_key,
     part_key,
@@ -229,11 +230,11 @@ async def test_the_parts_and_the_final_recording_become_one_video_in_that_order(
 
 
 @pytest.mark.asyncio
-async def test_the_recordings_of_earlier_attempts_come_first_then_the_parts_then_the_final_one(
+async def test_the_recordings_of_earlier_attempts_are_left_alone_as_their_own_clips(
     db_session, join
 ):
-    """An interview the employer reinstated: attempt 1's recording, then attempt 2's parts
-    kept across a reload, then attempt 2's final recording, as one video."""
+    """An interview the employer reinstated: attempt 2's parts (kept across a reload) and its
+    final recording are joined; attempt 1's recording stays a clip of its own."""
     interview = await _interview_with_parts(db_session, join, parts=1)
     run = await _run(db_session, interview.interview)
     run.attempt = 2
@@ -247,18 +248,19 @@ async def test_the_recordings_of_earlier_attempts_come_first_then_the_parts_then
 
     merged = await _merge(db_session, interview)
 
-    assert join["calls"] == [[b"ATTEMPT1", b"P1", b"FINAL2"]]
+    assert join["calls"] == [[b"P1", b"FINAL2"]]
     assert merged.r2_key == merge_key(interview.interview.id, 2)
-    assert join["storage"].files[merged.r2_key] == b"ATTEMPT1+P1+FINAL2"
-    # Attempt 2's joined video never overwrites attempt 1's, and everything joined is deleted.
+    assert join["storage"].files[merged.r2_key] == b"P1+FINAL2"
+    # Attempt 2's joined video never overwrites attempt 1's, and attempt 1's is not touched.
     assert merge_key(interview.interview.id, 2) != merge_key(interview.interview.id, 1)
-    assert first_attempt in join["storage"].deleted
+    assert first_attempt not in join["storage"].deleted
+    assert join["storage"].files[first_attempt] == b"ATTEMPT1"
     refreshed = await _run(db_session, interview.interview)
-    assert refreshed.previous_recordings is None and refreshed.recording_parts == 0
+    assert refreshed.previous_recordings == [first_attempt] and refreshed.recording_parts == 0
 
 
 @pytest.mark.asyncio
-async def test_an_earlier_attempt_alone_is_still_joined_in_front_of_the_final_recording(db_session, join):
+async def test_an_earlier_attempt_alone_has_nothing_to_join(db_session, join):
     interview = await _interview_with_parts(db_session, join, parts=0)
     run = await _run(db_session, interview.interview)
     first_attempt = f"interviews/{interview.interview.id}/recording.webm.attempt1"
@@ -268,8 +270,51 @@ async def test_an_earlier_attempt_alone_is_still_joined_in_front_of_the_final_re
 
     merged = await _merge(db_session, interview)
 
-    assert join["calls"] == [[b"ATTEMPT1", b"FINAL"]]
-    assert merged.r2_key == merge_key(interview.interview.id, run.attempt)
+    assert join["calls"] == []
+    assert merged.r2_key == interview.interview.r2_key
+
+
+@pytest.mark.asyncio
+async def test_when_the_video_expires_every_attempts_clip_goes_with_it(db_session, join, monkeypatch):
+    """The clips of earlier attempts are separate files now; none may outlive the retention."""
+    from datetime import UTC, datetime, timedelta
+
+    interview = await _interview_with_parts(db_session, join, parts=0)
+    run = await _run(db_session, interview.interview)
+    first = f"interviews/{interview.interview.id}/recording.webm"
+    run.previous_recordings = [first]
+    interview.interview.r2_key = final_key(interview.interview.id, 2)
+    interview.interview.video_expires_at = datetime.now(UTC) - timedelta(days=1)
+    await db_session.commit()
+    join["storage"].files[first] = b"ATTEMPT1"
+    join["storage"].files[interview.interview.r2_key] = b"FINAL2"
+
+    class SameSession:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(tasks_module, "create_async_engine", lambda *a, **k: AsyncMock(dispose=AsyncMock()))
+    monkeypatch.setattr(tasks_module, "async_sessionmaker", lambda *a, **k: SameSession)
+
+    await tasks_module._expire_interview_videos_async()
+
+    assert set(join["storage"].deleted) == {first, final_key(interview.interview.id, 2)}
+    await db_session.refresh(interview.interview)
+    assert interview.interview.r2_key is None
+    assert (await _run(db_session, interview.interview)).previous_recordings is None
+
+
+def test_the_attempt_a_recording_belongs_to_is_read_from_its_name():
+    interview_id = uuid.uuid4()
+
+    assert attempt_of_key(final_key(interview_id, 1)) == 1
+    assert attempt_of_key(merge_key(interview_id, 1)) == 1
+    assert attempt_of_key(final_key(interview_id, 2)) == 2
+    assert attempt_of_key(merge_key(interview_id, 3)) == 3
+    assert attempt_of_key(part_key(interview_id, 2)) == 1  # a part is never asked about
 
 
 @pytest.mark.asyncio
@@ -450,6 +495,21 @@ async def test_scoring_checks_the_transcript_only_against_a_whole_recording(db_s
     await tasks_module._transcribe_and_score_interview_async(str(interview.interview.id), notify=False)
 
     transcribed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_without_a_final_recording_the_earlier_pieces_are_the_interview(db_session, join):
+    """A page that came back to nothing left to record sends no final recording."""
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    original = interview.interview.r2_key
+    del join["storage"].files[original]
+
+    merged = await _merge(db_session, interview)
+
+    assert join["calls"] == [[b"P1", b"P2"]]
+    assert merged.r2_key == merge_key(interview.interview.id)
+    assert join["storage"].files[merged.r2_key] == b"P1+P2"
+    assert (await _run(db_session, interview.interview)).recording_parts == 0
 
 
 @pytest.mark.asyncio

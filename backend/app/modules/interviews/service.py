@@ -31,7 +31,7 @@ from app.modules.interviews.enums import (
     TranscriptCheckStatus,
 )
 from app.modules.interviews.models import Interview
-from app.modules.interviews.recording_merge import final_key, part_key
+from app.modules.interviews.recording_merge import attempt_of_key, final_key, part_key
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.schema import (
     InterviewDetailResponse,
@@ -39,6 +39,7 @@ from app.modules.interviews.schema import (
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
     RealtimeUsageDetail,
+    RecordingClip,
     StrictRecordingPartResponse,
 )
 from app.modules.interviews.scoring_access import assert_can_score_interviews
@@ -809,14 +810,21 @@ class InterviewService:
             expires_in_seconds=_UPLOAD_URL_EXPIRES_SECONDS,
         )
 
-    async def _assert_recording_uploaded(self, r2_key: str) -> None:
+    async def _assert_recording_uploaded(self, interview: Interview) -> bool:
         """Refuse to complete an interview whose recording never arrived.
 
         r2_key is set when the upload URL is *issued*, so it proves nothing
         about a file existing. Only a definitive "missing or empty" blocks;
         if storage itself cannot be asked (network, permissions) we let the
         candidate through rather than lose a real interview to an outage.
+
+        A strict interview that already has earlier recordings (kept across a reload, or from
+        before it was reinstated) may end with nothing new to record, for example when the
+        page comes back to find the last answer already given. It then completes with those.
+        Returns False in that case when the final file is not to be used at all (the caller
+        clears ``r2_key``, so no clip points at a file that is not there), True otherwise.
         """
+        r2_key = interview.r2_key
         try:
             size = await get_storage_service().get_object_size(r2_key)
         except Exception:
@@ -825,12 +833,18 @@ class InterviewService:
                 r2_key,
                 exc_info=True,
             )
-            return
+            return True
         if not size:
+            run = await self._strict().get_run(interview.id)
+            if run is not None and run.recording_parts > 0:
+                return True  # the earlier parts are joined in, so the key stays
+            if run is not None and run.previous_recordings:
+                return False  # the earlier attempts' clips are the recording; nothing new
             raise ValidationException(
                 "We did not receive your recording. Please try uploading again.",
                 code="RECORDING_NOT_RECEIVED",
             )
+        return True
 
     async def _complete_upload(
         self,
@@ -865,7 +879,7 @@ class InterviewService:
 
         if not interview.r2_key:
             raise ValidationException("No upload was started for this interview")
-        await self._assert_recording_uploaded(interview.r2_key)
+        keep_recording = await self._assert_recording_uploaded(interview)
 
         # A strict interview's transcript is built here from the answers the server saved,
         # never taken from the browser, and there is no live voice session to cost.
@@ -884,6 +898,8 @@ class InterviewService:
             "video_expires_at": now
             + timedelta(days=settings.interview_video_retention_days),
         }
+        if not keep_recording:
+            update_data["r2_key"] = None
         # Only set if present — never overwrite an already-saved transcript
         # with a blank one on a defensive resend/retry.
         if transcript:
@@ -933,7 +949,7 @@ class InterviewService:
             return interview
         if not interview.r2_key:
             raise ValidationException("No upload was started for this interview")
-        await self._assert_recording_uploaded(interview.r2_key)
+        keep_recording = await self._assert_recording_uploaded(interview)
 
         strict = self._strict()
         built = await strict.build_transcript(interview.id)
@@ -942,12 +958,14 @@ class InterviewService:
             "completed_at": now,
             "video_expires_at": now + timedelta(days=settings.interview_video_retention_days),
         }
+        if not keep_recording:
+            update_data["r2_key"] = None
         if built is not None:
             update_data["transcript"] = built[0]
         interview = await self._repo.update(interview.id, update_data)
 
         run = await strict.get_run(interview.id)
-        needs_join = bool(run and (run.recording_parts > 0 or run.previous_recordings))
+        needs_join = bool(run and run.recording_parts > 0)
         await self._db.commit()
         if needs_join:
             merge_interview_recording_task.delay(str(interview.id))
@@ -1477,6 +1495,20 @@ class InterviewService:
             video_url = await get_storage_service().generate_presigned_url(
                 interview.r2_key, expires_seconds=video_seconds,
             )
+        # A reinstated interview keeps each attempt's recording as its own clip.
+        clips: list[RecordingClip] = []
+        run = await self._strict().get_run(interview.id)
+        for key in (run.previous_recordings or []) if run is not None else []:
+            clips.append(
+                RecordingClip(
+                    attempt=attempt_of_key(key),
+                    video_url=await get_storage_service().generate_presigned_url(
+                        key, expires_seconds=video_seconds,
+                    ),
+                )
+            )
+        if video_url:
+            clips.append(RecordingClip(attempt=run.attempt if run else 1, video_url=video_url))
 
         cv_score, cv_strengths, cv_weaknesses, cv_fit_summary = (
             await self.resolve_cv_assessment(
@@ -1504,6 +1536,7 @@ class InterviewService:
             ai_rationale=interview.ai_rationale,
             ai_scored_at=interview.ai_scored_at,
             video_url=video_url,
+            recordings=clips,
             completed_at=interview.completed_at,
             cv_score=cv_score,
             cv_strengths=cv_strengths,

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.modules.interviews.schema import StrictDetail
+from app.modules.interviews.schema import RecordingClip, StrictDetail
 
 
 class ShareLinkResponse(BaseModel):
@@ -56,6 +56,8 @@ class SharedCandidate(BaseModel):
 
     # The recording link works for minutes only, so passing it on does not share it.
     video_url: str | None = None
+    # One clip per attempt of a reinstated strict interview, oldest first (same short-lived links).
+    recordings: list[RecordingClip] = []
 
     # What the AI asked, one question per entry, then the whole conversation. When the
     # transcript has no speaker labels, ``turns`` is empty and ``transcript`` holds it as

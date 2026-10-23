@@ -169,6 +169,15 @@ describe('StrictInterviewFlow, before it starts', () => {
     expect(screen.getByText(/I need to stop button/)).toBeInTheDocument()
   })
 
+  it('gives the 60 seconds away in total a rule of its own, highlighted, saying it can end it with no earlier warning', () => {
+    setup()
+
+    const rule = screen.getByText(/You have 60 seconds away from the interview screen in total/)
+    expect(rule).toHaveTextContent('even if that is your first time leaving')
+    expect(rule).toHaveTextContent('shows how much of the 60 seconds you have used')
+    expect(rule.closest('li').className).toContain('bg-amber-50')
+  })
+
   it('will not start until the rules are accepted and the camera has been checked', async () => {
     setup()
     const start = screen.getByRole('button', { name: 'Start the interview' })
@@ -872,8 +881,21 @@ describe('StrictInterviewFlow, leaving the screen', () => {
     expect(box).toHaveTextContent('more than 29 more seconds in total')
     expect(box).toHaveTextContent('The time for your question is still running')
     expect(screen.getByTestId('warnings-used')).toHaveTextContent('Warnings used: 2 of 3')
-    expect(screen.getByTestId('warnings-used')).toHaveTextContent('Time away: 31 of 60 seconds')
+    expect(screen.getByTestId('away-time')).toHaveTextContent('Time away from this screen: 31 of 60 seconds in total')
+    // The box itself shows the time used, with a bar.
+    expect(within(box).getByTestId('leave-away-used')).toHaveTextContent('Time away used: 31 of 60 seconds')
+    expect(within(box).getByRole('progressbar', { name: 'Time away used' })).toHaveAttribute('aria-valuenow', '31')
   })
+
+  it('shows the 60 second limit on screen from the start, before any leave, in a calm colour', async () => {
+    await running({ startInterview: vi.fn().mockResolvedValue(reply()) })
+
+    const line = await screen.findByTestId('away-time')
+    expect(line).toHaveTextContent('Time away from this screen: 0 of 60 seconds in total. At 60 the interview ends.')
+    expect(line.className).toContain('text-text-muted')
+    expect(screen.queryByTestId('warnings-used')).not.toBeInTheDocument()
+  })
+
 
   it('dims the screen with a box the moment the candidate is back, before the server has replied', async () => {
     let release
@@ -998,10 +1020,12 @@ describe('StrictInterviewFlow, leaving the screen', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
     await screen.findByTestId('question-text')
-    await wait(1500)
+    // The pop-up is up for longer than the second after which a leave would be reported, and
+    // well inside the 15 seconds after which the watch starts regardless (the test's real time
+    // also runs the fake clock, so there is room to spare).
+    await wait(2500)
 
-    // Back in full screen after a few seconds.
-    await wait(3000)
+    // Back in full screen.
     act(() => setFullscreen(document.documentElement))
     await wait(2000)
 

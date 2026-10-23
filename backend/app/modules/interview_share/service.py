@@ -249,6 +249,7 @@ class InterviewShareService:
         candidate.cv_strengths = detail.cv_strengths
         candidate.cv_weaknesses = detail.cv_weaknesses
         candidate.video_url = detail.video_url
+        candidate.recordings = detail.recordings
         candidate.strict = detail.strict
         candidate.questions = questions_asked(turns)
         candidate.turns = [SharedTurn(speaker=t.speaker, text=t.text) for t in turns]

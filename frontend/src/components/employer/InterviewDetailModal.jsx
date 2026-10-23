@@ -8,6 +8,8 @@ import { isPlanLimitMessage } from '@/lib/planErrors'
 import { endedBadge, isEndedStatus } from '@/lib/strictNotes'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
+import RecordingClips from '@/components/employer/RecordingClips'
+import { showsClips } from '@/lib/recordingClips'
 
 // Scoring runs in the background, so after asking for it we check the interview
 // every few seconds, for up to two minutes.
@@ -266,7 +268,9 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                 </div>
               )}
 
-              {detail.video_url ? (
+              {showsClips(detail.recordings, detail.video_url) ? (
+                <RecordingClips recordings={detail.recordings} />
+              ) : detail.video_url ? (
                 <video
                   src={detail.video_url}
                   controls
@@ -281,7 +285,11 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                   No recording is available for this interview.
                 </p>
               )}
-              {detail.video_url && <RecordingNotice strict={detail.strict} />}
+              {/* Says "being put together" or "may be only part": next to the video, or, for a
+                  reinstated interview whose latest pieces are being joined, under the earlier clips. */}
+              {(detail.video_url || showsClips(detail.recordings, detail.video_url)) && (
+                <RecordingNotice strict={detail.strict} />
+              )}
 
               {/* A strict interview: the rules accepted, how it went on the screen, each answer. */}
               <StrictInterviewNotes strict={detail.strict} />
