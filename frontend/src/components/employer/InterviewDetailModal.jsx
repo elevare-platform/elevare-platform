@@ -7,7 +7,7 @@ import { matchScoreBand } from '@/lib/matchScore'
 import { isPlanLimitMessage } from '@/lib/planErrors'
 import { endedBadge, isEndedStatus } from '@/lib/strictNotes'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
-import StrictInterviewNotes from '@/components/employer/StrictInterviewNotes'
+import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
 
 // Scoring runs in the background, so after asking for it we check the interview
 // every few seconds, for up to two minutes.
@@ -274,11 +274,14 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                 >
                   Your browser does not support inline video playback.
                 </video>
+              ) : detail.strict?.recording_pending ? (
+                <RecordingNotice strict={detail.strict} />
               ) : (
                 <p className="text-xs text-text-muted text-center py-6 border border-dashed border-border rounded-lg">
                   No recording is available for this interview.
                 </p>
               )}
+              {detail.video_url && <RecordingNotice strict={detail.strict} />}
 
               {/* A strict interview: the rules accepted, how it went on the screen, each answer. */}
               <StrictInterviewNotes strict={detail.strict} />

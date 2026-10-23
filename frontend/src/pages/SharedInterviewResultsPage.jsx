@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, MessageCircleQuestion, User } from 'lucide-reac
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { parseAssessment } from '@/lib/interviewAssessment'
-import StrictInterviewNotes from '@/components/employer/StrictInterviewNotes'
+import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
 
 // What the client is told about each candidate's interview.
 const STATUS = {
@@ -188,6 +188,7 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
 
       {open && hasDetail && (
         <div className="border-t border-border px-4 py-4 bg-surface-muted space-y-4">
+          {!candidate.video_url && <RecordingNotice strict={candidate.strict} />}
           {candidate.video_url && (
             <div>
               <video controls preload="metadata" src={candidate.video_url} className="w-full rounded-lg bg-black" />
@@ -195,6 +196,7 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
                 The video link is refreshed each time this page opens and stops working after about 15
                 minutes. Reload the page if it stops playing.
               </p>
+              <RecordingNotice strict={candidate.strict} />
             </div>
           )}
 

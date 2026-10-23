@@ -272,6 +272,23 @@ describe('InterviewDetailModal: an interview that ended early', () => {
     expect(screen.queryByRole('button', { name: 'Reinstate this interview' })).not.toBeInTheDocument()
   })
 
+  it('says the recording is being put together, not that there is none, while the pieces are joined', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, strict: { ...STRICT, ended: null, recording_pending: true } } })
+    renderEnded()
+
+    expect(await screen.findByText(/being put together/)).toBeInTheDocument()
+    expect(screen.queryByText(/No recording is available/)).not.toBeInTheDocument()
+  })
+
+  it('warns that the video may be only part of the interview, next to the video', async () => {
+    api.get.mockResolvedValue({
+      data: { ...BASE, video_url: 'https://r2/v.webm', strict: { ...STRICT, ended: null, recording_partial: true } },
+    })
+    renderEnded()
+
+    expect(await screen.findByText(/only part of this interview/)).toBeInTheDocument()
+  })
+
   it('shows no notes for a live interview', async () => {
     api.get.mockResolvedValue({ data: { ...BASE, strict: null } })
     renderEnded()

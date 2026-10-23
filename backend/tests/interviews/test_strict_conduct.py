@@ -7,7 +7,7 @@ count; "I need to stop" ends it as the candidate's own choice; either ending kee
 recording and the answers; the employer who owns the job can reinstate it and the candidate
 carries on where they stopped, with the time they had left."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -262,6 +262,27 @@ async def test_an_odd_key_name_is_stored_as_other(client, db_session, fakes, clo
 
 
 @pytest.mark.asyncio
+async def test_the_full_key_combination_is_stored_not_just_the_first_key(client, db_session, fakes, clock):
+    interview, _ = await started(client, db_session)
+
+    for combination in ("Ctrl+Shift+I", "Alt+Tab", "Ctrl+Alt+Shift+Meta+Backspace", "Meta+L"):
+        await event(client, interview.token, "key", key=combination)
+
+    details = [key.detail for key in await events_of(db_session, interview.interview, "KEY_PRESS")]
+    assert details == ["Ctrl+Shift+I", "Alt+Tab", "Ctrl+Alt+Shift+Meta+Backspace", "Meta+L"]
+
+
+@pytest.mark.asyncio
+async def test_a_key_name_longer_than_the_column_is_refused_not_cut_short(client, db_session, fakes, clock):
+    interview, _ = await started(client, db_session)
+
+    resp = await event(client, interview.token, "key", key="Ctrl+" * 9)
+
+    assert resp.status_code == 422
+    assert await events_of(db_session, interview.interview, "KEY_PRESS") == []
+
+
+@pytest.mark.asyncio
 async def test_the_number_of_stored_key_presses_is_capped(client, db_session, fakes, clock, monkeypatch):
     from app.modules.interviews import strict_conduct
 
@@ -477,7 +498,10 @@ async def test_stopping_tells_the_employer_the_candidate_chose_to(client, db_ses
 
     note = (
         await db_session.execute(
-            select(Notification).where(Notification.type == "AI_INTERVIEW_ENDED")
+            select(Notification).where(
+                Notification.type == "AI_INTERVIEW_ENDED",
+                Notification.recipient_id == interview.job.employer_id,
+            )
         )
     ).scalar_one()
     assert "stopped their AI interview" in note.title and "chose to stop" in note.body
@@ -1052,6 +1076,105 @@ async def test_a_finished_interview_that_was_reinstated_is_scored_as_normal(
     await db_session.refresh(interview.interview)
     assert interview.interview.status == InterviewStatus.UPLOADED.value
     evidence.scoring.delay.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# A recording that is still being put together from its pieces
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def signed(monkeypatch):
+    """A recording link without touching real storage."""
+    storage = MagicMock()
+    storage.generate_presigned_url = AsyncMock(return_value="https://signed.example/video")
+    monkeypatch.setattr(service_module, "get_storage_service", lambda: storage)
+    return storage
+
+
+async def finished_in_pieces(db_session, clock, *, parts=0, previous=None):
+    interview = await make_strict(
+        db_session,
+        status=InterviewStatus.UPLOADED.value,
+        r2_key="interviews/x/recording.webm",
+        completed_at=clock.now(),
+        transcript="AI: q\n\nCandidate: a",
+    )
+    run = await run_of(db_session, interview.interview)
+    run.recording_parts = parts
+    run.previous_recordings = previous
+    await db_session.commit()
+    return interview
+
+
+async def detail_of(client, interview):
+    return (await client.get(_detail_url(interview), headers=_headers(interview.employer))).json()
+
+
+@pytest.mark.asyncio
+async def test_while_the_pieces_are_being_joined_no_video_is_shown_and_the_employer_is_told(
+    client, db_session, fakes, clock, signed
+):
+    interview = await finished_in_pieces(db_session, clock, parts=1)
+
+    body = await detail_of(client, interview)
+
+    assert body["video_url"] is None
+    assert body["strict"]["recording_pending"] is True
+    assert body["strict"]["recording_partial"] is False
+    signed.generate_presigned_url.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_interview_the_employer_reinstated_is_also_waiting_for_its_pieces(
+    client, db_session, fakes, clock, signed
+):
+    interview = await finished_in_pieces(db_session, clock, previous=["interviews/x/recording.webm.attempt1"])
+
+    body = await detail_of(client, interview)
+
+    assert body["video_url"] is None and body["strict"]["recording_pending"] is True
+
+
+@pytest.mark.asyncio
+async def test_once_the_pieces_are_joined_the_whole_video_is_shown(client, db_session, fakes, clock, signed):
+    interview = await finished_in_pieces(db_session, clock)
+
+    body = await detail_of(client, interview)
+
+    assert body["video_url"] == "https://signed.example/video"
+    assert body["strict"]["recording_pending"] is False and body["strict"]["recording_partial"] is False
+
+
+@pytest.mark.asyncio
+async def test_if_the_joining_never_happens_the_last_piece_is_shown_marked_as_partial(
+    client, db_session, fakes, clock, signed
+):
+    interview = await finished_in_pieces(db_session, clock, parts=1)
+    clock.advance(31 * 60)
+
+    body = await detail_of(client, interview)
+
+    assert body["video_url"] == "https://signed.example/video"
+    assert body["strict"]["recording_pending"] is False
+    assert body["strict"]["recording_partial"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_shared_link_does_not_show_a_half_joined_video_either(db_session, signed):
+    from tests.interview_share.test_shared_results import results, setup_job
+    from tests.interview_share.test_shared_strict import strict_candidate
+
+    employer, job = await setup_job(db_session)
+    row, run = await strict_candidate(db_session, employer, job, "Ada Obi", status="SCORED", ai_score=70, ai_rationale="Fine.", transcript="AI: q\n\nCandidate: a")
+    run.recording_parts = 1
+    row.completed_at = datetime.now(UTC)
+    await db_session.flush()
+
+    [candidate] = (await results(db_session, employer, job)).candidates
+
+    assert candidate.video_url is None
+    assert candidate.strict.recording_pending is True
 
 
 def test_a_not_started_run_has_no_open_leave_when_created():

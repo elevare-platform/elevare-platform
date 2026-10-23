@@ -9,13 +9,16 @@ import json
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
 import pytest
 
 from app.modules.interviews.recording_merge import (
+    JoinTimedOut,
     build_command,
+    can_copy,
     concat_recordings,
     merge_key,
     part_key,
@@ -77,6 +80,95 @@ async def test_two_pieces_become_one_video_as_long_as_both_together():
     assert float(info["format"]["duration"]) == pytest.approx(5.0, abs=0.6)
     # Both pieces, whatever their own size, come out at one picture size.
     assert (found["video"]["width"], found["video"]["height"]) == (1280, 720)
+
+
+@pytest.mark.asyncio
+async def test_pieces_from_one_browser_are_joined_by_copying_not_re_encoding():
+    """Same codecs and size, as one browser and camera produce: joined losslessly and fast. The
+    picture keeps its own size (a re-encode would have scaled it to 1280x720)."""
+    first = make_webm(2, size="320x240")
+    second = make_webm(3, size="320x240")
+
+    started = time.monotonic()
+    joined = await concat_recordings([first, second])
+    took = time.monotonic() - started
+
+    info = probe(joined)
+    found = streams(info)
+    assert (found["video"]["width"], found["video"]["height"]) == (320, 240)
+    assert float(info["format"]["duration"]) == pytest.approx(5.0, abs=0.6)
+    assert set(found) == {"video", "audio"}
+    assert took < 5
+
+
+@pytest.mark.asyncio
+async def test_pieces_of_a_different_size_are_still_re_encoded_to_one_size():
+    joined = await concat_recordings([make_webm(1, size="320x240"), make_webm(1, size="640x360")])
+
+    found = streams(probe(joined))
+    assert (found["video"]["width"], found["video"]["height"]) == (1280, 720)
+
+
+@pytest.mark.asyncio
+async def test_a_re_encoding_join_that_takes_too_long_is_stopped():
+    """Different sizes need re-encoding, which is slow; scoring cannot wait for it."""
+    with pytest.raises(JoinTimedOut):
+        await concat_recordings(
+            [make_webm(2, size="320x240"), make_webm(2, size="640x360")], reencode_timeout=0.01
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_join_by_copying_is_not_held_to_the_re_encoding_limit():
+    joined = await concat_recordings(
+        [make_webm(1, size="320x240"), make_webm(1, size="320x240")], reencode_timeout=0.01
+    )
+
+    assert float(probe(joined)["format"]["duration"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_a_joined_recording_has_a_length_so_a_browser_can_seek_in_it():
+    """A browser's own recording has no duration (it was never finished as a file); the joined
+    one does."""
+    joined = await concat_recordings([make_webm(2, size="320x240"), make_webm(2, size="320x240")])
+
+    assert float(probe(joined)["format"]["duration"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_a_browser_style_recording_without_a_length_is_joined_by_copying():
+    """What the browser really makes: video and sound, but no duration in the file."""
+
+    def without_length(data: bytes) -> bytes:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "in.webm"
+            target = Path(tmpdir) / "out.webm"
+            source.write_bytes(data)
+            # Piping to a file in streaming mode leaves out the duration and the index.
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(source), "-c", "copy",
+                 "-f", "webm", "-live", "1", str(target)],
+                check=True,
+            )
+            return target.read_bytes()
+
+    pieces = [without_length(make_webm(2, size="320x240")) for _ in range(2)]
+
+    joined = await concat_recordings(pieces)
+
+    assert float(probe(joined)["format"]["duration"]) == pytest.approx(4.0, abs=0.8)
+
+
+def test_only_matching_pieces_may_be_copied():
+    same = {"video": "vp9", "audio": "opus", "size": (640, 480), "duration": None}
+
+    assert can_copy([same, dict(same)]) is True
+    assert can_copy([same, {**same, "video": "vp8"}]) is False
+    assert can_copy([same, {**same, "size": (1280, 720)}]) is False
+    assert can_copy([same, {**same, "audio": "aac"}]) is False
+    assert can_copy([same, None]) is False
+    assert can_copy([]) is False
 
 
 @pytest.mark.asyncio

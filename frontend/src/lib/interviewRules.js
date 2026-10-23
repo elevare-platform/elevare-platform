@@ -132,10 +132,11 @@ export const RULE_GROUPS = [
 // Same convention: a rule that describes monitoring carries `needs` and waits for its flag. Only
 // what the screen really does is stated. Version S2 (phase 3): it notices a candidate leaving
 // the screen, warns, ends the interview after repeated or long absences, notes the keys that
-// try to leave, and has a stop button. The numbers in the text (4 leaves, 60 seconds) are the
+// try to leave, and has a stop button. Version S3: a warning dims the screen and must be
+// confirmed, and every shortcut is noted with its full combination. The numbers in the text (4 leaves, 60 seconds) are the
 // server's (settings `strict_max_leaves` and `strict_max_away_seconds`); change both together.
 // Change STRICT_RULES_VERSION whenever the wording of a visible rule changes.
-export const STRICT_RULES_VERSION = 'S2'
+export const STRICT_RULES_VERSION = 'S3'
 
 // The strict interview's own monitoring switches. Separate from MONITORING above, which belongs
 // to the live interview (whose rules must never claim anything it does not do).
@@ -197,12 +198,12 @@ export const STRICT_RULE_GROUPS = [
       {
         id: 'stay-on-page',
         needs: 'tabSwitch',
-        text: 'Stay on the interview screen, in full screen. Leaving it (to another tab, window or app, or by leaving full screen) is noted and shown to the employer, with the time and how long you were away. The first three times you get a warning. The fourth time, or being away for more than 60 seconds in total, ends the interview.',
+        text: 'Stay on the interview screen, in full screen. Leaving it (to another tab, window or app, or by leaving full screen) is noted and shown to the employer, with the time and how long you were away. The first three times you get a warning: the screen dims and you must confirm it before you carry on. The fourth time, or being away for more than 60 seconds in total, ends the interview, so keep track of how long you are away.',
       },
       {
         id: 'keys-noted',
         needs: 'tabSwitch',
-        text: 'Pressing a key that tries to leave the interview (Esc, Alt, the Windows or Command key, F11, F12, or Ctrl with T, W, N or Tab) is also noted and shown to the employer. It does not end the interview.',
+        text: 'Pressing a shortcut (a key held with Ctrl, Alt or the Windows or Command key, such as Ctrl+T, Alt+Tab or Ctrl+Shift+I), Esc, or a function key such as F11 or F12 is also noted and shown to the employer, with the full combination. It does not end the interview.',
       },
       {
         id: 'stop-button',

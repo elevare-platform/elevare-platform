@@ -11,6 +11,11 @@ export const KEY_REPEAT_MS = 2000
 export const WARNING_SHOW_MS = 12000
 // How often the screen says it is still there (the server times a reload from this).
 export const HEARTBEAT_MS = 15000
+// Nothing counts as a leave until the screen has settled once after the interview starts (full
+// screen taking effect, a browser pop-up), or this long has passed.
+export const SETTLE_MS = 15000
+// The tab's title while the candidate is away, so they see it in the tab list and the taskbar.
+export const AWAY_TITLE = 'Return to your interview'
 
 /**
  * Why the candidate is away from the interview screen right now, or null when they are not: the
@@ -24,33 +29,88 @@ export function awayCause(doc = document) {
   return null
 }
 
-const NAMED_KEYS = { Escape: 'Escape', Alt: 'Alt', Meta: 'Meta', OS: 'Meta', F11: 'F11', F12: 'F12' }
+const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta', 'OS', 'AltGraph'])
+const SPECIAL_KEYS = {
+  ' ': 'Space',
+  Tab: 'Tab',
+  Enter: 'Enter',
+  Backspace: 'Backspace',
+  Delete: 'Delete',
+  Insert: 'Insert',
+  Home: 'Home',
+  End: 'End',
+  PageUp: 'PageUp',
+  PageDown: 'PageDown',
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  Escape: 'Escape',
+}
+
+/** The name of the key in a shortcut: a letter or digit as a capital, a known key by its name, any
+ *  other (punctuation, a symbol) as "Other". */
+function keyName(key) {
+  if (SPECIAL_KEYS[key]) return SPECIAL_KEYS[key]
+  if (/^F([1-9]|1[0-2])$/.test(key)) return key
+  if (/^[A-Za-z0-9]$/.test(key)) return key.toUpperCase()
+  return 'Other'
+}
 
 /**
- * The name of a key press that tries to leave the interview (Esc, Alt, the Windows or Command key,
- * F11, F12, Ctrl with T, W, N or Tab), or null for any other key. These are recorded and warned
- * about, and never count towards ending the interview.
+ * The name of a key press the employer is told about, or null for an ordinary key. These are
+ * recorded and warned about, and never count towards ending the interview:
+ *   - any shortcut, written as the FULL combination in a fixed order, such as Ctrl+T, Alt+Tab,
+ *     Ctrl+Shift+I or Meta+L (a key pressed with Ctrl, Alt or the Windows or Command key);
+ *   - Esc, and the function keys F1 to F12;
+ *   - the Alt key, or the Windows or Command key, pressed by itself.
+ * A lone Ctrl or Shift is ordinary and is not reported.
  */
 export function reportableKey(event) {
-  if (NAMED_KEYS[event.key]) return NAMED_KEYS[event.key]
-  if (event.ctrlKey || event.metaKey) {
-    if (event.key === 'Tab') return 'Ctrl+Tab'
-    const letter = (event.key || '').toLowerCase()
-    if (letter === 't' || letter === 'w' || letter === 'n') return `Ctrl+${letter.toUpperCase()}`
+  const key = event.key || ''
+  if (MODIFIER_KEYS.has(key)) {
+    if (key === 'Alt') return 'Alt'
+    if (key === 'Meta' || key === 'OS') return 'Meta'
+    return null
   }
+  if (event.ctrlKey || event.altKey || event.metaKey) {
+    const parts = []
+    if (event.ctrlKey) parts.push('Ctrl')
+    if (event.altKey) parts.push('Alt')
+    if (event.shiftKey) parts.push('Shift')
+    if (event.metaKey) parts.push('Meta')
+    return [...parts, keyName(key)].join('+')
+  }
+  if (key === 'Escape') return 'Escape'
+  if (/^F([1-9]|1[0-2])$/.test(key)) return key
   return null
 }
 
-/** The warning to show after a leave, or null when there is none to show (no leave yet, or the
- *  interview has ended, which has its own screen). `state` is what the server last said. */
-export function leaveWarning(state) {
+/**
+ * What the box that dims the screen says when the candidate comes back from leaving it, from what
+ * the server counted (`state`), or null when there is nothing to say (no leave counted, or the
+ * interview has ended, which has its own screen). It says how many warnings are used, what one
+ * more leave costs, and that the time is still running.
+ */
+export function leaveNotice(state) {
   if (!state || state.ended || !state.leaves) return null
-  const plural = state.leaves === 1 ? 'time' : 'times'
-  return (
-    `You have left the interview screen ${state.leaves} ${plural}. `
-    + `If you leave it ${state.max_leaves} times, or are away for more than ${state.max_away_seconds} seconds `
-    + `in total, the interview ends. You have been away ${state.away_seconds} of ${state.max_away_seconds} seconds.`
-  )
+  const allowed = state.max_leaves - 1
+  const used = Math.min(state.leaves, allowed)
+  const leavesLeft = Math.max(0, state.max_leaves - state.leaves)
+  const secondsLeft = Math.max(0, state.max_away_seconds - state.away_seconds)
+  const last = leavesLeft <= 1
+  const more = leavesLeft === 1 ? '1 more time' : `${leavesLeft} more times`
+  return {
+    used,
+    allowed,
+    last,
+    lines: [
+      last
+        ? `This was your last warning. If you leave the screen again, or are away for more than ${secondsLeft} more seconds in total, the interview ends.`
+        : `If you leave it ${more}, or are away for more than ${secondsLeft} more seconds in total, the interview ends.`,
+      'The time for your question is still running.',
+    ],
+  }
 }
 
 export const KEY_WARNING = 'That key is noted and shown to the employer. It does not end the interview.'

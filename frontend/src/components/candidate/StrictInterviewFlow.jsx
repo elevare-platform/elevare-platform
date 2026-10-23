@@ -15,7 +15,8 @@ import {
   KEY_WARNING,
   WARNING_SHOW_MS,
   endedMessage,
-  leaveWarning,
+  AWAY_TITLE,
+  leaveNotice as leaveNoticeFor,
   reasonFromStatus,
   reportableKey,
 } from '@/lib/strictConduct'
@@ -111,6 +112,12 @@ export default function StrictInterviewFlow({
   // The warning on screen (about leaving, or about a key), and how the server counts so far.
   const [warning, setWarning] = useState(null)
   const [conduct, setConduct] = useState(null)
+  // The camera and microphone check on the first screen: 'idle' | 'asking' | 'ready'.
+  const [cameraState, setCameraState] = useState('idle')
+  const [cameraError, setCameraError] = useState(null)
+  // The box that dims the screen when the candidate comes back from leaving it: null, or what
+  // to show. `text` is empty until the server has counted the leave.
+  const [leaveNotice, setLeaveNotice] = useState(null)
   const [confirmStop, setConfirmStop] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [stopError, setStopError] = useState(null)
@@ -126,6 +133,7 @@ export default function StrictInterviewFlow({
   const [uploadNote, setUploadNote] = useState(null)
 
   const videoRef = useRef(null)
+  const previewRef = useRef(null)
   const streamRef = useRef(null)
   const interviewRecorderRef = useRef(null)
   const interviewChunksRef = useRef([])
@@ -205,12 +213,18 @@ export default function StrictInterviewFlow({
     return () => document.removeEventListener('fullscreenchange', onChange)
   }, [isLive])
 
-  // The self-view shows whenever the interview is on screen.
+  // The self-view shows whenever the interview is on screen, and the preview on the first screen.
   useEffect(() => {
     if (isLive && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current
     }
   }, [isLive, phase])
+
+  useEffect(() => {
+    if (phase === 'gate' && cameraState === 'ready' && previewRef.current && streamRef.current) {
+      previewRef.current.srcObject = streamRef.current
+    }
+  }, [phase, cameraState])
 
   const releaseEverything = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -313,6 +327,7 @@ export default function StrictInterviewFlow({
     }
     setConfirmStop(false)
     setWarning(null)
+    setLeaveNotice(null)
     if (timerRef.current) clearInterval(timerRef.current)
     setPhase('ending')
     if (answerRecorderRef.current && answerRecorderRef.current.state !== 'inactive') {
@@ -418,9 +433,14 @@ export default function StrictInterviewFlow({
         finishInterview(next.ended)
         return
       }
-      if (body.type === 'returned') showWarning(leaveWarning(next))
+      if (body.type === 'returned') {
+        // The server has counted the leave: say how many warnings are used and what is left.
+        const notice = leaveNoticeFor(next)
+        setLeaveNotice(notice ? { loading: false, ...notice } : null)
+      }
     } catch {
-      /* carry on */
+      // The leave could not be counted just now. The candidate is still told to stay.
+      if (body.type === 'returned') setLeaveNotice({ loading: false, failed: true })
     }
   }, [reportEvent, finishInterview, showWarning])
 
@@ -431,8 +451,28 @@ export default function StrictInterviewFlow({
   useLeaveWatch({
     active: isLive && Boolean(reportEvent),
     onLeft: (cause) => sendEvent({ type: 'left', cause }),
-    onReturned: () => sendEvent({ type: 'returned' }),
+    // Coming back dims the screen and shows a box at once, so the candidate cannot miss that
+    // leaving was noticed; the server's count fills it in a moment later.
+    onReturned: () => {
+      setLeaveNotice({ loading: true })
+      sendEvent({ type: 'returned' })
+    },
   })
+
+  // While the candidate is on another tab the interview's tab says so in the tab list and the
+  // taskbar, which is where they are looking.
+  useEffect(() => {
+    if (!isLive) return undefined
+    const original = document.title
+    const sync = () => {
+      document.title = document.visibilityState === 'hidden' ? AWAY_TITLE : original
+    }
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      document.removeEventListener('visibilitychange', sync)
+      document.title = original
+    }
+  }, [isLive])
 
   // The server times a reload from the last time the screen was heard from.
   useEffect(() => {
@@ -464,6 +504,31 @@ export default function StrictInterviewFlow({
     try { await navigator.keyboard?.lock?.() } catch { /* not supported or refused */ }
   }
 
+  // The browser asks for the camera and microphone in a pop-up that takes focus and can take the
+  // page out of full screen. So that never happens during the interview (where it would count
+  // as leaving the screen), it is asked here, on the first screen, before full screen. The
+  // stream is kept and used for the interview, so starting asks for nothing more.
+  const checkCamera = async () => {
+    setCameraError(null)
+    setCameraState('asking')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: true,
+      })
+      stopTracks(streamRef.current)
+      streamRef.current = stream
+      setCameraState('ready')
+    } catch (err) {
+      setCameraError(
+        err?.name === 'NotAllowedError'
+          ? 'Camera and microphone access is blocked. Allow it with the camera icon in the address bar, then press the button again.'
+          : 'We could not use your camera and microphone. Check they are connected and not in use by another app, then press the button again.'
+      )
+      setCameraState('idle')
+    }
+  }
+
   const begin = async () => {
     setError(null)
     finishingRef.current = false
@@ -475,21 +540,25 @@ export default function StrictInterviewFlow({
       } catch (err) {
         throw new Error('The interview needs full screen. Please allow it and try again.', { cause: err })
       }
-      let stream
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: true,
-        })
-      } catch (err) {
-        throw new Error(
-          err?.name === 'NotAllowedError'
-            ? 'Camera and microphone access is required for the interview.'
-            : 'We could not use your camera and microphone. Check they are connected and not in use by another app.',
-          { cause: err }
-        )
+      // The camera was checked on the first screen. If it has since gone (unplugged, taken by
+      // another app) it is asked for again, which may bring up the pop-up.
+      let stream = streamRef.current
+      if (!stream || !stream.getTracks().every((track) => track.readyState === 'live')) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            video: true,
+          })
+        } catch (err) {
+          throw new Error(
+            err?.name === 'NotAllowedError'
+              ? 'Camera and microphone access is required for the interview.'
+              : 'We could not use your camera and microphone. Check they are connected and not in use by another app.',
+            { cause: err }
+          )
+        }
+        streamRef.current = stream
       }
-      streamRef.current = stream
       const next = await startInterview({ accepted: true, rulesVersion: STRICT_RULES_VERSION })
       if (next.ended) {
         // It already ended (the employer has not reinstated it): nothing to record.
@@ -512,6 +581,7 @@ export default function StrictInterviewFlow({
       beginTurn(next)
     } catch (err) {
       releaseEverything()
+      setCameraState('idle')
       setError(serverMessage(err, err?.message || 'Something went wrong starting the interview.'))
       setPhase('error')
     }
@@ -524,7 +594,7 @@ export default function StrictInterviewFlow({
   // ── Screens ──────────────────────────────────────────────────────────────
 
   const turn = state?.turn ?? null
-  const canStart = device.ok && (resuming || accepted)
+  const canStart = device.ok && cameraState === 'ready' && (resuming || accepted)
 
   if (isLive) {
     const busy = phase !== 'question'
@@ -633,6 +703,46 @@ export default function StrictInterviewFlow({
                 Return to full screen to see the question. The time keeps running.
               </p>
               <Button onClick={returnToFullScreen} className="w-full">Return to full screen</Button>
+            </div>
+          </div>
+        )}
+
+        {leaveNotice && (
+          // The screen dims and a box says the leave was noticed. The candidate confirms it before
+          // going on. The question timer keeps running behind it.
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="You left the interview screen"
+            className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-6"
+          >
+            <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 text-center shadow-xl">
+              <AlertCircle size={36} className="mx-auto text-amber-600" aria-hidden="true" />
+              <p className="text-lg font-semibold text-text">You left the interview screen</p>
+              {leaveNotice.loading && (
+                <p className="text-sm text-text-muted">Checking how many warnings you have used…</p>
+              )}
+              {!leaveNotice.loading && leaveNotice.failed && (
+                <p className="text-sm text-text-muted">
+                  Please stay on this screen. Leaving it is noted and can end the interview.
+                </p>
+              )}
+              {!leaveNotice.loading && !leaveNotice.failed && (
+                <div className="space-y-2">
+                  <p
+                    className={'text-base font-bold ' + (leaveNotice.last ? 'text-red-600' : 'text-amber-700')}
+                    data-testid="leave-warning-count"
+                  >
+                    Warning {leaveNotice.used} of {leaveNotice.allowed}
+                  </p>
+                  {leaveNotice.lines.map((line) => (
+                    <p key={line} className="text-sm text-text-muted">{line}</p>
+                  ))}
+                </div>
+              )}
+              <Button onClick={() => setLeaveNotice(null)} disabled={leaveNotice.loading} className="w-full">
+                I understand, go back to the interview
+              </Button>
             </div>
           </div>
         )}
@@ -747,9 +857,42 @@ export default function StrictInterviewFlow({
               </>
             )}
 
+            {/* The camera and microphone are allowed HERE, before full screen: the browser's
+                permission pop-up would otherwise take the screen out of full screen. */}
+            <div className="space-y-3 rounded-lg border border-border bg-background p-3.5">
+              <p className="text-sm font-medium text-text">
+                {resuming ? 'Check your camera and microphone' : 'Step 1: check your camera and microphone'}
+              </p>
+              {cameraState === 'ready' ? (
+                <div className="space-y-2">
+                  <video
+                    ref={previewRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="aspect-video w-full max-w-xs -scale-x-100 rounded-lg bg-black object-cover"
+                  />
+                  <p className="flex items-center gap-1.5 text-sm text-green-700">
+                    <CheckCircle2 size={16} aria-hidden="true" /> Your camera and microphone are working.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-text-muted">
+                    Your browser will ask to use your camera and microphone. Press Allow. This is done
+                    now so that nothing pops up once the interview has started.
+                  </p>
+                  <Button variant="outline" onClick={checkCamera} disabled={!device.ok || cameraState === 'asking'}>
+                    {cameraState === 'asking' ? 'Waiting for your browser…' : 'Check my camera and microphone'}
+                  </Button>
+                  {cameraError && <p role="alert" className="text-xs text-red-700">{cameraError}</p>}
+                </>
+              )}
+            </div>
+
             <p className="text-xs text-text-muted">
-              When you press the button the screen goes full screen and your browser asks to use
-              your camera and microphone.
+              {resuming ? '' : 'Step 2: '}When you press the button below the screen goes full screen and the
+              interview starts.
             </p>
             <Button onClick={begin} disabled={!canStart} className="w-full">
               {resuming ? 'Continue the interview' : 'Start the interview'}

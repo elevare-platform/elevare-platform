@@ -17,7 +17,12 @@ from app.modules.interviews import service as service_module
 from app.modules.interviews import tasks as tasks_module
 from app.modules.interviews.enums import InterviewStatus
 from app.modules.interviews.models import StrictInterviewRun
-from app.modules.interviews.recording_merge import final_key, merge_key, part_key
+from app.modules.interviews.recording_merge import (
+    JoinTimedOut,
+    final_key,
+    merge_key,
+    part_key,
+)
 from app.modules.interviews.repository import InterviewRepository
 
 from .test_strict_interview import _base, _logged_in_strict, make_strict
@@ -170,10 +175,13 @@ class MemoryStorage:
 @pytest.fixture
 def join(monkeypatch):
     """The bucket and the join, replaced. The fake join glues the bytes in the order given."""
-    state = {"storage": MemoryStorage(), "calls": [], "fail": False}
+    state = {"storage": MemoryStorage(), "calls": [], "timeouts": [], "fail": False, "slow": False}
 
-    async def fake_concat(recordings):
+    async def fake_concat(recordings, reencode_timeout=None):
         state["calls"].append(list(recordings))
+        state["timeouts"].append(reencode_timeout)
+        if state["slow"]:
+            raise JoinTimedOut("too slow")
         if state["fail"]:
             raise RuntimeError("ffmpeg could not join the recordings")
         return b"+".join(recordings)
@@ -346,7 +354,7 @@ async def test_a_final_recording_that_will_not_join_does_not_cost_the_real_parts
     original = interview.interview.r2_key
     calls = []
 
-    async def concat_that_chokes_on_the_final(recordings):
+    async def concat_that_chokes_on_the_final(recordings, reencode_timeout=None):
         calls.append(list(recordings))
         if b"FINAL" in recordings:
             raise RuntimeError("ffmpeg could not join the recordings")
@@ -362,6 +370,86 @@ async def test_a_final_recording_that_will_not_join_does_not_cost_the_real_parts
     # The unusable final recording is deleted too, so nothing outlives the retention period.
     assert original in join["storage"].deleted
     assert (await _run(db_session, interview.interview)).recording_parts == 0
+
+
+@pytest.mark.asyncio
+async def test_a_join_that_is_too_slow_changes_nothing_and_is_handed_to_its_own_task(
+    db_session, join, monkeypatch
+):
+    """Scoring has four minutes in all. A join that would take longer is stopped, scoring goes
+    on with the final recording, and the join is queued where it has the time."""
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    original = interview.interview.r2_key
+    join["slow"] = True
+    queued = MagicMock()
+    monkeypatch.setattr(tasks_module, "merge_interview_recording_task", queued)
+    repo = InterviewRepository(db_session)
+    loaded = await repo.get_by_id(interview.interview.id)
+
+    merged = await tasks_module._merge_recording_parts(
+        db_session, repo, loaded, reencode_timeout=tasks_module.SCORING_JOIN_SECONDS, queue_if_slow=True
+    )
+
+    assert merged.r2_key == original
+    assert join["timeouts"] == [tasks_module.SCORING_JOIN_SECONDS]
+    queued.delay.assert_called_once_with(str(interview.interview.id))
+    # Nothing was deleted or changed, so the join can be run again.
+    assert join["storage"].deleted == []
+    assert (await _run(db_session, interview.interview)).recording_parts == 2
+    assert await tasks_module._pieces_waiting(db_session, interview.interview.id) is True
+
+
+@pytest.mark.asyncio
+async def test_the_task_that_joins_in_the_background_is_not_queued_again_when_it_is_slow(
+    db_session, join, monkeypatch
+):
+    interview = await _interview_with_parts(db_session, join, parts=1)
+    join["slow"] = True
+    queued = MagicMock()
+    monkeypatch.setattr(tasks_module, "merge_interview_recording_task", queued)
+
+    await _merge(db_session, interview)
+
+    queued.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pieces_are_waiting_only_while_they_have_not_been_joined(db_session, join):
+    interview = await _interview_with_parts(db_session, join, parts=1)
+    assert await tasks_module._pieces_waiting(db_session, interview.interview.id) is True
+
+    await _merge(db_session, interview)
+
+    assert await tasks_module._pieces_waiting(db_session, interview.interview.id) is False
+
+
+@pytest.mark.asyncio
+async def test_scoring_checks_the_transcript_only_against_a_whole_recording(db_session, join, monkeypatch):
+    """With the pieces still apart, the recording holds only the last part, which would never
+    match the whole transcript. Scoring must not compare against it."""
+    interview = await _interview_with_parts(db_session, join, parts=2)
+    join["slow"] = True
+    monkeypatch.setattr(tasks_module, "merge_interview_recording_task", MagicMock())
+    monkeypatch.setattr(settings, "interview_transcript_crosscheck_enabled", True)
+    transcribed = AsyncMock(return_value=("text", 10.0))
+    monkeypatch.setattr(tasks_module, "_transcribe_recording", transcribed)
+    monkeypatch.setattr(tasks_module, "assert_can_score_interviews", AsyncMock(side_effect=tasks_module.PlanUpgradeRequiredException("x")))
+    interview.interview.transcript = "Interviewer: hello\nCandidate: hi"
+    await db_session.commit()
+
+    class SameSession:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(tasks_module, "create_async_engine", lambda *a, **k: AsyncMock(dispose=AsyncMock()))
+    monkeypatch.setattr(tasks_module, "async_sessionmaker", lambda *a, **k: SameSession)
+
+    await tasks_module._transcribe_and_score_interview_async(str(interview.interview.id), notify=False)
+
+    transcribed.assert_not_called()
 
 
 @pytest.mark.asyncio

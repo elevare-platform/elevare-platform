@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { LEAVE_DELAY_MS, awayCause } from '@/lib/strictConduct'
+import { LEAVE_DELAY_MS, SETTLE_MS, awayCause } from '@/lib/strictConduct'
 
 /**
  * Tells the strict interview when the candidate leaves the screen and when they are back.
@@ -9,8 +9,14 @@ import { LEAVE_DELAY_MS, awayCause } from '@/lib/strictConduct'
  * `delayMs` (a second), so a notification or a blip never reaches the server, and `onReturned()`
  * when they are back, but only for a leave that was reported. While `active` is false nothing is
  * watched. The callbacks may change on every render.
+ *
+ * The watch is ARMED the first time the screen is seen settled (visible, in focus, full screen)
+ * after it starts, or after `settleMs` whichever comes first. Until then nothing counts: the
+ * start of the interview has its own transitions (full screen taking effect, a browser pop-up)
+ * and none of them is the candidate leaving. A candidate who never settles is counted from
+ * `settleMs` on.
  */
-export function useLeaveWatch({ active, onLeft, onReturned, delayMs = LEAVE_DELAY_MS }) {
+export function useLeaveWatch({ active, onLeft, onReturned, delayMs = LEAVE_DELAY_MS, settleMs = SETTLE_MS }) {
   const callbacks = useRef({ onLeft, onReturned })
   useEffect(() => {
     callbacks.current = { onLeft, onReturned }
@@ -18,10 +24,22 @@ export function useLeaveWatch({ active, onLeft, onReturned, delayMs = LEAVE_DELA
 
   useEffect(() => {
     if (!active) return undefined
+    const startedAt = Date.now()
     let timer = null
+    let settleTimer = null
     let reported = false
+    let armed = false
 
     const check = () => {
+      if (!armed) {
+        if (!awayCause(document) || Date.now() - startedAt >= settleMs) {
+          armed = true
+        } else {
+          // Not settled yet: look again when the settling time is up.
+          if (!settleTimer) settleTimer = setTimeout(() => { settleTimer = null; check() }, settleMs - (Date.now() - startedAt) + 5)
+          return
+        }
+      }
       if (awayCause(document)) {
         if (timer || reported) return
         timer = setTimeout(() => {
@@ -51,10 +69,11 @@ export function useLeaveWatch({ active, onLeft, onReturned, delayMs = LEAVE_DELA
     check()
     return () => {
       if (timer) clearTimeout(timer)
+      if (settleTimer) clearTimeout(settleTimer)
       document.removeEventListener('visibilitychange', check)
       document.removeEventListener('fullscreenchange', check)
       window.removeEventListener('blur', check)
       window.removeEventListener('focus', check)
     }
-  }, [active, delayMs])
+  }, [active, delayMs, settleMs])
 }

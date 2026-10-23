@@ -4,7 +4,7 @@ import {
   KEY_WARNING,
   awayCause,
   endedMessage,
-  leaveWarning,
+  leaveNotice,
   reasonFromStatus,
   reportableKey,
 } from './strictConduct'
@@ -35,61 +35,119 @@ describe('awayCause', () => {
 })
 
 describe('reportableKey', () => {
-  const key = (init) => ({ key: 'a', ctrlKey: false, metaKey: false, ...init })
+  const key = (init) => ({ key: 'a', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...init })
 
   it.each([
     [{ key: 'Escape' }, 'Escape'],
-    [{ key: 'Alt' }, 'Alt'],
-    [{ key: 'Meta' }, 'Meta'],
+    [{ key: 'Alt', altKey: true }, 'Alt'],
+    [{ key: 'Meta', metaKey: true }, 'Meta'],
     [{ key: 'OS' }, 'Meta'],
     [{ key: 'F11' }, 'F11'],
     [{ key: 'F12' }, 'F12'],
-    [{ key: 't', ctrlKey: true }, 'Ctrl+T'],
-    [{ key: 'W', ctrlKey: true }, 'Ctrl+W'],
-    [{ key: 'n', metaKey: true }, 'Ctrl+N'],
-    [{ key: 'Tab', ctrlKey: true }, 'Ctrl+Tab'],
-  ])('reports %j as %s', (init, name) => {
+    [{ key: 'F5' }, 'F5'],
+  ])('reports the single key %j as %s', (init, name) => {
     expect(reportableKey(key(init))).toBe(name)
   })
 
   it.each([
+    [{ key: 't', ctrlKey: true }, 'Ctrl+T'],
+    [{ key: 'W', ctrlKey: true }, 'Ctrl+W'],
+    [{ key: 'n', metaKey: true }, 'Meta+N'],
+    [{ key: 'Tab', ctrlKey: true }, 'Ctrl+Tab'],
+    [{ key: 'Tab', altKey: true }, 'Alt+Tab'],
+    [{ key: 'I', ctrlKey: true, shiftKey: true }, 'Ctrl+Shift+I'],
+    [{ key: 'j', ctrlKey: true, shiftKey: true }, 'Ctrl+Shift+J'],
+    [{ key: 'c', ctrlKey: true }, 'Ctrl+C'],
+    [{ key: 'v', ctrlKey: true }, 'Ctrl+V'],
+    [{ key: 'ArrowLeft', altKey: true }, 'Alt+Left'],
+    [{ key: 'F4', altKey: true }, 'Alt+F4'],
+    [{ key: ' ', ctrlKey: true }, 'Ctrl+Space'],
+    [{ key: ',', ctrlKey: true }, 'Ctrl+Other'],
+    [{ key: 'Backspace', ctrlKey: true, altKey: true, shiftKey: true, metaKey: true }, 'Ctrl+Alt+Shift+Meta+Backspace'],
+  ])('reports the whole combination %j as %s', (init, name) => {
+    expect(reportableKey(key(init))).toBe(name)
+  })
+
+  it('always writes a combination in the same order, whatever order the keys were pressed', () => {
+    expect(reportableKey(key({ key: 'i', shiftKey: true, ctrlKey: true }))).toBe('Ctrl+Shift+I')
+    expect(reportableKey(key({ key: 'i', ctrlKey: true, shiftKey: true }))).toBe('Ctrl+Shift+I')
+  })
+
+  it('never makes a name longer than the server keeps (40 characters)', () => {
+    const longest = reportableKey(key({ key: 'Backspace', ctrlKey: true, altKey: true, shiftKey: true, metaKey: true }))
+
+    expect(longest.length).toBeLessThanOrEqual(40)
+  })
+
+  it.each([
     [{ key: 'a' }],
+    [{ key: 'A', shiftKey: true }],
     [{ key: 'Enter' }],
     [{ key: 'Tab' }],
-    [{ key: 'c', ctrlKey: true }],
-    [{ key: 'v', ctrlKey: true }],
-    [{ key: 'F5' }],
-    [{ key: 't' }],
+    [{ key: ' ' }],
+    [{ key: 'Control', ctrlKey: true }],
+    [{ key: 'Shift', shiftKey: true }],
   ])('does not report %j', (init) => {
     expect(reportableKey(key(init))).toBeNull()
   })
 })
 
-describe('leaveWarning', () => {
+describe('leaveNotice', () => {
   const state = (over) => ({ leaves: 1, max_leaves: 4, away_seconds: 12, max_away_seconds: 60, ended: null, ...over })
 
   it('says nothing before the first leave, or once the interview has ended', () => {
-    expect(leaveWarning(state({ leaves: 0 }))).toBeNull()
-    expect(leaveWarning(state({ ended: 'TOO_MANY_LEAVES' }))).toBeNull()
-    expect(leaveWarning(null)).toBeNull()
+    expect(leaveNotice(state({ leaves: 0 }))).toBeNull()
+    expect(leaveNotice(state({ ended: 'TOO_MANY_LEAVES' }))).toBeNull()
+    expect(leaveNotice(null)).toBeNull()
   })
 
-  it('says how many times, what ends it and how much of the time away is used', () => {
-    const text = leaveWarning(state({ leaves: 2, away_seconds: 31 }))
-
-    expect(text).toContain('left the interview screen 2 times')
-    expect(text).toContain('If you leave it 4 times')
-    expect(text).toContain('more than 60 seconds')
-    expect(text).toContain('away 31 of 60 seconds')
+  it('counts the warnings used out of the ones allowed (one fewer than the leaves that end it)', () => {
+    expect(leaveNotice(state({ leaves: 1 }))).toMatchObject({ used: 1, allowed: 3, last: false })
+    expect(leaveNotice(state({ leaves: 2 }))).toMatchObject({ used: 2, allowed: 3, last: false })
+    expect(leaveNotice(state({ leaves: 3 }))).toMatchObject({ used: 3, allowed: 3, last: true })
   })
 
-  it('says "1 time" for the first', () => {
-    expect(leaveWarning(state())).toContain('1 time.')
+  it('says what one more leave costs and how much time away is left', () => {
+    const { lines } = leaveNotice(state({ leaves: 1, away_seconds: 12 }))
+
+    expect(lines[0]).toContain('If you leave it 3 more times')
+    expect(lines[0]).toContain('more than 48 more seconds in total')
+  })
+
+  it('counts down the leaves left, and switches to the last warning when one is left', () => {
+    expect(leaveNotice(state({ leaves: 2 })).lines[0]).toContain('2 more times,')
+    expect(leaveNotice(state({ leaves: 3 })).lines[0]).not.toContain('more times')
+  })
+
+  it('says plainly that it is the last warning', () => {
+    const { lines, last } = leaveNotice(state({ leaves: 3, away_seconds: 40 }))
+
+    expect(last).toBe(true)
+    expect(lines[0]).toContain('This was your last warning')
+    expect(lines[0]).toContain('more than 20 more seconds')
+  })
+
+  it('says the time for the question is still running', () => {
+    expect(leaveNotice(state()).lines.at(-1)).toBe('The time for your question is still running.')
   })
 
   it('uses the limits the server sent, not fixed numbers', () => {
-    expect(leaveWarning(state({ max_leaves: 6, max_away_seconds: 90 }))).toContain('6 times')
-    expect(leaveWarning(state({ max_leaves: 6, max_away_seconds: 90 }))).toContain('90 seconds')
+    const { allowed, lines } = leaveNotice(state({ max_leaves: 6, max_away_seconds: 90, leaves: 1, away_seconds: 10 }))
+
+    expect(allowed).toBe(5)
+    expect(lines[0]).toContain('5 more times')
+    expect(lines[0]).toContain('80 more seconds')
+  })
+
+  it('never goes below zero seconds', () => {
+    expect(leaveNotice(state({ leaves: 1, away_seconds: 75 })).lines[0]).toContain('more than 0 more seconds')
+  })
+
+  it('is written the way the rest of the product is: no dashes, no exclamation marks, no accusations', () => {
+    const text = [1, 2, 3].map((leaves) => leaveNotice(state({ leaves })).lines.join(' ')).join(' ')
+
+    expect(text).not.toMatch(/[–—!]/)
+    expect(text).not.toMatch(/cheat|violat|suspicio|caught/i)
   })
 })
 
@@ -110,7 +168,7 @@ describe('what the candidate is told when it ends', () => {
   it('never calls anything cheating, a failure or a violation', () => {
     const all = ['TOO_MANY_LEAVES', 'TOO_LONG_AWAY', 'STOPPED']
       .map((reason) => Object.values(endedMessage(reason)).join(' '))
-      .join(' ') + ENDED_FOOTER + KEY_WARNING + leaveWarning({ leaves: 1, max_leaves: 4, away_seconds: 1, max_away_seconds: 60 })
+      .join(' ') + ENDED_FOOTER + KEY_WARNING
 
     expect(all).not.toMatch(/cheat|fail|violat|suspicio|caught|guilty/i)
   })

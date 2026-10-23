@@ -59,7 +59,13 @@ RELOAD_MIN_GAP_SECONDS = 3
 MAX_KEY_EVENTS = 100
 # How long a reinstated interview's link works from the moment of reinstating.
 REINSTATE_LINK_DAYS = 14
-_KEY_NAME = re.compile(r"^[A-Za-z0-9+ ]{1,20}$")
+# How long after an interview finishes its pieces are expected to be joined (a copy join takes
+# seconds; a re-encode of a long video can take many minutes). After this the joining is taken
+# to have failed.
+RECORDING_JOIN_GRACE_SECONDS = 30 * 60
+# A key or a whole combination, such as "Escape" or "Ctrl+Shift+I" (the longest the screen makes,
+# Ctrl+Alt+Shift+Meta+Backspace, is 29 characters; the column holds 40).
+_KEY_NAME = re.compile(r"^[A-Za-z0-9+ ]{1,40}$")
 
 
 def _seconds(later: datetime, earlier: datetime) -> float:
@@ -409,6 +415,23 @@ class ConductMixin:
     # What the employer sees
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _recording_state(interview: Interview, run: StrictInterviewRun, now: datetime) -> dict:
+        """Whether the recording is still being put together from its pieces.
+
+        Pieces exist when the candidate reloaded (parts) or the employer reinstated the
+        interview (earlier attempts). Once the interview has finished they are joined by a
+        worker; until then the recording on file is only the last piece, so the screen must not
+        show it as if it were all. If the joining has not happened after
+        ``RECORDING_JOIN_GRACE_SECONDS`` it has evidently failed and the last piece is shown
+        with a warning that it is only part of the interview.
+        """
+        in_pieces = run.recording_parts > 0 or bool(run.previous_recordings)
+        if not in_pieces or interview.completed_at is None:
+            return {"recording_pending": False, "recording_partial": False}
+        waiting = _seconds(now, interview.completed_at) < RECORDING_JOIN_GRACE_SECONDS
+        return {"recording_pending": waiting, "recording_partial": not waiting}
+
     async def strict_detail(self, interview: Interview) -> dict | None:
         """Everything about a strict interview that the employer and the shared link show next
         to the recording: the rules accepted, the conduct summary, the timeline, how it ended,
@@ -434,6 +457,7 @@ class ConductMixin:
             "away_seconds": int(round(summary["away_seconds"])),
             "key_presses": summary["key_presses"],
             "reloads": summary["reloads"],
+            **self._recording_state(interview, run, now),
             "events": [
                 {
                     "kind": event.kind,

@@ -129,11 +129,52 @@ describe('useLeaveWatch', () => {
     expect(onReturned).toHaveBeenCalledTimes(3)
   })
 
-  it('reports a candidate who is already away when watching starts', () => {
+  it('counts nothing until the screen has settled once, so a pop-up at the start is not a leave', () => {
+    // The interview starts with the window not yet settled (a browser pop-up has the focus).
+    setPage({ focused: false })
+    const { onLeft, onReturned } = watch()
+
+    act(() => { vi.advanceTimersByTime(5000) })
+    expect(onLeft).not.toHaveBeenCalled()
+
+    // The pop-up is dismissed and the screen settles: still nothing was a leave.
+    setPage({ focused: true })
+    fire(window, 'focus')
+    act(() => { vi.advanceTimersByTime(5000) })
+
+    expect(onLeft).not.toHaveBeenCalled()
+    expect(onReturned).not.toHaveBeenCalled()
+  })
+
+  it('counts a leave normally once the screen has settled', () => {
+    setPage({ focused: false })
+    const { onLeft } = watch()
+    setPage({ focused: true })
+    fire(window, 'focus')
+
+    setPage({ focused: false })
+    fire(window, 'blur')
+    act(() => { vi.advanceTimersByTime(1200) })
+
+    expect(onLeft).toHaveBeenCalledWith('BLUR')
+  })
+
+  it('counts a candidate who never settles, from the settling time on', () => {
+    setPage({ focused: false })
+    const { onLeft } = watch({ settleMs: 15_000 })
+
+    act(() => { vi.advanceTimersByTime(14_000) })
+    expect(onLeft).not.toHaveBeenCalled()
+    act(() => { vi.advanceTimersByTime(2500) })
+
+    expect(onLeft).toHaveBeenCalledWith('BLUR')
+  })
+
+  it('reports a candidate who is already away when watching starts, once the settling time has passed', () => {
     setPage({ focused: false })
 
     const { onLeft } = watch()
-    act(() => { vi.advanceTimersByTime(1200) })
+    act(() => { vi.advanceTimersByTime(17_000) })
 
     expect(onLeft).toHaveBeenCalledWith('BLUR')
   })
@@ -142,18 +183,19 @@ describe('useLeaveWatch', () => {
     const { onLeft, rerender } = watch({ active: false })
     setPage({ focused: false })
     fire(window, 'blur')
-    act(() => { vi.advanceTimersByTime(3000) })
+    act(() => { vi.advanceTimersByTime(30_000) })
     expect(onLeft).not.toHaveBeenCalled()
 
+    // Watching starts with the window away: counted once the settling time is up.
     rerender({ active: true })
-    act(() => { vi.advanceTimersByTime(1200) })
+    act(() => { vi.advanceTimersByTime(17_000) })
     expect(onLeft).toHaveBeenCalledTimes(1)
 
     setPage({ focused: true })
     rerender({ active: false })
     setPage({ focused: false })
     fire(window, 'blur')
-    act(() => { vi.advanceTimersByTime(3000) })
+    act(() => { vi.advanceTimersByTime(30_000) })
     expect(onLeft).toHaveBeenCalledTimes(1)
   })
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/lib/interviewUpload', async (importOriginal) => ({
@@ -58,8 +58,8 @@ class FakeMediaStream {
 
 function fakeCamera() {
   return new FakeMediaStream([
-    { kind: 'audio', stop: vi.fn() },
-    { kind: 'video', stop: vi.fn() },
+    { kind: 'audio', stop: vi.fn(), readyState: 'live' },
+    { kind: 'video', stop: vi.fn(), readyState: 'live' },
   ])
 }
 
@@ -104,8 +104,21 @@ function setup(props = {}) {
   return { ...handlers, ...view }
 }
 
+// The camera and microphone are checked on the first screen, before full screen.
+async function allowCamera() {
+  fireEvent.click(screen.getByRole('button', { name: 'Check my camera and microphone' }))
+  await screen.findByText('Your camera and microphone are working.')
+}
+
+// For a candidate coming back to an interview already started: no rules to accept.
+async function continueInterview() {
+  await allowCamera()
+  fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+}
+
 async function acceptAndStart() {
   fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
+  await allowCamera()
   fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
   await screen.findByTestId('question-text')
   // The question is on screen before React has attached the screen's listeners (its effects);
@@ -156,13 +169,76 @@ describe('StrictInterviewFlow, before it starts', () => {
     expect(screen.getByText(/I need to stop button/)).toBeInTheDocument()
   })
 
-  it('will not start until the rules are accepted', () => {
+  it('will not start until the rules are accepted and the camera has been checked', async () => {
     setup()
     const start = screen.getByRole('button', { name: 'Start the interview' })
 
     expect(start).toBeDisabled()
     fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
+    expect(start).toBeDisabled()
+    await allowCamera()
     expect(start).toBeEnabled()
+  })
+
+  it('will not start on a checked camera alone, without the rules accepted', async () => {
+    setup()
+
+    await allowCamera()
+
+    expect(screen.getByRole('button', { name: 'Start the interview' })).toBeDisabled()
+  })
+
+  it('asks for the camera and microphone on this first screen, NOT after going full screen', async () => {
+    setup()
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check my camera and microphone' }))
+    await screen.findByText('Your camera and microphone are working.')
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
+    expect(document.documentElement.requestFullscreen).not.toHaveBeenCalled()
+  })
+
+  it('shows what the camera sees, so the candidate can check themselves', async () => {
+    setup()
+
+    await allowCamera()
+
+    expect(document.querySelector('video')).toBeInTheDocument()
+  })
+
+  it('says what to do when the camera is blocked, and lets the candidate try again', async () => {
+    navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('no'), { name: 'NotAllowedError' }))
+      .mockResolvedValue(fakeCamera())
+    setup()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check my camera and microphone' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('blocked')
+    expect(screen.getByRole('alert')).toHaveTextContent('camera icon in the address bar')
+    expect(screen.getByRole('button', { name: 'Start the interview' })).toBeDisabled()
+    await allowCamera()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('says so when the camera cannot be used for another reason', async () => {
+    navigator.mediaDevices.getUserMedia = vi.fn(async () => {
+      throw Object.assign(new Error('busy'), { name: 'NotReadableError' })
+    })
+    setup()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check my camera and microphone' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('not in use by another app')
+  })
+
+  it('does not offer the camera check on a device that cannot take the interview', () => {
+    vi.mocked(checkDevice).mockReturnValue({ ok: false, problems: [{ id: 'browser', message: 'Use Chrome or Edge.' }] })
+    setup()
+
+    expect(screen.getByRole('button', { name: 'Check my camera and microphone' })).toBeDisabled()
   })
 
   it('names every problem with the device and will not start', () => {
@@ -176,8 +252,8 @@ describe('StrictInterviewFlow, before it starts', () => {
     setup()
     fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
 
-    expect(screen.getByRole('alert')).toHaveTextContent('latest Chrome or Edge')
-    expect(screen.getByRole('alert')).toHaveTextContent('second screen is connected')
+    expect(screen.getAllByRole('alert')[0]).toHaveTextContent('latest Chrome or Edge')
+    expect(screen.getAllByRole('alert')[0]).toHaveTextContent('second screen is connected')
     expect(screen.getByRole('button', { name: 'Start the interview' })).toBeDisabled()
   })
 
@@ -186,6 +262,14 @@ describe('StrictInterviewFlow, before it starts', () => {
 
     expect(screen.getByText(/You started this interview earlier/)).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue the interview' })).toBeDisabled()
+  })
+
+  it('lets a returning candidate continue once the camera has been checked', async () => {
+    setup({ resuming: true })
+
+    await allowCamera()
+
     expect(screen.getByRole('button', { name: 'Continue the interview' })).toBeEnabled()
   })
 
@@ -226,36 +310,61 @@ describe('StrictInterviewFlow, starting', () => {
   it('continues a started interview without needing the rules accepted again', async () => {
     const { startInterview } = setup({ resuming: true })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await continueInterview()
     await screen.findByTestId('question-text')
 
     expect(startInterview).toHaveBeenCalled()
   })
 
-  it('says so when full screen is refused, and never opens the camera', async () => {
+  it('uses the camera it already checked and asks for nothing more once the interview starts', async () => {
+    setup()
+
+    await acceptAndStart()
+
+    // Once, on the first screen. Starting does not ask again, so no pop-up can take the screen
+    // out of full screen after it has started.
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks for the camera again only if the one it checked has stopped working', async () => {
+    const first = fakeCamera()
+    first.getTracks().forEach((track) => { track.readyState = 'ended' })
+    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValueOnce(first).mockResolvedValue(fakeCamera())
+    setup()
+
+    await acceptAndStart()
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId('question-text')).toBeInTheDocument()
+  })
+
+  it('says so when full screen is refused, gives the camera back, and does not start', async () => {
+    const camera = fakeCamera()
+    navigator.mediaDevices.getUserMedia = vi.fn(async () => camera)
     document.documentElement.requestFullscreen = vi.fn(async () => { throw new Error('denied') })
     const { startInterview } = setup()
 
     fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
+    await allowCamera()
     fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
 
     expect(await screen.findByText(/needs full screen/)).toBeInTheDocument()
-    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled()
     expect(startInterview).not.toHaveBeenCalled()
+    expect(camera.getTracks().every((track) => track.stop.mock.calls.length >= 1)).toBe(true)
   })
 
-  it('says so when the camera is refused, and gives the screen back', async () => {
-    navigator.mediaDevices.getUserMedia = vi.fn(async () => {
-      throw Object.assign(new Error('no'), { name: 'NotAllowedError' })
-    })
-    const { startInterview } = setup()
-
+  it('asks for the camera again on the first screen after an error, since the check was undone', async () => {
+    document.documentElement.requestFullscreen = vi.fn(async () => { throw new Error('denied') })
+    setup()
     fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
+    await allowCamera()
     fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
+    await screen.findByText(/needs full screen/)
 
-    expect(await screen.findByText('Camera and microphone access is required for the interview.')).toBeInTheDocument()
-    expect(startInterview).not.toHaveBeenCalled()
-    expect(document.exitFullscreen).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(screen.getByRole('button', { name: 'Start the interview' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Check my camera and microphone' })).toBeInTheDocument()
   })
 
   it("shows the server's own message when it refuses to start, and stops the camera", async () => {
@@ -267,6 +376,7 @@ describe('StrictInterviewFlow, starting', () => {
     setup({ startInterview })
 
     fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
+    await allowCamera()
     fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
 
     expect(await screen.findByText(/questions for this interview are not ready/)).toBeInTheDocument()
@@ -344,6 +454,8 @@ describe('StrictInterviewFlow, answering', () => {
     const sendAnswer = vi.fn(async () => SECOND)
     setup({ sendAnswer })
     fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check my camera and microphone' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
     fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
     expect(screen.getByTestId('question-text')).toBeInTheDocument()
@@ -417,7 +529,7 @@ describe('StrictInterviewFlow, finishing', () => {
     const startInterview = vi.fn(async () => FINISHED)
     const { completeUpload } = setup({ startInterview, resuming: true })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await continueInterview()
 
     expect(await screen.findByText('Interview submitted')).toBeInTheDocument()
     expect(completeUpload).toHaveBeenCalledTimes(1)
@@ -567,7 +679,7 @@ describe('StrictInterviewFlow, keeping the recording across a reload', () => {
     const requestPartUploadUrl = vi.fn(async () => ({ upload_url: 'https://r2.test/part-1', part: 1 }))
     setup({ recordingStore, requestPartUploadUrl, resuming: true })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await continueInterview()
     await screen.findByTestId('question-text')
 
     await waitFor(() => expect(putBlob).toHaveBeenCalledTimes(1))
@@ -604,7 +716,7 @@ describe('StrictInterviewFlow, keeping the recording across a reload', () => {
       resuming: true,
       sendAnswer: vi.fn(async () => FINISHED),
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await continueInterview()
     await screen.findByTestId('question-text')
 
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
@@ -630,7 +742,7 @@ describe('StrictInterviewFlow, keeping the recording across a reload', () => {
       resuming: true,
       sendAnswer: vi.fn(async () => FINISHED),
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await continueInterview()
     await screen.findByTestId('question-text')
 
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
@@ -754,29 +866,50 @@ describe('StrictInterviewFlow, leaving the screen', () => {
     back()
     await wait(10)
 
-    const warning = await screen.findByRole('status')
-    expect(warning).toHaveTextContent('You have left the interview screen 2 times')
-    expect(warning).toHaveTextContent('If you leave it 4 times')
+    const box = await screen.findByRole('alertdialog', { name: 'You left the interview screen' })
+    expect(within(box).getByTestId('leave-warning-count')).toHaveTextContent('Warning 2 of 3')
+    expect(box).toHaveTextContent('If you leave it 2 more times')
+    expect(box).toHaveTextContent('more than 29 more seconds in total')
+    expect(box).toHaveTextContent('The time for your question is still running')
     expect(screen.getByTestId('warnings-used')).toHaveTextContent('Warnings used: 2 of 3')
     expect(screen.getByTestId('warnings-used')).toHaveTextContent('Time away: 31 of 60 seconds')
   })
 
-  it('lets the candidate dismiss a warning', async () => {
-    const reportEvent = vi.fn(async (body) => (body.type === 'returned' ? reply({ leaves: 1, away_seconds: 3 }) : reply()))
+  it('dims the screen with a box the moment the candidate is back, before the server has replied', async () => {
+    let release
+    const reportEvent = vi.fn((body) =>
+      body.type === 'returned'
+        ? new Promise((resolve) => { release = () => resolve(reply({ leaves: 1, away_seconds: 5 })) })
+        : Promise.resolve(reply())
+    )
     setup({ reportEvent })
     await acceptAndStart()
+
     away('BLUR')
     await wait(1100)
     back()
     await wait(10)
-    await screen.findByRole('status')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss the warning' }))
-
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    const box = screen.getByRole('alertdialog', { name: 'You left the interview screen' })
+    expect(box).toHaveTextContent('Checking how many warnings you have used')
+    expect(within(box).getByRole('button', { name: /I understand/ })).toBeDisabled()
+    await act(async () => { release() })
+    expect(within(box).getByRole('button', { name: /I understand/ })).toBeEnabled()
+    expect(within(box).getByTestId('leave-warning-count')).toHaveTextContent('Warning 1 of 3')
   })
 
-  it('takes a warning down by itself after a while', async () => {
+  it('does not show the box for a blip shorter than a second', async () => {
+    await running()
+
+    away('BLUR')
+    await wait(400)
+    back()
+    await wait(200)
+
+    expect(screen.queryByRole('alertdialog', { name: 'You left the interview screen' })).not.toBeInTheDocument()
+  })
+
+  it('stays until the candidate confirms it, and does not take itself down', async () => {
     const reportEvent = vi.fn(async (body) => (body.type === 'returned' ? reply({ leaves: 1, away_seconds: 3 }) : reply()))
     setup({ reportEvent })
     await acceptAndStart()
@@ -784,11 +917,113 @@ describe('StrictInterviewFlow, leaving the screen', () => {
     await wait(1100)
     back()
     await wait(10)
-    await screen.findByRole('status')
+    await screen.findByRole('alertdialog', { name: 'You left the interview screen' })
 
-    await wait(13_000)
+    await wait(60_000)
 
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('alertdialog', { name: 'You left the interview screen' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /I understand, go back to the interview/ }))
+    expect(screen.queryByRole('alertdialog', { name: 'You left the interview screen' })).not.toBeInTheDocument()
+  })
+
+  it('says plainly that it is the last warning when the next leave would end the interview', async () => {
+    const reportEvent = vi.fn(async (body) =>
+      body.type === 'returned' ? reply({ leaves: 3, away_seconds: 30 }) : reply({ leaves: 3 })
+    )
+    setup({ reportEvent })
+    await acceptAndStart()
+    away('BLUR')
+    await wait(1100)
+    back()
+    await wait(10)
+
+    const box = await screen.findByRole('alertdialog', { name: 'You left the interview screen' })
+    expect(within(box).getByTestId('leave-warning-count')).toHaveTextContent('Warning 3 of 3')
+    expect(box).toHaveTextContent('This was your last warning')
+    expect(box).toHaveTextContent('If you leave the screen again')
+  })
+
+  it('still tells the candidate to stay when the server could not be reached', async () => {
+    const reportEvent = vi.fn(async (body) => {
+      if (body.type === 'returned') throw { response: { status: 422 } }
+      return reply()
+    })
+    setup({ reportEvent })
+    await acceptAndStart()
+    away('BLUR')
+    await wait(1100)
+    back()
+    await wait(10)
+
+    const box = await screen.findByRole('alertdialog', { name: 'You left the interview screen' })
+    expect(box).toHaveTextContent('Please stay on this screen')
+    expect(within(box).getByRole('button', { name: /I understand/ })).toBeEnabled()
+  })
+
+  it('takes the box away when the interview has ended', async () => {
+    const reportEvent = vi.fn(async (body) => (body.type === 'returned' ? ENDED('TOO_LONG_AWAY') : reply()))
+    setup({ reportEvent })
+    await acceptAndStart()
+    away('BLUR')
+    await wait(1100)
+    back()
+    await wait(10)
+
+    expect(await screen.findByTestId('ended-screen')).toBeInTheDocument()
+    expect(screen.queryByRole('alertdialog', { name: 'You left the interview screen' })).not.toBeInTheDocument()
+  })
+
+  it('changes the tab title while the candidate is on another tab, and puts it back', async () => {
+    document.title = 'Elevare'
+    await running()
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(document.title).toBe('Return to your interview')
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(document.title).toBe('Elevare')
+  })
+
+  it('does not count what happens while the interview is starting, such as a browser pop-up', async () => {
+    const reportEvent = vi.fn(async () => reply())
+    setup({ reportEvent })
+    fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
+    await allowCamera()
+    // Full screen takes effect, then a pop-up takes it away straight after the interview starts.
+    document.documentElement.requestFullscreen = vi.fn(async () => {
+      setFullscreen(document.documentElement)
+      setTimeout(() => setFullscreen(null), 5)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
+    await screen.findByTestId('question-text')
+    await wait(1500)
+
+    // Back in full screen after a few seconds.
+    await wait(3000)
+    act(() => setFullscreen(document.documentElement))
+    await wait(2000)
+
+    expect(reportEvent.mock.calls.filter(([body]) => body.type === 'left')).toHaveLength(0)
+    expect(screen.queryByRole('alertdialog', { name: 'You left the interview screen' })).not.toBeInTheDocument()
+  })
+
+  it('does count a candidate who never returns to full screen after it starts', async () => {
+    const reportEvent = vi.fn(async () => reply())
+    setup({ reportEvent })
+    fireEvent.click(screen.getByRole('checkbox', { name: /I have read these rules/ }))
+    await allowCamera()
+    document.documentElement.requestFullscreen = vi.fn(async () => {
+      setFullscreen(document.documentElement)
+      setTimeout(() => setFullscreen(null), 5)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }))
+    await screen.findByTestId('question-text')
+
+    await wait(17_000)
+
+    expect(reportEvent).toHaveBeenCalledWith({ type: 'left', cause: 'FULLSCREEN' })
   })
 
   it('ends the interview, sends what was recorded, and says so when the server says it ended', async () => {
@@ -969,14 +1204,30 @@ describe('StrictInterviewFlow, key presses that try to leave', () => {
     expect(reportEvent.mock.calls.filter(([body]) => body.type === 'key')).toHaveLength(2)
   })
 
-  it('does not report ordinary keys', async () => {
+  it('does not report ordinary keys, or Ctrl or Shift pressed by themselves', async () => {
     const reportEvent = await running()
 
     press({ key: 'a' })
     press({ key: 'Enter' })
-    press({ key: 'c', ctrlKey: true })
+    press({ key: 'Tab' })
+    press({ key: 'Shift', shiftKey: true })
+    press({ key: 'Control', ctrlKey: true })
 
     expect(reportEvent.mock.calls.filter(([body]) => body.type === 'key')).toHaveLength(0)
+  })
+
+  it.each([
+    [{ key: 'I', ctrlKey: true, shiftKey: true }, 'Ctrl+Shift+I'],
+    [{ key: 'Tab', altKey: true }, 'Alt+Tab'],
+    [{ key: 'c', ctrlKey: true }, 'Ctrl+C'],
+    [{ key: 'v', ctrlKey: true }, 'Ctrl+V'],
+    [{ key: 'l', metaKey: true }, 'Meta+L'],
+  ])('reports the full combination %j as %s, not just its first key', async (init, name) => {
+    const reportEvent = await running()
+
+    press(init)
+
+    expect(reportEvent).toHaveBeenCalledWith({ type: 'key', key: name })
   })
 })
 
@@ -1102,7 +1353,7 @@ describe('StrictInterviewFlow, an interview that has ended', () => {
     const startInterview = vi.fn(async () => ENDED('TOO_LONG_AWAY'))
     setup({ startInterview, resuming: true })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continue the interview' }))
+    await continueInterview()
 
     expect(await screen.findByTestId('ended-screen')).toBeInTheDocument()
     expect(camera.getTracks().every((track) => track.stop.mock.calls.length >= 1)).toBe(true)

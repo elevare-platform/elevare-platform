@@ -207,6 +207,12 @@ class StrictDetail(BaseModel):
     away_seconds: int
     key_presses: int
     reloads: int
+    # The interview was recorded in pieces (the candidate reloaded, or the employer reinstated
+    # it) and the pieces are being joined into one video: the recording shown would be only the
+    # last piece, so it is not shown yet. ``recording_partial`` is the same once the joining has
+    # had long enough and has evidently failed: the recording shown is then only part of it.
+    recording_pending: bool = False
+    recording_partial: bool = False
     events: list[StrictConductEvent]
     turns: list[StrictAnswer]
 

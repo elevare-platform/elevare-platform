@@ -1472,8 +1472,12 @@ class InterviewService:
         both show exactly the same thing. ``video_seconds`` is how long the recording
         link works; a link meant to be passed around uses a much shorter one.
         """
+        strict = await self._strict().strict_detail(interview)
         video_url = None
-        if interview.r2_key:
+        # While the pieces of the recording are being joined the file on record is only the last
+        # piece: showing it would look like the whole interview, so nothing is shown yet.
+        joining = bool(strict and strict["recording_pending"])
+        if interview.r2_key and not joining:
             video_url = await get_storage_service().generate_presigned_url(
                 interview.r2_key, expires_seconds=video_seconds,
             )
@@ -1509,7 +1513,7 @@ class InterviewService:
             cv_strengths=cv_strengths,
             cv_weaknesses=cv_weaknesses,
             cv_fit_summary=cv_fit_summary,
-            strict=await self._strict().strict_detail(interview),
+            strict=strict,
         )
 
     async def _resolve_cv_assessment(

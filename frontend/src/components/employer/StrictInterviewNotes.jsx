@@ -11,6 +11,32 @@ function Fact({ label, value }) {
 }
 
 /**
+ * RecordingNotice - what to say about a strict interview's recording when the video is not there,
+ * or is not all of it. An interview that took more than one sitting has its pieces joined after it
+ * finishes, so for a short while there is no video yet; the server then sends no link and sets
+ * `recording_pending`. If the joining never finishes it sets `recording_partial` instead, and
+ * the video that is shown covers only part of the interview. Renders nothing when neither applies.
+ */
+export function RecordingNotice({ strict }) {
+  if (strict?.recording_pending) {
+    return (
+      <p role="status" className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-text-muted">
+        The recording is being put together from the parts of this interview. Check back in a minute.
+      </p>
+    )
+  }
+  if (strict?.recording_partial) {
+    return (
+      <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+        The recording could not be put together, so the video may show only part of this interview.
+        The notes and answers below are complete.
+      </p>
+    )
+  }
+  return null
+}
+
+/**
  * StrictInterviewNotes - what the employer, and the client on the shared link, are shown about a
  * strict interview next to the recording: the rules the candidate accepted (version, date and
  * time), how it ended if it ended early, a conduct summary, the timeline, and each answer under

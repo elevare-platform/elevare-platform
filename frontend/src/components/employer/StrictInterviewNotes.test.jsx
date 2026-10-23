@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
-import StrictInterviewNotes from './StrictInterviewNotes'
+import StrictInterviewNotes, { RecordingNotice } from './StrictInterviewNotes'
 
 const STRICT = {
   rules_version: 'S2',
@@ -134,5 +134,28 @@ describe('StrictInterviewNotes', () => {
     render_({ ended: 'TOO_LONG_AWAY' })
 
     expect(screen.getByRole('region', { name: 'Interview notes' }).textContent).not.toMatch(/cheat|violat|suspicio|caught|guilty/i)
+  })
+})
+
+describe('RecordingNotice', () => {
+  it('says the recording is being put together, and to check back', () => {
+    render(<RecordingNotice strict={{ ...STRICT, recording_pending: true }} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('being put together')
+    expect(screen.getByRole('status')).toHaveTextContent('Check back in a minute')
+  })
+
+  it('says the video may be only part of the interview when joining never finished', () => {
+    render(<RecordingNotice strict={{ ...STRICT, recording_partial: true }} />)
+
+    expect(screen.getByRole('note')).toHaveTextContent('only part of this interview')
+  })
+
+  it('says nothing when the recording is whole, for a live interview, or when the server sent no flags', () => {
+    const { container, rerender } = render(<RecordingNotice strict={STRICT} />)
+    expect(container).toBeEmptyDOMElement()
+
+    rerender(<RecordingNotice strict={null} />)
+    expect(container).toBeEmptyDOMElement()
   })
 })
