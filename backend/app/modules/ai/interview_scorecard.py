@@ -13,6 +13,9 @@ from typing import Any
 RECOMMENDATIONS = ("Strongly Recommend", "Recommend", "Further Assessment", "Not Recommended")
 RATING_NAMES = {1: "Insufficient evidence", 2: "Limited", 3: "Competent", 4: "Strong", 5: "Exceptional"}
 COVERAGE = ("FULLY_ASSESSED", "PARTIALLY_ASSESSED", "NOT_ASSESSED")
+# What a question asked for: what the candidate has done, or what they would do.
+KINDS = ("EXPERIENCE", "HYPOTHETICAL")
+CONFIDENCE = ("high", "medium", "low")
 
 MAX_COMPETENCIES = 8
 MAX_LIST_ITEMS = 10
@@ -65,13 +68,20 @@ def clean_competencies(value: Any) -> list[dict]:
             score = None
         if score is None:
             coverage = "NOT_ASSESSED"  # nothing usable to rate means nothing was assessed
+        kind = entry.get("kind")
+        confidence = entry.get("confidence")
         cleaned.append(
             {
                 "name": name,
                 "score": score,
                 "coverage": coverage,
+                "kind": kind if kind in KINDS else None,
                 "rationale": clean_text(entry.get("rationale")),
-                "evidence": clean_text(entry.get("evidence"), 400),
+                "evidence": clean_text(entry.get("evidence"), 500),
+                "ownership": clean_text(entry.get("ownership"), 300),
+                "outcome": clean_text(entry.get("outcome"), 300),
+                "confidence": confidence if confidence in CONFIDENCE else None,
+                "verify": clean_text(entry.get("verify"), 300),
             }
         )
     return cleaned[:MAX_COMPETENCIES]

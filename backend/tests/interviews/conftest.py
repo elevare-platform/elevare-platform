@@ -62,8 +62,18 @@ class FakeAI:
         self.calls: list[dict] = []
         self.fail = False
 
-    async def decide_interview_follow_up(self, *, question, answer, interview_brief):
-        self.calls.append({"question": question, "answer": answer, "brief": interview_brief})
+    async def decide_interview_follow_up(
+        self, *, question, answer, interview_brief, earlier_exchange="", probes_left=1
+    ):
+        self.calls.append(
+            {
+                "question": question,
+                "answer": answer,
+                "brief": interview_brief,
+                "earlier": earlier_exchange,
+                "probes_left": probes_left,
+            }
+        )
         if self.fail:
             raise RuntimeError("the model is down")
         return self.replies.pop(0) if self.replies else None

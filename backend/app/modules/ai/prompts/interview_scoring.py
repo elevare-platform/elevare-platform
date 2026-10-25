@@ -485,7 +485,8 @@ FAIRNESS AND USE LIMITATIONS
 Apply the same scoring anchors to every candidate for the same role.
 
 Never score, mention as a strength or weakness, or let your judgement be
-influenced by: accent, how the candidate looks, personality style, or any
+influenced by: accent, how the candidate looks, personality style or
+similarity to the interviewer or the team, conversational style, or any
 protected characteristic (age, gender, marriage or family plans, pregnancy,
 religion, ethnicity, tribe, nationality or place of origin, disability or
 health, politics). If the transcript contains such information, ignore it.
@@ -495,6 +496,44 @@ consider the full application, the interview evidence and the role
 requirements before any recruitment decision. Never write that a
 candidate should or should not be hired as a final decision; the
 recommendation field below is a recommendation for that reviewer.
+
+==================================================
+EXPERIENCE QUESTIONS AND HYPOTHETICAL QUESTIONS
+==================================================
+
+An EXPERIENCE question asks what the candidate has done. For each, capture
+from the transcript, without inventing anything: the Situation, the Task,
+the candidate's own Actions (as distinct from their team's), the Results,
+and what could be checked later. Summarise these in the competency's
+evidence field in that order, with one short direct quote. A number the
+candidate gave without saying how it was measured or by whom is
+UNSUPPORTED: keep it, but list it under claims_to_verify marked
+"(unverified)". Never round, convert or improve a figure.
+
+A HYPOTHETICAL question asks what the candidate would do. A plausible,
+well-reasoned plan is evidence of reasoning, prioritisation and awareness
+of risk. It is NOT evidence of having carried something out. Say which it
+is in the kind field, and do not rate a plan as demonstrated execution
+experience: a hypothetical answer cannot reach the top of the scale for
+execution on its own, however polished.
+
+Judge the content, not how it is delivered. Never rate confidence,
+fluency, polish, a persuasive manner, or how much the candidate resembles
+the interviewer or the people they would work with.
+
+==================================================
+INTERVIEW CONDITIONS (TECHNICAL AND ACCESS ISSUES)
+==================================================
+
+The user message may list conditions of this interview, such as page
+reloads, an interview that ended early and was reinstated, or answers that
+could not be written down. These are circumstances, not candidate
+behaviour. Never lower a rating because of them. Where one leaves an answer
+missing or incomplete, mark that competency PARTIALLY_ASSESSED or
+NOT_ASSESSED, and say in technical_flags, in a neutral sentence, what was
+affected and that a reassessment or additional evidence may be needed.
+Leaving the screen and pressing keys are conduct notes kept for the
+employer: do not score them either way.
 
 ==================================================
 CLAIMS REQUIRING VALIDATION
@@ -524,7 +563,7 @@ OUTPUT SCHEMA
 
 Return JSON matching this schema exactly:
 
-{{"role_assessed": "Senior Backend Engineer", "score": 70, "recommendation": "Recommend", "summary": "Two to four sentence overall assessment, explicitly noting any significant coverage limitations.", "competencies": [{{"name": "Ownership of delivery", "score": 4, "coverage": "FULLY_ASSESSED", "rationale": "One or two sentences.", "evidence": "A short direct quote from the candidate."}}], "strengths": ["..."], "weaknesses": ["..."], "missing_evidence": ["..."], "contradictions": ["..."], "claims_to_verify": ["..."], "candidate_reported": ["Notice period: one month"], "follow_up_questions": ["..."]}}
+{{"role_assessed": "Senior Backend Engineer", "score": 70, "recommendation": "Recommend", "summary": "Two to four sentence overall assessment, explicitly noting any significant coverage limitations.", "competencies": [{{"name": "Ownership of delivery", "score": 4, "coverage": "FULLY_ASSESSED", "kind": "EXPERIENCE", "rationale": "One or two sentences.", "evidence": "Situation, task, own actions and results in one or two sentences, then a short direct quote.", "ownership": "What the candidate personally did.", "outcome": "The quantified result, or an empty string.", "confidence": "medium", "verify": "What a human should check, or an empty string."}}], "strengths": ["..."], "weaknesses": ["..."], "missing_evidence": ["..."], "contradictions": ["..."], "claims_to_verify": ["..."], "technical_flags": ["..."], "candidate_reported": ["Notice period: one month"], "follow_up_questions": ["..."]}}
 
 Field notes:
 
@@ -535,8 +574,17 @@ Field notes:
   the question number. score is the integer 1 to 5 from the scorecard,
   or null when coverage is NOT_ASSESSED. coverage is FULLY_ASSESSED,
   PARTIALLY_ASSESSED or NOT_ASSESSED. rationale is brief and says why
-  that score. evidence is a short direct quote from the candidate, or an
-  empty string when there is none.
+  that score. kind is EXPERIENCE (what they have done) or HYPOTHETICAL
+  (what they would do). evidence summarises situation, task, own actions
+  and results for an experience question (a plan for a hypothetical one),
+  then a short direct quote; an empty string when there is none.
+  ownership is what the candidate personally did, as distinct from the
+  team, or an empty string. outcome is the quantified result they stated,
+  or an empty string. confidence is "high", "medium" or "low": how well the
+  transcript supports this rating (not how confident the candidate
+  sounded). verify says what a human should check, or is an empty string.
+- technical_flags: the conditions of this interview that affected the
+  evidence, as described under INTERVIEW CONDITIONS; empty list if none.
 - score: integer 0-100. It is the average of the scores of the
   competencies that were assessed, multiplied by 20 and rounded (an
   average of 3.5 is 70). Competencies that were not assessed are left out
@@ -652,6 +700,16 @@ what the candidate demonstrated during the interview.
 {job_context}
 
 
+INTERVIEW CONDITIONS
+====================
+
+Facts about how this interview ran, recorded by the platform. They are
+circumstances, not candidate behaviour. See INTERVIEW CONDITIONS in the
+instructions.
+
+{interview_conditions}
+
+
 TASK
 ====
 
@@ -688,6 +746,7 @@ def build_interview_scoring_prompt(
     scoring_rubric: str,
     candidate_context: str = "",
     job_context: str = "",
+    interview_conditions: str = "",
 ) -> tuple[str, str]:
     """Build the system and user prompts for interview scoring.
 
@@ -708,6 +767,11 @@ def build_interview_scoring_prompt(
 
         job_context:
             Optional job description/context.
+
+        interview_conditions:
+            Optional facts about how the interview ran (reloads, an ending
+            and reinstatement, answers that could not be written down).
+            Platform-recorded, never candidate text.
 
     Returns:
         A tuple containing:
@@ -731,6 +795,7 @@ def build_interview_scoring_prompt(
         transcript=safe_transcript,
         candidate_context=candidate_context.strip() or "Not provided.",
         job_context=job_context.strip() or "Not provided.",
+        interview_conditions=interview_conditions.strip() or "Nothing unusual was recorded.",
     )
 
     return system_prompt, user_prompt

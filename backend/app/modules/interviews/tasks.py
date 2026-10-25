@@ -40,6 +40,7 @@ from app.modules.interviews.recording_merge import (
 )
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.scoring_access import assert_can_score_interviews
+from app.modules.interviews.strict import StrictInterviewService
 from app.modules.interviews.transcript_check import compare_transcripts
 from app.modules.notifications.repository import NotificationRepository
 from app.modules.talent_pool.service import resolve_match_display_fields
@@ -570,12 +571,18 @@ async def _transcribe_and_score_interview_async(
                     "transcript for interview %s",
                     interview_id,
                 )
+                # How the interview ran (reloads, a reinstatement, answers that could not be
+                # written down), told to the scorer as circumstances and never as behaviour.
+                conditions = await StrictInterviewService(db, repo).interview_conditions(
+                    interview.id
+                )
                 ai_service = AnthropicCVExtractionService()
                 try:
                     result = await ai_service.score_interview_transcript(
                         interview_brief=job.interview_brief or "",
                         transcript=transcript,
                         job_context=job_context,
+                        interview_conditions=conditions,
                     )
                 finally:
                     await ai_service._client.close()

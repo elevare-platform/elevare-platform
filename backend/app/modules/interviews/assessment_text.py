@@ -32,10 +32,20 @@ def _competency_line(item: dict) -> str:
         if item["coverage"] == "PARTIALLY_ASSESSED":
             head += " Only partly covered."
     parts = [head]
+    if item.get("kind") == "HYPOTHETICAL":
+        parts.append("A plan for a situation, not experience of carrying one out.")
     if item["rationale"]:
         parts.append(item["rationale"])
     if item["evidence"]:
         parts.append(f"Evidence: \"{item['evidence']}\"")
+    if item.get("ownership"):
+        parts.append(f"Own part: {item['ownership']}")
+    if item.get("outcome"):
+        parts.append(f"Result: {item['outcome']}")
+    if item.get("confidence"):
+        parts.append(f"Confidence in this rating: {item['confidence']}.")
+    if item.get("verify"):
+        parts.append(f"To verify: {item['verify']}")
     return " ".join(parts)
 
 
@@ -60,6 +70,10 @@ def format_assessment(result) -> str:
         _bullets(
             "Claims requiring validation (these are what the candidate said, not verified facts):",
             result.claims_to_verify,
+        ),
+        _bullets(
+            "Interview conditions to consider (a reassessment may be needed; none of this counts against the candidate):",
+            result.technical_flags,
         ),
         _bullets("Candidate-reported, not scored:", result.candidate_reported),
         _bullets("Suggested follow-up questions for a human interviewer:", result.follow_up_questions),

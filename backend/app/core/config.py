@@ -182,6 +182,9 @@ class Settings(BaseSettings):
     # real question; the allowance is also never longer than the time left.
     strict_follow_up_seconds: int = 90
     strict_follow_up_min_remaining_seconds: int = 120
+    # How many neutral follow-up probes one question may get (the Colton Group framework allows up
+    # to two). The candidate's rules text says the same number: change both together.
+    strict_max_follow_ups: int = 2
     # How much audio one answer may upload (the longest answer is 10 minutes of speech,
     # which is a few MB; this only stops an absurd file).
     strict_answer_max_bytes: int = 15 * 1024 * 1024

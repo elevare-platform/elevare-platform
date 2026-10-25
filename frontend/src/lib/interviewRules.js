@@ -135,10 +135,12 @@ export const RULE_GROUPS = [
 // try to leave, and has a stop button. Version S3: a warning dims the screen and must be
 // confirmed, and every shortcut is noted with its full combination. Version S4: the 60 seconds
 // away in total is a rule of its own, highlighted, and the screen shows the time used. Version
-// S5: the same rules in about half the words (24 rules became 11), nothing dropped. The numbers in the text (4 leaves, 60 seconds) are the
+// S5: the same rules in about half the words (24 rules became 11), nothing dropped. Version S6:
+// up to two follow-up questions on an answer (the Colton Group framework; the server's setting
+// `strict_max_follow_ups`, change both together). The numbers in the text (4 leaves, 60 seconds) are the
 // server's (settings `strict_max_leaves` and `strict_max_away_seconds`); change both together.
 // Change STRICT_RULES_VERSION whenever the wording of a visible rule changes.
-export const STRICT_RULES_VERSION = 'S5'
+export const STRICT_RULES_VERSION = 'S6'
 
 // The strict interview's own monitoring switches. Separate from MONITORING above, which belongs
 // to the live interview (whose rules must never claim anything it does not do).
@@ -171,7 +173,7 @@ export const STRICT_RULE_GROUPS = [
       },
       {
         id: 'questions-on-screen',
-        text: 'Each question appears on screen with its time. Answer out loud, looking at the camera. Press Next when you finish; the next one opens when the time is up. The AI may ask one short follow-up.',
+        text: 'Each question appears on screen with its time. Answer out loud, looking at the camera. Press Next when you finish; the next one opens when the time is up. The AI may ask up to two short follow-up questions on an answer, to the same standard for every candidate.',
       },
       {
         id: 'stay-on-page',

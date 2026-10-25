@@ -296,7 +296,13 @@ class AnthropicCVExtractionService(AIService):
         self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async def decide_interview_follow_up(
-        self, *, question: str, answer: str, interview_brief: str
+        self,
+        *,
+        question: str,
+        answer: str,
+        interview_brief: str,
+        earlier_exchange: str = "",
+        probes_left: int = 1,
     ) -> str | None:
         """Decide whether a strict-interview answer needs a follow-up question.
 
@@ -320,7 +326,11 @@ class AnthropicCVExtractionService(AIService):
                 max_tokens=400,
                 system=INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
                 user=build_interview_follow_up_prompt(
-                    question=question, answer=answer, interview_brief=interview_brief
+                    question=question,
+                    answer=answer,
+                    interview_brief=interview_brief,
+                    earlier_exchange=earlier_exchange,
+                    probes_left=probes_left,
                 ),
                 output_type=InterviewFollowUpDecision,
             )
@@ -679,6 +689,7 @@ class AnthropicCVExtractionService(AIService):
         interview_brief: str,
         transcript: str,
         job_context: str = "",
+        interview_conditions: str = "",
     ) -> "InterviewScoringResult":
         """Score an interview transcript against the employer's brief via Claude."""
         from app.modules.ai.interview_scorecard import (
@@ -699,6 +710,7 @@ class AnthropicCVExtractionService(AIService):
             transcript=transcript,
             scoring_rubric=SCORECARD_RUBRIC,
             job_context=job_context,
+            interview_conditions=interview_conditions,
         )
 
         raw = ""
@@ -750,6 +762,7 @@ class AnthropicCVExtractionService(AIService):
                 competencies=competencies,
                 recommendation=clean_recommendation(data.get("recommendation")),
                 claims_to_verify=clean_list(data.get("claims_to_verify")),
+                technical_flags=clean_list(data.get("technical_flags")),
                 candidate_reported=clean_list(data.get("candidate_reported")),
                 follow_up_questions=clean_list(data.get("follow_up_questions")),
                 input_tokens=input_tokens,
