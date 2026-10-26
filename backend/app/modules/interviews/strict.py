@@ -420,8 +420,14 @@ class StrictInterviewService(ConductMixin):
                     "The questions for this interview are not ready. Please contact your recruiter.",
                     code="INTERVIEW_QUESTIONS_MISSING",
                 )
+            # The competency each question was written to test goes with the copy, so the
+            # scorer is told it whatever the employer edits later.
             run.questions = [
-                {"text": question.text, "time_limit_seconds": question.time_limit_seconds}
+                {
+                    "text": question.text,
+                    "time_limit_seconds": question.time_limit_seconds,
+                    "competency": question.competency,
+                }
                 for question in saved
             ]
             run.rules_version = rules_version

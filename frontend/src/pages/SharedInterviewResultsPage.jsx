@@ -7,6 +7,7 @@ import api from '@/lib/api'
 import { parseAssessment } from '@/lib/interviewAssessment'
 import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
 import RecordingClips from '@/components/employer/RecordingClips'
+import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
 import { showsClips } from '@/lib/recordingClips'
 
 // What the client is told about each candidate's interview.
@@ -217,6 +218,10 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
           <StrictInterviewNotes strict={candidate.strict} />
 
           <Questions questions={candidate.questions ?? []} />
+
+          {/* A job with a scoring profile: the weighted table, the total or "incomplete", and the
+              suggested band. The written assessment follows in the card below. */}
+          {candidate.score_report && <WeightedScoreCard report={candidate.score_report} />}
 
           <div className="grid gap-3 sm:grid-cols-2">
             {interviewed && (

@@ -132,7 +132,7 @@ def test_a_rating_outside_one_to_five_is_dropped_and_not_assessed_never_keeps_on
 def test_entries_without_a_name_or_of_the_wrong_shape_are_dropped_and_the_list_is_bounded():
     cleaned = clean_competencies(["x", None, {"score": 4}, {"name": "  "}] + [competency(f"C{n}") for n in range(20)])
 
-    assert len(cleaned) == 8
+    assert len(cleaned) == 12  # a scoring profile may have up to twelve
     assert clean_competencies("nonsense") == [] and clean_competencies(None) == []
 
 

@@ -20,6 +20,8 @@ class InterviewQuestionIn(BaseModel):
     text: str = Field(max_length=5000)
     time_limit_seconds: int
     source: QuestionSource = "EMPLOYER"
+    # The competency of the job's scoring profile this question tests (optional).
+    competency: str | None = Field(default=None, max_length=200)
 
 
 class InterviewQuestionsPutRequest(BaseModel):
@@ -43,12 +45,14 @@ class SavedInterviewQuestion(BaseModel):
     text: str
     time_limit_seconds: int
     source: QuestionSource
+    competency: str | None = None
 
 
 class DraftedInterviewQuestion(BaseModel):
     text: str
     time_limit_seconds: int
     source: QuestionSource = "AI"
+    competency: str | None = None
 
 
 class ClosingQuestion(BaseModel):
@@ -68,6 +72,10 @@ class _QuestionLimits(BaseModel):
     # Which interview new invitations use ("live" or "strict"). The questions editor is only
     # shown when it is "strict".
     style: Literal["live", "strict"]
+    # The competencies of the job's scoring profile (for the tag on each question), and which of
+    # them no saved question is tagged with. Both empty for a job without a profile.
+    competencies: list[str] = []
+    untested_competencies: list[str] = []
 
 
 class InterviewQuestionsResponse(_QuestionLimits):
@@ -224,6 +232,27 @@ class StrictDetail(BaseModel):
     turns: list[StrictAnswer]
 
 
+class WeightedScoreReport(BaseModel):
+    """The weighted score of an interview scored with a scoring profile, as it was when scored.
+
+    ``points`` is earned out of ``assessed_weight`` (the weight of the competencies that were
+    rated) and ``total_weight`` is 100. Only when ``complete`` (every competency rated) are
+    ``score`` and ``band`` set; otherwise the score is incomplete and a human decides. The band is
+    provisional. ``key_flags`` are key competencies rated under ``key_min_rating``."""
+
+    rows: list[dict]
+    points: float
+    assessed_weight: int
+    total_weight: int
+    complete: bool
+    score: int | None = None
+    band: str | None = None
+    bands: dict
+    key_min_rating: int
+    key_flags: list[str] = []
+    unassessed: list[str] = []
+
+
 class RecordingClip(BaseModel):
     """One recording of a strict interview: an interview the employer reinstated has one clip
     per attempt, each only what that attempt recorded."""
@@ -267,6 +296,8 @@ class InterviewDetailResponse(BaseModel):
     cv_fit_summary: str | None = None
     # Only for a strict interview (None for a live one).
     strict: StrictDetail | None = None
+    # Only for an interview scored with a scoring profile (None otherwise).
+    score_report: WeightedScoreReport | None = None
 
 
 class InterviewPublicInfoResponse(BaseModel):
@@ -419,3 +450,56 @@ class InterviewInviteBulkSendResponse(BaseModel):
     """Result of a bulk invite send/resend across a job's interview list."""
     sent: int
     skipped: list[dict]
+
+
+class ScoringCompetency(BaseModel):
+    """One competency of a scoring profile: its name, its weight (a whole number of percent) and
+    whether it is a key competency (rated under the minimum caps the band)."""
+
+    name: str = Field(max_length=200)
+    weight: int
+    key: bool = False
+
+
+class ScoringBands(BaseModel):
+    """A total at or over ``strong`` is a Strong shortlist, at or over ``shortlist`` a Shortlist,
+    at or over ``hold`` Hold for evidence, and under that Do not shortlist."""
+
+    strong: int
+    shortlist: int
+    hold: int
+
+
+class ScoringProfileIn(BaseModel):
+    """The scoring profile the employer wants to save for a job. Left out, ``bands`` and
+    ``key_min_rating`` take the defaults (85, 75, 65 and 3)."""
+
+    competencies: list[ScoringCompetency] = Field(max_length=50)
+    bands: ScoringBands | None = None
+    key_min_rating: int = 3
+    template_code: str | None = Field(default=None, max_length=40)
+
+
+class ScoringProfileOut(BaseModel):
+    competencies: list[ScoringCompetency]
+    bands: ScoringBands
+    key_min_rating: int
+    template_code: str | None = None
+
+
+class ScoringTemplate(BaseModel):
+    """A ready-made profile (the Colton Group's three roles) an employer can start from."""
+
+    code: str
+    title: str
+    competencies: list[ScoringCompetency]
+
+
+class ScoringProfileResponse(BaseModel):
+    """A job's scoring profile (None when it has none) with the templates and the defaults the
+    editor starts from."""
+
+    profile: ScoringProfileOut | None
+    templates: list[ScoringTemplate]
+    default_bands: ScoringBands
+    default_key_min_rating: int

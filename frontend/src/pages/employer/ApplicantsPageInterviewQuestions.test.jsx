@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 vi.mock('@/lib/api', () => ({
@@ -45,6 +45,9 @@ function renderInterviewList({ style, brief = 'Probe system design.', entries = 
       return { data: { credits_per_interview: 10, balance: 50, charged: true, plan_credits: 0, style } }
     }
     if (url === '/api/v1/interview-list') return { data: { items: entries } }
+    if (url.endsWith('/scoring-profile')) {
+      return { data: { profile: null, templates: [], default_bands: { strong: 85, shortlist: 75, hold: 65 }, default_key_min_rating: 3 } }
+    }
     if (url === '/api/v1/jobs/job-1') return { data: { id: 'job-1', title: 'Engineer', interview_brief: brief } }
     if (url === '/api/v1/rescore/jobs/job-1') return { data: { applications: 0, pipeline: 0, total: 0 } }
     return { data: { items: [] } }
@@ -66,6 +69,21 @@ describe('ApplicantsPage, Interview List tab, the questions button', () => {
 
     expect(await screen.findByRole('button', { name: /Interview questions/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Edit interview brief/ })).toBeInTheDocument()
+  })
+
+  it('offers the scoring profile beside it for the strict interview, and opens the editor', async () => {
+    renderInterviewList({ style: 'strict' })
+
+    fireEvent.click(await screen.findByRole('button', { name: /Scoring profile/ }))
+
+    expect(await screen.findByRole('dialog', { name: 'Scoring profile' })).toBeInTheDocument()
+  })
+
+  it('does not offer the scoring profile with the live interview, which it never applies to', async () => {
+    renderInterviewList({ style: 'live' })
+
+    await screen.findByRole('button', { name: /Edit interview brief/ })
+    expect(screen.queryByRole('button', { name: /Scoring profile/ })).not.toBeInTheDocument()
   })
 
   it('is not shown with the live interview, which has no questions to edit', async () => {

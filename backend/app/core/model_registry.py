@@ -44,7 +44,9 @@ from app.modules.interviews.models import (
     InterviewConductEvent,
     InterviewCost,
     InterviewTurn,
+    InterviewWeightedScore,
     JobInterviewQuestion,
+    JobScoringProfile,
     StrictInterviewRun,
 )
 from app.modules.introductions.models import IntroductionRequest
@@ -101,6 +103,8 @@ __all__ = [
     "InterviewListEntry",
     "JobInterviewQuestion",
     "StrictInterviewRun",
+    "JobScoringProfile",
+    "InterviewWeightedScore",
     "InterviewTurn",
     "InterviewConductEvent",
     "InterviewShareLink",

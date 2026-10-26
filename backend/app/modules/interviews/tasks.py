@@ -31,7 +31,7 @@ from app.modules.interviews.enums import (
     InterviewStatus,
     TranscriptCheckStatus,
 )
-from app.modules.interviews.models import StrictInterviewRun
+from app.modules.interviews.models import InterviewWeightedScore, StrictInterviewRun
 from app.modules.interviews.recording_merge import (
     JoinTimedOut,
     concat_recordings,
@@ -40,6 +40,7 @@ from app.modules.interviews.recording_merge import (
 )
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.scoring_access import assert_can_score_interviews
+from app.modules.interviews.scoring_profile_service import load_profile
 from app.modules.interviews.strict import StrictInterviewService
 from app.modules.interviews.transcript_check import compare_transcripts
 from app.modules.notifications.repository import NotificationRepository
@@ -255,6 +256,48 @@ async def _merge_recording_parts(db, repo, interview, reencode_timeout=None, que
         except Exception:
             logger.warning("merge_recording_parts: could not delete %s", key, exc_info=True)
     return interview
+
+
+async def _scoring_profile_for(db, interview, job) -> tuple[dict | None, list[dict] | None]:
+    """The job's scoring profile and the competency each question was written to test, for a
+    strict interview; ``(None, None)`` for a live interview or a job without a profile."""
+    run = (
+        await db.execute(
+            select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        return None, None
+    profile = await load_profile(db, job.id)
+    if profile is None:
+        return None, None
+    tags = [
+        {"number": number, "text": question["text"], "competency": question.get("competency")}
+        for number, question in enumerate(run.questions or [], start=1)
+    ]
+    return (
+        {
+            "competencies": profile.competencies,
+            "bands": profile.bands,
+            "key_min_rating": profile.key_min_rating,
+        },
+        tags,
+    )
+
+
+async def _save_weighted_report(db, interview_id, report: dict) -> None:
+    """Keep the weighted score report of an interview (one per interview: a second scoring
+    replaces the first)."""
+    existing = (
+        await db.execute(
+            select(InterviewWeightedScore).where(InterviewWeightedScore.interview_id == interview_id)
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        db.add(InterviewWeightedScore(interview_id=interview_id, report=report))
+    else:
+        existing.report = report
+    await db.flush()
 
 
 async def _record_scoring_cost(repo, interview_id, result) -> None:
@@ -576,6 +619,9 @@ async def _transcribe_and_score_interview_async(
                 conditions = await StrictInterviewService(db, repo).interview_conditions(
                     interview.id
                 )
+                # A strict interview of a job with a scoring profile is rated on the profile's
+                # competencies; anything else is scored by the generic scorecard as before.
+                scoring_profile, question_tags = await _scoring_profile_for(db, interview, job)
                 ai_service = AnthropicCVExtractionService()
                 try:
                     result = await ai_service.score_interview_transcript(
@@ -583,6 +629,8 @@ async def _transcribe_and_score_interview_async(
                         transcript=transcript,
                         job_context=job_context,
                         interview_conditions=conditions,
+                        scoring_profile=scoring_profile,
+                        question_tags=question_tags,
                     )
                 finally:
                     await ai_service._client.close()
@@ -606,21 +654,27 @@ async def _transcribe_and_score_interview_async(
                         interview_id,
                     )
                 else:
+                    # With a scoring profile the score is the weighted total, and only when every
+                    # competency was rated: an incomplete score is never stored as a number (the
+                    # report says what was assessed and a person decides).
+                    score = result.weighted["score"] if result.weighted else result.score
                     logger.info(
-                        "transcribe_and_score_interview: scored interview %s -> %s/100",
+                        "transcribe_and_score_interview: scored interview %s -> %s",
                         interview_id,
-                        result.score,
+                        f"{score}/100" if score is not None else "incomplete",
                     )
 
                     await repo.update(
                         interview.id,
                         {
-                            "ai_score": result.score,
+                            "ai_score": score,
                             # The scorecard laid out as the text the employer reads.
                             "ai_rationale": format_assessment(result),
                             "ai_scored_at": datetime.now(UTC),
                         },
                     )
+                    if result.weighted:
+                        await _save_weighted_report(db, interview.id, result.weighted)
                     await _record_scoring_cost(repo, interview.id, result)
                     await db.commit()
 

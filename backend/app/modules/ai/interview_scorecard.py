@@ -17,7 +17,7 @@ COVERAGE = ("FULLY_ASSESSED", "PARTIALLY_ASSESSED", "NOT_ASSESSED")
 KINDS = ("EXPERIENCE", "HYPOTHETICAL")
 CONFIDENCE = ("high", "medium", "low")
 
-MAX_COMPETENCIES = 8
+MAX_COMPETENCIES = 12  # a scoring profile may have this many; the generic scorecard asks for at most 8
 MAX_LIST_ITEMS = 10
 MAX_TEXT = 600
 

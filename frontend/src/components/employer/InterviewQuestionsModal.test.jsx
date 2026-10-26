@@ -49,6 +49,82 @@ describe('InterviewQuestionsModal', () => {
   })
   afterEach(() => confirmSpy.mockRestore())
 
+  describe('with a scoring profile', () => {
+    const WITH_PROFILE = { competencies: ['Strategy', 'P&L'] }
+
+    function loadedWithProfile(questions) {
+      return { data: { ...loaded(questions).data, ...WITH_PROFILE, untested_competencies: [] } }
+    }
+
+    it('offers each question a competency to test, and none when the job has no profile', async () => {
+      api.get.mockResolvedValueOnce(loadedWithProfile([saved(1, 'How do you set a strategy for launches?', 120)]))
+      const { unmount } = render(<InterviewQuestionsModal jobId="job-1" hasBrief onClose={vi.fn()} onSaved={vi.fn()} />)
+
+      const select = await screen.findByLabelText('Tests competency')
+      expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Not tagged', 'Strategy', 'P&L'])
+      unmount()
+
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'How do you set a strategy for launches?', 120)]))
+      renderModal()
+      await screen.findByLabelText('Time to answer')
+      expect(screen.queryByLabelText('Tests competency')).not.toBeInTheDocument()
+    })
+
+    it('shows a saved tag, warns about the competencies no question tests, and updates the warning as tags change', async () => {
+      api.get.mockResolvedValueOnce(
+        loadedWithProfile([{ ...saved(1, 'How do you set a strategy for launches?', 120), competency: 'Strategy' }])
+      )
+      renderModal()
+
+      expect(await screen.findByLabelText('Tests competency')).toHaveValue('Strategy')
+      expect(screen.getByTestId('untested-competencies')).toHaveTextContent('No question is tagged with: P&L.')
+
+      fireEvent.change(screen.getByLabelText('Tests competency'), { target: { value: 'P&L' } })
+      expect(screen.getByTestId('untested-competencies')).toHaveTextContent('No question is tagged with: Strategy.')
+
+      fireEvent.change(screen.getByLabelText('Tests competency'), { target: { value: '' } })
+      expect(screen.getByTestId('untested-competencies')).toHaveTextContent('No question is tagged with: Strategy, P&L.')
+    })
+
+    it('has no warning when every competency has a question', async () => {
+      api.get.mockResolvedValueOnce(
+        loadedWithProfile([
+          { ...saved(1, 'How do you set a strategy for launches?', 120), competency: 'Strategy' },
+          { ...saved(2, 'How do you manage the P and L of a unit?', 120), competency: 'P&L' },
+        ])
+      )
+      renderModal()
+
+      await screen.findAllByLabelText('Tests competency')
+      expect(screen.queryByTestId('untested-competencies')).not.toBeInTheDocument()
+    })
+
+    it('saves the tag with the question, and null when it has none', async () => {
+      api.get.mockResolvedValueOnce(loadedWithProfile([saved(1, 'How do you set a strategy for launches?', 120), saved(2, 'Tell me about a time you led a team.', 90)]))
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+      const selects = await screen.findAllByLabelText('Tests competency')
+
+      fireEvent.change(selects[0], { target: { value: 'Strategy' } })
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      expect(api.put.mock.calls[0][1].questions.map((q) => q.competency)).toEqual(['Strategy', null])
+    })
+
+    it('does not turn an AI draft into the employer\'s own wording by tagging it', async () => {
+      api.get.mockResolvedValueOnce(loadedWithProfile([saved(1, 'How do you set a strategy for launches?', 120, 'AI')]))
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+
+      fireEvent.change(await screen.findByLabelText('Tests competency'), { target: { value: 'Strategy' } })
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      expect(api.put.mock.calls[0][1].questions[0].source).toBe('AI')
+    })
+  })
+
   it('adds the standard closing question with its own text and time, and offers it only once', async () => {
     api.get.mockResolvedValueOnce(loaded([saved(1, 'Describe a system you designed.', 180)]))
     renderModal()
@@ -265,8 +341,8 @@ describe('InterviewQuestionsModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(api.put).toHaveBeenCalledWith(URL, {
       questions: [
-        { text: 'First question to answer.', time_limit_seconds: 120, source: 'AI' },
-        { text: 'My own second question here.', time_limit_seconds: 90, source: 'EMPLOYER' },
+        { text: 'First question to answer.', time_limit_seconds: 120, source: 'AI', competency: null },
+        { text: 'My own second question here.', time_limit_seconds: 90, source: 'EMPLOYER', competency: null },
       ],
     })
     expect(onSaved).toHaveBeenCalled()

@@ -24,6 +24,11 @@ from app.core.exceptions import (
 from app.core.ownership import can_manage_job
 from app.modules.interviews import question_rules as rules
 from app.modules.interviews.models import JobInterviewQuestion
+from app.modules.interviews.scoring_profile_service import (
+    canonical_tag,
+    load_profile,
+    untested,
+)
 from app.modules.jobs.repository import JobRepository
 from app.modules.users.models import User
 
@@ -48,10 +53,14 @@ class InterviewQuestionService:
         )
         return list(result.scalars().all())
 
-    @staticmethod
-    def _answer(questions: list) -> dict:
-        """The response: the questions, plus the limits the screen shows next to them."""
+    async def _answer(self, job_id: uuid.UUID, questions: list) -> dict:
+        """The response: the questions, plus the limits the screen shows next to them and the
+        competencies of the job's scoring profile (and which no question is tagged with)."""
+        profile = await load_profile(self._db, job_id)
+        competencies = profile.competencies if profile else []
         return {
+            "competencies": [item["name"] for item in competencies],
+            "untested_competencies": untested(competencies, [q.competency for q in questions]),
             "questions": questions,
             "total_seconds": sum(question.time_limit_seconds for question in questions),
             "max_questions": settings.strict_interview_max_questions,
@@ -63,7 +72,7 @@ class InterviewQuestionService:
 
     async def list_questions(self, user: User, job_id: uuid.UUID) -> dict:
         await self._job_for(user, job_id)
-        return self._answer(await self._saved(job_id))
+        return await self._answer(job_id, await self._saved(job_id))
 
     async def replace_questions(
         self, user: User, job_id: uuid.UUID, items: list[dict]
@@ -79,6 +88,19 @@ class InterviewQuestionService:
             rules.QuestionDraft(item["text"], item["time_limit_seconds"]) for item in items
         ]
         problems = rules.problems_with(drafts)
+        # A tag has to be a competency of the job's scoring profile (spelled as the profile does).
+        profile = await load_profile(self._db, job_id)
+        known = profile.competencies if profile else []
+        tags: list[str | None] = []
+        for number, item in enumerate(items, start=1):
+            wanted = item.get("competency")
+            tag = canonical_tag(wanted, known)
+            if wanted and tag is None:
+                problems.append(
+                    f"Question {number} is tagged \"{wanted}\", which is not a competency of this "
+                    "job's scoring profile."
+                )
+            tags.append(tag)
         if problems:
             raise ValidationException(
                 message=" ".join(problems),
@@ -90,7 +112,7 @@ class InterviewQuestionService:
             delete(JobInterviewQuestion).where(JobInterviewQuestion.job_id == job_id)
         )
         await self._db.flush()
-        for position, (item, draft) in enumerate(zip(items, drafts, strict=True), start=1):
+        for position, (item, draft, tag) in enumerate(zip(items, drafts, tags, strict=True), start=1):
             self._db.add(
                 JobInterviewQuestion(
                     job_id=job_id,
@@ -98,10 +120,11 @@ class InterviewQuestionService:
                     text=rules.clean_text(draft.text),
                     time_limit_seconds=draft.time_limit_seconds,
                     source=item.get("source", "EMPLOYER"),
+                    competency=tag,
                 )
             )
         await self._db.commit()
-        return self._answer(await self._saved(job_id))
+        return await self._answer(job_id, await self._saved(job_id))
 
     async def draft_questions(
         self, user: User, job_id: uuid.UUID, count: int | None = None
@@ -169,7 +192,10 @@ class InterviewQuestionService:
             {"text": draft.text, "time_limit_seconds": draft.time_limit_seconds, "source": "AI"}
             for draft in drafts
         ]
+        profile = await load_profile(self._db, job_id)
         return {
+            "competencies": [item["name"] for item in profile.competencies] if profile else [],
+            "untested_competencies": [],
             "questions": questions,
             "total_seconds": sum(draft.time_limit_seconds for draft in drafts),
             "max_questions": settings.strict_interview_max_questions,

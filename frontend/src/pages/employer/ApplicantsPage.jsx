@@ -4,7 +4,7 @@ import {
   User, ArrowLeft, ChevronDown, X,
   Share2, Link as LinkIcon, Copy, Check as CheckIcon,
   Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3, Sparkles, Coins,
-  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil, ListOrdered,
+  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil, ListOrdered, Scale,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -20,6 +20,7 @@ import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
 import InviteByEmailForm from '@/components/employer/InviteByEmailForm'
+import ScoringProfileModal from '@/components/employer/ScoringProfileModal'
 import TalentMatchCard from '@/components/employer/TalentMatchCard'
 import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
 import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
@@ -1408,6 +1409,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
   const [bulkSummary, setBulkSummary] = useState(null)
   const [showBriefModal, setShowBriefModal] = useState(false)
   const [showQuestionsModal, setShowQuestionsModal] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
   // What an interview costs and the balance, shown before anything is sent and
   // refreshed after each send (a send takes credits).
   const [pricing, setPricing] = useState(null)
@@ -1497,23 +1499,41 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
 
   // The strict interview shows each candidate the same list of questions. Only offered when the
   // platform's interview style is "strict"; with the live interview there are no questions to edit.
+  // The scoring profile (competencies with weights) sits beside it, for the same reason.
   const questionsButton = pricing?.style === 'strict' && (
-    <button
-      type="button"
-      onClick={() => setShowQuestionsModal(true)}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
-    >
-      <ListOrdered size={13} />
-      Interview questions
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setShowQuestionsModal(true)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
+      >
+        <ListOrdered size={13} />
+        Interview questions
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowProfileModal(true)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
+      >
+        <Scale size={13} />
+        Scoring profile
+      </button>
+    </>
   )
 
-  const questionsModal = showQuestionsModal && (
-    <InterviewQuestionsModal
-      jobId={jobId}
-      hasBrief={hasInterviewBrief}
-      onClose={() => setShowQuestionsModal(false)}
-    />
+  const questionsModal = (
+    <>
+      {showQuestionsModal && (
+        <InterviewQuestionsModal
+          jobId={jobId}
+          hasBrief={hasInterviewBrief}
+          onClose={() => setShowQuestionsModal(false)}
+        />
+      )}
+      {showProfileModal && (
+        <ScoringProfileModal jobId={jobId} onClose={() => setShowProfileModal(false)} />
+      )}
+    </>
   )
 
   // Send the interview to an email address with no CV. Only once the interview is set up, since

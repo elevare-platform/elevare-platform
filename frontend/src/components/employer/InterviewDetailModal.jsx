@@ -9,6 +9,7 @@ import { endedBadge, isEndedStatus } from '@/lib/strictNotes'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
 import RecordingClips from '@/components/employer/RecordingClips'
+import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
 import { showsClips } from '@/lib/recordingClips'
 
 // Scoring runs in the background, so after asking for it we check the interview
@@ -296,6 +297,15 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
 
               {/* Interview + CV assessments, side by side */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* A job with a scoring profile: the weighted table, the total or "incomplete",
+                    and the suggested band, instead of the single score card. */}
+                {detail.score_report ? (
+                  <WeightedScoreCard report={detail.score_report}>
+                    {detail.ai_rationale && (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{detail.ai_rationale}</p>
+                    )}
+                  </WeightedScoreCard>
+                ) : (
                 <AssessmentCard
                   icon={Brain}
                   title="Interview Assessment"
@@ -334,6 +344,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                     ) : null
                   }
                 />
+                )}
                 <AssessmentCard
                   icon={FileCheck2}
                   title="CV Assessment"

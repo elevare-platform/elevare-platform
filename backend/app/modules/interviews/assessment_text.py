@@ -24,11 +24,34 @@ def _bullets(title: str, items: list[str]) -> str | None:
     return title + "\n" + "\n".join(f"- {item}" for item in items)
 
 
+def weighted_lines(weighted: dict) -> list[str]:
+    """The weighted score, said plainly, for a job with a scoring profile. An incomplete score is
+    never presented as a full one, and carries no band."""
+    if not weighted["complete"]:
+        missing = ", ".join(weighted["unassessed"])
+        return [
+            f"INCOMPLETE SCORE: {weighted['points']:g} of {weighted['assessed_weight']} weighted points "
+            f"could be assessed (not assessed: {missing}). No full score and no band are given. "
+            "A person decides whether more evidence is needed."
+        ]
+    lines = [
+        f"Weighted score: {weighted['score']} of 100. Suggested band (provisional): {weighted['band']}."
+    ]
+    if weighted["key_flags"]:
+        flagged = ", ".join(weighted["key_flags"])
+        lines.append(
+            f"Key competency rated under {weighted['key_min_rating']} of 5: {flagged}. "
+            "The band is held at Hold for evidence until a person has looked at it."
+        )
+    return lines
+
+
 def _competency_line(item: dict) -> str:
+    weight = f" (weight {item['weight']}%{', key' if item.get('key') else ''})" if item.get("weight") else ""
     if item["score"] is None:
-        head = f"- {item['name']}: not assessed in this interview."
+        head = f"- {item['name']}{weight}: not assessed in this interview."
     else:
-        head = f"- {item['name']}: {item['score']} of 5 ({RATING_NAMES[item['score']]})."
+        head = f"- {item['name']}{weight}: {item['score']} of 5 ({RATING_NAMES[item['score']]})."
         if item["coverage"] == "PARTIALLY_ASSESSED":
             head += " Only partly covered."
     parts = [head]
@@ -55,7 +78,11 @@ def format_assessment(result) -> str:
     sections: list[str | None] = [result.summary]
     if result.role_assessed:
         sections.append(f"Role assessed: {result.role_assessed}")
-    if result.recommendation:
+    weighted = getattr(result, "weighted", None)
+    if weighted:
+        # With a scoring profile the band replaces the four-word recommendation.
+        sections.append("\n".join(weighted_lines(weighted)))
+    elif result.recommendation:
         sections.append(f"Overall recommendation: {result.recommendation}")
     if result.competencies:
         sections.append(
@@ -78,6 +105,6 @@ def format_assessment(result) -> str:
         _bullets("Candidate-reported, not scored:", result.candidate_reported),
         _bullets("Suggested follow-up questions for a human interviewer:", result.follow_up_questions),
     ]
-    if result.competencies or result.recommendation:
+    if result.competencies or result.recommendation or weighted:
         sections.append(DECISION_SUPPORT_NOTE)
     return "\n\n".join(section for section in sections if section)

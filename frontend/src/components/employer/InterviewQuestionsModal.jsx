@@ -73,6 +73,11 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
       )
     )
 
+  // Tagging a question with a competency does not make it the employer's own wording, so it keeps
+  // its "AI draft" mark.
+  const tag = (index, competency) =>
+    edit((list) => list.map((question, position) => (position === index ? { ...question, competency } : question)))
+
   const close = () => {
     if (dirty && !window.confirm('You have unsaved changes. Close without saving?')) return
     onClose()
@@ -102,7 +107,12 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
     setError(null)
     try {
       const { data } = await api.put(`/api/v1/interviews/jobs/${jobId}/questions`, {
-        questions: questions.map(({ text, time_limit_seconds, source }) => ({ text, time_limit_seconds, source })),
+        questions: questions.map(({ text, time_limit_seconds, source, competency }) => ({
+          text,
+          time_limit_seconds,
+          source,
+          competency: competency || null,
+        })),
       })
       onSaved?.(data)
       onClose()
@@ -122,6 +132,10 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const hasClosing = Boolean(
     limits?.closing_question && questions.some((q) => q.text.trim() === limits.closing_question.text),
   )
+  // The job's scoring profile: its competencies (for the tag on each question) and, as the tags
+  // change, which weighted competencies no question tests.
+  const competencies = limits?.competencies ?? []
+  const untested = competencies.filter((name) => !questions.some((q) => q.competency === name))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
@@ -254,9 +268,34 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                         ))}
                       </select>
                     </div>
+                    {competencies.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <label htmlFor={`competency-${question.key}`} className="text-xs text-text-muted">
+                          Tests competency
+                        </label>
+                        <select
+                          id={`competency-${question.key}`}
+                          value={question.competency ?? ''}
+                          onChange={(event) => tag(index, event.target.value || null)}
+                          className="min-w-0 flex-1 rounded-lg border border-border bg-white px-2 py-1 text-xs"
+                        >
+                          <option value="">Not tagged</option>
+                          {competencies.map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ol>
+
+              {competencies.length > 0 && untested.length > 0 && (
+                <p role="note" data-testid="untested-competencies" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  No question is tagged with: {untested.join(', ')}. A competency nobody is asked about
+                  can only be assessed if an answer happens to cover it, and the score is then incomplete.
+                </p>
+              )}
 
               <div className="flex items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">

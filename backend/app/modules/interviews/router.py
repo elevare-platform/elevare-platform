@@ -33,11 +33,14 @@ from app.modules.interviews.schema import (
     InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
+    ScoringProfileIn,
+    ScoringProfileResponse,
     StrictEventRequest,
     StrictInterviewStateResponse,
     StrictRecordingPartResponse,
     StrictStartRequest,
 )
+from app.modules.interviews.scoring_profile_service import ScoringProfileService
 from app.modules.interviews.service import InterviewService
 from app.modules.users.models import User
 
@@ -418,6 +421,53 @@ async def draft_job_interview_questions(
     employer reads and edits the draft and saves it. Needs a brief. Limited to 20 an hour, as it
     is a paid AI call."""
     return await InterviewQuestionService(db).draft_questions(current_user, job_id, data.count)
+
+
+@router.get(
+    "/jobs/{job_id}/scoring-profile", response_model=ScoringProfileResponse, status_code=200
+)
+async def get_job_scoring_profile(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """The job's scoring profile (null when it has none), with the ready-made templates and the
+    defaults the editor starts from. Anyone in the company that owns the job."""
+    return await ScoringProfileService(db).get(current_user, job_id)
+
+
+@router.put(
+    "/jobs/{job_id}/scoring-profile", response_model=ScoringProfileResponse, status_code=200
+)
+async def save_job_scoring_profile(
+    job_id: uuid.UUID,
+    data: ScoringProfileIn,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save the job's scoring profile: competencies with weights adding up to 100, which are key,
+    and the band thresholds. Every problem is named in the refusal. Applies to interviews scored
+    from now on; reports already made are not changed. Strict interview only."""
+    return await ScoringProfileService(db).save(
+        current_user,
+        job_id,
+        [item.model_dump() for item in data.competencies],
+        data.bands.model_dump() if data.bands else None,
+        data.key_min_rating,
+        data.template_code,
+    )
+
+
+@router.delete(
+    "/jobs/{job_id}/scoring-profile", response_model=ScoringProfileResponse, status_code=200
+)
+async def remove_job_scoring_profile(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Take the scoring profile off the job, so it is scored by the generic scorecard again."""
+    return await ScoringProfileService(db).remove(current_user, job_id)
 
 
 @router.post("/{talent_pool_profile_id}/interview-link", response_model=InterviewLinkResponse, status_code=200)

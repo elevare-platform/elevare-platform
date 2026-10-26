@@ -334,6 +334,37 @@ describe('InterviewDetailModal: an interview that ended early', () => {
     expect(screen.queryByText(/No recording is available/)).not.toBeInTheDocument()
   })
 
+  it('shows the weighted table, not the single score card, for an interview scored with a profile', async () => {
+    const report = {
+      rows: [
+        { name: 'Strategy', weight: 60, key: true, rating: 4 },
+        { name: 'P&L', weight: 40, key: false, rating: 3 },
+      ],
+      points: 72, assessed_weight: 100, total_weight: 100, complete: true, score: 72, band: 'Hold for evidence',
+      bands: { strong: 85, shortlist: 75, hold: 65 }, key_min_rating: 3, key_flags: [], unassessed: [],
+    }
+    api.get.mockResolvedValue({ data: { ...BASE, ai_score: 72, ai_rationale: 'A steady candidate.', score_report: report } })
+    renderEnded()
+
+    expect(await screen.findByTestId('weighted-total')).toHaveTextContent('72 / 100')
+    expect(screen.getByTestId('weighted-band')).toHaveTextContent('Hold for evidence')
+    expect(screen.getByText('A steady candidate.')).toBeInTheDocument()
+  })
+
+  it('shows an incomplete score as incomplete, not as "no AI score is available"', async () => {
+    const report = {
+      rows: [{ name: 'Strategy', weight: 60, key: true, rating: 4 }, { name: 'P&L', weight: 40, key: false, rating: null }],
+      points: 48, assessed_weight: 60, total_weight: 100, complete: false, score: null, band: null,
+      bands: { strong: 85, shortlist: 75, hold: 65 }, key_min_rating: 3, key_flags: [], unassessed: ['P&L'],
+    }
+    api.get.mockResolvedValue({ data: { ...BASE, status: 'SCORED', ai_score: null, ai_rationale: 'INCOMPLETE SCORE.', score_report: report } })
+    renderEnded()
+
+    expect(await screen.findByTestId('weighted-incomplete')).toBeInTheDocument()
+    expect(screen.queryByText(/No AI score is available/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Generate AI score' })).not.toBeInTheDocument()
+  })
+
   it('shows no notes for a live interview', async () => {
     api.get.mockResolvedValue({ data: { ...BASE, strict: null } })
     renderEnded()

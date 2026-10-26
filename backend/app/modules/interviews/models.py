@@ -57,6 +57,51 @@ class JobInterviewQuestion(BaseModel):
     time_limit_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     # "AI" (drafted) or "EMPLOYER" (written or edited by the employer).
     source: Mapped[str] = mapped_column(String(10), nullable=False, default="EMPLOYER")
+    # The competency of the job's scoring profile this question was written to test, or None
+    # (optional). Used to warn when a weighted competency has no question, and told to the scorer.
+    competency: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class JobScoringProfile(BaseModel):
+    """A job's scoring profile (docs/08_DECISIONS.md, item 36): the competencies the strict
+    interview rates, each with a weight (the weights add up to 100), which of them are "key", and
+    the thresholds of the suggested bands. One row per job; a job without one is scored by the
+    generic scorecard. Kept in a table of its own, not as a column on ``jobs``, so adding it never
+    touches the live jobs schema (see migration p22_0033)."""
+
+    __tablename__ = "job_scoring_profiles"
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    # [{"name": str, "weight": int, "key": bool}, ...] in the order the employer set them.
+    competencies: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # {"strong": 85, "shortlist": 75, "hold": 65}: a total at or over a threshold gets that band.
+    bands: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # A key competency rated under this caps the band at "Hold for evidence".
+    key_min_rating: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    # Which template it was started from (None: written by the employer), for the editor.
+    template_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class InterviewWeightedScore(BaseModel):
+    """The weighted score report of one interview scored with a scoring profile: the rows with
+    their ratings, the points, whether it is complete, the band and the key flags, as they were
+    when it was scored (a later edit of the profile never changes a past report). One row per
+    interview. A new table, so the interviews table is untouched."""
+
+    __tablename__ = "interview_weighted_scores"
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    report: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
 
 class StrictInterviewRun(BaseModel):

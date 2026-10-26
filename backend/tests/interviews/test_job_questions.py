@@ -85,6 +85,8 @@ async def test_a_job_with_no_questions_returns_an_empty_list_and_the_limits(clie
         "max_total_seconds": 1200,
         "closing_question": {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90},
         "style": "live",
+        "competencies": [],
+        "untested_competencies": [],
     }
 
 
@@ -342,10 +344,10 @@ async def test_a_draft_is_cleaned_marked_as_ai_and_never_saved(client, db_sessio
     assert response.status_code == 200
     body = response.json()
     assert body["questions"] == [
-        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI"},
-        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI"},
+        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI", "competency": None},
+        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI", "competency": None},
         # The scorecard's standard closing question is always the last one.
-        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI"},
+        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI", "competency": None},
     ]
     assert body["total_seconds"] == 300
     assert await _rows(db_session, job) == []  # a draft is only ever returned

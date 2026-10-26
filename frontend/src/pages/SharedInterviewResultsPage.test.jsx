@@ -132,6 +132,39 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     expect(screen.getByText(/no decision has been made for you/)).toBeInTheDocument()
   })
 
+  it('shows the client the weighted table with the provisional band, or an incomplete score with no band', async () => {
+    const rows = [
+      { name: 'Strategy', weight: 60, key: true, rating: 4 },
+      { name: 'P&L', weight: 40, key: false, rating: 3 },
+    ]
+    const base = { bands: { strong: 85, shortlist: 75, hold: 65 }, key_min_rating: 3, key_flags: [], total_weight: 100 }
+    const complete = { ...base, rows, points: 72, assessed_weight: 100, complete: true, score: 72, band: 'Hold for evidence', unassessed: [] }
+    const incomplete = {
+      ...base, rows: [rows[0], { ...rows[1], rating: null }], points: 48, assessed_weight: 60, complete: false,
+      score: null, band: null, unassessed: ['P&L'],
+    }
+    api.get.mockResolvedValueOnce({
+      data: {
+        ...RESULTS,
+        candidates: [{ ...ENDED_EARLY, status: 'COMPLETED', interview_score: 72, interview_assessment: 'A steady candidate.', score_report: complete }],
+      },
+    })
+    const first = renderPage()
+    // A completed interview is open when the page loads.
+    expect(await screen.findByTestId('weighted-band')).toHaveTextContent('Hold for evidence')
+    first.unmount()
+
+    api.get.mockResolvedValueOnce({
+      data: {
+        ...RESULTS,
+        candidates: [{ ...ENDED_EARLY, status: 'COMPLETED', interview_score: null, interview_assessment: 'INCOMPLETE SCORE.', score_report: incomplete }],
+      },
+    })
+    renderPage()
+    expect(await screen.findByTestId('weighted-incomplete')).toBeInTheDocument()
+    expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
+  })
+
   it('shows a reinstated interview to the client as one clip per attempt', async () => {
     const reinstated = {
       ...ENDED_EARLY,

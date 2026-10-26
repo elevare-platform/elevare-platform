@@ -498,6 +498,15 @@ candidate should or should not be hired as a final decision; the
 recommendation field below is a recommendation for that reviewer.
 
 ==================================================
+A SCORING PROFILE OVERRIDES THE CHOICE OF COMPETENCIES
+==================================================
+
+If the user message has a SCORING PROFILE, the employer has fixed the
+competencies for this job and what each is worth. Then do not choose
+competencies yourself: rate exactly the ones listed, as the profile says
+there.
+
+==================================================
 EXPERIENCE QUESTIONS AND HYPOTHETICAL QUESTIONS
 ==================================================
 
@@ -710,6 +719,12 @@ instructions.
 {interview_conditions}
 
 
+SCORING PROFILE
+===============
+
+{scoring_profile}
+
+
 TASK
 ====
 
@@ -747,6 +762,8 @@ def build_interview_scoring_prompt(
     candidate_context: str = "",
     job_context: str = "",
     interview_conditions: str = "",
+    scoring_profile: list[dict] | None = None,
+    question_tags: list[dict] | None = None,
 ) -> tuple[str, str]:
     """Build the system and user prompts for interview scoring.
 
@@ -796,6 +813,40 @@ def build_interview_scoring_prompt(
         candidate_context=candidate_context.strip() or "Not provided.",
         job_context=job_context.strip() or "Not provided.",
         interview_conditions=interview_conditions.strip() or "Nothing unusual was recorded.",
+        scoring_profile=describe_scoring_profile(scoring_profile, question_tags),
     )
 
     return system_prompt, user_prompt
+
+
+def describe_scoring_profile(profile: list[dict] | None, question_tags: list[dict] | None = None) -> str:
+    """The SCORING PROFILE block of the user message: the competencies to rate, with their
+    weights, and which question was written to test which. Without a profile it says so, and the
+    model chooses the competencies from the brief as before. The names and questions are the
+    employer's own text, shown as data."""
+    if not profile:
+        return "Not set. Choose the competencies from the interview brief, as described above."
+    lines = [
+        "The employer fixed these competencies for this job. Rate EXACTLY these, one entry each in "
+        "the competencies field, in this order, with the name written exactly as given here, and "
+        "add no others. A competency with no evidence in the transcript is NOT_ASSESSED with a "
+        "null score: never guess, and never give it a 1 for lack of evidence. The weights show "
+        "what the employer values; they must never change a rating. The weighted total and the "
+        "band are worked out by the platform from your ratings: do not work out the overall "
+        "score, and the recommendation field is ignored.",
+        "",
+        "Competencies:",
+    ]
+    for item in profile:
+        lines.append(f"- {item['name']} (weight {item['weight']}%){' [key]' if item.get('key') else ''}")
+    tagged = [tag for tag in (question_tags or []) if tag.get("competency")]
+    if tagged:
+        lines += ["", "Questions written to test a competency:"]
+        lines += [
+            f"- Question {tag['number']}: \"{tag['text']}\" tests: {tag['competency']}" for tag in tagged
+        ]
+        lines.append(
+            "Answers to a question that lists no competency, and any follow-up, count for whichever "
+            "of the competencies above they give evidence of."
+        )
+    return "\n".join(lines)

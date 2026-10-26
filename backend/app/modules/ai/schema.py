@@ -104,6 +104,10 @@ class InterviewScoringResult:
     role_assessed: str = ""
     competencies: list[dict] = field(default_factory=list)
     recommendation: str | None = None
+    # Set when the interview was scored with a job's scoring profile: the weighted report
+    # (rows, points, whether complete, the band, the key flags). ``score`` is then the total
+    # only when it is complete.
+    weighted: dict | None = None
     claims_to_verify: list[str] = field(default_factory=list)
     # Technical or access conditions that affected the evidence (a reload, an answer that could
     # not be written down): a reassessment may be needed, and none of it counts against the

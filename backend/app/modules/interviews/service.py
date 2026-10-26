@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 from openai import AsyncOpenAI
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ai_pricing import compute_realtime_cost_usd
@@ -30,7 +31,7 @@ from app.modules.interviews.enums import (
     InterviewStatus,
     TranscriptCheckStatus,
 )
-from app.modules.interviews.models import Interview
+from app.modules.interviews.models import Interview, InterviewWeightedScore
 from app.modules.interviews.recording_merge import attempt_of_key, final_key, part_key
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.schema import (
@@ -1546,6 +1547,14 @@ class InterviewService:
         link works; a link meant to be passed around uses a much shorter one.
         """
         strict = await self._strict().strict_detail(interview)
+        # The weighted score report, for an interview scored with a scoring profile.
+        score_report = (
+            await self._db.execute(
+                select(InterviewWeightedScore.report).where(
+                    InterviewWeightedScore.interview_id == interview.id
+                )
+            )
+        ).scalar_one_or_none()
         video_url = None
         # While the pieces of the recording are being joined the file on record is only the last
         # piece: showing it would look like the whole interview, so nothing is shown yet.
@@ -1596,6 +1605,7 @@ class InterviewService:
             ai_scored_at=interview.ai_scored_at,
             video_url=video_url,
             recordings=clips,
+            score_report=score_report,
             completed_at=interview.completed_at,
             cv_score=cv_score,
             cv_strengths=cv_strengths,

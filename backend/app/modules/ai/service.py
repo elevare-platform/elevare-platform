@@ -690,8 +690,15 @@ class AnthropicCVExtractionService(AIService):
         transcript: str,
         job_context: str = "",
         interview_conditions: str = "",
+        scoring_profile: dict | None = None,
+        question_tags: list[dict] | None = None,
     ) -> "InterviewScoringResult":
-        """Score an interview transcript against the employer's brief via Claude."""
+        """Score an interview transcript against the employer's brief via Claude.
+
+        With a ``scoring_profile`` (``{"competencies", "bands", "key_min_rating"}``, a job's
+        weighted competencies) the model rates exactly those competencies and the weighted
+        total, the band and the key flags are worked out here from its ratings (see
+        ``interviews/scoring_profile.py``); the result carries them in ``weighted``."""
         from app.modules.ai.interview_scorecard import (
             clean_competencies,
             clean_list,
@@ -704,6 +711,7 @@ class AnthropicCVExtractionService(AIService):
             build_interview_scoring_prompt,
         )
         from app.modules.ai.schema import InterviewScoringResult
+        from app.modules.interviews.scoring_profile import normalise, weighted_report
 
         system_prompt, user_prompt = build_interview_scoring_prompt(
             interview_brief=interview_brief,
@@ -711,6 +719,8 @@ class AnthropicCVExtractionService(AIService):
             scoring_rubric=SCORECARD_RUBRIC,
             job_context=job_context,
             interview_conditions=interview_conditions,
+            scoring_profile=scoring_profile["competencies"] if scoring_profile else None,
+            question_tags=question_tags,
         )
 
         raw = ""
@@ -739,17 +749,33 @@ class AnthropicCVExtractionService(AIService):
             # _parse_response returns a non-dict fallback when the JSON is
             # unusable, and a dict without "score" is just as unusable. Both
             # must read as a failure, never as a score of 0.
-            if not isinstance(data, dict) or data.get("score") is None:
+            if not isinstance(data, dict):
                 raise ValueError("response contained no usable score")
 
             competencies = clean_competencies(data.get("competencies"))
-            # The overall score is the average of the assessed competencies on the scorecard
-            # (1 to 5) times 20, as the prompt says. It is worked out here from the model's own
-            # ratings so the number always agrees with the table the employer reads; with no
-            # usable ratings the model's own overall score stands.
-            score = score_from_competencies(competencies)
-            if score is None:
-                score = max(0, min(100, int(data["score"])))
+            weighted = None
+            if scoring_profile:
+                # A scoring profile fixes the competencies, so the model's own overall score is
+                # not used at all: the weighted total comes from its ratings, and a competency it
+                # did not rate is not assessed (never a zero). Ratings are needed, a score is not.
+                if not isinstance(data.get("competencies"), list):
+                    raise ValueError("response contained no competency ratings")
+                rows = normalise(competencies, scoring_profile["competencies"])
+                weighted = weighted_report(
+                    rows, scoring_profile["bands"], scoring_profile["key_min_rating"]
+                )
+                competencies = rows
+                score = weighted["score"] if weighted["complete"] else 0
+            else:
+                if data.get("score") is None:
+                    raise ValueError("response contained no usable score")
+                # The overall score is the average of the assessed competencies on the scorecard
+                # (1 to 5) times 20, as the prompt says. It is worked out here from the model's
+                # own ratings so the number always agrees with the table the employer reads; with
+                # no usable ratings the model's own overall score stands.
+                score = score_from_competencies(competencies)
+                if score is None:
+                    score = max(0, min(100, int(data["score"])))
 
             return InterviewScoringResult(
                 score=score,
@@ -759,7 +785,10 @@ class AnthropicCVExtractionService(AIService):
                 missing_evidence=data.get("missing_evidence", []),
                 contradictions=data.get("contradictions", []),
                 role_assessed=clean_text(data.get("role_assessed")),
-                competencies=competencies,
+                competencies=[
+                    {**row, "score": row["rating"]} if "rating" in row else row for row in competencies
+                ],
+                weighted=weighted,
                 recommendation=clean_recommendation(data.get("recommendation")),
                 claims_to_verify=clean_list(data.get("claims_to_verify")),
                 technical_flags=clean_list(data.get("technical_flags")),
