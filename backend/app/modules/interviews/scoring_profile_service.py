@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import PermissionDeniedException, ValidationException
 from app.core.ownership import can_manage_job
+from app.core.schema_guard import tolerate_missing
 from app.modules.interviews import scoring_profile as rules
 from app.modules.interviews.models import JobInterviewQuestion, JobScoringProfile
 from app.modules.jobs.repository import JobRepository
@@ -21,9 +22,14 @@ from app.modules.users.models import User
 
 async def load_profile(db: AsyncSession, job_id: uuid.UUID) -> JobScoringProfile | None:
     """The job's scoring profile, or None when it has none (it is then scored by the generic
-    scorecard)."""
-    result = await db.execute(select(JobScoringProfile).where(JobScoringProfile.job_id == job_id))
-    return result.scalar_one_or_none()
+    scorecard). Also None in the seconds of a deploy before the migration that creates the table
+    has run, so a page or a scoring run does not fail for it."""
+
+    async def read() -> JobScoringProfile | None:
+        result = await db.execute(select(JobScoringProfile).where(JobScoringProfile.job_id == job_id))
+        return result.scalar_one_or_none()
+
+    return await tolerate_missing(db, read, None)
 
 
 def profile_out(profile: JobScoringProfile | None) -> dict | None:

@@ -35,6 +35,7 @@ from app.modules.jobs.enums import JobDisabledReason, JobStatus
 from app.modules.jobs.models import Job
 from app.modules.jobs.repository import JobRepository
 from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME, build_full_description
+from app.modules.seen.service import SeenService
 from app.modules.users.enums import UserRole
 from app.modules.users.repository import UserRepository
 
@@ -313,11 +314,14 @@ class ApplicationService:
         filters: ApplicationFilters,
         cursor: str | None = None,
         limit: int = 20,
+        unseen: bool = False,
     ) -> ApplicationList:
         """Return paginated applicants for a job.
 
         Admins can view applicants for any job.
         Employers can only view applicants for jobs they own.
+        Each carries ``is_new`` (made after the viewer first used the markers, and not yet
+        opened); ``unseen`` keeps only those.
         """
         job = await self._job_repo.get_by_id(job_id)
         if not job:
@@ -330,17 +334,33 @@ class ApplicationService:
             if job.employer_id != current_user_id:
                 raise PermissionDeniedException()
 
+        seen = SeenService(self._db)
+        baseline = await seen.baseline(current_user_id)
+        await self._db.commit()  # made the first time; nothing else has been written yet
+
         paginated = await self._app_repo.get_job_applicants(
-            job_id, filters, cursor, limit
+            job_id,
+            filters,
+            cursor,
+            limit,
+            unseen_for=current_user_id if (unseen and baseline is not None) else None,
+            unseen_since=baseline if unseen else None,
+        )
+        opened = await seen.opened_application_ids(
+            current_user_id, [application.id for application in paginated["items"]]
         )
 
         # Resolve presigned CV URLs for each application concurrently
         items = []
         for application in paginated["items"]:
             cv_url = await self._resolve_cv_url(application.cv_id)
-            items.append(
-                ApplicationResponse.from_application(application, cv_url=cv_url)
+            response = ApplicationResponse.from_application(application, cv_url=cv_url)
+            response.is_new = (
+                baseline is not None
+                and application.created_at > baseline
+                and application.id not in opened
             )
+            items.append(response)
 
         return ApplicationList(
             items=items,
@@ -348,6 +368,46 @@ class ApplicationService:
             count=paginated["count"],
             total=paginated["total"],
         )
+
+    async def _owned_job_applicant(
+        self, job_id: uuid.UUID, current_user_id: uuid.UUID, current_user_role: str
+    ):
+        """The job, if the caller may see its applicants (its owner, or an admin)."""
+        job = await self._job_repo.get_by_id(job_id)
+        if not job:
+            from app.core.exceptions import JobNotFoundError
+
+            raise JobNotFoundError()
+        if current_user_role != UserRole.ADMIN.value and job.employer_id != current_user_id:
+            raise PermissionDeniedException()
+        return job
+
+    async def new_applicants_count(
+        self, job_id: uuid.UUID, current_user_id: uuid.UUID, current_user_role: str
+    ) -> int:
+        """How many of the job's applicants the caller has not opened (made after they first used
+        the markers): the number on the "New" banner. 0 when the markers cannot be kept yet."""
+        await self._owned_job_applicant(job_id, current_user_id, current_user_role)
+        baseline = await SeenService(self._db).baseline(current_user_id)
+        await self._db.commit()
+        if baseline is None:
+            return 0
+        return await self._app_repo.count_unseen_for_job(job_id, current_user_id, baseline)
+
+    async def mark_applicant_seen(
+        self, application_id: uuid.UUID, current_user_id: uuid.UUID, current_user_role: str
+    ) -> None:
+        """The employer opened this applicant. Only an applicant of a job they may see can be
+        marked, so the answer never reveals whether someone else's application exists."""
+        application = await self._app_repo.get_by_id(application_id)
+        if application is None:
+            raise ApplicationNotFound()
+        try:
+            await self._owned_job_applicant(application.job_id, current_user_id, current_user_role)
+        except PermissionDeniedException:
+            raise ApplicationNotFound() from None
+        await SeenService(self._db).mark_application_opened(current_user_id, application_id)
+        await self._db.commit()
 
     async def update_application_status(
         self,

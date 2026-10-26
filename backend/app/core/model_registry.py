@@ -55,6 +55,7 @@ from app.modules.notifications.models import Notification
 from app.modules.onboarding.models import UserOnboarding
 from app.modules.saved_candidates.models import SavedCandidate
 from app.modules.seen.models import (
+    ApplicationView,
     EmployerSeenBaseline,
     SharedLinkItemView,
     SharedLinkVisit,
@@ -98,6 +99,7 @@ __all__ = [
     "SavedCandidate",
     "EmployerSeenBaseline",
     "TalentPoolProfileView",
+    "ApplicationView",
     "SharedLinkVisit",
     "SharedLinkItemView",
     "InterviewListEntry",

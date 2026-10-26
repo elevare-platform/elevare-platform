@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel'
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
+import NewBadge from '@/components/employer/NewBadge'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
 import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
 import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
@@ -57,18 +58,6 @@ function ScoreBadge({ score, failure }) {
     >
       {band.label}
     </div>
-  )
-}
-
-// A CV added since the employer first used the markers that they have not opened yet.
-function NewBadge() {
-  return (
-    <span
-      data-testid="new-badge"
-      className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-brand-blue text-white flex-shrink-0"
-    >
-      New
-    </span>
   )
 }
 

@@ -1,6 +1,7 @@
 """Data-access layer for job applications."""
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,8 +145,14 @@ class ApplicationRepository:
         filters: ApplicationFilters,
         cursor: str | None = None,
         limit: int = 20,
+        unseen_for: uuid.UUID | None = None,
+        unseen_since: datetime | None = None,
     ):
-        """Return a paginated cursor result of applicants for a specific job."""
+        """Return a paginated cursor result of applicants for a specific job.
+
+        ``unseen_for`` and ``unseen_since`` (an employer and the moment they first used the "new"
+        markers) keep only the applications made after that moment that the employer has not
+        opened."""
         sort_by_ai_score = bool(filters and filters.sort == "ai_score")
 
         stmt = (
@@ -164,6 +171,8 @@ class ApplicationRepository:
 
         if filters and filters.status:
             stmt = stmt.where(Application.status == filters.status.value)
+        if unseen_for is not None and unseen_since is not None:
+            stmt = self._only_unseen(stmt, unseen_for, unseen_since)
 
         return await paginate_cursor(
             stmt,
@@ -172,3 +181,27 @@ class ApplicationRepository:
             limit,
             sort_column="ai_score" if sort_by_ai_score else None,
         )
+
+    @staticmethod
+    def _only_unseen(stmt, employer_id: uuid.UUID, baseline: datetime):
+        """Keep the applications made after ``baseline`` that ``employer_id`` has not opened."""
+        from sqlalchemy import exists
+
+        from app.modules.seen.models import ApplicationView
+
+        opened = exists().where(
+            ApplicationView.application_id == Application.id,
+            ApplicationView.employer_id == employer_id,
+        )
+        return stmt.where(Application.created_at > baseline).where(~opened)
+
+    async def count_unseen_for_job(
+        self, job_id: uuid.UUID, employer_id: uuid.UUID, baseline: datetime
+    ) -> int:
+        """How many of a job's applications the employer has not opened, made after ``baseline``."""
+        stmt = self._only_unseen(
+            select(func.count()).select_from(Application).where(Application.job_id == job_id),
+            employer_id,
+            baseline,
+        )
+        return (await self._db.execute(stmt)).scalar_one()

@@ -405,3 +405,133 @@ async def test_the_public_routes_work_over_http_without_logging_in(client, db_se
     assert after.json()["unseen_count"] == 0
     assert after.json()["applicants"][0]["is_unseen"] is False
     assert refused.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# The employer's applicants list for a job
+# ---------------------------------------------------------------------------
+
+
+async def applicant(db_session, job, created_at):
+    """A candidate who applied to ``job`` at ``created_at``."""
+    from app.modules.applications.models import Application
+    from tests.conftest import make_user
+
+    candidate = make_user(role="CANDIDATE")
+    db_session.add(candidate)
+    await db_session.flush()
+    application = Application(candidate_id=candidate.id, job_id=job.id, status="SUBMITTED", created_at=created_at)
+    db_session.add(application)
+    await db_session.flush()
+    return application
+
+
+async def applicants_of(db_session, employer, job, **kwargs):
+    from app.modules.applications.schema import ApplicationFilters
+    from app.modules.applications.service import ApplicationService
+
+    return await ApplicationService(db_session).get_job_applicants(
+        job.id, employer.id, employer.role, ApplicationFilters(), None, 50, **kwargs
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_application_made_after_the_employer_started_is_new_until_they_open_it(db_session):
+    from app.modules.applications.service import ApplicationService
+
+    employer = await employer_with_plan(db_session)
+    job = make_job(employer.id)
+    db_session.add(job)
+    await db_session.flush()
+    await SeenService(db_session).baseline(employer.id, now=T0)
+    old = await applicant(db_session, job, T0 - timedelta(days=2))
+    fresh = await applicant(db_session, job, T0 + timedelta(hours=1))
+
+    before = {a.id: a.is_new for a in (await applicants_of(db_session, employer, job)).items}
+    await ApplicationService(db_session).mark_applicant_seen(fresh.id, employer.id, employer.role)
+    after = {a.id: a.is_new for a in (await applicants_of(db_session, employer, job)).items}
+
+    assert before == {old.id: False, fresh.id: True}
+    assert after == {old.id: False, fresh.id: False}
+
+
+@pytest.mark.asyncio
+async def test_only_the_new_applicants_can_be_asked_for_and_counted(db_session):
+    from app.modules.applications.service import ApplicationService
+
+    employer = await employer_with_plan(db_session)
+    job = make_job(employer.id)
+    db_session.add(job)
+    await db_session.flush()
+    await SeenService(db_session).baseline(employer.id, now=T0)
+    await applicant(db_session, job, T0 - timedelta(days=1))
+    opened = await applicant(db_session, job, T0 + timedelta(hours=1))
+    waiting = await applicant(db_session, job, T0 + timedelta(hours=2))
+    service = ApplicationService(db_session)
+    await service.mark_applicant_seen(opened.id, employer.id, employer.role)
+
+    only_new = await applicants_of(db_session, employer, job, unseen=True)
+    everyone = await applicants_of(db_session, employer, job)
+    count = await service.new_applicants_count(job.id, employer.id, employer.role)
+
+    assert [a.id for a in only_new.items] == [waiting.id]
+    assert len(everyone.items) == 3
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_an_employers_first_look_at_the_list_starts_with_nothing_new(db_session):
+    employer = await employer_with_plan(db_session)
+    job = make_job(employer.id)
+    db_session.add(job)
+    await db_session.flush()
+    await applicant(db_session, job, datetime.now(UTC) - timedelta(days=1))
+
+    result = await applicants_of(db_session, employer, job)
+
+    assert [a.is_new for a in result.items] == [False]
+
+
+@pytest.mark.asyncio
+async def test_another_employers_applicant_cannot_be_marked_or_counted(db_session):
+    from app.core.exceptions import ApplicationNotFound, PermissionDeniedException
+    from app.modules.applications.service import ApplicationService
+
+    mine = await employer_with_plan(db_session)
+    other = await employer_with_plan(db_session)
+    job = make_job(other.id)
+    db_session.add(job)
+    await db_session.flush()
+    theirs = await applicant(db_session, job, T0 + timedelta(hours=1))
+    service = ApplicationService(db_session)
+
+    with pytest.raises(ApplicationNotFound):
+        await service.mark_applicant_seen(theirs.id, mine.id, mine.role)
+    with pytest.raises(PermissionDeniedException):
+        await service.new_applicants_count(job.id, mine.id, mine.role)
+
+    from app.modules.seen.models import ApplicationView
+
+    assert (await db_session.execute(select(ApplicationView))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_the_applicant_routes_work_over_http(client, db_session):
+    employer = await employer_with_plan(db_session)
+    job = make_job(employer.id)
+    db_session.add(job)
+    await db_session.flush()
+    await SeenService(db_session).baseline(employer.id, now=T0)
+    fresh = await applicant(db_session, job, T0 + timedelta(hours=1))
+
+    count = await client.get(f"/api/v1/applications/job/{job.id}/new-count", headers=headers(employer))
+    marked = await client.post(f"/api/v1/applications/{fresh.id}/seen", headers=headers(employer))
+    again = await client.post(f"/api/v1/applications/{fresh.id}/seen", headers=headers(employer))
+    after = await client.get(f"/api/v1/applications/job/{job.id}/new-count", headers=headers(employer))
+    unseen = await client.get(f"/api/v1/applications/job/{job.id}?unseen=true", headers=headers(employer))
+
+    assert count.json() == {"count": 1}
+    assert marked.json() == {"seen": True} and again.status_code == 200
+    assert after.json() == {"count": 0}
+    assert unseen.json()["items"] == []
+    assert (await client.post(f"/api/v1/applications/{fresh.id}/seen")).status_code == 401

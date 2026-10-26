@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import {
   User, ArrowLeft, ChevronDown, X,
@@ -38,6 +38,7 @@ import { useReportStep } from '@/hooks/useOnboarding'
 import { useRescore } from '@/hooks/useRescore'
 import { describeRescore } from '@/lib/rescore'
 import RescoreBar from '@/components/employer/RescoreBar'
+import NewBadge from '@/components/employer/NewBadge'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -515,7 +516,7 @@ function SendInterviewInvitePrompt({
 
 // ─── Applicant card ───────────────────────────────────────────────────────────
 
-function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCandidates, interviewList, onRescore }) {
+function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCandidates, interviewList, onRescore, onSeen }) {
   const [status, setStatus] = useState(application.status)
   const [updating, setUpdating] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -552,7 +553,11 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
     }
   }
 
+  // Opening the CV, the cover letter or the profile counts as having looked at this applicant.
+  const markSeen = () => onSeen?.(application.id)
+
   const handleDownloadCv = async () => {
+    markSeen()
     try {
       window.open(application.cv_url, '_blank', 'noopener,noreferrer')
     } catch {
@@ -578,7 +583,10 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-text text-sm break-words">{candidateName}</p>
+          <p className="font-semibold text-text text-sm break-words">
+            {candidateName}
+            {application.is_new && <span className="ml-2 align-middle"><NewBadge /></span>}
+          </p>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
             {application.location && <span>📍 {application.location}</span>}
             {application.years_of_experience != null && (
@@ -667,7 +675,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
           {application.cover_letter && (
             <button
               type="button"
-              onClick={() => setExpanded((v) => !v)}
+              onClick={() => { markSeen(); setExpanded((v) => !v) }}
               className="hidden sm:inline flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
             >
               {expanded ? 'Hide letter' : 'Cover letter'}
@@ -678,7 +686,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
           {application.candidate_profile_id && (
             <button
               type="button"
-              onClick={() => setProfileOpen(true)}
+              onClick={() => { markSeen(); setProfileOpen(true) }}
               className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none order-7 sm:order-none"
             >
               View profile
@@ -860,7 +868,7 @@ function TalentPoolProfilePanel({ profile, onClose, onRescore }) {
 
 function PipelineTab({
   profiles, loading, error, total, hasMore, filters, jobId,
-  onProfileClick, onRefresh, onLoadMore, interviewList,
+  onProfileClick, onRefresh, onLoadMore, interviewList, onSeen,
 }) {
   const filtered = filters.isFiltered(true)
   return (
@@ -944,7 +952,7 @@ function PipelineTab({
                   candidate's name has room to be read */}
               <button
                 type="button"
-                onClick={() => onProfileClick(p)}
+                onClick={() => { onSeen?.(p.id); onProfileClick(p) }}
                 className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 text-left"
               >
                 <span className="hidden sm:flex w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold items-center justify-center flex-shrink-0">
@@ -955,8 +963,9 @@ function PipelineTab({
                   <Users size={15} className="text-brand-blue" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-text truncate">
-                    {p.candidate_name ?? p.candidate_email ?? 'Unnamed Candidate'}
+                  <p className="flex items-center gap-2 text-sm font-semibold text-text">
+                    <span className="truncate">{p.candidate_name ?? p.candidate_email ?? 'Unnamed Candidate'}</span>
+                    {p.is_new && <NewBadge />}
                   </p>
                   <p className="text-xs text-text-muted truncate">
                     {[p.candidate_current_title, p.candidate_email].filter(Boolean).join(' · ') || 'No details yet'}
@@ -1682,6 +1691,17 @@ export default function ApplicantsPage() {
       .catch(() => {})
   }, [jobId])
 
+  // Applicants who applied since the employer first used the markers and have not been opened,
+  // and whether the list shows only those.
+  const [newApplicantCount, setNewApplicantCount] = useState(0)
+  const [onlyNew, setOnlyNew] = useState(false)
+  const loadNewApplicantCount = useCallback(() => {
+    api.get(`/api/v1/applications/job/${jobId}/new-count`)
+      .then(({ data }) => setNewApplicantCount(data.count ?? 0))
+      .catch(() => {})
+  }, [jobId])
+  useEffect(() => { loadNewApplicantCount() }, [loadNewApplicantCount])
+
   const showToast = useCallback((msg) => {
     setToast(msg)
     // Longer for a plan/limit error — needs enough time to read and click
@@ -1698,6 +1718,7 @@ export default function ApplicantsPage() {
       if (nextCursor) params.cursor = nextCursor
       // Pass sort=ai_score to backend when that sort is active
       if (sortBy === 'ai_score') params.sort = 'ai_score'
+      if (onlyNew) params.unseen = true
 
       const { data } = await api.get(`/api/v1/applications/job/${jobId}`, { params })
       const items = data.items ?? data
@@ -1716,7 +1737,27 @@ export default function ApplicantsPage() {
     } finally {
       setLoading(false)
     }
-  }, [jobId])
+  }, [jobId, onlyNew])
+
+  // The employer opened an applicant (CV, cover letter or profile): it stops being new. The screen
+  // updates at once and the server is told in the background (a failure only means it shows as
+  // new again later).
+  const applicantsRef = useRef(applicants)
+  useEffect(() => { applicantsRef.current = applicants }, [applicants])
+  const handleApplicantSeen = useCallback((applicationId) => {
+    if (!applicantsRef.current.find((a) => a.id === applicationId)?.is_new) return
+    setApplicants((prev) => prev.map((a) => (a.id === applicationId ? { ...a, is_new: false } : a)))
+    setNewApplicantCount((count) => Math.max(0, count - 1))
+    api.post(`/api/v1/applications/${applicationId}/seen`).catch(() => loadNewApplicantCount())
+  }, [loadNewApplicantCount])
+
+  const pipelineRef = useRef(pipeline)
+  useEffect(() => { pipelineRef.current = pipeline }, [pipeline])
+  const handlePipelineSeen = useCallback((profileId) => {
+    if (!pipelineRef.current.find((p) => p.id === profileId)?.is_new) return
+    setPipeline((prev) => prev.map((p) => (p.id === profileId ? { ...p, is_new: false } : p)))
+    api.post(`/api/v1/talent-pool/${profileId}/seen`).catch(() => {})
+  }, [])
 
   // Fetch job title as fallback when there are no applicants yet
   useEffect(() => {
@@ -1866,6 +1907,7 @@ export default function ApplicantsPage() {
               filters={pipelineFilters}
               jobId={jobId}
               onProfileClick={setSelectedProfile}
+              onSeen={handlePipelineSeen}
               interviewList={interviewList}
               onRefresh={() => loadPipeline(true)}
               onLoadMore={() => loadPipeline(false, pipelineCursor)}
@@ -1891,6 +1933,28 @@ export default function ApplicantsPage() {
             <InterviewListTab jobId={jobId} job={job} onJobUpdated={setJob} onProfileClick={setSelectedProfile} />
           ) : (
           <>
+          {/* New applicants: a nudge to look at who has applied since they were last opened, and a
+              way to see only those. Shown while there are any, or while the list is filtered. */}
+          {(newApplicantCount > 0 || onlyNew) && (
+            <div
+              role="status"
+              data-testid="new-applicants-banner"
+              className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-4 py-2.5"
+            >
+              <p className="text-sm text-text">
+                {onlyNew
+                  ? 'Showing only the applicants you have not opened yet.'
+                  : `${newApplicantCount} new applicant${newApplicantCount === 1 ? '' : 's'} you have not opened yet.`}
+              </p>
+              <button
+                type="button"
+                onClick={() => setOnlyNew((v) => !v)}
+                className="rounded-lg border border-brand-blue px-3 py-1 text-xs font-semibold text-brand-blue hover:bg-brand-blue/10 transition-colors"
+              >
+                {onlyNew ? 'Show all applicants' : 'Show new only'}
+              </button>
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
             {/* One swipeable row on a phone; wraps onto several rows on a wider screen */}
             <div className="flex w-full gap-1.5 overflow-x-auto pb-1 sm:w-auto sm:flex-wrap sm:overflow-visible sm:pb-0" role="tablist" aria-label="Filter applicants by status">
@@ -1964,6 +2028,7 @@ export default function ApplicantsPage() {
                   savedCandidates={savedCandidates}
                   interviewList={interviewList}
                   onRescore={() => handleRescore({ application_id: app.id })}
+                  onSeen={handleApplicantSeen}
                 />
               ))}
             </div>

@@ -423,7 +423,7 @@ class TalentPoolService:
             sort=sort,
             min_score=min_score,
             added_within_days=added_within_days,
-            unseen_since=baseline if unseen else None,
+            unseen_since=baseline if (unseen and baseline is not None) else None,
         )
         opened = await seen.opened_profile_ids(
             current_user.id, [profile.id for profile in result["items"]]
@@ -440,7 +440,9 @@ class TalentPoolService:
         for profile in result["items"]:
             resp = TalentPoolProfileResponse.model_validate(profile)
             resp = await self._enrich(profile, resp)
-            resp.is_new = profile.created_at > baseline and profile.id not in opened
+            resp.is_new = (
+                baseline is not None and profile.created_at > baseline and profile.id not in opened
+            )
 
             is_owner = profile.added_by == current_user.id
             if profile.candidate_profile_id is not None:
@@ -467,9 +469,10 @@ class TalentPoolService:
         and that they have not opened: the number on the "New" tab."""
         is_admin = current_user.role == UserRole.ADMIN.value
         baseline = await SeenService(self._db).baseline(current_user.id)
-        count = await self._repo.count_unseen(current_user.id, is_admin, baseline)
         await self._db.commit()  # the baseline is made the first time
-        return count
+        if baseline is None:  # the markers cannot be kept yet (migration pending)
+            return 0
+        return await self._repo.count_unseen(current_user.id, is_admin, baseline)
 
     async def mark_seen(self, profile_id: uuid.UUID, current_user: User) -> None:
         """The employer opened this CV. Only a CV they could see in the list can be marked, so

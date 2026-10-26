@@ -50,6 +50,22 @@ class TalentPoolProfileView(BaseModel):
     viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ApplicationView(BaseModel):
+    """An employer opened this applicant (its CV, profile or cover letter). One row per employer
+    and application, ever."""
+
+    __tablename__ = "application_views"
+    __table_args__ = (UniqueConstraint("employer_id", "application_id", name="uq_application_view"),)
+
+    employer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False
+    )
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class SharedLinkVisit(BaseModel):
     """When a shared link was last opened, and the visit before it, so the page can say what was
     added since the reader was last here. One row per link."""

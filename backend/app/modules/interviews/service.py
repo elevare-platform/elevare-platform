@@ -20,6 +20,7 @@ from app.core.exceptions import (
     ValidationException,
 )
 from app.core.ownership import can_manage_job
+from app.core.schema_guard import tolerate_missing
 from app.core.storage import get_storage_service
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.candidates.repository import CandidateRepository
@@ -1548,13 +1549,15 @@ class InterviewService:
         """
         strict = await self._strict().strict_detail(interview)
         # The weighted score report, for an interview scored with a scoring profile.
-        score_report = (
-            await self._db.execute(
+        async def read_report() -> dict | None:
+            result = await self._db.execute(
                 select(InterviewWeightedScore.report).where(
                     InterviewWeightedScore.interview_id == interview.id
                 )
             )
-        ).scalar_one_or_none()
+            return result.scalar_one_or_none()
+
+        score_report = await tolerate_missing(self._db, read_report, None)
         video_url = None
         # While the pieces of the recording are being joined the file on record is only the last
         # piece: showing it would look like the whole interview, so nothing is shown yet.
