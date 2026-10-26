@@ -464,15 +464,16 @@ class TalentPoolService:
         result["items"] = enriched
         return result
 
-    async def new_count(self, current_user: User) -> int:
+    async def new_count(self, current_user: User, job_id: uuid.UUID | None = None) -> int:
         """How many CVs the employer can see that were added after they first used the markers
-        and that they have not opened: the number on the "New" tab."""
+        and that they have not opened: the number on the "Not opened yet" tab. With ``job_id``,
+        only the CVs sourced for that job (a job's Pipeline tab)."""
         is_admin = current_user.role == UserRole.ADMIN.value
         baseline = await SeenService(self._db).baseline(current_user.id)
         await self._db.commit()  # the baseline is made the first time
         if baseline is None:  # the markers cannot be kept yet (migration pending)
             return 0
-        return await self._repo.count_unseen(current_user.id, is_admin, baseline)
+        return await self._repo.count_unseen(current_user.id, is_admin, baseline, job_id)
 
     async def mark_seen(self, profile_id: uuid.UUID, current_user: User) -> None:
         """The employer opened this CV. Only a CV they could see in the list can be marked, so

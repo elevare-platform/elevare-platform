@@ -101,14 +101,21 @@ class TalentPoolRepository:
         return stmt.where(TalentPoolProfiles.created_at > baseline).where(~opened)
 
     async def count_unseen(
-        self, viewer_id: uuid.UUID, is_admin: bool, baseline: datetime
+        self,
+        viewer_id: uuid.UUID,
+        is_admin: bool,
+        baseline: datetime,
+        job_id: uuid.UUID | None = None,
     ) -> int:
-        """How many CVs the viewer can see that were added after their baseline and not opened."""
+        """How many CVs the viewer can see that were added after their baseline and not opened;
+        only those sourced for ``job_id`` when it is given (the job's Pipeline tab)."""
         stmt = self._only_unseen(
             self._visible_to(select(func.count()).select_from(TalentPoolProfiles), viewer_id, is_admin),
             viewer_id,
             baseline,
         )
+        if job_id:
+            stmt = stmt.where(TalentPoolProfiles.sourced_for_job_id == job_id)
         return (await self._db.execute(stmt)).scalar_one()
 
     async def visible_profile_exists(

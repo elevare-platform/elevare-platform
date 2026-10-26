@@ -36,21 +36,20 @@ const application = (id, name, over = {}) => ({
   ...over,
 })
 
-function renderPage({ items, count, tab = '' }) {
+const cvRow = (id, name, isNew) => ({ id, candidate_name: name, is_new: isNew, status: 'new' })
+
+// `applicants` and `cvs` are the whole list; the server keeps only the new ones for unseen=true.
+function renderPage({ applicants = [], applicantCount = 0, cvs = [], cvCount = 0, tab = '' }) {
   api.get.mockImplementation(async (url, config) => {
+    const onlyNew = Boolean(config?.params?.unseen)
     if (url === '/api/v1/applications/job/job-1') {
-      const shown = config?.params?.unseen ? items.filter((a) => a.is_new) : items
-      return { data: { items: shown, next_cursor: null } }
+      return { data: { items: onlyNew ? applicants.filter((a) => a.is_new) : applicants, next_cursor: null } }
     }
-    if (url === '/api/v1/applications/job/job-1/new-count') return { data: { count } }
+    if (url === '/api/v1/applications/job/job-1/new-count') return { data: { count: applicantCount } }
+    if (url === '/api/v1/talent-pool/new-count') return { data: { count: cvCount } }
     if (url === '/api/v1/talent-pool') {
-      return {
-        data: {
-          items: [{ id: 'cv-1', candidate_name: 'Pipeline Pat', is_new: true, status: 'new' }],
-          next_cursor: null,
-          total: 1,
-        },
-      }
+      const items = onlyNew ? cvs.filter((c) => c.is_new) : cvs
+      return { data: { items, next_cursor: null, total: items.length } }
     }
     return { data: { items: [] } }
   })
@@ -64,49 +63,65 @@ function renderPage({ items, count, tab = '' }) {
   )
 }
 
-describe('ApplicantsPage, new applicants', () => {
+describe('ApplicantsPage, applicants not opened yet', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('marks the applicants who are new and says how many there are', async () => {
+  it('badges the new applicants and counts them on the tab and on the page tab', async () => {
     renderPage({
-      items: [application('a1', 'Ada New', { is_new: true }), application('a2', 'Bola Old')],
-      count: 1,
+      applicants: [application('a1', 'Ada New', { is_new: true }), application('a2', 'Bola Old')],
+      applicantCount: 1,
     })
 
     expect(await screen.findByText('Ada New')).toBeInTheDocument()
-    expect(await screen.findByText('1 new applicant you have not opened yet.')).toBeInTheDocument()
     expect(screen.getAllByTestId('new-badge')).toHaveLength(1)
+    expect(await screen.findByTestId('not-opened-count')).toHaveTextContent('1')
+    expect(screen.getByTestId('applicants-new-count')).toHaveTextContent('1')
   })
 
-  it('shows no banner and no badge when nothing is new', async () => {
-    renderPage({ items: [application('a2', 'Bola Old')], count: 0 })
+  it('shows the tab with no count and no badge when nothing is new', async () => {
+    renderPage({ applicants: [application('a2', 'Bola Old')], applicantCount: 0 })
 
     expect(await screen.findByText('Bola Old')).toBeInTheDocument()
-    expect(screen.queryByTestId('new-applicants-banner')).not.toBeInTheDocument()
+    expect(screen.getByTestId('not-opened-tab')).toBeInTheDocument()
+    expect(screen.queryByTestId('not-opened-count')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('applicants-new-count')).not.toBeInTheDocument()
     expect(screen.queryByTestId('new-badge')).not.toBeInTheDocument()
   })
 
-  it('asks the server for only the new ones when "Show new only" is pressed', async () => {
+  it('asks the server for only the unopened ones when the tab is chosen, and "All" brings the rest back', async () => {
     renderPage({
-      items: [application('a1', 'Ada New', { is_new: true }), application('a2', 'Bola Old')],
-      count: 1,
+      applicants: [application('a1', 'Ada New', { is_new: true }), application('a2', 'Bola Old')],
+      applicantCount: 1,
     })
     await screen.findByText('Bola Old')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show new only' }))
+    fireEvent.click(screen.getByTestId('not-opened-tab'))
 
     await waitFor(() => expect(screen.queryByText('Bola Old')).not.toBeInTheDocument())
     expect(screen.getByText('Ada New')).toBeInTheDocument()
-    expect(screen.getByText('Showing only the applicants you have not opened yet.')).toBeInTheDocument()
+    expect(screen.getByTestId('not-opened-tab')).toHaveAttribute('aria-selected', 'true')
     expect(api.get).toHaveBeenCalledWith(
       '/api/v1/applications/job/job-1',
       expect.objectContaining({ params: expect.objectContaining({ unseen: true }) })
     )
-    expect(screen.getByRole('button', { name: 'Show all applicants' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'All' }))
+
+    expect(await screen.findByText('Bola Old')).toBeInTheDocument()
+    expect(screen.getByTestId('not-opened-tab')).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('says every applicant has been opened when the tab is empty', async () => {
+    renderPage({ applicants: [application('a2', 'Bola Old')], applicantCount: 0 })
+    await screen.findByText('Bola Old')
+
+    fireEvent.click(screen.getByTestId('not-opened-tab'))
+
+    expect(await screen.findByText('You have opened every applicant')).toBeInTheDocument()
   })
 
   it('stops an applicant being new, and tells the server once, when their profile is opened', async () => {
-    renderPage({ items: [application('a1', 'Ada New', { is_new: true })], count: 1 })
+    renderPage({ applicants: [application('a1', 'Ada New', { is_new: true })], applicantCount: 1 })
     await screen.findByText('Ada New')
 
     fireEvent.click(screen.getByRole('button', { name: 'View profile' }))
@@ -114,27 +129,71 @@ describe('ApplicantsPage, new applicants', () => {
     await waitFor(() => expect(screen.queryByTestId('new-badge')).not.toBeInTheDocument())
     expect(api.post).toHaveBeenCalledWith('/api/v1/applications/a1/seen')
     expect(api.post).toHaveBeenCalledTimes(1)
-    // The banner count goes down with it, and with none left the banner goes.
-    expect(screen.queryByTestId('new-applicants-banner')).not.toBeInTheDocument()
+    // The counts go down with it.
+    expect(screen.queryByTestId('not-opened-count')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('applicants-new-count')).not.toBeInTheDocument()
   })
 
   it('does not tell the server about an applicant who was not new', async () => {
-    renderPage({ items: [application('a2', 'Bola Old')], count: 0 })
+    renderPage({ applicants: [application('a2', 'Bola Old')], applicantCount: 0 })
     await screen.findByText('Bola Old')
 
     fireEvent.click(screen.getByRole('button', { name: 'View profile' }))
 
     expect(api.post).not.toHaveBeenCalled()
   })
+})
 
-  it('marks a new pipeline CV and tells the server when it is opened', async () => {
-    renderPage({ items: [], count: 0, tab: '?tab=pipeline' })
+describe('ApplicantsPage, pipeline CVs not opened yet', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('counts them for this job on the page tab before the tab is opened', async () => {
+    renderPage({ cvs: [cvRow('cv-1', 'Pipeline Pat', true)], cvCount: 1 })
+
+    expect(await screen.findByTestId('pipeline-new-count')).toHaveTextContent('1')
+    expect(api.get).toHaveBeenCalledWith(
+      '/api/v1/talent-pool/new-count',
+      expect.objectContaining({ params: { job_id: 'job-1' } })
+    )
+  })
+
+  it('badges a new CV, counts it on the tab, and marks it opened when it is opened', async () => {
+    renderPage({ cvs: [cvRow('cv-1', 'Pipeline Pat', true)], cvCount: 1, tab: '?tab=pipeline' })
     const row = (await screen.findByText('Pipeline Pat')).closest('button')
     expect(within(row).getByTestId('new-badge')).toBeInTheDocument()
+    expect(screen.getByTestId('not-opened-count')).toHaveTextContent('1')
 
     fireEvent.click(row)
 
     expect(api.post).toHaveBeenCalledWith('/api/v1/talent-pool/cv-1/seen')
     await waitFor(() => expect(screen.queryByTestId('new-badge')).not.toBeInTheDocument())
+    expect(screen.queryByTestId('not-opened-count')).not.toBeInTheDocument()
+  })
+
+  it('shows only the unopened CVs on the "Not opened yet" tab', async () => {
+    renderPage({
+      cvs: [cvRow('cv-1', 'Pipeline Pat', true), cvRow('cv-2', 'Seen Sam', false)],
+      cvCount: 1,
+      tab: '?tab=pipeline',
+    })
+    await screen.findByText('Seen Sam')
+
+    fireEvent.click(screen.getByTestId('not-opened-tab'))
+
+    await waitFor(() => expect(screen.queryByText('Seen Sam')).not.toBeInTheDocument())
+    expect(screen.getByText('Pipeline Pat')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith(
+      '/api/v1/talent-pool',
+      expect.objectContaining({ params: expect.objectContaining({ job_id: 'job-1', unseen: true }) })
+    )
+  })
+
+  it('says every CV has been opened when the tab is empty', async () => {
+    renderPage({ cvs: [cvRow('cv-2', 'Seen Sam', false)], cvCount: 0, tab: '?tab=pipeline' })
+    await screen.findByText('Seen Sam')
+
+    fireEvent.click(screen.getByTestId('not-opened-tab'))
+
+    expect(await screen.findByText('You have opened every CV')).toBeInTheDocument()
   })
 })

@@ -212,6 +212,24 @@ async def test_the_routes_work_over_http(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_the_count_can_be_asked_for_one_jobs_pipeline(db_session):
+    """A job's Pipeline tab counts only the CVs sourced for that job."""
+    employer = await employer_with_plan(db_session)
+    job, other_job = make_job(employer.id), make_job(employer.id)
+    db_session.add_all([job, other_job])
+    await db_session.flush()
+    await SeenService(db_session).baseline(employer.id, now=T0)
+    await cv(db_session, employer.id, T0 + timedelta(hours=1), sourced_for_job_id=job.id)
+    await cv(db_session, employer.id, T0 + timedelta(hours=2), sourced_for_job_id=job.id)
+    await cv(db_session, employer.id, T0 + timedelta(hours=3), sourced_for_job_id=other_job.id)
+    service = TalentPoolService(db_session, cv_service=None)
+
+    assert await service.new_count(employer) == 3
+    assert await service.new_count(employer, job.id) == 2
+    assert await service.new_count(employer, other_job.id) == 1
+
+
+@pytest.mark.asyncio
 async def test_an_email_typed_for_an_interview_is_not_counted_as_a_new_cv(db_session):
     employer = await employer_with_plan(db_session)
     await SeenService(db_session).baseline(employer.id, now=T0)

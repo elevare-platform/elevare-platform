@@ -137,11 +137,13 @@ async def list_talent_pool(
 
 @router.get("/new-count", response_model=dict)
 async def talent_pool_new_count(
+    job_id: uuid.UUID | None = Query(default=None),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> dict:
-    """How many CVs are new to the caller: added since they first used the markers, not opened."""
-    return {"count": await service.new_count(current_user)}
+    """How many CVs are new to the caller: added since they first used the markers, not opened.
+    With ``job_id``, only the CVs sourced for that job."""
+    return {"count": await service.new_count(current_user, job_id)}
 
 
 @router.post("/{profile_id}/seen", response_model=dict)

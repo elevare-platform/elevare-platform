@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import {
   User, ArrowLeft, ChevronDown, X,
@@ -39,6 +39,7 @@ import { useRescore } from '@/hooks/useRescore'
 import { describeRescore } from '@/lib/rescore'
 import RescoreBar from '@/components/employer/RescoreBar'
 import NewBadge from '@/components/employer/NewBadge'
+import NotOpenedTab from '@/components/employer/NotOpenedTab'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -869,10 +870,30 @@ function TalentPoolProfilePanel({ profile, onClose, onRescore }) {
 function PipelineTab({
   profiles, loading, error, total, hasMore, filters, jobId,
   onProfileClick, onRefresh, onLoadMore, interviewList, onSeen,
+  onlyNew = false, newCount = 0, onShowNew,
 }) {
   const filtered = filters.isFiltered(true)
+  const tabClass = (selected) => cn(
+    'px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
+    selected
+      ? 'bg-brand-blue text-white'
+      : 'bg-surface border border-border text-text-muted hover:text-text'
+  )
   return (
     <div className="space-y-4">
+      {/* All CVs, or only the ones not opened yet, with how many */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Filter the pipeline by opened">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!onlyNew}
+          onClick={() => onShowNew?.(false)}
+          className={tabClass(!onlyNew)}
+        >
+          All
+        </button>
+        <NotOpenedTab selected={onlyNew} count={newCount} onClick={() => onShowNew?.(true)} />
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <p className="text-sm text-text-muted">
           External CVs uploaded and scored against this job.
@@ -912,7 +933,15 @@ function PipelineTab({
         </div>
       )}
 
-      {!loading && !error && profiles.length === 0 && (
+      {!loading && !error && profiles.length === 0 && onlyNew && (
+        <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+          <Users size={28} className="mx-auto text-text-muted mb-3" />
+          <p className="font-medium text-text text-sm mb-1">You have opened every CV</p>
+          <p className="text-xs text-text-muted">New CVs will show here until you open them.</p>
+        </div>
+      )}
+
+      {!loading && !error && profiles.length === 0 && !onlyNew && (
         <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
           <Users size={28} className="mx-auto text-text-muted mb-3" />
           <p className="font-medium text-text text-sm mb-1">
@@ -1666,6 +1695,9 @@ export default function ApplicantsPage() {
   const [pipelineError, setPipelineError] = useState(null)
   const [pipelineCursor, setPipelineCursor] = useState(null)
   const [pipelineTotal, setPipelineTotal] = useState(null)
+  // CVs sourced for this job that the employer has not opened, and whether the tab shows only those
+  const [pipelineNewCount, setPipelineNewCount] = useState(0)
+  const [pipelineOnlyNew, setPipelineOnlyNew] = useState(false)
   const pipelineFilters = useTalentPoolFilters()
   const { toParams: pipelineParams } = pipelineFilters
   const [selectedProfile, setSelectedProfile] = useState(null) // for detail panel
@@ -1751,13 +1783,21 @@ export default function ApplicantsPage() {
     api.post(`/api/v1/applications/${applicationId}/seen`).catch(() => loadNewApplicantCount())
   }, [loadNewApplicantCount])
 
+  const loadPipelineNewCount = useCallback(() => {
+    api.get('/api/v1/talent-pool/new-count', { params: { job_id: jobId } })
+      .then(({ data }) => setPipelineNewCount(data.count ?? 0))
+      .catch(() => {})
+  }, [jobId])
+  useEffect(() => { loadPipelineNewCount() }, [loadPipelineNewCount])
+
   const pipelineRef = useRef(pipeline)
   useEffect(() => { pipelineRef.current = pipeline }, [pipeline])
   const handlePipelineSeen = useCallback((profileId) => {
     if (!pipelineRef.current.find((p) => p.id === profileId)?.is_new) return
     setPipeline((prev) => prev.map((p) => (p.id === profileId ? { ...p, is_new: false } : p)))
-    api.post(`/api/v1/talent-pool/${profileId}/seen`).catch(() => {})
-  }, [])
+    setPipelineNewCount((count) => Math.max(0, count - 1))
+    api.post(`/api/v1/talent-pool/${profileId}/seen`).catch(() => loadPipelineNewCount())
+  }, [loadPipelineNewCount])
 
   // Fetch job title as fallback when there are no applicants yet
   useEffect(() => {
@@ -1786,6 +1826,7 @@ export default function ApplicantsPage() {
     setPipelineError(null)
     try {
       const params = { job_id: jobId, limit: 50, ...pipelineParams(true) }
+      if (pipelineOnlyNew) params.unseen = true
       if (cursor) params.cursor = cursor
       const { data } = await api.get('/api/v1/talent-pool', { params })
       const items = data.items ?? []
@@ -1797,7 +1838,7 @@ export default function ApplicantsPage() {
     } finally {
       setPipelineLoading(false)
     }
-  }, [jobId, pipelineParams])
+  }, [jobId, pipelineParams, pipelineOnlyNew])
 
   // Load pipeline profiles when the Pipeline tab is activated or a filter changes
   useEffect(() => {
@@ -1892,6 +1933,15 @@ export default function ApplicantsPage() {
                     {newMatchCount > 9 ? '9+' : newMatchCount}
                   </span>
                 )}
+                {/* Applicants and CVs not opened yet, so the employer is told before opening the tab */}
+                {(key === 'applicants' ? newApplicantCount : key === 'pipeline' ? pipelineNewCount : 0) > 0 && (
+                  <span
+                    data-testid={`${key}-new-count`}
+                    className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-brand-blue text-white text-[9px] font-bold leading-none"
+                  >
+                    {Math.min(key === 'applicants' ? newApplicantCount : pipelineNewCount, 99)}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -1908,8 +1958,11 @@ export default function ApplicantsPage() {
               jobId={jobId}
               onProfileClick={setSelectedProfile}
               onSeen={handlePipelineSeen}
+              onlyNew={pipelineOnlyNew}
+              newCount={pipelineNewCount}
+              onShowNew={setPipelineOnlyNew}
               interviewList={interviewList}
-              onRefresh={() => loadPipeline(true)}
+              onRefresh={() => { loadPipeline(true); loadPipelineNewCount() }}
               onLoadMore={() => loadPipeline(false, pipelineCursor)}
             />
           ) : mainTab === 'ai-matches' ? (
@@ -1933,47 +1986,37 @@ export default function ApplicantsPage() {
             <InterviewListTab jobId={jobId} job={job} onJobUpdated={setJob} onProfileClick={setSelectedProfile} />
           ) : (
           <>
-          {/* New applicants: a nudge to look at who has applied since they were last opened, and a
-              way to see only those. Shown while there are any, or while the list is filtered. */}
-          {(newApplicantCount > 0 || onlyNew) && (
-            <div
-              role="status"
-              data-testid="new-applicants-banner"
-              className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-4 py-2.5"
-            >
-              <p className="text-sm text-text">
-                {onlyNew
-                  ? 'Showing only the applicants you have not opened yet.'
-                  : `${newApplicantCount} new applicant${newApplicantCount === 1 ? '' : 's'} you have not opened yet.`}
-              </p>
-              <button
-                type="button"
-                onClick={() => setOnlyNew((v) => !v)}
-                className="rounded-lg border border-brand-blue px-3 py-1 text-xs font-semibold text-brand-blue hover:bg-brand-blue/10 transition-colors"
-              >
-                {onlyNew ? 'Show all applicants' : 'Show new only'}
-              </button>
-            </div>
-          )}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
             {/* One swipeable row on a phone; wraps onto several rows on a wider screen */}
             <div className="flex w-full gap-1.5 overflow-x-auto pb-1 sm:w-auto sm:flex-wrap sm:overflow-visible sm:pb-0" role="tablist" aria-label="Filter applicants by status">
-              {FILTER_TABS.map((tab) => (
-                <button
-                  key={tab}
-                  role="tab"
-                  aria-selected={activeTab === tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={cn(
-                    'px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors whitespace-nowrap flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
-                    activeTab === tab
-                      ? 'bg-brand-blue text-white'
-                      : 'bg-surface border border-border text-text-muted hover:text-text'
-                  )}
-                >
-                  {tab === 'all' ? 'All' : STATUS_LABELS[tab]}
-                </button>
-              ))}
+              {FILTER_TABS.map((tab) => {
+                const selected = activeTab === tab && !(tab === 'all' && onlyNew)
+                return (
+                  <Fragment key={tab}>
+                    <button
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => { setOnlyNew(false); setActiveTab(tab) }}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors whitespace-nowrap flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
+                        selected
+                          ? 'bg-brand-blue text-white'
+                          : 'bg-surface border border-border text-text-muted hover:text-text'
+                      )}
+                    >
+                      {tab === 'all' ? 'All' : STATUS_LABELS[tab]}
+                    </button>
+                    {/* Right after "All": the applicants not opened yet, with how many */}
+                    {tab === 'all' && (
+                      <NotOpenedTab
+                        selected={onlyNew}
+                        count={newApplicantCount}
+                        onClick={() => { setActiveTab('all'); setOnlyNew(true) }}
+                      />
+                    )}
+                  </Fragment>
+                )
+              })}
             </div>
 
             <div className="flex items-center gap-2">
@@ -2006,11 +2049,15 @@ export default function ApplicantsPage() {
 
           {!loading && applicants.length === 0 && !error && (
             <div className="text-center py-20">
-              <p className="text-lg font-semibold text-text mb-1">No applicants yet</p>
+              <p className="text-lg font-semibold text-text mb-1">
+                {onlyNew ? 'You have opened every applicant' : 'No applicants yet'}
+              </p>
               <p className="text-sm text-text-muted">
-                {activeTab === 'all'
-                  ? 'Applications will appear here once candidates apply.'
-                  : `No ${STATUS_LABELS[activeTab] ?? activeTab} applicants.`}
+                {onlyNew
+                  ? 'New applicants will show here until you open them.'
+                  : activeTab === 'all'
+                    ? 'Applications will appear here once candidates apply.'
+                    : `No ${STATUS_LABELS[activeTab] ?? activeTab} applicants.`}
               </p>
             </div>
           )}
