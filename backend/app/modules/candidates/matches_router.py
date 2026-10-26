@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import get_db, require_role
+from app.modules.jobs.deadline import deadline_not_passed
 from app.modules.jobs.enums import JobStatus, ModerationStatus
 from app.modules.jobs.models import Job
 from app.modules.jobs.schemas import JobResponse
@@ -74,6 +75,7 @@ async def get_my_job_matches(
         select(Job, distance.label("distance"))
         .where(Job.job_embedding.is_not(None))
         .where(Job.status == JobStatus.ACTIVE.value)
+        .where(deadline_not_passed())
         .where(Job.moderation_status == ModerationStatus.APPROVED.value)
         .options(selectinload(Job.employer).selectinload(User.organization))
         .order_by(distance.asc())

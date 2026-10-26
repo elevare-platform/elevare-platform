@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import ApplyModal from '@/components/candidate/ApplyModal'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { applicationsClosed } from '@/lib/applicationDeadline'
 
-export function ApplyButton({ jobId, jobStatus, size = 'default', initialApplied = null, onApplied }) {
+export function ApplyButton({ jobId, jobStatus, deadline = null, size = 'default', initialApplied = null, onApplied }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -29,6 +30,20 @@ export function ApplyButton({ jobId, jobStatus, size = 'default', initialApplied
 
   // Not active - never show the button
   if (!isActive) return null
+
+  // Past its deadline the job is still ACTIVE, but every application is refused: say so
+  // instead of offering a button that can only fail.
+  // Someone who already applied still sees that; employers and admins never see this button.
+  if ((!user || isCandidate) && hasApplied !== true && applicationsClosed(deadline)) {
+    return (
+      <span
+        data-testid="applications-closed"
+        className="inline-flex items-center px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 cursor-default select-none flex-shrink-0"
+      >
+        Applications closed
+      </span>
+    )
+  }
 
   // Unauthenticated - show Apply Now, redirect to login with return URL
   if (!user) {
