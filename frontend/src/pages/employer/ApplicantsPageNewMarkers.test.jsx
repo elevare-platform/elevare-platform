@@ -11,8 +11,9 @@ vi.mock('@/hooks/useCredits', () => ({
 vi.mock('@/hooks/useSavedCandidates', () => ({
   useSavedCandidates: () => ({ isSaved: () => false, toggle: vi.fn() }),
 }))
+const { toggleInterviewList } = vi.hoisted(() => ({ toggleInterviewList: vi.fn() }))
 vi.mock('@/hooks/useInterviewList', () => ({
-  useInterviewList: () => ({ isOnList: () => false, toggle: vi.fn() }),
+  useInterviewList: () => ({ isOnList: () => false, toggle: toggleInterviewList }),
 }))
 vi.mock('@/components/layout/Navbar', () => ({ default: () => null }))
 vi.mock('@/components/layout/Footer', () => ({ default: () => null }))
@@ -134,6 +135,27 @@ describe('ApplicantsPage, applicants not opened yet', () => {
     expect(screen.queryByTestId('applicants-new-count')).not.toBeInTheDocument()
   })
 
+  it('counts an applicant as opened when their AI insight is read', async () => {
+    renderPage({ applicants: [application('a1', 'Ada New', { is_new: true, ai_score: 80 })], applicantCount: 1 })
+    await screen.findByText('Ada New')
+
+    fireEvent.click(screen.getByRole('button', { name: /AI score/ }))
+
+    await waitFor(() => expect(screen.queryByTestId('new-badge')).not.toBeInTheDocument())
+    expect(api.post).toHaveBeenCalledWith('/api/v1/applications/a1/seen')
+  })
+
+  it('counts an applicant as opened when they are moved to the interview list', async () => {
+    renderPage({ applicants: [application('a1', 'Ada New', { is_new: true })], applicantCount: 1 })
+    await screen.findByText('Ada New')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to interview list' }))
+
+    await waitFor(() => expect(screen.queryByTestId('new-badge')).not.toBeInTheDocument())
+    expect(api.post).toHaveBeenCalledWith('/api/v1/applications/a1/seen')
+    expect(toggleInterviewList).toHaveBeenCalledWith({ candidateProfileId: 'p-a1' })
+  })
+
   it('does not tell the server about an applicant who was not new', async () => {
     renderPage({ applicants: [application('a2', 'Bola Old')], applicantCount: 0 })
     await screen.findByText('Bola Old')
@@ -168,6 +190,20 @@ describe('ApplicantsPage, pipeline CVs not opened yet', () => {
     expect(api.post).toHaveBeenCalledWith('/api/v1/talent-pool/cv-1/seen')
     await waitFor(() => expect(screen.queryByTestId('new-badge')).not.toBeInTheDocument())
     expect(screen.queryByTestId('not-opened-count')).not.toBeInTheDocument()
+  })
+
+  it('counts a CV as opened when it is moved to the interview list', async () => {
+    renderPage({ cvs: [cvRow('cv-1', 'Pipeline Pat', true)], cvCount: 1, tab: '?tab=pipeline' })
+    await screen.findByText('Pipeline Pat')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to interview list' }))
+
+    expect(api.post).toHaveBeenCalledWith('/api/v1/talent-pool/cv-1/seen')
+    await waitFor(() => expect(screen.queryByTestId('new-badge')).not.toBeInTheDocument())
+    expect(toggleInterviewList).toHaveBeenCalledWith({
+      talentPoolProfileId: 'cv-1',
+      candidateProfileId: undefined,
+    })
   })
 
   it('shows only the unopened CVs on the "Not opened yet" tab', async () => {

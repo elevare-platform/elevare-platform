@@ -103,7 +103,7 @@ function formatDate(isoString) {
 
 // ─── AI score badge ───────────────────────────────────────────────────────────
 
-function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weaknesses }) {
+function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weaknesses, onOpen }) {
   const [open, setOpen] = useState(false)
   const [rescoring, setRescoring] = useState(false)
   const [btnRef, setBtnRef] = useState(null)
@@ -126,7 +126,7 @@ function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weakne
       <button
         ref={setBtnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { if (!open) onOpen?.(); setOpen((v) => !v) }}
         title={hasScore ? 'AI Score (click for reasoning)' : (failureHelp ?? 'AI score not yet computed')}
         aria-label={`AI score: ${band.label}`}
         className={cn(
@@ -616,7 +616,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
             <div className="order-3 sm:order-none">
               <InterviewListButton
                 onList={interviewList.isOnList({ candidateProfileId: application.candidate_profile_id })}
-                onToggle={() => interviewList.toggle({ candidateProfileId: application.candidate_profile_id })}
+                onToggle={() => { markSeen(); interviewList.toggle({ candidateProfileId: application.candidate_profile_id }) }}
               />
             </div>
           )}
@@ -640,6 +640,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
               fitSummary={application.ai_fit_summary}
               strengths={application.ai_strengths}
               weaknesses={application.ai_weaknesses}
+              onOpen={markSeen}
             />
           </div>
 
@@ -1022,10 +1023,13 @@ function PipelineTab({
                     talentPoolProfileId: p.id,
                     candidateProfileId: p.candidate_profile_id,
                   })}
-                  onToggle={() => interviewList.toggle({
-                    talentPoolProfileId: p.id,
-                    candidateProfileId: p.candidate_profile_id,
-                  })}
+                  onToggle={() => {
+                    onSeen?.(p.id)
+                    interviewList.toggle({
+                      talentPoolProfileId: p.id,
+                      candidateProfileId: p.candidate_profile_id,
+                    })
+                  }}
                 />
               )}
             </div>
