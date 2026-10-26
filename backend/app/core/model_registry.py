@@ -52,6 +52,12 @@ from app.modules.jobs.models import Job, JobAccessTokens
 from app.modules.notifications.models import Notification
 from app.modules.onboarding.models import UserOnboarding
 from app.modules.saved_candidates.models import SavedCandidate
+from app.modules.seen.models import (
+    EmployerSeenBaseline,
+    SharedLinkItemView,
+    SharedLinkVisit,
+    TalentPoolProfileView,
+)
 from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.testimonials.models import Testimonial
 from app.modules.users.models import Organization, User, UserProfile
@@ -88,6 +94,10 @@ __all__ = [
     "KYCDocument",
     "Notification",
     "SavedCandidate",
+    "EmployerSeenBaseline",
+    "TalentPoolProfileView",
+    "SharedLinkVisit",
+    "SharedLinkItemView",
     "InterviewListEntry",
     "JobInterviewQuestion",
     "StrictInterviewRun",

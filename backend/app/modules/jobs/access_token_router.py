@@ -2,15 +2,17 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db, require_role
+from app.core.limiter import limiter
 from app.core.schemas import SuccessResponse
 from app.modules.jobs.access_token_schema import (
     AccessTokenResponse,
     CreateAccessTokenRequest,
     PublicApplicantsResponse,
+    PublicItemSeenRequest,
 )
 from app.modules.jobs.access_token_service import AccessTokenService
 from app.modules.users.models import User
@@ -78,3 +80,17 @@ async def public_applicants(
     Returns 404 for invalid, expired, or revoked tokens.
     """
     return await AccessTokenService(db).get_public_applicants(token)
+
+
+@router.post("/public/jobs/{token}/seen", response_model=SuccessResponse)
+@limiter.limit("240/hour")
+async def public_item_seen(
+    request: Request,
+    token: str,
+    data: PublicItemSeenRequest,
+    db: AsyncSession = Depends(get_db),
+) -> SuccessResponse:
+    """The reader of a shared link opened one candidate (no auth required). The candidate stops
+    being unseen for this link. Returns 404 for a link that is invalid, expired or revoked."""
+    await AccessTokenService(db).mark_item_seen(token, data.item_key)
+    return SuccessResponse(message="Marked as seen")

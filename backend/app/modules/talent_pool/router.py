@@ -115,10 +115,12 @@ async def list_talent_pool(
     sort: Literal["score", "newest"] | None = Query(default=None),
     min_score: int | None = Query(default=None, ge=0, le=100),
     added_within_days: int | None = Query(default=None, ge=1, le=365),
+    unseen: bool = Query(default=False),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: TalentPoolService = Depends(_get_talent_pool_service),
 ) -> dict:
-    """List talent pool profiles with optional filters."""
+    """List talent pool profiles with optional filters. Each carries ``is_new``; ``unseen=true``
+    keeps only the CVs added since the viewer first used the markers that they have not opened."""
     return await service.list_profiles(
         status,
         source,
@@ -129,7 +131,29 @@ async def list_talent_pool(
         sort=sort,
         min_score=min_score,
         added_within_days=added_within_days,
+        unseen=unseen,
     )
+
+
+@router.get("/new-count", response_model=dict)
+async def talent_pool_new_count(
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: TalentPoolService = Depends(_get_talent_pool_service),
+) -> dict:
+    """How many CVs are new to the caller: added since they first used the markers, not opened."""
+    return {"count": await service.new_count(current_user)}
+
+
+@router.post("/{profile_id}/seen", response_model=dict)
+async def mark_talent_pool_profile_seen(
+    profile_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: TalentPoolService = Depends(_get_talent_pool_service),
+) -> dict:
+    """The caller opened this CV: it stops being new for them. Safe to repeat. 404 for a CV they
+    cannot see in the list."""
+    await service.mark_seen(profile_id, current_user)
+    return {"seen": True}
 
 
 @router.get("/{profile_id}", response_model=TalentPoolProfileResponse)

@@ -22,6 +22,7 @@ from app.modules.ai.tasks import score_talent_pool_profile_task
 from app.modules.auth.service import AuthService
 from app.modules.candidates.enums import VisibilityStatus
 from app.modules.jobs.repository import JobRepository
+from app.modules.seen.service import SeenService
 from app.modules.talent_pool import dedupe
 from app.modules.talent_pool.enums import TalentPoolStatus
 from app.modules.talent_pool.models import TalentPoolProfiles
@@ -389,9 +390,15 @@ class TalentPoolService:
         sort: str | None = None,
         min_score: int | None = None,
         added_within_days: int | None = None,
+        unseen: bool = False,
     ) -> dict:
-        """Return paginated talent pool profiles, enriched with parsed CV data."""
+        """Return paginated talent pool profiles, enriched with parsed CV data. Each carries
+        ``is_new`` (added after the viewer first used the markers, and not yet opened);
+        ``unseen`` keeps only those."""
         is_admin = current_user.role == UserRole.ADMIN.value
+        seen = SeenService(self._db)
+        baseline = await seen.baseline(current_user.id)
+        await self._db.commit()  # made the first time; nothing else has been written yet
 
         capped = False
         if not is_admin:
@@ -416,6 +423,10 @@ class TalentPoolService:
             sort=sort,
             min_score=min_score,
             added_within_days=added_within_days,
+            unseen_since=baseline if unseen else None,
+        )
+        opened = await seen.opened_profile_ids(
+            current_user.id, [profile.id for profile in result["items"]]
         )
         if capped:
             result["items"] = result["items"][:STARTER_TALENT_POOL_VISIBLE_LIMIT]
@@ -429,6 +440,7 @@ class TalentPoolService:
         for profile in result["items"]:
             resp = TalentPoolProfileResponse.model_validate(profile)
             resp = await self._enrich(profile, resp)
+            resp.is_new = profile.created_at > baseline and profile.id not in opened
 
             is_owner = profile.added_by == current_user.id
             if profile.candidate_profile_id is not None:
@@ -449,6 +461,24 @@ class TalentPoolService:
             enriched.append(resp)
         result["items"] = enriched
         return result
+
+    async def new_count(self, current_user: User) -> int:
+        """How many CVs the employer can see that were added after they first used the markers
+        and that they have not opened: the number on the "New" tab."""
+        is_admin = current_user.role == UserRole.ADMIN.value
+        baseline = await SeenService(self._db).baseline(current_user.id)
+        count = await self._repo.count_unseen(current_user.id, is_admin, baseline)
+        await self._db.commit()  # the baseline is made the first time
+        return count
+
+    async def mark_seen(self, profile_id: uuid.UUID, current_user: User) -> None:
+        """The employer opened this CV. Only a CV they could see in the list can be marked, so
+        the answer never reveals whether someone else's CV exists. Safe to repeat."""
+        is_admin = current_user.role == UserRole.ADMIN.value
+        if not await self._repo.visible_profile_exists(profile_id, current_user.id, is_admin):
+            raise ProfileNotFoundException()
+        await SeenService(self._db).mark_profile_opened(current_user.id, profile_id)
+        await self._db.commit()
 
     async def get_profile(
         self,

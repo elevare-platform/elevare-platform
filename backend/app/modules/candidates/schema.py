@@ -191,7 +191,7 @@ class ProfileResponse(BaseModel):
     preferred_locations: list[str] | None = None
     preferred_work_models: list[str] | None = None
     open_to_relocation: bool = False
-    visibility: str = "APPLIED_ONLY"
+    visibility: str = "PUBLIC"
     is_profile_complete: bool = False
     cvs: list[CandidateCvsResponse] = []
     documents: list[CandidateDocumentsResponse] = []

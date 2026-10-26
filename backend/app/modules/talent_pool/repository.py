@@ -59,6 +59,67 @@ class TalentPoolRepository:
         )
         return result.scalar_one_or_none()
 
+    @staticmethod
+    def _visible_to(stmt, viewer_id: uuid.UUID | None, is_admin: bool):
+        """Non-admins see only the entries they uploaded and the ones admins added; admins see
+        everything. An email typed in only to send an interview to has no CV and is never part
+        of the Talent Pool page."""
+        if not is_admin and viewer_id:
+            from sqlalchemy import or_
+
+            from app.modules.users.enums import UserRole
+            from app.modules.users.models import User as UserModel
+
+            # Subquery: is the added_by user an admin?
+            admin_subq = (
+                select(UserModel.id)
+                .where(UserModel.id == TalentPoolProfiles.added_by)
+                .where(UserModel.role == UserRole.ADMIN.value)
+                .correlate(TalentPoolProfiles)
+                .exists()
+            )
+            stmt = stmt.where(
+                or_(
+                    TalentPoolProfiles.added_by == viewer_id,
+                    admin_subq,
+                )
+            )
+        return stmt.where(TalentPoolProfiles.source != SourceType.INTERVIEW_INVITE.value)
+
+    @staticmethod
+    def _only_unseen(stmt, viewer_id: uuid.UUID, baseline: datetime):
+        """Keep the CVs added after the viewer's baseline that the viewer has not opened."""
+        from app.modules.seen.models import TalentPoolProfileView
+
+        opened = (
+            select(TalentPoolProfileView.id)
+            .where(TalentPoolProfileView.talent_pool_profile_id == TalentPoolProfiles.id)
+            .where(TalentPoolProfileView.employer_id == viewer_id)
+            .correlate(TalentPoolProfiles)
+            .exists()
+        )
+        return stmt.where(TalentPoolProfiles.created_at > baseline).where(~opened)
+
+    async def count_unseen(
+        self, viewer_id: uuid.UUID, is_admin: bool, baseline: datetime
+    ) -> int:
+        """How many CVs the viewer can see that were added after their baseline and not opened."""
+        stmt = self._only_unseen(
+            self._visible_to(select(func.count()).select_from(TalentPoolProfiles), viewer_id, is_admin),
+            viewer_id,
+            baseline,
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    async def visible_profile_exists(
+        self, profile_id: uuid.UUID, viewer_id: uuid.UUID, is_admin: bool
+    ) -> bool:
+        """Whether this CV is one the viewer may see (the same rule as the list)."""
+        stmt = self._visible_to(
+            select(TalentPoolProfiles.id).where(TalentPoolProfiles.id == profile_id), viewer_id, is_admin
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none() is not None
+
     async def find_interview_invite(
         self, employer_id: uuid.UUID, email: str
     ) -> uuid.UUID | None:
@@ -105,46 +166,24 @@ class TalentPoolRepository:
         added_within_days: int | None = None,
         min_score: int | None = None,
         sort: str | None = None,
+        unseen_since: datetime | None = None,
     ) -> dict:
         """Return paginated talent pool profiles with optional filters.
 
         Non-admins only see entries they uploaded or entries added by admins.
         When ``job_id`` is provided, results are ordered by ai_score descending.
+        ``unseen_since`` (the viewer's baseline) keeps only the CVs added after it that the
+        viewer has not opened.
         """
 
-        stmt = select(TalentPoolProfiles)
-
-        # Non-admins only see their own uploads OR platform-wide entries (added by admins)
-        # Admins see everything
-        if not is_admin and viewer_id:
-            from sqlalchemy import or_
-
-            from app.modules.users.enums import UserRole
-            from app.modules.users.models import User as UserModel
-
-            # Subquery: is the added_by user an admin?
-            admin_subq = (
-                select(UserModel.id)
-                .where(UserModel.id == TalentPoolProfiles.added_by)
-                .where(UserModel.role == UserRole.ADMIN.value)
-                .correlate(TalentPoolProfiles)
-                .exists()
-            )
-            stmt = stmt.where(
-                or_(
-                    TalentPoolProfiles.added_by == viewer_id,
-                    admin_subq,
-                )
-            )
+        stmt = self._visible_to(select(TalentPoolProfiles), viewer_id, is_admin)
+        if unseen_since is not None and viewer_id:
+            stmt = self._only_unseen(stmt, viewer_id, unseen_since)
 
         if status:
             stmt = stmt.where(TalentPoolProfiles.status == status)
         if source:
             stmt = stmt.where(TalentPoolProfiles.source == source)
-        else:
-            # An email typed in only to send an interview to has no CV: it lives on the job's
-            # interview list, not in the Talent Pool page.
-            stmt = stmt.where(TalentPoolProfiles.source != SourceType.INTERVIEW_INVITE.value)
         if job_id:
             stmt = stmt.where(TalentPoolProfiles.sourced_for_job_id == job_id)
         if added_within_days:

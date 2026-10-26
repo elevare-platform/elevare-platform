@@ -60,6 +60,18 @@ function ScoreBadge({ score, failure }) {
   )
 }
 
+// A CV added since the employer first used the markers that they have not opened yet.
+function NewBadge() {
+  return (
+    <span
+      data-testid="new-badge"
+      className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-brand-blue text-white flex-shrink-0"
+    >
+      New
+    </span>
+  )
+}
+
 function StatusBadge({ status }) {
   const cfg = STATUS_CONFIG[status]
   if (!cfg) return null
@@ -395,7 +407,7 @@ function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
 // directly, and admin-sourced candidates without an accepted introduction
 // go to Request Introduction instead of a dead-end "CV not available".
 
-function CvAccessButton({ profile }) {
+function CvAccessButton({ profile, onOpen }) {
   const [showPanel, setShowPanel] = useState(false)
   const [showCvModal, setShowCvModal] = useState(false)
   const [showActionModal, setShowActionModal] = useState(false)
@@ -405,8 +417,15 @@ function CvAccessButton({ profile }) {
 
   const handleClick = (e) => {
     e.stopPropagation()
-    if (isSelfRegistered) return setShowPanel(true)
-    if (canViewCv) return setShowCvModal(true)
+    // Opening the profile or the CV is what makes it "seen". Asking for an introduction is not.
+    if (isSelfRegistered) {
+      onOpen?.(profile.id)
+      return setShowPanel(true)
+    }
+    if (canViewCv) {
+      onOpen?.(profile.id)
+      return setShowCvModal(true)
+    }
     setShowActionModal(true)
   }
 
@@ -446,8 +465,13 @@ function CvAccessButton({ profile }) {
 
 // ─── Candidate Card (job-scoped ranked view) ──────────────────────────────────
 
-function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
+function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange, onSeen }) {
   const [expanded, setExpanded] = useState(false)
+  // Opening the reasoning counts as having looked at the candidate.
+  const toggleDetails = () => {
+    if (!expanded) onSeen?.(profile.id)
+    setExpanded((v) => !v)
+  }
 
   const hasReasoning = profile.ai_fit_summary || profile.ai_strengths?.length > 0
   const hasDetails = hasReasoning || profile.summary || profile.skills?.length > 0
@@ -478,6 +502,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
             <p className="font-semibold text-text text-sm break-words">
               {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
             </p>
+            {profile.is_new && <NewBadge />}
             <span className="text-xs text-text-muted capitalize flex items-center gap-1">
               {SOURCE_ICONS[profile.source] ?? '📎'} {SOURCE_LABELS[profile.source] ?? profile.source}
             </span>
@@ -527,10 +552,10 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
             </span>
           )}
 
-          <CvAccessButton profile={profile} />
+          <CvAccessButton profile={profile} onOpen={onSeen} />
 
           {hasDetails && (
-            <button onClick={() => setExpanded(v => !v)}
+            <button onClick={toggleDetails}
               className="p-1.5 rounded-lg text-text-muted hover:text-brand-blue hover:bg-brand-blue/5 transition-colors"
               aria-label="Show details"
               aria-expanded={expanded}>
@@ -595,9 +620,13 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange }) {
 
 // ─── Pipeline Row (no-job pipeline view) ─────────────────────────────────────
 
-function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
+function PipelineRow({ profile, isAdmin, onPromote, onStatusChange, onSeen }) {
   const [expanded, setExpanded] = useState(false)
   const hasDetails = profile.summary || profile.skills?.length > 0
+  const toggleDetails = () => {
+    if (!expanded) onSeen?.(profile.id)
+    setExpanded((v) => !v)
+  }
 
   return (
     <div className="rounded-xl border border-border bg-white hover:border-brand-blue/20 hover:shadow-sm transition-all group">
@@ -609,8 +638,11 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
           <Users size={14} className="text-text-muted" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-text break-words sm:truncate">
-            {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
+          <p className="text-sm font-medium text-text break-words sm:truncate flex items-center gap-2">
+            <span className="min-w-0 sm:truncate">
+              {profile.candidate_name ?? profile.candidate_email ?? `Unidentified · ${profile.id.slice(0, 8)}`}
+            </span>
+            {profile.is_new && <NewBadge />}
           </p>
           <p className="text-xs text-text-muted flex flex-wrap items-center gap-1.5 mt-0.5">
             <span>{SOURCE_ICONS[profile.source] ?? '📎'}</span>
@@ -666,9 +698,9 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange }) {
               <UserPlus size={11} /> Promote
             </button>
           )}
-          <CvAccessButton profile={profile} />
+          <CvAccessButton profile={profile} onOpen={onSeen} />
           {hasDetails && (
-            <button onClick={() => setExpanded(v => !v)}
+            <button onClick={toggleDetails}
               className="p-1.5 rounded-lg text-text-muted hover:text-brand-blue hover:bg-brand-blue/5 transition-colors"
               aria-label="Show details"
               aria-expanded={expanded}>
@@ -820,8 +852,18 @@ export default function TalentPoolPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [promoteId, setPromoteId] = useState(null)
   const [scoring, setScoring] = useState(false)
+  // CVs added since the employer first used the markers that they have not opened, and whether
+  // the list shows only those.
+  const [newCount, setNewCount] = useState(0)
+  const [onlyNew, setOnlyNew] = useState(false)
 
   const mode = activeJob ? 'job' : 'pipeline'
+
+  const loadNewCount = useCallback(() => {
+    api.get('/api/v1/talent-pool/new-count')
+      .then(({ data }) => setNewCount(data.count ?? 0))
+      .catch(() => {})
+  }, [])
 
   const loadProfiles = useCallback(async (reset = true) => {
     setLoading(true)
@@ -830,6 +872,7 @@ export default function TalentPoolPage() {
       if (statusFilter) params.status = statusFilter
       if (sourceFilter) params.source = sourceFilter
       if (activeJob) params.job_id = activeJob
+      if (onlyNew) params.unseen = true
       Object.assign(params, toParams(Boolean(activeJob)))
       if (!reset && cursor) params.cursor = cursor
       const { data } = await api.get('/api/v1/talent-pool', { params })
@@ -841,9 +884,21 @@ export default function TalentPoolPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, sourceFilter, activeJob, toParams, cursor])
+  }, [statusFilter, sourceFilter, activeJob, onlyNew, toParams, cursor])
 
-  useEffect(() => { loadProfiles(true) }, [statusFilter, sourceFilter, activeJob, toParams])
+  useEffect(() => { loadProfiles(true) }, [statusFilter, sourceFilter, activeJob, onlyNew, toParams])
+  useEffect(() => { loadNewCount() }, [loadNewCount])
+
+  // The employer opened a CV or its details: it stops being new. The screen updates at once, and
+  // the server is told in the background (a failure only means it shows as new again later).
+  const profilesRef = useRef(profiles)
+  useEffect(() => { profilesRef.current = profiles }, [profiles])
+  const handleSeen = useCallback((profileId) => {
+    if (!profilesRef.current.find((p) => p.id === profileId)?.is_new) return
+    setProfiles((prev) => prev.map((p) => (p.id === profileId ? { ...p, is_new: false } : p)))
+    setNewCount((count) => Math.max(0, count - 1))
+    api.post(`/api/v1/talent-pool/${profileId}/seen`).catch(() => loadNewCount())
+  }, [loadNewCount])
 
   useEffect(() => {
     let cancelled = false
@@ -899,10 +954,11 @@ export default function TalentPoolPage() {
   })
 
   const activeJobTitle = jobs.find(j => j.id === activeJob)?.title
-  const hasActiveFilters = Boolean(statusFilter || sourceFilter || filters.isFiltered(mode === 'job'))
+  const hasActiveFilters = Boolean(statusFilter || sourceFilter || onlyNew || filters.isFiltered(mode === 'job'))
   const clearFilters = () => {
     setStatusFilter('')
     setSourceFilter('')
+    setOnlyNew(false)
     filters.clear()
   }
 
@@ -1000,6 +1056,29 @@ export default function TalentPoolPage() {
 
           <MinScoreNote filters={filters} hasJob={mode === 'job'} />
 
+          {/* New CVs: a nudge to look at what has arrived since they were last opened, and a way
+              to see only those. Shown while there are any, or while the list is filtered to them. */}
+          {(newCount > 0 || onlyNew) && (
+            <div
+              role="status"
+              data-testid="new-cvs-banner"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-4 py-2.5"
+            >
+              <p className="text-sm text-text">
+                {onlyNew
+                  ? 'Showing only the CVs you have not opened yet.'
+                  : `${newCount} new CV${newCount === 1 ? '' : 's'} you have not opened yet.`}
+              </p>
+              <button
+                type="button"
+                onClick={() => setOnlyNew((v) => !v)}
+                className="rounded-lg border border-brand-blue px-3 py-1 text-xs font-semibold text-brand-blue hover:bg-brand-blue/10 transition-colors"
+              >
+                {onlyNew ? 'Show all CVs' : 'Show new only'}
+              </button>
+            </div>
+          )}
+
           {/* Content */}
           {loading && profiles.length === 0 ? (
             <div className="space-y-3">
@@ -1040,6 +1119,7 @@ export default function TalentPoolPage() {
                   isAdmin={isAdmin}
                   onPromote={setPromoteId}
                   onStatusChange={handleStatusChange}
+                  onSeen={handleSeen}
                 />
               ))}
             </div>
@@ -1052,6 +1132,7 @@ export default function TalentPoolPage() {
                   isAdmin={isAdmin}
                   onPromote={setPromoteId}
                   onStatusChange={handleStatusChange}
+                  onSeen={handleSeen}
                 />
               ))}
             </div>

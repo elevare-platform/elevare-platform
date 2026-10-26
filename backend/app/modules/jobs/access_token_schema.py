@@ -47,6 +47,13 @@ class PublicApplicantsItem(BaseModel):
     # batch stands out in a score-sorted list. Optional: older clients ignore them.
     created_at: datetime | None = None
     ai_score_computed_at: datetime | None = None
+    # Which candidates this link's reader has opened (docs/08_DECISIONS.md, item 35). The key is
+    # opaque and belongs to this link only; the page sends it back when the reader opens the
+    # candidate's details or CV.
+    item_key: str | None = None
+    is_unseen: bool = False
+    # Became visible after the reader's previous visit (never set on a first visit).
+    is_new_since_last_visit: bool = False
 
 
 class PublicApplicantsResponse(BaseModel):
@@ -55,3 +62,14 @@ class PublicApplicantsResponse(BaseModel):
     job_title: str
     expires_at: datetime
     applicants: list[PublicApplicantsItem]
+    # How many the reader has not opened, how many arrived since their previous visit, and when
+    # that visit was (None the first time).
+    unseen_count: int = 0
+    new_since_last_visit_count: int = 0
+    previous_visit_at: datetime | None = None
+
+
+class PublicItemSeenRequest(BaseModel):
+    """The reader opened one candidate: the ``item_key`` the page was given for it."""
+
+    item_key: str

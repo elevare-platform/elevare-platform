@@ -46,6 +46,9 @@ class TalentPoolProfileResponse(BaseModel):
     promoted_at: datetime | None = None
     last_invite_sent_at: datetime | None = None
     created_at: datetime
+    # True until the employer opens this CV, for a CV added after they first used the markers
+    # (docs/08_DECISIONS.md, item 35). Only set on the list.
+    is_new: bool = False
     # Set on the answer to an upload that found the CV already in the pool: nothing was added,
     # this is the profile that was already there (its job is ``sourced_for_job_id``).
     already_in_pool: bool = False
