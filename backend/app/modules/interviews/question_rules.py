@@ -12,6 +12,26 @@ from dataclasses import dataclass
 
 from app.core.config import settings
 
+
+def working_brief(brief: str | None, job_title: str | None, questions: list[dict] | None) -> str:
+    """The brief the model is given for a job: the employer's own when they wrote one, otherwise the
+    questions they chose for the role (a job's interview works from its questions alone; the brief is
+    optional). Empty only when there is neither."""
+    if (brief or "").strip():
+        return brief
+    lines = [
+        f"{number}. {question['text']}"
+        for number, question in enumerate(questions or [], start=1)
+        if question.get("text")
+    ]
+    if not lines:
+        return ""
+    return (
+        f"No separate interview brief was written for the role of {job_title or 'this job'}. "
+        "The employer chose these questions to assess the candidate:\n" + "\n".join(lines)
+    )
+
+
 MIN_QUESTION_CHARS = 10
 MAX_QUESTION_CHARS = 500
 MIN_SECONDS = 30

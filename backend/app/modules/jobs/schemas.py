@@ -220,6 +220,9 @@ class JobResponse(BaseModel):
     openings_count: int = 1
     required_years_experience: int | None = None
     interview_brief: str | None = None
+    # Set only on the owner's (or an admin's) single-job read: the job has saved interview questions,
+    # which is enough for a strict interview without a written brief.
+    has_interview_questions: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

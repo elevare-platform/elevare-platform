@@ -33,6 +33,7 @@ from app.modules.interviews.enums import (
     TranscriptCheckStatus,
 )
 from app.modules.interviews.models import InterviewWeightedScore, StrictInterviewRun
+from app.modules.interviews.question_rules import working_brief
 from app.modules.interviews.recording_merge import (
     JoinTimedOut,
     concat_recordings,
@@ -293,6 +294,19 @@ async def _scoring_profile_for(
         },
         tags,
     )
+
+
+async def _brief_for(db, interview, job) -> str:
+    """The brief the scorer works from: the job's own, or, when the employer wrote none, the
+    questions this interview started with."""
+    if (job.interview_brief or "").strip():
+        return job.interview_brief
+    run = (
+        await db.execute(
+            select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
+        )
+    ).scalar_one_or_none()
+    return working_brief(job.interview_brief, job.title, run.questions if run else None)
 
 
 async def _practical_question_for(db, interview) -> dict | None:
@@ -652,7 +666,7 @@ async def _transcribe_and_score_interview_async(
                         db, interview, job, ai_service
                     )
                     result = await ai_service.score_interview_transcript(
-                        interview_brief=job.interview_brief or "",
+                        interview_brief=await _brief_for(db, interview, job),
                         transcript=transcript,
                         job_context=job_context,
                         interview_conditions=conditions,

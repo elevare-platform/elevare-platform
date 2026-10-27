@@ -179,3 +179,26 @@ def test_times_are_never_shortened_below_the_minimum(monkeypatch):
 
 def test_an_empty_draft_stays_empty():
     assert tidy_drafted([], count=5) == []
+
+
+def test_the_employers_own_brief_is_used_as_written():
+    assert rules.working_brief("Assess the sales pipeline skills.", "Sales Lead", [{"text": "Q one here?"}]) == (
+        "Assess the sales pipeline skills."
+    )
+
+
+def test_a_job_with_no_brief_is_briefed_by_its_questions():
+    brief = rules.working_brief(None, "Sales Lead", [{"text": "Tell me about your pipeline."}, {"text": "How do you forecast?"}])
+
+    assert "Sales Lead" in brief
+    assert "1. Tell me about your pipeline." in brief
+    assert "2. How do you forecast?" in brief
+
+
+def test_a_blank_brief_counts_as_none():
+    assert "1. A question to answer." in rules.working_brief("   ", None, [{"text": "A question to answer."}])
+
+
+def test_no_brief_and_no_questions_gives_nothing():
+    assert rules.working_brief(None, "Sales Lead", []) == ""
+    assert rules.working_brief("", "Sales Lead", None) == ""

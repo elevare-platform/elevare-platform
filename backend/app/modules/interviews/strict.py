@@ -43,6 +43,7 @@ from app.modules.interviews.models import (
     JobInterviewQuestion,
     StrictInterviewRun,
 )
+from app.modules.interviews.question_rules import working_brief
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.strict_conduct import ConductMixin
 
@@ -693,7 +694,9 @@ class StrictInterviewService(ConductMixin):
             raw = await ai_service.decide_interview_follow_up(
                 question=turn.question_text,
                 answer=turn.answer_text,
-                interview_brief=interview.job.interview_brief or "",
+                interview_brief=working_brief(
+                    interview.job.interview_brief, interview.job.title, run.questions
+                ),
                 earlier_exchange=earlier_exchange(thread, turn),
                 probes_left=settings.strict_max_follow_ups - probes_asked,
                 prepared_probes=probes,
