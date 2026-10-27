@@ -284,6 +284,37 @@ async def test_get_job_by_id_hides_draft_from_stranger(db_session):
 
 
 @pytest.mark.asyncio
+async def test_the_owner_is_told_whether_the_job_has_interview_questions(db_session):
+    """The employer's screens need to know a job has interview questions even with no brief; the
+    public read never says."""
+    from app.modules.interviews.models import JobInterviewQuestion
+    from tests.conftest import make_employer, make_job
+
+    owner = make_employer()
+    db_session.add(owner)
+    await db_session.flush()
+    job = make_job(owner.id, status=JobStatus.ACTIVE.value, interview_brief=None)
+    db_session.add(job)
+    await db_session.flush()
+    service = JobService(db_session)
+
+    before = await service.get_job_by_id(job.id, requesting_user=owner)
+    db_session.add(
+        JobInterviewQuestion(
+            job_id=job.id, position=1, text="Tell us about a sale you closed.",
+            time_limit_seconds=120, source="EMPLOYER",
+        )
+    )
+    await db_session.flush()
+    after = await service.get_job_by_id(job.id, requesting_user=owner)
+    public = await service.get_job_by_id(job.id, requesting_user=None)
+
+    assert before.has_interview_questions is False
+    assert after.has_interview_questions is True
+    assert public.has_interview_questions is False
+
+
+@pytest.mark.asyncio
 async def test_update_job_applies_changes(db_session):
     """update_job applies partial changes to the job."""
     from tests.conftest import make_employer, make_job

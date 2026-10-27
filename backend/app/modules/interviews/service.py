@@ -40,6 +40,7 @@ from app.modules.interviews.models import (
     Interview,
     InterviewPanelDecision,
     InterviewWeightedScore,
+    JobInterviewQuestion,
 )
 from app.modules.interviews.recording_merge import attempt_of_key, final_key, part_key
 from app.modules.interviews.repository import InterviewRepository
@@ -235,17 +236,30 @@ class InterviewService:
     # email the candidate a no-login link.
     # ------------------------------------------------------------------
 
+    async def _has_interview(self, job: Job) -> bool:
+        """Whether the job has an interview to invite people to: a written brief or, for the
+        strict interview, saved questions (there the brief is optional: the questions are the
+        interview)."""
+        if job.interview_brief:
+            return True
+        if settings.interview_style != "strict":
+            return False
+        found = await self._db.execute(
+            select(JobInterviewQuestion.id).where(JobInterviewQuestion.job_id == job.id).limit(1)
+        )
+        return found.first() is not None
+
     async def create_invite(
         self, job: Job, talent_pool_profile_id: uuid.UUID
     ) -> tuple[Interview, str] | None:
         """Get-or-create the Interview row for this job+candidate and (re)issue a token.
 
         Returns (interview, interview_url) or None if the job has no
-        interview_brief configured — being on the interview list only
-        triggers an AI interview invite for jobs that actually have the
-        feature turned on.
+        interview configured (no brief and, for the strict interview, no
+        questions) — being on the interview list only triggers an
+        interview invite for jobs that actually have the feature turned on.
         """
-        if not job.interview_brief:
+        if not await self._has_interview(job):
             return None
 
         interview = await self._repo.get_by_job_and_profile(
@@ -386,7 +400,7 @@ class InterviewService:
             raise PermissionDeniedException(
                 "You do not have access to this application"
             )
-        if not application.job.interview_brief:
+        if not await self._has_interview(application.job):
             raise ValidationException(
                 "This job does not have a video interview configured"
             )
@@ -1072,7 +1086,7 @@ class InterviewService:
         from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME
         from app.modules.notifications.repository import NotificationRepository
 
-        if not job.interview_brief:
+        if not await self._has_interview(job):
             raise ValidationException("This job does not have an interview configured")
 
         profile = await self._talent_pool_repo.get_by_id_joined_with_other_data(talent_pool_profile_id)
@@ -1213,7 +1227,7 @@ class InterviewService:
             raise JobNotFoundError()
         if not can_manage_job(user, job):
             raise PermissionDeniedException("You do not have access to this job")
-        if not job.interview_brief:
+        if not await self._has_interview(job):
             raise ValidationException("This job does not have an interview configured")
 
         address = email.strip().lower()
@@ -1309,7 +1323,7 @@ class InterviewService:
         if not can_manage_job(user, job):
             raise PermissionDeniedException("You do not have access to this job")
 
-        if not job.interview_brief:
+        if not await self._has_interview(job):
             raise ValidationException("This job does not have an interview configured")
 
         interview = await self._repo.get_by_job_and_profile(job.id, talent_pool_profile_id)

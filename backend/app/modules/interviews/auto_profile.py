@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.modules.interviews import scoring_profile as rules
 from app.modules.interviews.models import JobScoringProfile
+from app.modules.interviews.question_rules import working_brief
 from app.modules.interviews.scoring_profile_service import load_profile
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ async def ensure_profile(db, job, questions: list[dict], ai_service) -> JobScori
             return existing
         drafted = await ai_service.draft_scoring_profile(
             job_context=_job_context(job),
-            interview_brief=job.interview_brief or "",
+            interview_brief=working_brief(job.interview_brief, job.title, questions),
             questions=[question["text"] for question in questions or [] if question.get("text")],
         )
         competencies = finalise(drafted)

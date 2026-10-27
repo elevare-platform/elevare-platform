@@ -120,8 +120,10 @@ class ApplicationResponse(BaseModel):
                 candidate_profile.years_of_experience if candidate_profile else None
             ),
             candidate_profile_id=candidate_profile.id if candidate_profile else None,
+            # A job's interview exists when it has a brief or, for the strict interview, questions
+            # only; an interview row for this candidate (its status) proves the second.
             has_ai_interview=bool(
-                application.job and application.job.interview_brief
+                (application.job and application.job.interview_brief) or interview_status
             )
             and interview_invited,
             interview_status=interview_status,

@@ -721,7 +721,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
           candidateName={candidateName}
           jobId={jobId}
           candidateProfileId={application.candidate_profile_id}
-          hasInterviewBrief={!!job?.interview_brief}
+          hasInterviewBrief={hasInterview(job)}
           interviewList={interviewList}
           onJobUpdated={onJobUpdated}
           onClose={() => setShowInvitePrompt(false)}
@@ -1443,6 +1443,10 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
   )
 }
 
+// A job has an interview to invite people to when it has a written brief or saved questions: the
+// strict interview works from its questions alone, so the brief is optional.
+const hasInterview = (job) => !!job?.interview_brief || !!job?.has_interview_questions
+
 function InterviewListTab({ jobId, job, onJobUpdated }) {
   useReportStep('interview_list')
   const [items, setItems] = useState([])
@@ -1456,7 +1460,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
   // refreshed after each send (a send takes credits).
   const [pricing, setPricing] = useState(null)
 
-  const hasInterviewBrief = !!job?.interview_brief
+  const hasInterviewBrief = hasInterview(job)
 
   const loadPricing = useCallback(() => {
     api.get('/api/v1/interviews/pricing')
@@ -1568,7 +1572,8 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
       {showQuestionsModal && (
         <InterviewQuestionsModal
           jobId={jobId}
-          hasBrief={hasInterviewBrief}
+          hasBrief={!!job?.interview_brief}
+          onSaved={(data) => onJobUpdated?.({ ...job, has_interview_questions: (data?.questions?.length ?? 0) > 0 })}
           onClose={() => setShowQuestionsModal(false)}
         />
       )}

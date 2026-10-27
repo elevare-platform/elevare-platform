@@ -988,11 +988,11 @@ async def _invite(db_session, job, profile_id):
         await service.close()
 
 
-async def _job_with_candidate(db_session, questions=QUESTIONS):
+async def _job_with_candidate(db_session, questions=QUESTIONS, brief=BRIEF):
     employer = make_employer()
     db_session.add(employer)
     await db_session.flush()
-    job = make_job(employer.id, interview_brief=BRIEF)
+    job = make_job(employer.id, interview_brief=brief)
     db_session.add(job)
     await db_session.flush()
     for position, (text, seconds) in enumerate(questions, start=1):
@@ -1058,6 +1058,56 @@ async def test_a_strict_invitation_needs_the_jobs_questions_and_charges_nothing_
     assert raised.value.code == "INTERVIEW_QUESTIONS_MISSING"
     existing = await db_session.execute(select(Interview).where(Interview.job_id == job.id))
     assert existing.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_a_strict_job_with_questions_and_no_brief_can_be_invited(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "interview_style", "strict")
+    monkeypatch.setattr(settings, "interview_credit_cost", 0)
+    job, profile = await _job_with_candidate(db_session, brief=None)
+
+    invite = await _invite(db_session, job, profile.id)
+
+    assert invite is not None
+    interview, _url = invite
+    assert await _run_of(db_session, interview) is not None
+
+
+@pytest.mark.asyncio
+async def test_a_job_with_neither_brief_nor_questions_is_not_invited(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "interview_style", "strict")
+    job, profile = await _job_with_candidate(db_session, questions=[], brief=None)
+
+    assert await _invite(db_session, job, profile.id) is None
+    existing = await db_session.execute(select(Interview).where(Interview.job_id == job.id))
+    assert existing.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_the_live_interview_still_needs_a_brief_even_with_questions(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "interview_style", "live")
+    job, profile = await _job_with_candidate(db_session, brief=None)
+
+    assert await _invite(db_session, job, profile.id) is None
+
+
+@pytest.mark.asyncio
+async def test_an_email_invite_for_a_job_with_questions_and_no_brief_is_not_refused(
+    db_session, monkeypatch
+):
+    from app.core.exceptions import ValidationException
+
+    monkeypatch.setattr(settings, "interview_style", "strict")
+    job, _profile = await _job_with_candidate(db_session, brief=None)
+    service = InterviewService(db_session)
+    try:
+        try:
+            await service.invite_by_email(job.employer, job.id, "someone@example.com")
+        except ValidationException as exc:
+            # Anything but "no interview configured" (credits, email sending) is not this fix's concern.
+            assert "does not have an interview configured" not in str(exc.message)
+    finally:
+        await service.close()
 
 
 @pytest.mark.asyncio

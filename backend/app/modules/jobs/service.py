@@ -4,6 +4,7 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -463,7 +464,15 @@ class JobService:
         is_admin = requesting_user is not None and requesting_user.role == "ADMIN"
         if job.status == JobStatus.DRAFT.value and not is_owner and not is_admin:
             raise JobNotFoundError()
-        return JobResponse.from_job(job, include_interview_brief=is_owner or is_admin, include_contact_info=is_owner or is_admin)
+        response = JobResponse.from_job(job, include_interview_brief=is_owner or is_admin, include_contact_info=is_owner or is_admin)
+        if is_owner or is_admin:
+            from app.modules.interviews.models import JobInterviewQuestion
+
+            found = await self._db.execute(
+                select(JobInterviewQuestion.id).where(JobInterviewQuestion.job_id == job.id).limit(1)
+            )
+            response.has_interview_questions = found.first() is not None
+        return response
 
     async def delete_job(self, job_id: UUID, current_user: User) -> None:
         """Delete a DRAFT job. Owning employer or admin only.

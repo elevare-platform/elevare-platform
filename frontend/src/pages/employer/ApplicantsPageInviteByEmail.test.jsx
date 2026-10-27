@@ -49,13 +49,15 @@ const EMAIL_ONLY = {
   interview_status: 'PENDING',
 }
 
-function renderTab({ brief = 'Probe system design.', entries = [PERSON] } = {}) {
+function renderTab({ brief = 'Probe system design.', entries = [PERSON], hasQuestions = false } = {}) {
   api.get.mockImplementation(async (url) => {
     if (url === '/api/v1/interviews/pricing') {
       return { data: { credits_per_interview: 10, balance: 50, charged: true, plan_credits: 0, style: 'live' } }
     }
     if (url === '/api/v1/interview-list') return { data: { items: entries } }
-    if (url === '/api/v1/jobs/job-1') return { data: { id: 'job-1', title: 'Engineer', interview_brief: brief } }
+    if (url === '/api/v1/jobs/job-1') {
+      return { data: { id: 'job-1', title: 'Engineer', interview_brief: brief, has_interview_questions: hasQuestions } }
+    }
     if (url === '/api/v1/rescore/jobs/job-1') return { data: { applications: 0, pipeline: 0, total: 0 } }
     return { data: { items: [] } }
   })
@@ -91,6 +93,13 @@ describe('ApplicantsPage, Interview List tab, invite by email', () => {
 
     expect(await screen.findByRole('button', { name: /Set up interview/ })).toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Invite by email' })).not.toBeInTheDocument()
+  })
+
+  it('is set up by the interview questions alone, with no written brief', async () => {
+    renderTab({ brief: '', hasQuestions: true })
+
+    expect(await screen.findByRole('form', { name: 'Invite by email' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Set up interview/ })).not.toBeInTheDocument()
   })
 
   it('shows an email-only row by its address, with the interview status and nothing to open', async () => {
