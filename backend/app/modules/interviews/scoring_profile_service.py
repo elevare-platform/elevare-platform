@@ -82,6 +82,10 @@ class ScoringProfileService:
         tag (the employer sees it as untagged). ``commit=False`` leaves the transaction open, for a
         caller that saves something else with it and commits once."""
         await self._job_for(user, job_id)
+        # "AUTO" marks a profile the system built for the role; only it can set that, so a profile
+        # the employer saves is theirs (they may have started from one and changed it).
+        if template_code == "AUTO":
+            template_code = None
         bands = bands or dict(rules.DEFAULT_BANDS)
         problems = rules.problems_with(competencies, bands, key_min_rating)
         if problems:

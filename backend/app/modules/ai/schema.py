@@ -174,6 +174,21 @@ class DraftedInterviewQuestions(BaseModel):
     questions: list[DraftedInterviewQuestion]
 
 
+class DraftedCompetency(BaseModel):
+    """One competency of a drafted scoring profile."""
+
+    name: str
+    weight: int
+
+
+class ScoringProfileDraft(BaseModel):
+    """What the scoring profile drafting model must return (sent to the API as a JSON schema). Its
+    names and weights are checked and repaired before anything is saved
+    (interviews/auto_profile.py), so this only has to give the API a shape."""
+
+    competencies: list[DraftedCompetency]
+
+
 class InterviewFollowUpDecision(BaseModel):
     """What the follow-up model must return (sent to the API as a JSON schema). When no
     follow-up is needed ``question`` is empty. The wording is checked again before the

@@ -184,9 +184,33 @@ describe('ScoringProfileModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove the scoring profile' }))
 
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('generic scorecard'))
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('A new one is built for the role the next time'))
     expect(api.delete).toHaveBeenCalledWith(URL)
     expect(onSaved).toHaveBeenCalled()
+  })
+
+  describe('a profile built for the role', () => {
+    const BUILT = { ...SAVED, profile: { ...SAVED.profile, template_code: 'AUTO' } }
+
+    it('says it was built for the role and that saving makes it the employer\'s', async () => {
+      renderModal(BUILT)
+
+      expect(await screen.findByTestId('built-for-role-note')).toHaveTextContent('built for the role from the job and its interview questions')
+    })
+
+    it('says nothing of the kind for a profile the employer made', async () => {
+      renderModal(SAVED)
+      await screen.findByLabelText('Competency 1 name')
+
+      expect(screen.queryByTestId('built-for-role-note')).not.toBeInTheDocument()
+    })
+
+    it('tells a job with no profile that one is built the first time an interview is scored', async () => {
+      renderModal()
+
+      expect(await screen.findByText(/a profile is built for the role the first time an interview is scored/)).toBeInTheDocument()
+      expect(screen.queryByTestId('built-for-role-note')).not.toBeInTheDocument()
+    })
   })
 
   it('does not offer to remove a profile that does not exist', async () => {

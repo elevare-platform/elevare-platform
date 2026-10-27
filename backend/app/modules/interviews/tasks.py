@@ -24,6 +24,7 @@ from app.core.exceptions import PlanUpgradeRequiredException
 from app.core.storage import get_storage_service
 from app.modules.ai.service import AnthropicCVExtractionService
 from app.modules.interviews.assessment_text import format_assessment
+from app.modules.interviews.auto_profile import ensure_profile
 from app.modules.interviews.credits import refund_if_unused, refund_interview_credits
 from app.modules.interviews.enums import (
     STALE_INTERVIEW_TIMEOUT,
@@ -258,9 +259,16 @@ async def _merge_recording_parts(db, repo, interview, reencode_timeout=None, que
     return interview
 
 
-async def _scoring_profile_for(db, interview, job) -> tuple[dict | None, list[dict] | None]:
+async def _scoring_profile_for(
+    db, interview, job, ai_service=None
+) -> tuple[dict | None, list[dict] | None]:
     """The job's scoring profile and the competency each question was written to test, for a
-    strict interview; ``(None, None)`` for a live interview or a job without a profile."""
+    strict interview; ``(None, None)`` for a live interview.
+
+    A strict interview of a job with no profile gets one built for its role, once, and saved on the
+    job (``auto_profile``), so every such interview is scored on a weighted framework and the
+    candidates of one job are compared on the same competencies. If one cannot be built the
+    interview is scored by the simple scorecard: ``(None, None)``."""
     run = (
         await db.execute(
             select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
@@ -269,6 +277,8 @@ async def _scoring_profile_for(db, interview, job) -> tuple[dict | None, list[di
     if run is None:
         return None, None
     profile = await load_profile(db, job.id)
+    if profile is None and ai_service is not None:
+        profile = await ensure_profile(db, job, run.questions or [], ai_service)
     if profile is None:
         return None, None
     tags = [
@@ -619,11 +629,14 @@ async def _transcribe_and_score_interview_async(
                 conditions = await StrictInterviewService(db, repo).interview_conditions(
                     interview.id
                 )
-                # A strict interview of a job with a scoring profile is rated on the profile's
-                # competencies; anything else is scored by the generic scorecard as before.
-                scoring_profile, question_tags = await _scoring_profile_for(db, interview, job)
+                # A strict interview is rated on its job's scoring profile (the employer's, or one
+                # built for the role the first time); a live interview, or a job whose profile
+                # could not be built, is scored by the simple scorecard.
                 ai_service = AnthropicCVExtractionService()
                 try:
+                    scoring_profile, question_tags = await _scoring_profile_for(
+                        db, interview, job, ai_service
+                    )
                     result = await ai_service.score_interview_transcript(
                         interview_brief=job.interview_brief or "",
                         transcript=transcript,

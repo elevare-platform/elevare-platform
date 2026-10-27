@@ -106,7 +106,7 @@ export default function ScoringProfileModal({ jobId, onClose, onSaved }) {
   }
 
   const remove = async () => {
-    if (!window.confirm('Remove the scoring profile? This job goes back to the generic scorecard. Interviews already scored keep their reports.')) return
+    if (!window.confirm('Remove the scoring profile? A new one is built for the role the next time an interview is scored. Interviews already scored keep their reports.')) return
     setSaving(true)
     setError(null)
     try {
@@ -136,9 +136,9 @@ export default function ScoringProfileModal({ jobId, onClose, onSaved }) {
           <div>
             <h2 className="text-lg font-bold text-text">Scoring profile</h2>
             <p className="text-sm text-text-muted mt-1">
-              The competencies the AI rates in this interview, and what each is worth. The score is
-              worked out from the AI&apos;s 1 to 5 rating of each one. Without a profile the AI chooses
-              the competencies from the interview brief.
+              The competencies rated in this interview, and what each is worth. The score is worked out
+              from the 1 to 5 rating of each one. If you set none, a profile is built for the role the
+              first time an interview is scored, and every candidate of the job is scored on it.
             </p>
           </div>
           <button type="button" onClick={close} className="text-text-muted hover:text-text flex-shrink-0" aria-label="Close">
@@ -160,6 +160,13 @@ export default function ScoringProfileModal({ jobId, onClose, onSaved }) {
 
           {status === 'ready' && (
             <>
+              {templateCode === 'AUTO' && hasProfile && (
+                <p role="note" data-testid="built-for-role-note" className="rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-3 py-2 text-xs text-text">
+                  This profile was built for the role from the job and its interview questions, and every
+                  candidate of the job is scored on it. Change it if it does not fit; once you save, it
+                  is yours.
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <label htmlFor="profile-template" className="text-xs font-semibold text-text">Start from a template</label>
                 <select

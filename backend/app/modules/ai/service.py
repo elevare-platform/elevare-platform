@@ -357,6 +357,46 @@ class AnthropicCVExtractionService(AIService):
         decision = result.parsed
         return decision.question if decision.needs_follow_up else None
 
+    async def draft_scoring_profile(
+        self, *, job_context: str, interview_brief: str, questions: list[str]
+    ) -> list[dict] | None:
+        """Draft the competencies (name and weight) a job without a scoring profile will be scored
+        on, from the role and its interview questions. Returns the model's list as it wrote it
+        (``[{"name", "weight"}, ...]``), or ``None`` when the call failed or its reply cannot be
+        used: the caller checks and repairs it before saving anything, and a failure just means
+        this interview is scored by the simple scorecard."""
+        from app.modules.ai.prompts.scoring_profile_draft import (
+            SCORING_PROFILE_DRAFT_SYSTEM_PROMPT,
+            build_scoring_profile_draft_prompt,
+        )
+
+        from .schema import ScoringProfileDraft
+
+        try:
+            result = await call_structured(
+                self._client,
+                model=settings.anthropic_model,
+                max_tokens=800,
+                system=SCORING_PROFILE_DRAFT_SYSTEM_PROMPT,
+                user=build_scoring_profile_draft_prompt(
+                    job_context=job_context, interview_brief=interview_brief, questions=questions
+                ),
+                output_type=ScoringProfileDraft,
+            )
+        except Exception as e:
+            logger.error("LLM scoring profile draft failed: %s", e)
+            report_if_credit_exhausted(e, where="scoring_profile_draft")
+            return None
+
+        if not result.ok:
+            logger.error(
+                "LLM scoring profile draft returned no usable answer: %s (stop_reason=%s)",
+                result.error,
+                result.stop_reason,
+            )
+            return None
+        return [{"name": item.name, "weight": item.weight} for item in result.parsed.competencies]
+
     async def draft_interview_questions(
         self,
         *,
