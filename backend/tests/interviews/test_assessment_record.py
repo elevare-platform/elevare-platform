@@ -12,13 +12,18 @@ from app.modules.ai.schema import InterviewScoringResult
 from app.modules.auth.jwt_handler import create_token_pair
 from app.modules.interviews import service as service_module
 from app.modules.interviews import tasks as interviews_tasks
-from app.modules.interviews.enums import InterviewStatus
+from app.modules.interviews.enums import InterviewStatus, TurnKind
 from app.modules.interviews.models import (
     InterviewPanelDecision,
+    InterviewTurn,
     InterviewWeightedScore,
     StrictInterviewRun,
 )
-from app.modules.interviews.service import RECORD_INTERVIEWER, InterviewService
+from app.modules.interviews.service import (
+    RECORD_INTERVIEWER,
+    InterviewService,
+    minutes_spent,
+)
 from tests.conftest import make_employer, make_job
 
 from .test_interview_tasks import (
@@ -42,12 +47,28 @@ def storage(monkeypatch):
     monkeypatch.setattr(service_module, "get_storage_service", lambda: fake)
 
 
-async def scored(db_session, record=None, status=InterviewStatus.SCORED.value, started=T0, finished=None):
-    """A finished strict interview, with the content of the record stored as scoring stores it."""
+async def scored(
+    db_session, record=None, status=InterviewStatus.SCORED.value, started=T0, finished=None, last_answer=None
+):
+    """A finished strict interview, with the content of the record stored as scoring stores it.
+    The candidate's last answer is at ``last_answer`` (17 minutes 40 seconds in by default); the video
+    upload finishes at ``finished``."""
     interview = await make_strict(db_session, status=status, transcript="AI: q\n\nCandidate: a")
     interview.interview.completed_at = finished if finished is not None else T0 + timedelta(minutes=17, seconds=40)
     run = (await db_session.execute(select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.interview.id))).scalar_one()
     run.started_at = started
+    db_session.add(
+        InterviewTurn(
+            interview_id=interview.interview.id,
+            position=1,
+            kind=TurnKind.QUESTION.value,
+            question_number=1,
+            question_text="Tell me about a sale you closed.",
+            time_limit_seconds=120,
+            opened_at=started,
+            answered_at=last_answer if last_answer is not None else T0 + timedelta(minutes=17, seconds=40),
+        )
+    )
     if record is not None:
         db_session.add(InterviewWeightedScore(interview_id=interview.interview.id, report={"record": record}))
     await db_session.commit()
@@ -84,6 +105,37 @@ async def test_the_header_names_the_candidate_by_reference_the_role_the_date_and
     assert record["interviewer"] == RECORD_INTERVIEWER
     assert record["duration_minutes"] == 18  # 17 minutes 40 seconds
     assert record["interview_date"].startswith("2026-10-20T09:17")
+
+
+@pytest.mark.asyncio
+async def test_the_length_is_the_time_spent_answering_not_the_time_the_video_took_to_upload(client, db_session):
+    """A failed or slow upload finishes hours after the last answer; it must not become 132 minutes."""
+    interview = await scored(
+        db_session,
+        last_answer=T0 + timedelta(minutes=29, seconds=40),
+        finished=T0 + timedelta(minutes=132),
+    )
+
+    record = (await detail(client, interview))["record"]
+
+    assert record["duration_minutes"] == 30
+
+
+def test_the_minutes_run_to_the_last_answer():
+    assert minutes_spent(T0, None, T0 + timedelta(minutes=17, seconds=40)) == 18
+
+
+def test_an_interview_that_was_stopped_counts_to_the_moment_it_ended():
+    assert minutes_spent(T0, T0 + timedelta(minutes=12), T0 + timedelta(minutes=9)) == 12
+
+
+def test_there_is_no_length_before_anything_was_answered_or_before_the_start():
+    assert minutes_spent(T0, None, None) is None
+    assert minutes_spent(None, None, T0 + timedelta(minutes=5)) is None
+
+
+def test_a_clock_that_runs_backwards_is_never_negative():
+    assert minutes_spent(T0, None, T0 - timedelta(minutes=3)) == 0
 
 
 @pytest.mark.asyncio
