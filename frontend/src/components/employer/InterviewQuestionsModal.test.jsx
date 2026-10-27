@@ -479,6 +479,42 @@ describe('InterviewQuestionsModal', () => {
       expect(screen.getByDisplayValue('An existing question to keep?')).toBeInTheDocument()
     })
 
+    it('shows the set and keeps the time warning when its answer times are longer than the interview allows', async () => {
+      const long = Array.from({ length: 8 }, (_, n) => ({
+        ...saved(n + 1, `Colton question number ${n + 1} about the role.`, 150),
+        competency: 'Route-to-market',
+        probes: 'Which markets would you prioritise?',
+      }))
+      api.get.mockResolvedValueOnce(withTemplates())
+      api.post.mockResolvedValueOnce({
+        data: { ...LIMITS, max_total_seconds: 600, question_templates: TEMPLATES, follow_up_mode: 'STANDARD', saved: false, questions: long },
+      })
+      const { onSaved } = renderModal()
+
+      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
+      fireEvent.click(useButton())
+
+      // The questions are shown, not lost, ...
+      expect(await screen.findByDisplayValue('Colton question number 1 about the role.')).toBeInTheDocument()
+      expect(screen.getAllByLabelText('Time to answer')).toHaveLength(8)
+      // ... the message about the time stays, with the reason Save is off ...
+      const problems = screen.getByRole('list', { name: 'Problems with the list' })
+      expect(within(problems).getByText(/add up to 20 min, but the whole interview is limited to 10 min/)).toBeInTheDocument()
+      expect(screen.getByTestId('cannot-save-note')).toHaveTextContent('Shorten the answer times to save.')
+      expect(screen.getByRole('status')).toHaveTextContent('not saved yet')
+      expect(saveButton()).toBeDisabled()
+      expect(onSaved).not.toHaveBeenCalled()
+      expect(api.put).not.toHaveBeenCalled()
+
+      // ... and shortening the times is what lets it be saved.
+      for (const select of screen.getAllByLabelText('Time to answer')) {
+        fireEvent.change(select, { target: { value: '60' } })
+      }
+      expect(screen.queryByRole('list', { name: 'Problems with the list' })).not.toBeInTheDocument()
+      expect(screen.queryByTestId('cannot-save-note')).not.toBeInTheDocument()
+      expect(saveButton()).toBeEnabled()
+    })
+
     it('can still be edited and saved after a set is loaded, with the tags it came with', async () => {
       api.get.mockResolvedValueOnce(withTemplates())
       api.post.mockResolvedValueOnce({ data: { ...appliedResponse.data, competencies: ['Route-to-market'] } })

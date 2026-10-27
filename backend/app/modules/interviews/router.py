@@ -28,6 +28,7 @@ from app.modules.interviews.schema import (
     InterviewQuestionsDraftResponse,
     InterviewQuestionsPutRequest,
     InterviewQuestionsResponse,
+    InterviewQuestionsTemplateResponse,
     InterviewReinstateResponse,
     InterviewResetRequestResponse,
     InterviewScoreRequestResponse,
@@ -411,7 +412,7 @@ async def save_job_interview_questions(
 
 @router.post(
     "/jobs/{job_id}/questions/from-template",
-    response_model=InterviewQuestionsResponse,
+    response_model=InterviewQuestionsTemplateResponse,
     status_code=200,
 )
 async def start_job_questions_from_template(
@@ -422,7 +423,9 @@ async def start_job_questions_from_template(
 ):
     """Start the job from a Colton Group role template: the role's scoring profile AND its
     questions with their probes, replacing the job's current ones, in one step (all or nothing).
-    The employer can then edit anything. An unknown template is refused with a 422."""
+    If the template's answer times do not fit the interview's time limit the questions are not
+    saved but returned to be shortened (``saved`` false). The employer can then edit anything. An
+    unknown template is refused with a 422."""
     return await InterviewQuestionService(db).apply_template(current_user, job_id, data.code)
 
 

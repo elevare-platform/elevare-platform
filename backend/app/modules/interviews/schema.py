@@ -122,6 +122,15 @@ class InterviewQuestionsDraftResponse(_QuestionLimits):
     questions: list[DraftedInterviewQuestion]
 
 
+class InterviewQuestionsTemplateResponse(_QuestionLimits):
+    """The questions of a template the employer started from. ``saved`` is true when they were
+    saved at once; false when their answer times do not fit the interview's time limit, so they
+    are only shown, for the employer to shorten and save."""
+
+    questions: list[DraftedInterviewQuestion]
+    saved: bool
+
+
 class InterviewSessionResponse(BaseModel):
     """A short-lived Realtime API session the candidate's browser connects with directly."""
 

@@ -11,6 +11,7 @@ company that owns the job.
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,19 @@ from app.modules.interviews.scoring_profile_service import (
 )
 from app.modules.jobs.repository import JobRepository
 from app.modules.users.models import User
+
+
+def _as_draft(question) -> dict:
+    """A saved question (or a template item) as the plain fields the editor loads."""
+    get = question.get if isinstance(question, dict) else lambda name: getattr(question, name, None)
+    return {
+        "text": get("text"),
+        "time_limit_seconds": get("time_limit_seconds"),
+        "source": get("source") or "EMPLOYER",
+        "competency": get("competency"),
+        "probes": get("probes"),
+        "follow_up_seconds": get("follow_up_seconds"),
+    }
 
 
 class InterviewQuestionService:
@@ -160,7 +174,14 @@ class InterviewQuestionService:
         question tagged with the competency it tests. Replaces the job's current profile and
         questions, in one transaction (all or nothing), and sets the follow-up mode to "follow up
         when needed", which is what the client's framework describes. Interviews already started
-        keep the questions they began with."""
+        keep the questions they began with.
+
+        When the template's answer times add up to more than the interview's time limit
+        (``INTERVIEW_MAX_DURATION_MINUTES``) the questions are NOT saved, because a list that does
+        not fit cannot be: they are returned as a draft (``saved`` false) for the employer to shorten
+        and save, with the role's scoring profile and follow-up mode already set so the tags are
+        valid. The reply is the same either way: the questions to show, and whether they are saved.
+        """
         await self._job_for(user, job_id)
         items = question_templates.template_items(code)
         scoring = next((t for t in scoring_rules.TEMPLATES if t["code"] == code), None)
@@ -175,11 +196,17 @@ class InterviewQuestionService:
             code,
             commit=False,
         )
-        result = await self.replace_questions(
-            user, job_id, items, follow_up_mode=FollowUpMode.STANDARD.value, commit=False
-        )
+        fits = sum(item["time_limit_seconds"] for item in items) <= rules.max_total_seconds()
+        if fits:
+            result = await self.replace_questions(
+                user, job_id, items, follow_up_mode=FollowUpMode.STANDARD.value, commit=False
+            )
+            await self._db.commit()
+            return {**result, "questions": [_as_draft(q) for q in result["questions"]], "saved": True}
+        await save_follow_up_mode(self._db, job_id, FollowUpMode.STANDARD)
         await self._db.commit()
-        return result
+        answer = await self._answer(job_id, [SimpleNamespace(**item) for item in items])
+        return {**answer, "questions": [_as_draft(item) for item in items], "saved": False}
 
     async def draft_questions(
         self, user: User, job_id: uuid.UUID, count: int | None = None

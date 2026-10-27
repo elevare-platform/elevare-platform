@@ -119,12 +119,22 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
       setLimits(data)
       setFollowUpMode(data.follow_up_mode ?? 'STANDARD')
       setQuestions(data.questions.map((item) => ({ ...item, probes: item.probes ?? '', key: newKey() })))
-      setDirty(false) // it is saved already
       setTemplateCode('')
-      setNotice(
-        `Loaded the ${template.title} set: ${data.questions.length} questions, each tagged with the competency it tests, and the role's scoring profile. It is saved. Change anything you like, then save again.`
-      )
-      onSaved?.(data)
+      if (data.saved === false) {
+        // The answer times of the set add up to more than the interview's time limit, so it could
+        // not be saved: it is shown for the employer to shorten (the red message below says by how
+        // much, and stays until it fits). The role's scoring profile is already set.
+        setDirty(true)
+        setNotice(
+          `Loaded the ${template.title} set: ${data.questions.length} questions, each tagged with the competency it tests, and the role's scoring profile is set. The answer times are longer than the interview allows, so the questions are not saved yet. Shorten some of the times, then save.`
+        )
+      } else {
+        setDirty(false) // it is saved already
+        setNotice(
+          `Loaded the ${template.title} set: ${data.questions.length} questions, each tagged with the competency it tests, and the role's scoring profile. It is saved. Change anything you like, then save again.`
+        )
+        onSaved?.(data)
+      }
     } catch (err) {
       setError(serverMessage(err, 'We could not load that set just now. Please try again.'))
     } finally {
@@ -526,7 +536,12 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
           )}
         </div>
 
-        <div className="flex justify-end gap-2 p-6 pt-3">
+        <div className="flex items-center justify-end gap-2 p-6 pt-3">
+          {status === 'ready' && problems.length > 0 && (
+            <p data-testid="cannot-save-note" className="mr-auto text-xs font-medium text-red-600">
+              {overTime ? 'Shorten the answer times to save.' : 'Fix the problems above to save.'}
+            </p>
+          )}
           <button
             type="button"
             onClick={close}

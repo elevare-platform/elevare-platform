@@ -5,6 +5,7 @@ questions together, all or nothing."""
 import pytest
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.modules.auth.jwt_handler import create_token_pair
 from app.modules.interviews import question_rules as rules
 from app.modules.interviews.models import JobInterviewQuestion, JobScoringProfile
@@ -163,6 +164,77 @@ async def test_applying_a_template_sets_the_scoring_profile_and_the_tagged_quest
         30,
         True,
     )
+
+
+@pytest.mark.asyncio
+async def test_a_template_that_fits_is_saved_and_says_so(client, db_session):
+    owner, job = await _company(db_session)
+
+    body = (await _apply(client, owner, job, "commercial_director")).json()
+
+    assert body["saved"] is True
+    assert len((await db_session.execute(select(JobInterviewQuestion))).scalars().all()) == 8
+
+
+@pytest.mark.asyncio
+async def test_a_template_longer_than_the_interview_time_limit_is_shown_for_shortening_not_refused(
+    client, db_session, monkeypatch
+):
+    """With INTERVIEW_MAX_DURATION_MINUTES at 10 the 17.5 minutes of the Sales Manager set do not
+    fit. The questions still come back, to be shortened and saved, with the role's scoring profile
+    already set so their tags are valid; nothing about the job's questions changes until then."""
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 10)
+    owner, job = await _company(db_session)
+    db_session.add(JobInterviewQuestion(job_id=job.id, position=1, text="An existing question to keep?", time_limit_seconds=120))
+    await db_session.flush()
+
+    response = await _apply(client, owner, job, "national_sales_manager")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["saved"] is False
+    assert len(body["questions"]) == 8
+    assert body["questions"][0]["competency"] == "Route-to-market and distributor development"
+    assert body["questions"][0]["probes"].startswith("Which markets and channels")
+    assert body["total_seconds"] == 1050 and body["max_total_seconds"] == 600
+    assert body["untested_competencies"] == [] and body["follow_up_mode"] == "STANDARD"
+    rows = (await db_session.execute(select(JobInterviewQuestion).where(JobInterviewQuestion.job_id == job.id))).scalars().all()
+    assert [row.text for row in rows] == ["An existing question to keep?"]  # the saved list is untouched
+    profile = (await db_session.execute(select(JobScoringProfile))).scalar_one()
+    assert profile.template_code == "national_sales_manager"
+
+
+@pytest.mark.asyncio
+async def test_the_shortened_set_can_then_be_saved_with_its_tags(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 10)
+    owner, job = await _company(db_session)
+    body = (await _apply(client, owner, job, "national_sales_manager")).json()
+    questions = [
+        {key: item[key] for key in ("text", "source", "competency", "probes")} | {"time_limit_seconds": 60}
+        for item in body["questions"]
+    ]
+
+    saved = await client.put(_url(job), json={"questions": questions}, headers=_headers(owner))
+
+    assert saved.status_code == 200 and len(saved.json()["questions"]) == 8
+    assert saved.json()["questions"][0]["competency"] == "Route-to-market and distributor development"
+
+
+@pytest.mark.asyncio
+async def test_saving_the_unshortened_set_is_still_refused_with_the_time_message(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 10)
+    owner, job = await _company(db_session)
+    body = (await _apply(client, owner, job, "national_sales_manager")).json()
+    questions = [
+        {key: item[key] for key in ("text", "time_limit_seconds", "source", "competency", "probes")}
+        for item in body["questions"]
+    ]
+
+    refused = await client.put(_url(job), json={"questions": questions}, headers=_headers(owner))
+
+    assert refused.status_code == 422
+    assert any("limited to 10 minutes" in d["message"] for d in refused.json()["details"])
+    assert (await db_session.execute(select(JobInterviewQuestion))).scalars().all() == []
 
 
 @pytest.mark.asyncio
