@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 from openai import AsyncOpenAI
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ai_pricing import compute_realtime_cost_usd
@@ -39,6 +39,7 @@ from app.modules.interviews.follow_up import load_follow_up_mode
 from app.modules.interviews.models import (
     Interview,
     InterviewPanelDecision,
+    InterviewTurn,
     InterviewWeightedScore,
     JobInterviewQuestion,
 )
@@ -82,6 +83,23 @@ _INVITE_TOKEN_EXPIRY_DAYS = 14
 
 # The "interviewer" line of the candidate assessment record (docs/16_COLTON_BRIEF.md, Section 7).
 RECORD_INTERVIEWER = "Elevare structured interview"
+
+
+def minutes_spent(
+    started_at: datetime | None, ended_at: datetime | None, last_answered_at: datetime | None
+) -> int | None:
+    """The minutes the candidate spent in the interview, for the assessment record: from its start to
+    their last answer, or to the moment it was ended or stopped if that came later. Not to the end of
+    the video upload (``completed_at``), which can be hours later on a slow connection or after a
+    failed upload, and made the record show more minutes than the interview can last."""
+    if started_at is None:
+        return None
+    finish = max((moment for moment in (ended_at, last_answered_at) if moment is not None), default=None)
+    if finish is None:
+        return None
+    return max(0, round((finish - started_at).total_seconds() / 60))
+
+
 # A panel decision can be recorded once the interview has finished, however it ended.
 PANEL_DECISION_STATUSES = (
     InterviewStatus.UPLOADED.value,
@@ -1704,11 +1722,16 @@ class InterviewService:
         scored before the record was kept has the header and nothing else."""
         started = run.started_at if run is not None else None
         finished = interview.completed_at
-        minutes = (
-            max(0, round((finished - started).total_seconds() / 60))
-            if started is not None and finished is not None
-            else None
-        )
+        last_answered = None
+        if run is not None:
+            last_answered = (
+                await self._db.execute(
+                    select(func.max(InterviewTurn.answered_at)).where(
+                        InterviewTurn.interview_id == interview.id
+                    )
+                )
+            ).scalar_one_or_none()
+        minutes = minutes_spent(started, run.ended_at if run is not None else None, last_answered)
 
         def listed(name: str) -> list[str]:
             value = content.get(name)
