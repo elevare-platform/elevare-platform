@@ -28,6 +28,9 @@ class InterviewQuestionIn(BaseModel):
     # How long the candidate has to answer a follow-up on this question, in seconds (30 to 300).
     # Left out, the platform default (90) applies. The range is checked in ``question_rules``.
     follow_up_seconds: int | None = Field(default=None)
+    # True for the interview's practical case: a scenario scored separately out of 5 and never part
+    # of the weighted score. At most one question of a job (checked in ``question_rules``).
+    is_practical: bool = False
 
 
 FollowUpModeName = Literal["NONE", "STANDARD", "PROBES_ONLY"]
@@ -59,6 +62,7 @@ class SavedInterviewQuestion(BaseModel):
     competency: str | None = None
     probes: str | None = None
     follow_up_seconds: int | None = None
+    is_practical: bool = False
 
 
 class DraftedInterviewQuestion(BaseModel):
@@ -68,6 +72,7 @@ class DraftedInterviewQuestion(BaseModel):
     competency: str | None = None
     probes: str | None = None
     follow_up_seconds: int | None = None
+    is_practical: bool = False
 
 
 class ClosingQuestion(BaseModel):
@@ -298,6 +303,72 @@ class WeightedScoreReport(BaseModel):
     unassessed: list[str] = []
 
 
+class PracticalCriterionRow(BaseModel):
+    """One criterion of the practical case: its weight, the 1 to 5 rating (None when it was not
+    covered) and why."""
+
+    key: str
+    name: str
+    weight: int
+    rating: int | None = None
+    rationale: str = ""
+
+
+class PracticalCaseReport(BaseModel):
+    """The practical case of an interview, scored on its own out of 5 and never part of the weighted
+    score (docs/08_DECISIONS.md, item 43). ``score`` is set only when every criterion was rated
+    (``complete``); otherwise a person decides."""
+
+    question_number: int
+    rows: list[PracticalCriterionRow]
+    complete: bool
+    score: float | None = None
+    assessed_weight: int
+    total_weight: int
+    unassessed: list[str] = []
+    summary: str = ""
+
+
+PanelDecisionName = Literal["STRONG_SHORTLIST", "SHORTLIST", "HOLD", "DO_NOT_SHORTLIST"]
+
+
+class PanelDecisionIn(BaseModel):
+    """The hiring panel's decision about a candidate, and why. The real limits (a rationale of a
+    sentence or two) are checked in the service with messages the employer can act on."""
+
+    decision: PanelDecisionName
+    rationale: str = Field(max_length=5000)
+
+
+class PanelDecisionOut(BaseModel):
+    """A decision as it was signed off: what, why, by whom and when."""
+
+    decision: PanelDecisionName
+    label: str
+    rationale: str
+    decided_by_name: str
+    decided_at: datetime
+
+
+class AssessmentRecord(BaseModel):
+    """The candidate assessment record the client's pack asks for (docs/16_COLTON_BRIEF.md, Section
+    7): who and when, how long, the top three strengths and gaps, what to verify and what to ask
+    referees, and the human panel's decision with its sign-off. ``panel_decision`` is only on the
+    employer's own view: it is the company's internal decision, not part of what a shared link
+    shows."""
+
+    reference: str
+    role: str
+    interview_date: datetime | None = None
+    duration_minutes: int | None = None
+    interviewer: str
+    top_strengths: list[str] = []
+    top_gaps: list[str] = []
+    claims_to_verify: list[str] = []
+    reference_check_questions: list[str] = []
+    panel_decision: PanelDecisionOut | None = None
+
+
 class RecordingClip(BaseModel):
     """One recording of a strict interview: an interview the employer reinstated has one clip
     per attempt, each only what that attempt recorded."""
@@ -343,6 +414,10 @@ class InterviewDetailResponse(BaseModel):
     strict: StrictDetail | None = None
     # Only for an interview scored with a scoring profile (None otherwise).
     score_report: WeightedScoreReport | None = None
+    # Only for an interview that had a practical case (None otherwise): reported apart from the score.
+    practical_case: PracticalCaseReport | None = None
+    # The candidate assessment record: header, top strengths and gaps, what to verify, the panel's decision.
+    record: AssessmentRecord | None = None
 
 
 class InterviewPublicInfoResponse(BaseModel):

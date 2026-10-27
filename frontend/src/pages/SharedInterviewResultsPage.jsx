@@ -8,6 +8,8 @@ import { parseAssessment } from '@/lib/interviewAssessment'
 import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
 import RecordingClips from '@/components/employer/RecordingClips'
 import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
+import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
+import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
 import { showsClips } from '@/lib/recordingClips'
 
 // What the client is told about each candidate's interview.
@@ -222,6 +224,12 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
           {/* A job with a scoring profile: the weighted table, the total or "incomplete", and the
               suggested band. The written assessment follows in the card below. */}
           {candidate.score_report && <WeightedScoreCard report={candidate.score_report} />}
+
+          {/* The practical case, scored on its own and never part of the weighted score */}
+          {candidate.practical_case && <PracticalCaseCard report={candidate.practical_case} />}
+
+          {/* The candidate assessment record, without the company's own panel decision */}
+          {candidate.record && <AssessmentRecordCard record={candidate.record} />}
 
           <div className="grid gap-3 sm:grid-cols-2">
             {interviewed && (

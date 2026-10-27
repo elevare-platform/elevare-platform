@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import {
   User, ArrowLeft, ChevronDown, X,
@@ -555,7 +555,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
   }
 
   // Opening the CV, the cover letter or the profile counts as having looked at this applicant.
-  const markSeen = () => onSeen?.(application.id)
+  const markSeen = () => onSeen?.(application.id, application.is_new)
 
   const handleDownloadCv = async () => {
     markSeen()
@@ -982,7 +982,7 @@ function PipelineTab({
                   candidate's name has room to be read */}
               <button
                 type="button"
-                onClick={() => { onSeen?.(p.id); onProfileClick(p) }}
+                onClick={() => { onSeen?.(p.id, p.is_new); onProfileClick(p) }}
                 className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 text-left"
               >
                 <span className="hidden sm:flex w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold items-center justify-center flex-shrink-0">
@@ -1024,7 +1024,7 @@ function PipelineTab({
                     candidateProfileId: p.candidate_profile_id,
                   })}
                   onToggle={() => {
-                    onSeen?.(p.id)
+                    onSeen?.(p.id, p.is_new)
                     interviewList.toggle({
                       talentPoolProfileId: p.id,
                       candidateProfileId: p.candidate_profile_id,
@@ -1777,11 +1777,9 @@ export default function ApplicantsPage() {
 
   // The employer opened an applicant (CV, cover letter or profile): it stops being new. The screen
   // updates at once and the server is told in the background (a failure only means it shows as
-  // new again later).
-  const applicantsRef = useRef(applicants)
-  useEffect(() => { applicantsRef.current = applicants }, [applicants])
-  const handleApplicantSeen = useCallback((applicationId) => {
-    if (!applicantsRef.current.find((a) => a.id === applicationId)?.is_new) return
+  // new again later). `wasNew` is what the row on screen showed when it was opened.
+  const handleApplicantSeen = useCallback((applicationId, wasNew) => {
+    if (!wasNew) return
     setApplicants((prev) => prev.map((a) => (a.id === applicationId ? { ...a, is_new: false } : a)))
     setNewApplicantCount((count) => Math.max(0, count - 1))
     api.post(`/api/v1/applications/${applicationId}/seen`).catch(() => loadNewApplicantCount())
@@ -1794,10 +1792,8 @@ export default function ApplicantsPage() {
   }, [jobId])
   useEffect(() => { loadPipelineNewCount() }, [loadPipelineNewCount])
 
-  const pipelineRef = useRef(pipeline)
-  useEffect(() => { pipelineRef.current = pipeline }, [pipeline])
-  const handlePipelineSeen = useCallback((profileId) => {
-    if (!pipelineRef.current.find((p) => p.id === profileId)?.is_new) return
+  const handlePipelineSeen = useCallback((profileId, wasNew) => {
+    if (!wasNew) return
     setPipeline((prev) => prev.map((p) => (p.id === profileId ? { ...p, is_new: false } : p)))
     setPipelineNewCount((count) => Math.max(0, count - 1))
     api.post(`/api/v1/talent-pool/${profileId}/seen`).catch(() => loadPipelineNewCount())

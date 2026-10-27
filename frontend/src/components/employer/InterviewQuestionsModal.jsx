@@ -94,6 +94,18 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const setProbes = (index, probes) =>
     edit((list) => list.map((question, position) => (position === index ? { ...question, probes } : question)))
 
+  // One question at most is the practical case, so ticking one unticks any other.
+  const setPractical = (index, isPractical) =>
+    edit((list) =>
+      list.map((question, position) =>
+        position === index
+          ? { ...question, is_practical: isPractical }
+          : isPractical
+            ? { ...question, is_practical: false }
+            : question
+      )
+    )
+
   const setFollowUpSeconds = (index, follow_up_seconds) =>
     edit((list) =>
       list.map((question, position) => (position === index ? { ...question, follow_up_seconds } : question))
@@ -171,13 +183,14 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
     setError(null)
     try {
       const { data } = await api.put(`/api/v1/interviews/jobs/${jobId}/questions`, {
-        questions: questions.map(({ text, time_limit_seconds, source, competency, probes, follow_up_seconds }) => ({
+        questions: questions.map(({ text, time_limit_seconds, source, competency, probes, follow_up_seconds, is_practical }) => ({
           text,
           time_limit_seconds,
           source,
           competency: competency || null,
           probes: probes || null,
           follow_up_seconds: follow_up_seconds ?? null,
+          is_practical: Boolean(is_practical),
         })),
         follow_up_mode: followUpMode,
       })
@@ -361,6 +374,19 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                       maxLength={MAX_QUESTION_CHARS + 50}
                       className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
                     />
+                    <label className="flex items-start gap-2 text-xs text-text-muted">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(question.is_practical)}
+                        onChange={(event) => setPractical(index, event.target.checked)}
+                        aria-label={`Mark question ${index + 1} as the practical case`}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        <span className="font-semibold text-text">Practical case.</span> A scenario the
+                        candidate works through aloud, scored on its own out of 5 and not part of the weighted score.
+                      </span>
+                    </label>
                     <div className="flex items-center gap-2">
                       <label htmlFor={`time-${question.key}`} className="text-xs text-text-muted">
                         Time to answer

@@ -295,9 +295,23 @@ async def _scoring_profile_for(
     )
 
 
+async def _practical_question_for(db, interview) -> dict | None:
+    """The interview's practical case as ``{"number", "text"}``, from the questions it started with
+    (a strict interview only), or None when it has none."""
+    run = (
+        await db.execute(
+            select(StrictInterviewRun).where(StrictInterviewRun.interview_id == interview.id)
+        )
+    ).scalar_one_or_none()
+    for number, question in enumerate((run.questions if run else None) or [], start=1):
+        if question.get("is_practical"):
+            return {"number": number, "text": question["text"]}
+    return None
+
+
 async def _save_weighted_report(db, interview_id, report: dict) -> None:
-    """Keep the weighted score report of an interview (one per interview: a second scoring
-    replaces the first)."""
+    """Keep the score report of an interview: the weighted score and/or the practical case (one
+    per interview: a second scoring replaces the first)."""
     existing = (
         await db.execute(
             select(InterviewWeightedScore).where(InterviewWeightedScore.interview_id == interview_id)
@@ -644,6 +658,7 @@ async def _transcribe_and_score_interview_async(
                         interview_conditions=conditions,
                         scoring_profile=scoring_profile,
                         question_tags=question_tags,
+                        practical_question=await _practical_question_for(db, interview),
                     )
                 finally:
                     await ai_service._client.close()
@@ -686,8 +701,18 @@ async def _transcribe_and_score_interview_async(
                             "ai_scored_at": datetime.now(UTC),
                         },
                     )
-                    if result.weighted:
-                        await _save_weighted_report(db, interview.id, result.weighted)
+                    # The weighted score, the practical case (reported apart, never part of
+                    # `ai_score`) and the content of the assessment record are kept together.
+                    report = {**(result.weighted or {})}
+                    if result.practical:
+                        report["practical"] = result.practical
+                    report["record"] = {
+                        "strengths": result.strengths,
+                        "gaps": result.weaknesses,
+                        "claims_to_verify": result.claims_to_verify,
+                        "reference_check_questions": result.reference_check_questions,
+                    }
+                    await _save_weighted_report(db, interview.id, report)
                     await _record_scoring_cost(repo, interview.id, result)
                     await db.commit()
 

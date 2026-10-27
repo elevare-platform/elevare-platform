@@ -408,11 +408,11 @@ function CvAccessButton({ profile, onOpen }) {
     e.stopPropagation()
     // Opening the profile or the CV is what makes it "seen". Asking for an introduction is not.
     if (isSelfRegistered) {
-      onOpen?.(profile.id)
+      onOpen?.(profile.id, profile.is_new)
       return setShowPanel(true)
     }
     if (canViewCv) {
-      onOpen?.(profile.id)
+      onOpen?.(profile.id, profile.is_new)
       return setShowCvModal(true)
     }
     setShowActionModal(true)
@@ -458,7 +458,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange, onSe
   const [expanded, setExpanded] = useState(false)
   // Opening the reasoning counts as having looked at the candidate.
   const toggleDetails = () => {
-    if (!expanded) onSeen?.(profile.id)
+    if (!expanded) onSeen?.(profile.id, profile.is_new)
     setExpanded((v) => !v)
   }
 
@@ -613,7 +613,7 @@ function PipelineRow({ profile, isAdmin, onPromote, onStatusChange, onSeen }) {
   const [expanded, setExpanded] = useState(false)
   const hasDetails = profile.summary || profile.skills?.length > 0
   const toggleDetails = () => {
-    if (!expanded) onSeen?.(profile.id)
+    if (!expanded) onSeen?.(profile.id, profile.is_new)
     setExpanded((v) => !v)
   }
 
@@ -880,10 +880,9 @@ export default function TalentPoolPage() {
 
   // The employer opened a CV or its details: it stops being new. The screen updates at once, and
   // the server is told in the background (a failure only means it shows as new again later).
-  const profilesRef = useRef(profiles)
-  useEffect(() => { profilesRef.current = profiles }, [profiles])
-  const handleSeen = useCallback((profileId) => {
-    if (!profilesRef.current.find((p) => p.id === profileId)?.is_new) return
+  // `wasNew` is what the row on screen showed when it was opened.
+  const handleSeen = useCallback((profileId, wasNew) => {
+    if (!wasNew) return
     setProfiles((prev) => prev.map((p) => (p.id === profileId ? { ...p, is_new: false } : p)))
     setNewCount((count) => Math.max(0, count - 1))
     api.post(`/api/v1/talent-pool/${profileId}/seen`).catch(() => loadNewCount())

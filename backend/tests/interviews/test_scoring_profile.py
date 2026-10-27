@@ -702,7 +702,9 @@ async def test_a_job_without_a_profile_is_scored_by_the_generic_scorecard(db_ses
     await db_session.refresh(interview.interview)
     assert interview.interview.ai_score == 71
     assert ai.score_interview_transcript.await_args.kwargs["scoring_profile"] is None
-    assert (await db_session.execute(select(InterviewWeightedScore))).scalars().all() == []
+    # No weighted score is kept for it, only the content of its assessment record.
+    [row] = (await db_session.execute(select(InterviewWeightedScore))).scalars().all()
+    assert "rows" not in row.report and set(row.report) == {"record"}
 
 
 @pytest.mark.asyncio

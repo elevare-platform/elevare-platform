@@ -28,13 +28,19 @@ from app.modules.credits.service import CreditsService
 from app.modules.interview_list.repository import InterviewListRepository
 from app.modules.interviews.enums import (
     ENDED_STATUSES,
+    PANEL_DECISION_LABELS,
     InterviewCostComponent,
     InterviewStatus,
+    PanelDecision,
     TranscriptCheckStatus,
     follow_up_mode_of,
 )
 from app.modules.interviews.follow_up import load_follow_up_mode
-from app.modules.interviews.models import Interview, InterviewWeightedScore
+from app.modules.interviews.models import (
+    Interview,
+    InterviewPanelDecision,
+    InterviewWeightedScore,
+)
 from app.modules.interviews.recording_merge import attempt_of_key, final_key, part_key
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.interviews.schema import (
@@ -72,6 +78,28 @@ _ENDED_EARLY_MESSAGE = (
 )
 _VIDEO_CONTENT_TYPE = "video/webm"
 _INVITE_TOKEN_EXPIRY_DAYS = 14
+
+# The "interviewer" line of the candidate assessment record (docs/16_COLTON_BRIEF.md, Section 7).
+RECORD_INTERVIEWER = "Elevare structured interview"
+# A panel decision can be recorded once the interview has finished, however it ended.
+PANEL_DECISION_STATUSES = (
+    InterviewStatus.UPLOADED.value,
+    InterviewStatus.SCORED.value,
+    *ENDED_STATUSES,
+)
+# The shortest rationale that says something (a sentence or two).
+MIN_RATIONALE_CHARS = 10
+
+
+def _panel_decision_out(row: InterviewPanelDecision) -> dict:
+    """A recorded decision as the API shows it."""
+    return {
+        "decision": row.decision,
+        "label": PANEL_DECISION_LABELS.get(row.decision, row.decision),
+        "rationale": row.rationale,
+        "decided_by_name": row.decided_by_name,
+        "decided_at": row.decided_at,
+    }
 
 _BASE_INTERVIEWER_INSTRUCTIONS = (
     "You are conducting a live, spoken screening interview on behalf of an "
@@ -1549,7 +1577,12 @@ class InterviewService:
         return await self.build_detail(job, interview)
 
     async def build_detail(
-        self, job: Job, interview: Interview, *, video_seconds: int = 3600
+        self,
+        job: Job,
+        interview: Interview,
+        *,
+        video_seconds: int = 3600,
+        include_panel_decision: bool = True,
     ) -> InterviewDetailResponse:
         """The full detail of a completed interview: recording, transcript, the AI's
         assessment of it and the CV assessment next to it.
@@ -1558,6 +1591,8 @@ class InterviewService:
         this (the employer's own detail view, and the shared results link). Shared so
         both show exactly the same thing. ``video_seconds`` is how long the recording
         link works; a link meant to be passed around uses a much shorter one.
+        ``include_panel_decision`` is false for the shared link: the company's own panel
+        decision and rationale are internal, not part of what an outside reader is shown.
         """
         strict = await self._strict().strict_detail(interview)
         # The weighted score report, for an interview scored with a scoring profile.
@@ -1569,7 +1604,15 @@ class InterviewService:
             )
             return result.scalar_one_or_none()
 
-        score_report = await tolerate_missing(self._db, read_report, None)
+        stored_report = await tolerate_missing(self._db, read_report, None) or {}
+        # The stored report holds the weighted score and, apart from it, the practical case and the
+        # content of the assessment record (top strengths and gaps, what to verify, referee questions).
+        score_report = (
+            {key: value for key, value in stored_report.items() if key not in ("practical", "record")}
+            if "rows" in stored_report
+            else None
+        )
+        practical_case = stored_report.get("practical")
         video_url = None
         # While the pieces of the recording are being joined the file on record is only the last
         # piece: showing it would look like the whole interview, so nothing is shown yet.
@@ -1598,6 +1641,13 @@ class InterviewService:
                 job, interview.talent_pool_profile, interview.application_id
             )
         )
+        record = await self._assessment_record(
+            job,
+            interview,
+            run,
+            stored_report.get("record") or {},
+            include_panel_decision=include_panel_decision,
+        )
 
         # A transcript that did not match the recording is not shown: the
         # employer sees the recording's own transcript, which is also what
@@ -1621,6 +1671,8 @@ class InterviewService:
             video_url=video_url,
             recordings=clips,
             score_report=score_report,
+            practical_case=practical_case,
+            record=record,
             completed_at=interview.completed_at,
             cv_score=cv_score,
             cv_strengths=cv_strengths,
@@ -1628,6 +1680,102 @@ class InterviewService:
             cv_fit_summary=cv_fit_summary,
             strict=strict,
         )
+
+    async def _assessment_record(
+        self, job: Job, interview: Interview, run, content: dict, *, include_panel_decision: bool
+    ) -> dict:
+        """The candidate assessment record (Section 7 of the client's pack): the header, the top
+        three strengths and gaps, what to verify and ask referees, from what was stored when the
+        interview was scored, and the panel's latest decision if it is to be shown. An interview
+        scored before the record was kept has the header and nothing else."""
+        started = run.started_at if run is not None else None
+        finished = interview.completed_at
+        minutes = (
+            max(0, round((finished - started).total_seconds() / 60))
+            if started is not None and finished is not None
+            else None
+        )
+
+        def listed(name: str) -> list[str]:
+            value = content.get(name)
+            return [item for item in value if isinstance(item, str) and item.strip()] if isinstance(value, list) else []
+
+        return {
+            "reference": f"EL-{interview.id.hex[:8].upper()}",
+            "role": job.title,
+            "interview_date": finished or started,
+            "duration_minutes": minutes,
+            "interviewer": RECORD_INTERVIEWER,
+            "top_strengths": listed("strengths")[:3],
+            "top_gaps": listed("gaps")[:3],
+            "claims_to_verify": listed("claims_to_verify"),
+            "reference_check_questions": listed("reference_check_questions"),
+            "panel_decision": await self._latest_panel_decision(interview.id) if include_panel_decision else None,
+        }
+
+    async def _latest_panel_decision(self, interview_id: uuid.UUID) -> dict | None:
+        """The panel's latest decision on this interview, or None (also None in the seconds of a
+        deploy before the table exists)."""
+
+        async def read() -> dict | None:
+            row = (
+                await self._db.execute(
+                    select(InterviewPanelDecision)
+                    .where(InterviewPanelDecision.interview_id == interview_id)
+                    .order_by(InterviewPanelDecision.decided_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            return _panel_decision_out(row) if row is not None else None
+
+        return await tolerate_missing(self._db, read, None)
+
+    async def record_panel_decision(
+        self,
+        user: User,
+        job_id: uuid.UUID,
+        talent_pool_profile_id: uuid.UUID,
+        decision: str,
+        rationale: str,
+    ) -> dict:
+        """Record the hiring panel's decision about a candidate, with its rationale, signed off by the
+        person recording it (the client's assessment record).
+
+        A person's decision, never the system's, and it stops at the shortlist. Organization-level
+        ownership (decision D2): anyone in the company that owns the job. Only once the interview
+        has finished (completed, or ended early). Append-only: a new decision is a new row, and the
+        latest is the one shown, so what was decided before is kept."""
+        from app.modules.jobs.repository import JobRepository
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+        interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
+        if interview is None:
+            raise InterviewNotFound()
+        if interview.status not in PANEL_DECISION_STATUSES:
+            raise ValidationException(
+                "The interview has not finished yet, so there is nothing to decide on.",
+                code="INTERVIEW_NOT_FINISHED",
+            )
+        reason = " ".join((rationale or "").split())
+        if len(reason) < MIN_RATIONALE_CHARS:
+            raise ValidationException(
+                "Say why, in a sentence or two, so the decision can be understood later.",
+                code="RATIONALE_REQUIRED",
+            )
+        name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email
+        row = InterviewPanelDecision(
+            interview_id=interview.id,
+            decision=PanelDecision(decision).value,
+            rationale=reason,
+            decided_by=user.id,
+            decided_by_name=name,
+            decided_at=datetime.now(UTC),
+        )
+        self._db.add(row)
+        await self._db.commit()
+        return _panel_decision_out(row)
 
     async def _resolve_cv_assessment(
         self, interview: Interview, job: Job

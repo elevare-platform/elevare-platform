@@ -66,6 +66,12 @@ class JobInterviewQuestion(BaseModel):
     # How long the candidate has to answer a follow-up on this question (docs/08_DECISIONS.md, item
     # 41). None means the platform's default (`strict_follow_up_seconds`, 90).
     follow_up_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The practical case of the interview (docs/08_DECISIONS.md, item 43): a realistic scenario the
+    # candidate works through aloud, scored separately out of 5 and never added to the weighted
+    # score. At most one question of a job is the practical case.
+    is_practical: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
 
 
 class JobInterviewSettings(BaseModel):
@@ -125,6 +131,32 @@ class InterviewWeightedScore(BaseModel):
         unique=True,
     )
     report: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class InterviewPanelDecision(BaseModel):
+    """The hiring panel's own decision about a candidate after an interview, with its rationale and
+    who signed it off (docs/08_DECISIONS.md, item 44; the client's assessment record). A human
+    decision, never the system's: the options stop at the shortlist, because hiring is outside the
+    platform's scope. Append-only: recording a decision again adds a row, and the latest is the one
+    shown, so what was decided before is kept."""
+
+    __tablename__ = "interview_panel_decisions"
+    __table_args__ = (sa.Index("ix_interview_panel_decisions_interview", "interview_id", "decided_at"),)
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # STRONG_SHORTLIST, SHORTLIST, HOLD or DO_NOT_SHORTLIST (enums.PanelDecision).
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    # Who signed it off. Kept as a name too, so the record still reads if the account is removed.
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_by_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class StrictInterviewRun(BaseModel):

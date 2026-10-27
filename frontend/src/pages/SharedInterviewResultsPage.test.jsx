@@ -165,6 +165,43 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
   })
 
+  it('shows the client the practical case on its own, apart from the weighted score', async () => {
+    const practical = {
+      question_number: 9, complete: true, score: 4, assessed_weight: 100, total_weight: 100, unassessed: [], summary: '',
+      rows: [
+        { key: 'prioritisation', name: 'Prioritisation', weight: 30, rating: 4, rationale: '' },
+        { key: 'realism', name: 'Realism', weight: 25, rating: 4, rationale: '' },
+        { key: 'measurement', name: 'Measurement', weight: 20, rating: 4, rationale: '' },
+        { key: 'risk', name: 'Risk and contingency', weight: 15, rating: 4, rationale: '' },
+        { key: 'clarity', name: 'Clarity of communication', weight: 10, rating: 4, rationale: '' },
+      ],
+    }
+    api.get.mockResolvedValueOnce({
+      data: { ...RESULTS, candidates: [{ ...ENDED_EARLY, status: 'COMPLETED', interview_score: 72, interview_assessment: 'Fine.', practical_case: practical }] },
+    })
+    renderPage()
+
+    expect(await screen.findByTestId('practical-score')).toHaveTextContent('4.0 / 5')
+    expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
+  })
+
+  it('shows the client the assessment record, and never a decision form', async () => {
+    const record = {
+      reference: 'EL-1A2B3C4D', role: 'Sales Manager', interview_date: '2026-10-20T09:17:40Z', duration_minutes: 18,
+      interviewer: 'Elevare structured interview', top_strengths: ['Clear route to market'], top_gaps: [],
+      claims_to_verify: [], reference_check_questions: ['Who led the roll-out?'], panel_decision: null,
+    }
+    api.get.mockResolvedValueOnce({
+      data: { ...RESULTS, candidates: [{ ...ENDED_EARLY, status: 'COMPLETED', interview_score: 72, interview_assessment: 'Fine.', record }] },
+    })
+    renderPage()
+
+    expect(await screen.findByTestId('record-reference')).toHaveTextContent('EL-1A2B3C4D')
+    expect(screen.getByText('Who led the roll-out?')).toBeInTheDocument()
+    expect(screen.queryByTestId('panel-decision')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Record decision' })).not.toBeInTheDocument()
+  })
+
   it('shows a reinstated interview to the client as one clip per attempt', async () => {
     const reinstated = {
       ...ENDED_EARLY,

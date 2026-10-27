@@ -84,6 +84,7 @@ export function blankQuestion(key) {
     source: 'EMPLOYER',
     probes: '',
     follow_up_seconds: null,
+    is_practical: false,
   }
 }
 
@@ -107,6 +108,9 @@ export function removeQuestion(questions, index) {
  */
 export function problemsWith(questions, limits) {
   const found = []
+  if (questions.filter((question) => question.is_practical).length > 1) {
+    found.push('Only one question can be the practical case.')
+  }
   questions.forEach((question, index) => {
     const probes = probeLines(question.probes)
     if (probes.length > MAX_PROBES) {

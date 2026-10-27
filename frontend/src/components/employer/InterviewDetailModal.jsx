@@ -10,6 +10,8 @@ import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
 import RecordingClips from '@/components/employer/RecordingClips'
 import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
+import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
+import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
 import { showsClips } from '@/lib/recordingClips'
 
 // Scoring runs in the background, so after asking for it we check the interview
@@ -178,6 +180,17 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
     }
   }
 
+  // The hiring panel's decision about the candidate, with its reason: recorded by a person, and
+  // shown at once in the record. A failure is thrown to the card, which shows the server's words.
+  const recordDecision = async (decision, rationale) => {
+    const { data } = await api.put(
+      `/api/v1/interviews/${talentPoolProfileId}/panel-decision`,
+      { decision, rationale },
+      { params: { job_id: jobId } }
+    )
+    setDetail((current) => ({ ...current, record: { ...current.record, panel_decision: data } }))
+  }
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -295,6 +308,9 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
               {/* A strict interview: the rules accepted, how it went on the screen, each answer. */}
               <StrictInterviewNotes strict={detail.strict} />
 
+              {/* The practical case, scored on its own and never part of the weighted score */}
+              {detail.practical_case && <PracticalCaseCard report={detail.practical_case} />}
+
               {/* Interview + CV assessments, side by side */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* A job with a scoring profile: the weighted table, the total or "incomplete",
@@ -355,6 +371,10 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                   emptyMessage="No CV fit score is available for this candidate on this job."
                 />
               </div>
+
+              {/* The candidate assessment record: the header, the top three strengths and gaps,
+                  what to verify, and the hiring panel's own decision with its sign-off */}
+              {detail.record && <AssessmentRecordCard record={detail.record} onDecide={recordDecision} />}
 
               {/* Transcript */}
               {detail.transcript && (

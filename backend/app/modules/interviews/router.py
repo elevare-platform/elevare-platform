@@ -34,6 +34,8 @@ from app.modules.interviews.schema import (
     InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
+    PanelDecisionIn,
+    PanelDecisionOut,
     QuestionTemplateApplyRequest,
     ScoringProfileIn,
     ScoringProfileResponse,
@@ -360,6 +362,31 @@ async def reinstate_interview(
     service = InterviewService(db)
     try:
         return await service.reinstate(current_user, job_id, talent_pool_profile_id)
+    finally:
+        await service.close()
+
+
+@router.put(
+    "/{talent_pool_profile_id}/panel-decision",
+    response_model=PanelDecisionOut,
+    status_code=200,
+)
+async def record_panel_decision(
+    talent_pool_profile_id: uuid.UUID,
+    data: PanelDecisionIn,
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record the hiring panel's decision about a candidate after the interview (strong shortlist,
+    shortlist, hold or do not shortlist), with the reason, signed off by the person recording it.
+    A person's decision: it stops at the shortlist. Only the company that owns the job, and only
+    once the interview has finished. A later decision is added, not overwritten."""
+    service = InterviewService(db)
+    try:
+        return await service.record_panel_decision(
+            current_user, job_id, talent_pool_profile_id, data.decision, data.rationale
+        )
     finally:
         await service.close()
 

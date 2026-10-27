@@ -38,6 +38,9 @@ from app.modules.interviews.scoring_profile_service import (
 from app.modules.jobs.repository import JobRepository
 from app.modules.users.models import User
 
+# The fewest questions the AI must be asked for before one of them is a practical case.
+PRACTICAL_MIN_AI_QUESTIONS = 3
+
 
 def _as_draft(question) -> dict:
     """A saved question (or a template item) as the plain fields the editor loads."""
@@ -49,6 +52,7 @@ def _as_draft(question) -> dict:
         "competency": get("competency"),
         "probes": get("probes"),
         "follow_up_seconds": get("follow_up_seconds"),
+        "is_practical": bool(get("is_practical")),
     }
 
 
@@ -119,6 +123,7 @@ class InterviewQuestionService:
                 item["time_limit_seconds"],
                 item.get("probes") or "",
                 item.get("follow_up_seconds"),
+                bool(item.get("is_practical")),
             )
             for item in items
         ]
@@ -158,6 +163,7 @@ class InterviewQuestionService:
                     competency=tag,
                     probes="\n".join(rules.clean_probes(draft.probes)) or None,
                     follow_up_seconds=draft.follow_up_seconds,
+                    is_practical=draft.is_practical,
                 )
             )
         if follow_up_mode:
@@ -240,6 +246,11 @@ class InterviewQuestionService:
         ai_count = wanted - 1 if with_closing else wanted
         ai_seconds = total_seconds - rules.CLOSING_QUESTION_SECONDS if with_closing else total_seconds
 
+        # Most roles need a practical case, so the last question the AI writes is one (a scenario
+        # scored separately out of 5) whenever there are enough questions to keep a few ordinary
+        # ones too. The employer can untick it or rewrite it like any other question.
+        practical = ai_count >= PRACTICAL_MIN_AI_QUESTIONS
+
         ai_service = self._ai_service
         made_here = ai_service is None
         if made_here:
@@ -256,6 +267,7 @@ class InterviewQuestionService:
                 interview_brief=brief,
                 count=ai_count,
                 total_seconds=max(ai_seconds, rules.MIN_SECONDS * ai_count),
+                practical=practical,
             )
         finally:
             if made_here:
@@ -270,9 +282,19 @@ class InterviewQuestionService:
         if not drafts:
             raise QuestionDraftFailedException()
 
+        # The practical case is the last question the AI wrote, but only when it wrote all it was
+        # asked for: a short or cleaned-up reply may have lost it, and then no ordinary question is
+        # mistaken for one.
+        written = len(drafts) - (1 if closing is not None else 0)
+        practical_index = written - 1 if practical and written == ai_count else None
         questions = [
-            {"text": draft.text, "time_limit_seconds": draft.time_limit_seconds, "source": "AI"}
-            for draft in drafts
+            {
+                "text": draft.text,
+                "time_limit_seconds": draft.time_limit_seconds,
+                "source": "AI",
+                "is_practical": index == practical_index,
+            }
+            for index, draft in enumerate(drafts)
         ]
         profile = await load_profile(self._db, job_id)
         return {

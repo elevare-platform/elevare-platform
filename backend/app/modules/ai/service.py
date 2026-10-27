@@ -408,8 +408,10 @@ class AnthropicCVExtractionService(AIService):
         interview_brief: str,
         count: int,
         total_seconds: int,
+        practical: bool = False,
     ) -> list[tuple[str, int]] | None:
-        """Draft a job's strict-interview questions from its interview brief.
+        """Draft a job's strict-interview questions from its interview brief. With ``practical``
+        the last question is a practical case (a scenario, scored separately).
 
         Returns ``(question, seconds)`` pairs exactly as the model gave them, or ``None`` when
         the call failed or the reply cannot be used. The caller cleans and limits them
@@ -417,8 +419,8 @@ class AnthropicCVExtractionService(AIService):
         trusted. A cheap, fast model is enough for a short draft the employer reviews.
         """
         from app.modules.ai.prompts.interview_questions import (
-            INTERVIEW_QUESTIONS_SYSTEM_PROMPT,
             build_interview_questions_prompt,
+            interview_questions_system_prompt,
         )
 
         from .schema import DraftedInterviewQuestions
@@ -428,7 +430,7 @@ class AnthropicCVExtractionService(AIService):
                 self._client,
                 model=settings.anthropic_model_fast,
                 max_tokens=1500,
-                system=INTERVIEW_QUESTIONS_SYSTEM_PROMPT,
+                system=interview_questions_system_prompt(practical=practical),
                 user=build_interview_questions_prompt(
                     title=title,
                     seniority=seniority,
@@ -438,6 +440,7 @@ class AnthropicCVExtractionService(AIService):
                     interview_brief=interview_brief,
                     count=count,
                     total_seconds=total_seconds,
+                    practical=practical,
                 ),
                 output_type=DraftedInterviewQuestions,
             )
@@ -740,8 +743,13 @@ class AnthropicCVExtractionService(AIService):
         interview_conditions: str = "",
         scoring_profile: dict | None = None,
         question_tags: list[dict] | None = None,
+        practical_question: dict | None = None,
     ) -> "InterviewScoringResult":
         """Score an interview transcript against the employer's brief via Claude.
+
+        With a ``practical_question`` (``{"number", "text"}``, the interview's practical case) the
+        model also rates it on the five practical criteria, and the result carries that report in
+        ``practical``, apart from the score.
 
         With a ``scoring_profile`` (``{"competencies", "bands", "key_min_rating"}``, a job's
         weighted competencies) the model rates exactly those competencies and the weighted
@@ -759,6 +767,7 @@ class AnthropicCVExtractionService(AIService):
             build_interview_scoring_prompt,
         )
         from app.modules.ai.schema import InterviewScoringResult
+        from app.modules.interviews.practical_case import report as practical_report
         from app.modules.interviews.scoring_profile import normalise, weighted_report
 
         system_prompt, user_prompt = build_interview_scoring_prompt(
@@ -769,6 +778,7 @@ class AnthropicCVExtractionService(AIService):
             interview_conditions=interview_conditions,
             scoring_profile=scoring_profile["competencies"] if scoring_profile else None,
             question_tags=question_tags,
+            practical_question=practical_question,
         )
 
         raw = ""
@@ -837,8 +847,14 @@ class AnthropicCVExtractionService(AIService):
                     {**row, "score": row["rating"]} if "rating" in row else row for row in competencies
                 ],
                 weighted=weighted,
+                practical=(
+                    practical_report(data.get("practical_case"), practical_question["number"])
+                    if practical_question
+                    else None
+                ),
                 recommendation=clean_recommendation(data.get("recommendation")),
                 claims_to_verify=clean_list(data.get("claims_to_verify")),
+                reference_check_questions=clean_list(data.get("reference_check_questions")),
                 technical_flags=clean_list(data.get("technical_flags")),
                 candidate_reported=clean_list(data.get("candidate_reported")),
                 follow_up_questions=clean_list(data.get("follow_up_questions")),

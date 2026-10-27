@@ -507,6 +507,33 @@ competencies yourself: rate exactly the ones listed, as the profile says
 there.
 
 ==================================================
+THE PRACTICAL CASE
+==================================================
+
+If the user message has a PRACTICAL CASE, one question of the interview is a
+scenario the candidate worked through aloud. It is a separate validation
+score, reported on its own and never added to the weighted competency score.
+Therefore:
+
+- Rate it ONLY in the practical_case field. Do not use it as the evidence
+  for any entry in the competencies field, and do not mention it there.
+- Rate each of the five criteria listed in the user message from 1 to 5,
+  against the same scorecard anchors as everything else, from what the
+  candidate actually said. Give a brief rationale for each. A criterion the
+  candidate never touched is null with the rationale "not covered"; never
+  guess and never give it a 1 for lack of evidence.
+- The scenario asks for a plan. A plausible, well-reasoned plan is evidence
+  of reasoning, prioritisation and awareness of risk, not of having carried
+  one out. Credit a candidate who states their assumptions and says what
+  they would check. Do not credit facts the candidate invented as if they
+  were established data, and never supply facts of your own.
+- Judge the content, not the delivery: never rate confidence, fluency or a
+  persuasive manner.
+
+If the user message says there is no practical case, leave practical_case
+out of the reply.
+
+==================================================
 EXPERIENCE QUESTIONS AND HYPOTHETICAL QUESTIONS
 ==================================================
 
@@ -592,6 +619,11 @@ Field notes:
   or an empty string. confidence is "high", "medium" or "low": how well the
   transcript supports this rating (not how confident the candidate
   sounded). verify says what a human should check, or is an empty string.
+- practical_case: only when the user message has a PRACTICAL CASE. An
+  object with criteria, a list of five objects (key, rating, rationale; the
+  keys are listed in the user message, in order; rating is an integer 1 to
+  5, or null when the criterion was not covered), and summary, one or two
+  sentences on how the candidate handled the case. Leave it out otherwise.
 - technical_flags: the conditions of this interview that affected the
   evidence, as described under INTERVIEW CONDITIONS; empty list if none.
 - score: integer 0-100. It is the average of the scores of the
@@ -614,8 +646,16 @@ Field notes:
   ask next, aimed at the gaps, evidence gaps and claims above. Plain
   questions; never about a protected characteristic; never asking for a
   previous employer's confidential information.
-- strengths: demonstrated strengths, grounded in transcript evidence.
+- reference_check_questions: two to four questions a human could put to
+  the candidate's referees to check their major achievements and the
+  claims above (for example what the candidate personally did on a named
+  project, and the result). Plain questions; never about a protected
+  characteristic; never asking a referee for confidential information. Empty
+  list if there is nothing to check.
+- strengths: demonstrated strengths, grounded in transcript evidence. Most
+  important first: the first three are shown as the candidate's top three.
 - weaknesses: demonstrated weaknesses (candidate gaps), not evidence gaps.
+  Most important first: the first three are shown as the top three.
 - missing_evidence: topics or probes from the brief that this interview
   did not cover (evidence gaps, not weaknesses) — phrased as neutral
   coverage notes, e.g. "X was not discussed in this interview," never as
@@ -725,6 +765,12 @@ SCORING PROFILE
 {scoring_profile}
 
 
+PRACTICAL CASE
+==============
+
+{practical_case}
+
+
 TASK
 ====
 
@@ -764,6 +810,7 @@ def build_interview_scoring_prompt(
     interview_conditions: str = "",
     scoring_profile: list[dict] | None = None,
     question_tags: list[dict] | None = None,
+    practical_question: dict | None = None,
 ) -> tuple[str, str]:
     """Build the system and user prompts for interview scoring.
 
@@ -814,9 +861,30 @@ def build_interview_scoring_prompt(
         job_context=job_context.strip() or "Not provided.",
         interview_conditions=interview_conditions.strip() or "Nothing unusual was recorded.",
         scoring_profile=describe_scoring_profile(scoring_profile, question_tags),
+        practical_case=describe_practical_case(practical_question),
     )
 
     return system_prompt, user_prompt
+
+
+def describe_practical_case(question: dict | None) -> str:
+    """The PRACTICAL CASE block of the user message: which question is the practical case, and the
+    five criteria to rate it on, in order, with the key to use for each. Without one it says there
+    is none. The question text is the employer's own, shown as data."""
+    if not question:
+        return "There is no practical case in this interview. Leave practical_case out of the reply."
+    from app.modules.interviews.practical_case import CRITERIA
+
+    lines = [
+        f"Question {question['number']} is the practical case: \"{question['text']}\"",
+        "",
+        "Rate the candidate's answer to it, and to any follow-up on it, in practical_case only, on "
+        "these five criteria, in this order, using the key shown. The platform works out the case "
+        "score from your ratings; do not give an overall number.",
+        "",
+    ]
+    lines += [f"- key \"{item['key']}\", {item['name']}: {item['means']}" for item in CRITERIA]
+    return "\n".join(lines)
 
 
 def describe_scoring_profile(profile: list[dict] | None, question_tags: list[dict] | None = None) -> str:

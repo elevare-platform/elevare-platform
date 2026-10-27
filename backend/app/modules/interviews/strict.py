@@ -470,6 +470,7 @@ class StrictInterviewService(ConductMixin):
                     "competency": question.competency,
                     "probes": question.probes,
                     "follow_up_seconds": question.follow_up_seconds,
+                    "is_practical": question.is_practical,
                 }
                 for question in saved
             ]

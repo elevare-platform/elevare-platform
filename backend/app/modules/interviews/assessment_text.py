@@ -46,6 +46,33 @@ def weighted_lines(weighted: dict) -> list[str]:
     return lines
 
 
+def practical_lines(practical: dict) -> list[str]:
+    """The practical case, said plainly. It is a separate score out of 5, never added to the
+    weighted score, and an incomplete one gives no number."""
+    if practical["complete"]:
+        head = (
+            f"Practical case: {practical['score']:g} of 5. This is reported on its own and is not part "
+            "of the weighted score."
+        )
+    else:
+        missing = ", ".join(practical["unassessed"])
+        head = (
+            f"Practical case: INCOMPLETE. {len(practical['rows']) - len(practical['unassessed'])} of "
+            f"{len(practical['rows'])} criteria could be rated (not covered: {missing}). No case score "
+            "is given. It is reported on its own and is not part of the weighted score."
+        )
+    lines = [head]
+    for row in practical["rows"]:
+        if row["rating"] is None:
+            lines.append(f"- {row['name']} ({row['weight']}%): not covered.")
+        else:
+            rationale = f" {row['rationale']}" if row["rationale"] else ""
+            lines.append(f"- {row['name']} ({row['weight']}%): {row['rating']} of 5.{rationale}")
+    if practical.get("summary"):
+        lines.append(practical["summary"])
+    return lines
+
+
 def _competency_line(item: dict) -> str:
     weight = f" (weight {item['weight']}%{', key' if item.get('key') else ''})" if item.get("weight") else ""
     if item["score"] is None:
@@ -89,6 +116,9 @@ def format_assessment(result) -> str:
             "Competency scores (1 to 5):\n"
             + "\n".join(_competency_line(item) for item in result.competencies)
         )
+    practical = getattr(result, "practical", None)
+    if practical:
+        sections.append("\n".join(practical_lines(practical)))
     sections += [
         _bullets("Strengths:", result.strengths),
         _bullets("Gaps and risks:", result.weaknesses),
@@ -102,9 +132,13 @@ def format_assessment(result) -> str:
             "Interview conditions to consider (a reassessment may be needed; none of this counts against the candidate):",
             result.technical_flags,
         ),
+        _bullets(
+            "Questions for referees (to check the major achievements):",
+            getattr(result, "reference_check_questions", []),
+        ),
         _bullets("Candidate-reported, not scored:", result.candidate_reported),
         _bullets("Suggested follow-up questions for a human interviewer:", result.follow_up_questions),
     ]
-    if result.competencies or result.recommendation or weighted:
+    if result.competencies or result.recommendation or weighted or practical:
         sections.append(DECISION_SUPPORT_NOTE)
     return "\n\n".join(section for section in sections if section)

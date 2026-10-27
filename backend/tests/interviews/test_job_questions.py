@@ -93,9 +93,9 @@ async def test_a_job_with_no_questions_returns_an_empty_list_and_the_limits(clie
         "untested_competencies": [],
         "follow_up_mode": "STANDARD",
         "question_templates": [
-            {"code": "national_sales_manager", "title": "National Sales Manager", "question_count": 8, "total_seconds": 1050},
-            {"code": "commercial_director", "title": "Commercial Director", "question_count": 8, "total_seconds": 990},
-            {"code": "senior_marketing_manager", "title": "Senior Marketing Manager", "question_count": 10, "total_seconds": 1050},
+            {"code": "national_sales_manager", "title": "National Sales Manager", "question_count": 9, "total_seconds": 1290},
+            {"code": "commercial_director", "title": "Commercial Director", "question_count": 9, "total_seconds": 1230},
+            {"code": "senior_marketing_manager", "title": "Senior Marketing Manager", "question_count": 11, "total_seconds": 1290},
         ],
     }
 
@@ -264,6 +264,44 @@ async def test_a_follow_up_time_outside_30_seconds_to_5_minutes_is_refused(clien
         d["message"].startswith("The follow-up time on question 1 needs between 30 seconds and 5 minutes")
         for d in refused.json()["details"]
     )
+
+
+@pytest.mark.asyncio
+async def test_one_question_can_be_the_practical_case_and_it_is_saved_and_returned(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(
+        client, owner, job, [q("Tell us about a launch you led."), {**q("Build a 90-day plan and state your assumptions."), "is_practical": True}]
+    )
+
+    assert response.status_code == 200
+    assert [x["is_practical"] for x in response.json()["questions"]] == [False, True]
+    assert [r.is_practical for r in await _rows(db_session, job)] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_only_one_question_can_be_the_practical_case(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    refused = await _save(
+        client,
+        owner,
+        job,
+        [{**q("Build a 90-day plan and state your assumptions."), "is_practical": True}, {**q("Build a second plan and state your assumptions."), "is_practical": True}],
+    )
+
+    assert refused.status_code == 422
+    assert any(d["message"] == "Only one question can be the practical case." for d in refused.json()["details"])
+    assert await _rows(db_session, job) == []
+
+
+@pytest.mark.asyncio
+async def test_a_question_is_not_a_practical_case_unless_it_says_so(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(client, owner, job, [q("Tell us about a launch you led.")])
+
+    assert response.json()["questions"][0]["is_practical"] is False
 
 
 @pytest.mark.asyncio
@@ -477,13 +515,52 @@ async def test_a_draft_is_cleaned_marked_as_ai_and_never_saved(client, db_sessio
     assert response.status_code == 200
     body = response.json()
     assert body["questions"] == [
-        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None},
-        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None},
+        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None, "is_practical": False},
+        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None, "is_practical": False},
         # The scorecard's standard closing question is always the last one.
-        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None},
+        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None, "is_practical": False},
     ]
     assert body["total_seconds"] == 300
     assert await _rows(db_session, job) == []  # a draft is only ever returned
+
+
+@pytest.mark.asyncio
+async def test_the_last_question_the_ai_writes_is_the_practical_case_when_it_wrote_them_all(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([
+        ("Tell us about a launch you led and your own part in it.", 120),
+        ("How do you decide what to measure each week?", 90),
+        ("Describe how you handled a team that missed its target.", 120),
+        ("You join and must stand up distribution in three regions with a small team. Walk us through your first 90 days, your assumptions and your risks.", 240),
+    ])
+
+    body = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
+
+    assert fake.asked[0]["practical"] is True
+    assert [q["is_practical"] for q in body["questions"]] == [False, False, False, True, False]  # the closing question last
+    assert body["questions"][3]["text"].startswith("You join and must stand up distribution")
+
+
+@pytest.mark.asyncio
+async def test_no_ordinary_question_is_marked_practical_when_the_ai_wrote_fewer_than_asked(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    ai([("Tell us about a launch you led and your own part in it.", 120), ("How do you decide what to measure?", 90)])
+
+    body = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
+
+    assert not any(q["is_practical"] for q in body["questions"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("count", "practical"), [(2, False), (3, False), (4, True), (6, True)])
+async def test_a_practical_case_is_asked_for_only_when_there_are_enough_questions(client, db_session, ai, count, practical):
+    """The closing question takes one place, so 4 questions are 3 written by the AI."""
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([("Tell us about a launch you led and your own part in it.", 120)])
+
+    await client.post(_url(job, "/draft"), json={"count": count}, headers=_headers(owner))
+
+    assert fake.asked[0]["practical"] is practical
 
 
 @pytest.mark.asyncio

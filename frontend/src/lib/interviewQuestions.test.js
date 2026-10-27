@@ -64,7 +64,19 @@ describe('a new question', () => {
       source: 'EMPLOYER',
       probes: '',
       follow_up_seconds: null,
+      is_practical: false,
     })
+  })
+})
+
+describe('the practical case', () => {
+  it('allows one question to be the practical case, and refuses two', () => {
+    const limits = { max_total_seconds: 1200 }
+
+    expect(problemsWith([q(), { ...q(), is_practical: true }], limits)).toEqual([])
+    expect(problemsWith([{ ...q(), is_practical: true }, { ...q(), is_practical: true }], limits)).toEqual([
+      'Only one question can be the practical case.',
+    ])
   })
 })
 

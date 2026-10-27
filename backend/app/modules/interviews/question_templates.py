@@ -8,9 +8,16 @@ The question wording and the optional probes are the client's, word for word fro
 * the competency each question tests (``competency``): chosen from the question's heading and
   content, so that every weighted competency of the role has at least one question. The client
   can change a tag in the editor.
-* the time to answer each question (``seconds``): a suggestion that keeps the whole list inside
-  the interview's 20 minutes with a little room left for follow-ups. The employer can change
-  every time.
+* the time to answer each question (``seconds``): a suggestion, 90 to 240 seconds. The employer can
+  change every time. With the practical case a list takes 20.5 to 21.5 minutes, so these sets need
+  an interview time limit of about 30 minutes (``INTERVIEW_MAX_DURATION_MINUTES``) to be saved with
+  room for follow-ups; with a lower limit the editor shows them for shortening.
+
+The last question of each set is the client's practical exercise for the role (Section 6 of the
+pack: "launch investment decision", "territory activation", "prelaunch activation"), marked
+``practical``: scored separately out of 5 and never added to the 100-point score. The pack's
+instruction to the interviewer ("Ask the candidate to state assumptions; do not supply fictional
+market facts as established data") is turned into "State your assumptions." for the candidate.
 
 The codes are the same as the scoring-profile templates in ``scoring_profile.py``: applying a
 question template also puts that role's scoring profile on the job, so the tags are valid.
@@ -104,6 +111,13 @@ QUESTION_TEMPLATES: dict[str, dict] = {
                     "What are the main risks and mitigations?",
                 ],
             },
+            {
+                "text": "Build a 90-day distributor and outlet activation plan for priority Nigerian regions. Cover distributor selection criteria, salesforce coverage, sell-in versus sell-out controls, collections, stock-cover triggers and a weekly dashboard. State your assumptions.",
+                "seconds": 240,
+                "competency": None,
+                "practical": True,
+                "probes": [],
+            },
         ],
     },
     "commercial_director": {
@@ -188,6 +202,13 @@ QUESTION_TEMPLATES: dict[str, dict] = {
                     "How would you prioritise markets, distributors, people and budget?",
                     "Which metrics and risks would you present to leadership?",
                 ],
+            },
+            {
+                "text": "Three FMCG categories launch concurrently with constrained trade spend, uncertain demand and limited distribution. Present a 90-day market sequencing plan, channel unit economics, pricing and gross-to-net bridge, working-capital assumptions, governance and go/no-go criteria. State your assumptions.",
+                "seconds": 240,
+                "competency": None,
+                "practical": True,
+                "probes": [],
             },
         ],
     },
@@ -294,6 +315,13 @@ QUESTION_TEMPLATES: dict[str, dict] = {
                     "How would you use findings to change future activity?",
                 ],
             },
+            {
+                "text": "Build a 90-day prelaunch plan for Seasonings, Snacks and Breakfast, including segmentation, concept and taste testing, creative brief, channel mix, agency deliverables, spend allocation, regulatory/artwork gates and awareness-to-repeat measurement. Explain what to stop if stock is unavailable. State your assumptions.",
+                "seconds": 240,
+                "competency": None,
+                "practical": True,
+                "probes": [],
+            },
         ],
     },
 }
@@ -313,6 +341,7 @@ def template_items(code: str) -> list[dict] | None:
             "competency": question["competency"],
             "probes": "\n".join(question["probes"]),
             "follow_up_seconds": None,
+            "is_practical": bool(question.get("practical")),
         }
         for question in template["questions"]
     ]

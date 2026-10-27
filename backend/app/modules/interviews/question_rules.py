@@ -62,6 +62,8 @@ class QuestionDraft:
     probes: str = ""
     # The time to answer a follow-up on it; None is the platform default.
     follow_up_seconds: int | None = None
+    # True for the interview's practical case, scored separately out of 5.
+    is_practical: bool = False
 
 
 def clean_probes(probes: str | None) -> list[str]:
@@ -95,6 +97,8 @@ def problems_with(questions: list[QuestionDraft]) -> list[str]:
     it helps, the limit.
     """
     found: list[str] = []
+    if sum(1 for question in questions if question.is_practical) > 1:
+        found.append("Only one question can be the practical case.")
 
     for number, question in enumerate(questions, start=1):
         probes = clean_probes(question.probes)

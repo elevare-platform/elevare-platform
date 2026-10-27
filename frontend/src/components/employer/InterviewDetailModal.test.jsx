@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-vi.mock('@/lib/api', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
+vi.mock('@/lib/api', () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }))
 
 import api from '@/lib/api'
 import InterviewDetailModal, { SCORE_POLL_INTERVAL_MS } from './InterviewDetailModal'
@@ -349,6 +349,78 @@ describe('InterviewDetailModal: an interview that ended early', () => {
     expect(await screen.findByTestId('weighted-total')).toHaveTextContent('72 / 100')
     expect(screen.getByTestId('weighted-band')).toHaveTextContent('Hold for evidence')
     expect(screen.getByText('A steady candidate.')).toBeInTheDocument()
+  })
+
+  it('shows the practical case apart from the score, when the interview had one', async () => {
+    const practical = {
+      question_number: 9, complete: true, score: 3.6, assessed_weight: 100, total_weight: 100, unassessed: [], summary: 'A workable plan.',
+      rows: [
+        { key: 'prioritisation', name: 'Prioritisation', weight: 30, rating: 4, rationale: 'Clear order.' },
+        { key: 'realism', name: 'Realism', weight: 25, rating: 3, rationale: '' },
+        { key: 'measurement', name: 'Measurement', weight: 20, rating: 3, rationale: '' },
+        { key: 'risk', name: 'Risk and contingency', weight: 15, rating: 4, rationale: '' },
+        { key: 'clarity', name: 'Clarity of communication', weight: 10, rating: 3, rationale: '' },
+      ],
+    }
+    api.get.mockResolvedValue({ data: { ...BASE, ai_score: 72, ai_rationale: 'A steady candidate.', practical_case: practical } })
+    renderEnded()
+
+    expect(await screen.findByTestId('practical-score')).toHaveTextContent('3.6 / 5')
+    expect(screen.getByText(/It is not part of the weighted score/)).toBeInTheDocument()
+    expect(screen.getByText('Clear order.')).toBeInTheDocument()
+  })
+
+  describe('the assessment record and the panel decision', () => {
+    const RECORD = {
+      reference: 'EL-1A2B3C4D', role: 'Sales Manager', interview_date: '2026-10-20T09:17:40Z', duration_minutes: 18,
+      interviewer: 'Elevare structured interview', top_strengths: ['Clear route to market'], top_gaps: ['Light on supply chain'],
+      claims_to_verify: [], reference_check_questions: ['Who led the roll-out?'], panel_decision: null,
+    }
+
+    it('shows the record under the assessments', async () => {
+      api.get.mockResolvedValue({ data: { ...BASE, ai_score: 72, ai_rationale: 'Fine.', record: RECORD } })
+      renderEnded()
+
+      expect(await screen.findByTestId('record-reference')).toHaveTextContent('EL-1A2B3C4D')
+      expect(screen.getByText('Clear route to market')).toBeInTheDocument()
+      expect(screen.getByText('Who led the roll-out?')).toBeInTheDocument()
+    })
+
+    it('records the panel decision for this candidate and job, and shows it at once with its sign-off', async () => {
+      api.get.mockResolvedValue({ data: { ...BASE, ai_score: 72, ai_rationale: 'Fine.', record: RECORD } })
+      api.put.mockResolvedValue({
+        data: { decision: 'SHORTLIST', label: 'Shortlist', rationale: 'Good route to market.', decided_by_name: 'Ada Obi', decided_at: '2026-10-21T10:00:00Z' },
+      })
+      renderEnded()
+      await screen.findByTestId('record-reference')
+
+      fireEvent.change(screen.getByLabelText('Decision'), { target: { value: 'SHORTLIST' } })
+      fireEvent.change(screen.getByLabelText('Reason for the decision'), { target: { value: 'Good route to market.' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Record decision' }))
+
+      expect(await screen.findByTestId('latest-decision')).toHaveTextContent('Signed off by Ada Obi')
+      expect(api.put).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/api\/v1\/interviews\/.+\/panel-decision$/),
+        { decision: 'SHORTLIST', rationale: 'Good route to market.' },
+        { params: { job_id: expect.any(String) } }
+      )
+    })
+
+    it('shows no record for an interview whose detail has none, as an older server sends', async () => {
+      api.get.mockResolvedValue({ data: { ...BASE, ai_score: 72, ai_rationale: 'Fine.' } })
+      renderEnded()
+
+      await screen.findByText(/Transcript/)
+      expect(screen.queryByTestId('assessment-record')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows no practical case card for an interview without one', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, ai_score: 72, ai_rationale: 'A steady candidate.' } })
+    renderEnded()
+
+    await screen.findByText(/Transcript/)
+    expect(screen.queryByTestId('practical-case')).not.toBeInTheDocument()
   })
 
   it('shows an incomplete score as incomplete, not as "no AI score is available"', async () => {

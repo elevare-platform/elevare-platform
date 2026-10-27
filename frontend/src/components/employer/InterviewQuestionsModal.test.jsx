@@ -344,8 +344,8 @@ describe('InterviewQuestionsModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(api.put).toHaveBeenCalledWith(URL, {
       questions: [
-        { text: 'First question to answer.', time_limit_seconds: 120, source: 'AI', competency: null, probes: null, follow_up_seconds: null },
-        { text: 'My own second question here.', time_limit_seconds: 90, source: 'EMPLOYER', competency: null, probes: null, follow_up_seconds: null },
+        { text: 'First question to answer.', time_limit_seconds: 120, source: 'AI', competency: null, probes: null, follow_up_seconds: null, is_practical: false },
+        { text: 'My own second question here.', time_limit_seconds: 90, source: 'EMPLOYER', competency: null, probes: null, follow_up_seconds: null, is_practical: false },
       ],
       follow_up_mode: 'STANDARD',
     })
@@ -377,6 +377,67 @@ describe('InterviewQuestionsModal', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(api.put).toHaveBeenCalledWith(URL, { questions: [], follow_up_mode: 'STANDARD' })
+  })
+
+  // --- the practical case ------------------------------------------------------------------
+
+  describe('the practical case', () => {
+    const practicalBox = (n) => screen.getByRole('checkbox', { name: `Mark question ${n} as the practical case` })
+
+    it('lets the employer mark one question as the practical case and saves it', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.'), saved(2, 'Build a 90-day plan, stating assumptions.')]))
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+
+      expect(practicalBox(1)).not.toBeChecked()
+      fireEvent.click(practicalBox(2))
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      expect(api.put.mock.calls[0][1].questions.map((x) => x.is_practical)).toEqual([false, true])
+    })
+
+    it('unticks the other question when another is ticked, so there is only ever one', async () => {
+      api.get.mockResolvedValueOnce(loaded([{ ...saved(1, 'Build a 90-day plan, stating assumptions.'), is_practical: true }, saved(2, 'Second question to answer.')]))
+      renderModal()
+      await screen.findByDisplayValue('Second question to answer.')
+      expect(practicalBox(1)).toBeChecked()
+
+      fireEvent.click(practicalBox(2))
+
+      expect(practicalBox(2)).toBeChecked()
+      expect(practicalBox(1)).not.toBeChecked()
+    })
+
+    it('says what a practical case is, next to the box', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
+      renderModal()
+
+      expect(await screen.findByText(/scored on its own out of 5 and not part of the weighted score/)).toBeInTheDocument()
+    })
+
+    it('keeps the practical mark of a set loaded from a template', async () => {
+      const TEMPLATES = [{ code: 'national_sales_manager', title: 'National Sales Manager', question_count: 2, total_seconds: 360 }]
+      api.get.mockResolvedValueOnce({ data: { ...loaded().data, question_templates: TEMPLATES } })
+      api.post.mockResolvedValueOnce({
+        data: {
+          ...LIMITS,
+          question_templates: TEMPLATES,
+          follow_up_mode: 'STANDARD',
+          saved: true,
+          questions: [saved(1, 'Tell me about a distributor network you built.', 120), { ...saved(2, 'Build a 90-day activation plan.', 240), is_practical: true }],
+        },
+      })
+      renderModal()
+
+      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Use this set' }))
+      await screen.findByDisplayValue('Build a 90-day activation plan.')
+
+      expect(practicalBox(1)).not.toBeChecked()
+      expect(practicalBox(2)).toBeChecked()
+    })
   })
 
   // --- the ready-made sets -----------------------------------------------------------------

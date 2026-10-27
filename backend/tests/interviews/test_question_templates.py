@@ -19,6 +19,13 @@ from app.modules.interviews.scoring_profile import TEMPLATES as SCORING_TEMPLATE
 from tests.conftest import make_employer, make_job, make_organization_for
 
 
+@pytest.fixture(autouse=True)
+def thirty_minute_interviews(monkeypatch):
+    """The sets are 20.5 to 21.5 minutes of answer time, so they need an interview time limit of
+    about 30 minutes to be saved. The tests that show what happens with less set their own."""
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 30)
+
+
 def _scoring(code):
     return next(template for template in SCORING_TEMPLATES if template["code"] == code)
 
@@ -28,18 +35,27 @@ def _scoring(code):
 # ---------------------------------------------------------------------------
 
 
-def test_there_are_the_clients_26_questions_in_three_roles():
-    counts = {code: len(QUESTION_TEMPLATES[code]["questions"]) for code in ROLE_CODES}
+def appendix_a(code):
+    """The role's questions from the client's Appendix A, without the practical exercise."""
+    return [question for question in QUESTION_TEMPLATES[code]["questions"] if not question.get("practical")]
+
+
+def test_there_are_the_clients_26_questions_in_three_roles_and_one_practical_exercise_for_each():
+    counts = {code: len(appendix_a(code)) for code in ROLE_CODES}
+    practical = {code: sum(1 for q in QUESTION_TEMPLATES[code]["questions"] if q.get("practical")) for code in ROLE_CODES}
 
     assert counts == {"national_sales_manager": 8, "commercial_director": 8, "senior_marketing_manager": 10}
     assert sum(counts.values()) == 26
+    assert practical == {code: 1 for code in ROLE_CODES}
+    # The practical exercise is the last question of each set.
+    assert all(QUESTION_TEMPLATES[code]["questions"][-1].get("practical") for code in ROLE_CODES)
 
 
 @pytest.mark.parametrize("code", ROLE_CODES)
 def test_every_question_is_tagged_with_a_competency_of_that_roles_scoring_profile(code):
     names = {item["name"] for item in _scoring(code)["competencies"]}
 
-    tags = {question["competency"] for question in QUESTION_TEMPLATES[code]["questions"]}
+    tags = {question["competency"] for question in appendix_a(code)}
 
     assert tags <= names
 
@@ -48,21 +64,34 @@ def test_every_question_is_tagged_with_a_competency_of_that_roles_scoring_profil
 def test_every_weighted_competency_of_the_role_has_a_question(code):
     names = {item["name"] for item in _scoring(code)["competencies"]}
 
-    tags = {question["competency"] for question in QUESTION_TEMPLATES[code]["questions"]}
+    tags = {question["competency"] for question in appendix_a(code)}
 
     assert names == tags  # none is left untested, so no score is incomplete for want of a question
 
 
 @pytest.mark.parametrize("code", ROLE_CODES)
-def test_each_list_passes_the_rules_a_saved_list_must_pass(code):
+def test_the_practical_exercise_is_untagged_because_it_is_scored_apart_from_the_competencies(code):
+    [practical] = [q for q in QUESTION_TEMPLATES[code]["questions"] if q.get("practical")]
+    [item] = [i for i in template_items(code) if i["is_practical"]]
+
+    assert practical["competency"] is None and item["competency"] is None
+    assert item["probes"] == "" and item["time_limit_seconds"] == 240
+
+
+@pytest.mark.parametrize("code", ROLE_CODES)
+def test_each_list_passes_the_rules_a_saved_list_must_pass(code, monkeypatch):
+    """The sets are 20.5 to 21.5 minutes of answer time, so they are saved with room for follow-ups
+    when the interview is allowed 30 minutes."""
+    monkeypatch.setattr(settings, "interview_max_duration_minutes", 30)
     drafts = [
-        rules.QuestionDraft(item["text"], item["time_limit_seconds"], item["probes"])
+        rules.QuestionDraft(
+            item["text"], item["time_limit_seconds"], item["probes"], item["follow_up_seconds"], item["is_practical"]
+        )
         for item in template_items(code)
     ]
 
     assert rules.problems_with(drafts) == []
-    # The suggested times leave room for follow-ups inside the 20 minutes.
-    assert sum(draft.time_limit_seconds for draft in drafts) <= rules.max_total_seconds() - 120
+    assert sum(draft.time_limit_seconds for draft in drafts) <= rules.max_total_seconds() - 300
 
 
 @pytest.mark.parametrize("code", ROLE_CODES)
@@ -70,7 +99,7 @@ def test_questions_and_probes_are_distinct_and_the_probes_are_the_clients_three(
     questions = QUESTION_TEMPLATES[code]["questions"]
 
     assert len({question["text"] for question in questions}) == len(questions)
-    assert all(len(question["probes"]) == 3 for question in questions)
+    assert all(len(question["probes"]) == 3 for question in appendix_a(code))
     assert all(rules.clean_text(question["text"]) == question["text"] for question in questions)
 
 
@@ -103,9 +132,10 @@ def test_the_items_are_a_fresh_copy_each_time_and_an_unknown_code_has_none():
 def test_the_summaries_name_each_role_with_its_count_and_total_time():
     summaries = {item["code"]: item for item in template_summaries()}
 
-    assert summaries["senior_marketing_manager"]["question_count"] == 10
+    assert summaries["senior_marketing_manager"]["question_count"] == 11  # the pack's 10 and the practical case
     assert summaries["national_sales_manager"]["title"] == "National Sales Manager"
-    assert summaries["national_sales_manager"]["total_seconds"] == 1050
+    assert summaries["national_sales_manager"]["total_seconds"] == 1290
+    assert summaries["commercial_director"]["total_seconds"] == 1230
 
 
 # ---------------------------------------------------------------------------
@@ -147,16 +177,22 @@ async def test_applying_a_template_sets_the_scoring_profile_and_the_tagged_quest
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body["questions"]) == 8
+    assert len(body["questions"]) == 9  # the pack's 8 and the practical exercise
     assert body["follow_up_mode"] == "STANDARD"
     assert body["untested_competencies"] == []  # every competency of the role has a question
+    practical = body["questions"][-1]
+    assert practical["is_practical"] is True and practical["competency"] is None
+    assert practical["text"].startswith("Build a 90-day distributor and outlet activation plan")
+    assert [q["is_practical"] for q in body["questions"][:-1]] == [False] * 8
     assert [item["name"] for item in _scoring("national_sales_manager")["competencies"]] == body["competencies"]
     first = body["questions"][0]
     assert first["text"].startswith("You are preparing to launch Seasonings")
     assert first["competency"] == "Route-to-market and distributor development"
     assert first["probes"].splitlines()[0] == "Which markets and channels would you prioritise, and why?"
     assert first["source"] == "EMPLOYER"
-    assert body["total_seconds"] == 1050
+    assert body["total_seconds"] == 1290
+    saved_practical = (await db_session.execute(select(JobInterviewQuestion).where(JobInterviewQuestion.is_practical))).scalars().all()
+    assert [q.position for q in saved_practical] == [9]
     profile = (await db_session.execute(select(JobScoringProfile))).scalar_one()
     assert profile.template_code == "national_sales_manager"
     assert [(c["name"], c["weight"], c["key"]) for c in profile.competencies][0] == (
@@ -173,14 +209,14 @@ async def test_a_template_that_fits_is_saved_and_says_so(client, db_session):
     body = (await _apply(client, owner, job, "commercial_director")).json()
 
     assert body["saved"] is True
-    assert len((await db_session.execute(select(JobInterviewQuestion))).scalars().all()) == 8
+    assert len((await db_session.execute(select(JobInterviewQuestion))).scalars().all()) == 9
 
 
 @pytest.mark.asyncio
 async def test_a_template_longer_than_the_interview_time_limit_is_shown_for_shortening_not_refused(
     client, db_session, monkeypatch
 ):
-    """With INTERVIEW_MAX_DURATION_MINUTES at 10 the 17.5 minutes of the Sales Manager set do not
+    """With INTERVIEW_MAX_DURATION_MINUTES at 10 the 21.5 minutes of the Sales Manager set do not
     fit. The questions still come back, to be shortened and saved, with the role's scoring profile
     already set so their tags are valid; nothing about the job's questions changes until then."""
     monkeypatch.setattr(settings, "interview_max_duration_minutes", 10)
@@ -193,10 +229,11 @@ async def test_a_template_longer_than_the_interview_time_limit_is_shown_for_shor
     assert response.status_code == 200
     body = response.json()
     assert body["saved"] is False
-    assert len(body["questions"]) == 8
+    assert len(body["questions"]) == 9
     assert body["questions"][0]["competency"] == "Route-to-market and distributor development"
     assert body["questions"][0]["probes"].startswith("Which markets and channels")
-    assert body["total_seconds"] == 1050 and body["max_total_seconds"] == 600
+    assert body["questions"][-1]["is_practical"] is True
+    assert body["total_seconds"] == 1290 and body["max_total_seconds"] == 600
     assert body["untested_competencies"] == [] and body["follow_up_mode"] == "STANDARD"
     rows = (await db_session.execute(select(JobInterviewQuestion).where(JobInterviewQuestion.job_id == job.id))).scalars().all()
     assert [row.text for row in rows] == ["An existing question to keep?"]  # the saved list is untouched
@@ -210,14 +247,15 @@ async def test_the_shortened_set_can_then_be_saved_with_its_tags(client, db_sess
     owner, job = await _company(db_session)
     body = (await _apply(client, owner, job, "national_sales_manager")).json()
     questions = [
-        {key: item[key] for key in ("text", "source", "competency", "probes")} | {"time_limit_seconds": 60}
+        {key: item[key] for key in ("text", "source", "competency", "probes", "is_practical")} | {"time_limit_seconds": 60}
         for item in body["questions"]
     ]
 
     saved = await client.put(_url(job), json={"questions": questions}, headers=_headers(owner))
 
-    assert saved.status_code == 200 and len(saved.json()["questions"]) == 8
+    assert saved.status_code == 200 and len(saved.json()["questions"]) == 9
     assert saved.json()["questions"][0]["competency"] == "Route-to-market and distributor development"
+    assert saved.json()["questions"][-1]["is_practical"] is True
 
 
 @pytest.mark.asyncio
@@ -239,7 +277,7 @@ async def test_saving_the_unshortened_set_is_still_refused_with_the_time_message
 
 @pytest.mark.asyncio
 async def test_each_role_can_be_applied(client, db_session):
-    for code, count in [("commercial_director", 8), ("senior_marketing_manager", 10)]:
+    for code, count in [("commercial_director", 9), ("senior_marketing_manager", 11)]:
         owner, job = await _company(db_session)
 
         response = await _apply(client, owner, job, code)
@@ -256,7 +294,7 @@ async def test_applying_a_template_replaces_the_jobs_questions_and_profile(clien
     again = await _apply(client, owner, job, "senior_marketing_manager")
 
     rows = (await db_session.execute(select(JobInterviewQuestion).where(JobInterviewQuestion.job_id == job.id))).scalars().all()
-    assert len(rows) == 10 and len(again.json()["questions"]) == 10
+    assert len(rows) == 11 and len(again.json()["questions"]) == 11
     profile = (await db_session.execute(select(JobScoringProfile))).scalar_one()
     assert profile.template_code == "senior_marketing_manager"
 
@@ -270,7 +308,7 @@ async def test_an_unknown_template_is_refused_and_changes_nothing(client, db_ses
 
     assert refused.status_code == 422
     rows = (await db_session.execute(select(JobInterviewQuestion).where(JobInterviewQuestion.job_id == job.id))).scalars().all()
-    assert len(rows) == 8
+    assert len(rows) == 9
     assert (await db_session.execute(select(JobScoringProfile))).scalar_one().template_code == "commercial_director"
 
 
@@ -303,7 +341,7 @@ async def test_the_editor_is_told_which_templates_there_are(client, db_session):
     body = (await client.get(_url(job), headers=_headers(owner))).json()
 
     assert [t["code"] for t in body["question_templates"]] == list(ROLE_CODES)
-    assert [t["question_count"] for t in body["question_templates"]] == [8, 8, 10]
+    assert [t["question_count"] for t in body["question_templates"]] == [9, 9, 11]
 
 
 @pytest.mark.asyncio
@@ -311,7 +349,7 @@ async def test_after_applying_the_employer_can_still_edit_and_save_the_list(clie
     owner, job = await _company(db_session)
     applied = (await _apply(client, owner, job, "commercial_director")).json()
     questions = [
-        {key: item[key] for key in ("text", "time_limit_seconds", "source", "competency", "probes")}
+        {key: item[key] for key in ("text", "time_limit_seconds", "source", "competency", "probes", "is_practical")}
         for item in applied["questions"]
     ]
     questions[0]["time_limit_seconds"] = 240

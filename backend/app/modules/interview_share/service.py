@@ -238,7 +238,7 @@ class InterviewShareService:
 
         # The same detail the employer sees, with a recording link meant to be passed around.
         detail = await interview_service.build_detail(
-            job, interview, video_seconds=VIDEO_LINK_SECONDS
+            job, interview, video_seconds=VIDEO_LINK_SECONDS, include_panel_decision=False
         )
         turns = parse_turns(detail.transcript)
         candidate.completed_at = detail.completed_at
@@ -251,6 +251,8 @@ class InterviewShareService:
         candidate.video_url = detail.video_url
         candidate.recordings = detail.recordings
         candidate.score_report = detail.score_report
+        candidate.practical_case = detail.practical_case
+        candidate.record = detail.record
         candidate.strict = detail.strict
         candidate.questions = questions_asked(turns)
         candidate.turns = [SharedTurn(speaker=t.speaker, text=t.text) for t in turns]
