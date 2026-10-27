@@ -9,6 +9,9 @@ import { endedBadge, isEndedStatus } from '@/lib/strictNotes'
 import PlanUpgradeLink from '@/components/PlanUpgradeLink'
 import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
 import RecordingClips from '@/components/employer/RecordingClips'
+import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
+import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
+import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
 import { showsClips } from '@/lib/recordingClips'
 
 // Scoring runs in the background, so after asking for it we check the interview
@@ -177,6 +180,17 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
     }
   }
 
+  // The hiring panel's decision about the candidate, with its reason: recorded by a person, and
+  // shown at once in the record. A failure is thrown to the card, which shows the server's words.
+  const recordDecision = async (decision, rationale) => {
+    const { data } = await api.put(
+      `/api/v1/interviews/${talentPoolProfileId}/panel-decision`,
+      { decision, rationale },
+      { params: { job_id: jobId } }
+    )
+    setDetail((current) => ({ ...current, record: { ...current.record, panel_decision: data } }))
+  }
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -199,26 +213,30 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
     return () => { cancelled = true }
   }, [jobId, talentPoolProfileId, pollForScore])
 
+  const ready = !loading && !error && detail && !reinstated
+
+  // On a wide screen the recording stays in view on the left while the questions, answers, scores and
+  // transcript scroll on the right; on a phone everything stacks and the whole window scrolls.
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
       <div
-        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto"
+        className="relative flex w-full max-w-7xl max-h-[92vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl lg:h-[90vh]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Interview detail"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-white z-10">
+        <div className="flex flex-shrink-0 items-center justify-between px-6 py-4 border-b border-border bg-white">
           <h2 className="font-semibold text-text">
-            {candidateName ?? 'Candidate'}'s AI interview
+            {candidateName ?? 'Candidate'}'s interview
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors" aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-6">
+        <div className={cn('min-h-0 flex-1 overflow-y-auto', ready ? 'lg:overflow-hidden' : 'px-6 py-5 space-y-6')}>
           {loading && (
             <div className="space-y-4 animate-pulse">
               <div className="w-full aspect-video bg-gray-200 rounded-xl" />
@@ -243,8 +261,49 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
             </div>
           )}
 
-          {!loading && !error && detail && !reinstated && (
-            <>
+          {ready && (
+            <div className="lg:grid lg:h-full lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+              {/* The recording stays in view while the rest is read; the CV assessment sits under it
+                  and scrolls on its own */}
+              <div className="px-6 pt-5 lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:border-r lg:border-border lg:pb-5">
+              <div className="space-y-3 lg:max-h-[65%] lg:flex-shrink-0 lg:overflow-y-auto">
+              {showsClips(detail.recordings, detail.video_url) ? (
+                <RecordingClips recordings={detail.recordings} />
+              ) : detail.video_url ? (
+                <video
+                  src={detail.video_url}
+                  controls
+                  className="w-full rounded-xl overflow-hidden bg-black aspect-video"
+                >
+                  Your browser does not support inline video playback.
+                </video>
+              ) : detail.strict?.recording_pending ? (
+                <RecordingNotice strict={detail.strict} />
+              ) : (
+                <p className="text-xs text-text-muted text-center py-6 border border-dashed border-border rounded-lg">
+                  No recording is available for this interview.
+                </p>
+              )}
+              {/* Says "being put together" or "may be only part": next to the video, or, for a
+                  reinstated interview whose latest pieces are being joined, under the earlier clips. */}
+              {(detail.video_url || showsClips(detail.recordings, detail.video_url)) && (
+                <RecordingNotice strict={detail.strict} />
+              )}
+              </div>
+              <div className="mt-4 pb-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-0">
+                <AssessmentCard
+                  icon={FileCheck2}
+                  title="CV Assessment"
+                  score={detail.cv_score}
+                  summary={detail.cv_fit_summary}
+                  strengths={detail.cv_strengths}
+                  weaknesses={detail.cv_weaknesses}
+                  emptyMessage="No CV fit score is available for this candidate on this job."
+                />
+              </div>
+              </div>
+
+              <div className="space-y-6 px-6 py-5 lg:overflow-y-auto">
               {isEndedStatus(detail.status) && (
                 <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-sm font-semibold text-amber-900">
@@ -268,34 +327,23 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                 </div>
               )}
 
-              {showsClips(detail.recordings, detail.video_url) ? (
-                <RecordingClips recordings={detail.recordings} />
-              ) : detail.video_url ? (
-                <video
-                  src={detail.video_url}
-                  controls
-                  className="w-full rounded-xl overflow-hidden bg-black aspect-video"
-                >
-                  Your browser does not support inline video playback.
-                </video>
-              ) : detail.strict?.recording_pending ? (
-                <RecordingNotice strict={detail.strict} />
-              ) : (
-                <p className="text-xs text-text-muted text-center py-6 border border-dashed border-border rounded-lg">
-                  No recording is available for this interview.
-                </p>
-              )}
-              {/* Says "being put together" or "may be only part": next to the video, or, for a
-                  reinstated interview whose latest pieces are being joined, under the earlier clips. */}
-              {(detail.video_url || showsClips(detail.recordings, detail.video_url)) && (
-                <RecordingNotice strict={detail.strict} />
-              )}
-
               {/* A strict interview: the rules accepted, how it went on the screen, each answer. */}
               <StrictInterviewNotes strict={detail.strict} />
 
-              {/* Interview + CV assessments, side by side */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* The practical case, scored on its own and never part of the weighted score */}
+              {detail.practical_case && <PracticalCaseCard report={detail.practical_case} />}
+
+              {/* The interview assessment, at the full width of this column (the CV assessment is under the video) */}
+              <div>
+                {/* A job with a scoring profile: the weighted table, the total or "incomplete",
+                    and the suggested band, instead of the single score card. */}
+                {detail.score_report ? (
+                  <WeightedScoreCard report={detail.score_report}>
+                    {detail.ai_rationale && (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{detail.ai_rationale}</p>
+                    )}
+                  </WeightedScoreCard>
+                ) : (
                 <AssessmentCard
                   icon={Brain}
                   title="Interview Assessment"
@@ -304,7 +352,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                   emptyMessage={
                     isEndedStatus(detail.status)
                       ? 'This interview ended early, so it has not been scored. Reinstate it so the candidate can finish, or score what was recorded.'
-                      : 'No AI score is available for this interview. It may not be included in your plan, scoring may still be running, or it could not be completed. Please review the recording and transcript directly.'
+                      : 'No score is available for this interview. It may not be included in your plan, scoring may still be running, or it could not be completed. Please review the recording and transcript directly.'
                   }
                   action={
                     // Offered once the interview is finished but has no score.
@@ -322,7 +370,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
                         >
                           <Sparkles size={13} />
-                          {isEndedStatus(detail.status) ? 'Score what was recorded' : 'Generate AI score'}
+                          {isEndedStatus(detail.status) ? 'Score what was recorded' : 'Generate score'}
                         </button>
                         {scoreError && (
                           <p className="text-xs text-red-600">
@@ -334,16 +382,12 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                     ) : null
                   }
                 />
-                <AssessmentCard
-                  icon={FileCheck2}
-                  title="CV Assessment"
-                  score={detail.cv_score}
-                  summary={detail.cv_fit_summary}
-                  strengths={detail.cv_strengths}
-                  weaknesses={detail.cv_weaknesses}
-                  emptyMessage="No CV fit score is available for this candidate on this job."
-                />
+                )}
               </div>
+
+              {/* The candidate assessment record: the header, the top three strengths and gaps,
+                  what to verify, and the hiring panel's own decision with its sign-off */}
+              {detail.record && <AssessmentRecordCard record={detail.record} onDecide={recordDecision} />}
 
               {/* Transcript */}
               {detail.transcript && (
@@ -355,7 +399,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                     <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2">
                       The transcript sent from the candidate&apos;s device did not match the recording, so
                       this is an automatic transcript of the recording instead. It has no speaker labels, and
-                      any AI score is based on it. Please check the video.
+                      any score is based on it. Please check the video.
                     </p>
                   )}
                   {detail.transcript_check === 'UNAVAILABLE' && (
@@ -363,12 +407,13 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                       This transcript could not be checked against the recording.
                     </p>
                   )}
-                  <div className="max-h-64 overflow-y-auto text-sm text-text leading-relaxed whitespace-pre-wrap rounded-lg border border-border p-3 bg-surface-muted">
+                  <div className="max-h-64 overflow-y-auto lg:max-h-none text-sm text-text leading-relaxed whitespace-pre-wrap rounded-lg border border-border p-3 bg-surface-muted">
                     {detail.transcript}
                   </div>
                 </div>
               )}
-            </>
+              </div>
+            </div>
           )}
         </div>
       </div>

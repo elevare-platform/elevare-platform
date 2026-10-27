@@ -26,7 +26,7 @@ export default function InterviewBriefSetupModal({
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!brief.trim()) {
-      setError('Enter a brief for the AI interviewer to work from.')
+      setError('Enter a brief for the interviewer to work from.')
       return
     }
     if (unchanged) return
@@ -54,10 +54,10 @@ export default function InterviewBriefSetupModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-text">
-              {isEditing ? 'Edit AI interview brief' : 'Set up AI interview'}
+              {isEditing ? 'Edit interview brief' : 'Set up interview'}
             </h2>
             <p className="text-sm text-text-muted mt-1">
-              This brief tells the AI interviewer what to ask about. It is never shown to
+              This brief tells the interviewer what to ask about. It is never shown to
               candidates directly.
             </p>
           </div>

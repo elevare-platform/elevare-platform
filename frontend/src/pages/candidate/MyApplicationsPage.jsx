@@ -104,7 +104,7 @@ function ApplicationCard({ application, onWithdraw }) {
           <Button size="sm" asChild>
             <Link to={`/candidate/applications/${application.id}/interview`} className="inline-flex items-center gap-1.5">
               <Sparkles size={14} />
-              {interviewEnded ? 'See interview status' : 'Start AI Interview'}
+              {interviewEnded ? 'See interview status' : 'Start interview'}
             </Link>
           </Button>
         )}

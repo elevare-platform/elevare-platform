@@ -95,8 +95,10 @@ class CandidateProfile(BaseModel):
     visibility: Mapped[VisibilityStatus] = mapped_column(
         String(15),
         nullable=False,
-        default=VisibilityStatus.APPLIED_ONLY.value,
-        server_default="APPLIED_ONLY",
+        # New profiles are visible to employers until the candidate chooses otherwise (the
+        # profile page says so under the setting). Profiles that already exist keep theirs.
+        default=VisibilityStatus.PUBLIC.value,
+        server_default="PUBLIC",
     )
 
     cv_sharing_consent: Mapped[bool] = mapped_column(

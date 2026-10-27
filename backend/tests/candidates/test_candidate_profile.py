@@ -119,6 +119,57 @@ async def test_registration_creates_candidate_profile(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_a_new_profile_is_visible_to_employers_until_the_candidate_changes_it(client, db_session):
+    """New candidates start Public (docs/08_DECISIONS.md, item 34); they can change it any time."""
+    token = await get_active_token(client, db_session)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = await client.get("/api/v1/candidates/me", headers=headers)
+    assert first.status_code == 200
+    assert first.json()["visibility"] == "PUBLIC"
+
+    changed = await client.put("/api/v1/candidates/me", json={"visibility": "PRIVATE"}, headers=headers)
+    assert changed.status_code == 200
+    assert (await client.get("/api/v1/candidates/me", headers=headers)).json()["visibility"] == "PRIVATE"
+
+
+@pytest.mark.asyncio
+async def test_a_profile_made_without_a_value_gets_public_from_the_database_default(db_session):
+    from sqlalchemy import text
+
+    user = User(
+        first_name="Ada", last_name="Obi", email="ada.default@example.com",
+        phone_number="+2348011122233", password_hash="x", account_status="ACTIVE", role="CANDIDATE",
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    await db_session.execute(
+        text("INSERT INTO candidate_profile (id, user_id, created_at, updated_at) VALUES (gen_random_uuid(), :u, now(), now())"),
+        {"u": user.id},
+    )
+    row = (await db_session.execute(text("SELECT visibility FROM candidate_profile WHERE user_id = :u"), {"u": user.id})).scalar_one()
+
+    assert row == "PUBLIC"
+
+
+@pytest.mark.asyncio
+async def test_a_profile_that_already_chose_keeps_its_choice(db_session):
+    user = User(
+        first_name="Bola", last_name="Ade", email="bola.keeps@example.com",
+        phone_number="+2348011122244", password_hash="x", account_status="ACTIVE", role="CANDIDATE",
+    )
+    db_session.add(user)
+    await db_session.flush()
+    profile = CandidateProfile(user_id=user.id, visibility="APPLIED_ONLY")
+    db_session.add(profile)
+    await db_session.flush()
+    await db_session.refresh(profile)
+
+    assert profile.visibility == "APPLIED_ONLY"
+
+
+@pytest.mark.asyncio
 async def test_profile_update_sets_fields(client, db_session):
     """PUT /candidates/me updates profile fields."""
     token = await get_active_token(client, db_session)

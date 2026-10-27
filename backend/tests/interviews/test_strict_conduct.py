@@ -504,7 +504,7 @@ async def test_stopping_tells_the_employer_the_candidate_chose_to(client, db_ses
             )
         )
     ).scalar_one()
-    assert "stopped their AI interview" in note.title and "chose to stop" in note.body
+    assert "stopped their interview" in note.title and "chose to stop" in note.body
 
 
 @pytest.mark.asyncio
@@ -1045,7 +1045,11 @@ async def test_the_employer_sees_the_rules_accepted_the_conduct_and_each_answer_
     interview, first = await started(client, db_session)
     await answer(client, interview.token, first["turn"]["id"])
     await leave_and_return(client, clock, interview.token, 12, cause="FULLSCREEN")
+    # Each a second apart, as real events are: the timeline is ordered by time, and the whole
+    # test runs in one transaction, so events at the very same instant have no defined order.
+    clock.advance(1)
     await event(client, interview.token, "key", key="F12")
+    clock.advance(1)
     await stop(client, interview.token)
 
     resp = await client.get(_detail_url(interview), headers=_headers(interview.employer))
@@ -1325,3 +1329,82 @@ def test_the_conduct_numbers_come_from_settings():
     assert settings.strict_max_away_seconds == 60
     # The unused-import guard for names used only by other tests in this module.
     assert ValidationException and Interview
+
+
+# ---------------------------------------------------------------------------
+# What the scorer is told about how the interview ran (Colton Group protocol)
+# ---------------------------------------------------------------------------
+
+
+async def conditions_of(db_session, interview):
+    from app.modules.interviews.repository import InterviewRepository
+    from app.modules.interviews.strict import StrictInterviewService
+
+    return await StrictInterviewService(db_session, InterviewRepository(db_session)).interview_conditions(
+        interview.interview.id
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_interview_that_ran_smoothly_has_no_conditions_to_report(client, db_session, fakes, clock):
+    interview, first = await started(client, db_session)
+    await answer(client, interview.token, first["turn"]["id"])
+
+    assert await conditions_of(db_session, interview) == ""
+
+
+@pytest.mark.asyncio
+async def test_reloads_are_reported_as_circumstances(client, db_session, fakes, clock):
+    interview, _ = await started(client, db_session)
+    clock.advance(20)
+    await start(client, interview.token, accepted=False)  # the page came back once
+    clock.advance(20)
+    await start(client, interview.token, accepted=False)  # and again
+
+    text = await conditions_of(db_session, interview)
+
+    assert "reloaded or reopened 2 times" in text
+    assert "carried on at the same question" in text
+
+
+@pytest.mark.asyncio
+async def test_a_reinstated_interview_is_reported_with_its_sittings(
+    client, db_session, fakes, clock, invite_email
+):
+    interview, _ = await stopped_interview(client, db_session, clock)
+    await client.post(_reinstate_url(interview), headers=_headers(interview.employer))
+
+    text = await conditions_of(db_session, interview)
+
+    assert "ended early and was reinstated by the employer 1 time" in text
+    assert "taken in 2 sittings" in text
+
+
+@pytest.mark.asyncio
+async def test_an_answer_that_could_not_be_written_down_is_reported_as_missing_not_empty(
+    client, db_session, fakes, clock
+):
+    interview, first = await started(client, db_session)
+    fakes.speech.fail = True  # the transcription is down for this answer
+
+    await answer(client, interview.token, first["turn"]["id"])
+    text = await conditions_of(db_session, interview)
+
+    assert "could not be written down" in text and "question number 1" in text
+    assert "missing from the transcript, not empty answers" in text
+
+
+@pytest.mark.asyncio
+async def test_a_live_interview_has_no_conditions(client, db_session, fakes, clock):
+    live = await make_strict(db_session, strict=False, status=InterviewStatus.UPLOADED.value)
+
+    assert await conditions_of(db_session, live) == ""
+
+
+@pytest.mark.asyncio
+async def test_leaving_the_screen_is_not_listed_among_the_conditions(client, db_session, fakes, clock):
+    """Conduct notes go to the employer, and the scorer is told not to score them either way."""
+    interview, _ = await started(client, db_session)
+    await leave_and_return(client, clock, interview.token, 5)
+
+    assert await conditions_of(db_session, interview) == ""

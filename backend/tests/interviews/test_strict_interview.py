@@ -630,18 +630,80 @@ async def test_a_follow_up_is_asked_when_the_model_wants_one(client, db_session,
     assert fakes.ai.calls[0]["brief"] == BRIEF
 
 
+SECOND_PROBE = "How many outlets did that cover?"
+
+
 @pytest.mark.asyncio
-async def test_there_is_one_follow_up_per_question_at_most(client, db_session, fakes, clock):
+async def test_a_question_gets_up_to_two_probes_and_then_the_next_question(client, db_session, fakes, clock):
+    """The Colton Group framework: up to two neutral probes, the same for every candidate."""
     interview = await make_strict(db_session)
     first = (await start(client, interview.token)).json()
-    fakes.ai.replies = [FOLLOW_UP, "Is there anything else about it you would change?"]
+    fakes.ai.replies = [FOLLOW_UP, SECOND_PROBE, "A third probe that must never be asked?"]
 
-    follow_up = (await answer(client, interview.token, first["turn"]["id"])).json()
-    after = (await answer(client, interview.token, follow_up["turn"]["id"])).json()
+    probe_one = (await answer(client, interview.token, first["turn"]["id"])).json()
+    probe_two = (await answer(client, interview.token, probe_one["turn"]["id"])).json()
+    after = (await answer(client, interview.token, probe_two["turn"]["id"])).json()
 
-    assert after["turn"]["kind"] == "QUESTION"
-    assert after["turn"]["number"] == 2
+    assert (probe_one["turn"]["kind"], probe_one["turn"]["text"]) == ("FOLLOW_UP", FOLLOW_UP)
+    assert (probe_two["turn"]["kind"], probe_two["turn"]["text"]) == ("FOLLOW_UP", SECOND_PROBE)
+    assert probe_two["turn"]["number"] == 1
+    assert (after["turn"]["kind"], after["turn"]["number"]) == ("QUESTION", 2)
+    assert len(fakes.ai.calls) == 2  # the model is not even asked a third time
+
+
+@pytest.mark.asyncio
+async def test_the_second_probe_sees_what_was_already_asked_and_how_many_are_left(
+    client, db_session, fakes, clock
+):
+    interview = await make_strict(db_session)
+    first = (await start(client, interview.token)).json()
+    fakes.ai.replies = [FOLLOW_UP, SECOND_PROBE]
+
+    probe_one = (await answer(client, interview.token, first["turn"]["id"])).json()
+    await answer(client, interview.token, probe_one["turn"]["id"])
+
+    first_call, second_call = fakes.ai.calls
+    assert first_call["probes_left"] == 2 and first_call["earlier"] == ""
+    assert second_call["probes_left"] == 1
+    assert second_call["question"] == FOLLOW_UP  # what was just asked
+    assert f"Question: {QUESTIONS[0][0]}" in second_call["earlier"]
+    assert f"Answer: {LONG_ANSWER}" in second_call["earlier"]
+
+
+@pytest.mark.asyncio
+async def test_the_number_of_probes_is_a_setting_so_one_is_still_possible(
+    client, db_session, fakes, clock, monkeypatch
+):
+    monkeypatch.setattr(settings, "strict_max_follow_ups", 1)
+    interview = await make_strict(db_session)
+    first = (await start(client, interview.token)).json()
+    fakes.ai.replies = [FOLLOW_UP, SECOND_PROBE]
+
+    probe = (await answer(client, interview.token, first["turn"]["id"])).json()
+    after = (await answer(client, interview.token, probe["turn"]["id"])).json()
+
+    assert (after["turn"]["kind"], after["turn"]["number"]) == ("QUESTION", 2)
     assert len(fakes.ai.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_second_probe_is_not_asked_when_it_would_squeeze_a_later_question(
+    client, db_session, fakes, clock
+):
+    """Two questions of 10 minutes each in a 20 minute interview: a first probe fits only if the
+    candidate was quick, and the second only if they were quicker still."""
+    interview = await make_strict(db_session, questions=[("Describe a system you built.", 570), ("Describe an outage you handled.", 570)])
+    first = (await start(client, interview.token)).json()
+    fakes.ai.replies = [FOLLOW_UP, SECOND_PROBE]
+    clock.advance(10)
+
+    probe_one = (await answer(client, interview.token, first["turn"]["id"])).json()
+    # The candidate took until 610 seconds in, so 590 are left: a second probe's 90 would leave
+    # only 500 for a second question that is allowed 570.
+    clock.advance(600)
+    after = (await answer(client, interview.token, probe_one["turn"]["id"])).json()
+
+    assert after["turn"]["kind"] == "QUESTION" and after["turn"]["number"] == 2
 
 
 @pytest.mark.asyncio
@@ -1136,7 +1198,7 @@ async def test_a_strict_invite_notification_describes_the_strict_interview(
     assert "appear on your screen" in body
     assert "laptop or desktop computer with Chrome or Edge" in body
     assert "voice conversation" not in body
-    assert "live AI interview" not in body
+    assert "live interview" not in body
 
 
 @pytest.mark.asyncio
@@ -1145,8 +1207,8 @@ async def test_a_live_invite_notification_is_worded_as_it_always_was(
 ):
     body = await _invite_notification_body(db_session, monkeypatch, "live")
 
-    assert "a live AI interview" in body
-    assert "real-time voice conversation with an AI interviewer" in body
+    assert "a live interview" in body
+    assert "real-time voice conversation with an automated interviewer" in body
     assert "appear on your screen" not in body
 
 

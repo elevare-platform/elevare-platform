@@ -18,7 +18,7 @@ export function interviewPricingNote(pricing) {
   const split = planCredits > 0 ? ` (${planCredits} of them included in your plan this month)` : ''
   return {
     text:
-      `Each AI interview costs ${cost} credits, taken when you first send it. ` +
+      `Each interview costs ${cost} credits, taken when you first send it. ` +
       'Resending is free, and the credits come back if the link expires unused. ' +
       `Your balance: ${balance}${split}.`,
     // Not enough for one more: the note turns into a nudge to buy credits.

@@ -433,7 +433,7 @@ class JobService:
                 await notification_repo.create(
                     recipient_id=admin.id,
                     type="JOB_BRIEF_CHANGED",
-                    title=f"{company} changed the AI interview brief for {job.title}",
+                    title=f"{company} changed the interview brief for {job.title}",
                     body="The job stays live. Open it to check the new brief.",
                     entity_type="JOB",
                     entity_id=job.id,

@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.modules.interviews import question_rules as rules
 from app.modules.interviews.question_rules import (
     QuestionDraft,
+    max_questions,
     problems_with,
     snap_seconds,
     tidy_drafted,
@@ -40,13 +41,18 @@ def test_a_good_list_has_no_problems_and_an_empty_list_is_allowed():
     assert problems_with([]) == []  # clearing the questions is fine
 
 
-def test_more_questions_than_the_limit_is_refused():
-    problems = problems_with([q() for _ in range(7)])
+def test_there_is_no_limit_on_how_many_questions_only_on_their_total_time():
+    assert problems_with([q(seconds=60) for _ in range(20)]) == []  # 20 questions, 20 minutes
+    assert problems_with([q(seconds=30) for _ in range(40)]) == []  # the most that can fit
+    problems = problems_with([q(seconds=120) for _ in range(11)])  # 22 minutes
+    assert len(problems) == 1 and "limited to 20 minutes" in problems[0]
 
-    assert any("at most 6 questions" in problem for problem in problems)
+
+def test_the_most_questions_that_fit_is_what_the_time_allows():
+    assert max_questions() == 40  # 20 minutes at the shortest answer time, 30 seconds
 
 
-def test_exactly_the_limit_is_allowed_when_the_times_fit():
+def test_exactly_the_time_limit_is_allowed():
     assert problems_with([q(seconds=180) for _ in range(6)]) == []  # 18 minutes
 
 

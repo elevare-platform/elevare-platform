@@ -50,7 +50,7 @@ const FAILURE_BANDS = {
     label: 'Not scored: plan limit',
     className: 'bg-violet-50 text-violet-700 border-violet-200',
     help:
-      "This month's AI scoring on your plan is used up, so this candidate was not scored. They are saved and you can still read their CV. Upgrade your plan, or rescore after the month turns over.",
+      "This month's scoring on your plan is used up, so this candidate was not scored. They are saved and you can still read their CV. Upgrade your plan, or rescore after the month turns over.",
   },
 }
 

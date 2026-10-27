@@ -485,7 +485,8 @@ FAIRNESS AND USE LIMITATIONS
 Apply the same scoring anchors to every candidate for the same role.
 
 Never score, mention as a strength or weakness, or let your judgement be
-influenced by: accent, how the candidate looks, personality style, or any
+influenced by: accent, how the candidate looks, personality style or
+similarity to the interviewer or the team, conversational style, or any
 protected characteristic (age, gender, marriage or family plans, pregnancy,
 religion, ethnicity, tribe, nationality or place of origin, disability or
 health, politics). If the transcript contains such information, ignore it.
@@ -495,6 +496,80 @@ consider the full application, the interview evidence and the role
 requirements before any recruitment decision. Never write that a
 candidate should or should not be hired as a final decision; the
 recommendation field below is a recommendation for that reviewer.
+
+==================================================
+A SCORING PROFILE OVERRIDES THE CHOICE OF COMPETENCIES
+==================================================
+
+If the user message has a SCORING PROFILE, the employer has fixed the
+competencies for this job and what each is worth. Then do not choose
+competencies yourself: rate exactly the ones listed, as the profile says
+there.
+
+==================================================
+THE PRACTICAL CASE
+==================================================
+
+If the user message has a PRACTICAL CASE, one question of the interview is a
+scenario the candidate worked through aloud. It is a separate validation
+score, reported on its own and never added to the weighted competency score.
+Therefore:
+
+- Rate it ONLY in the practical_case field. Do not use it as the evidence
+  for any entry in the competencies field, and do not mention it there.
+- Rate each of the five criteria listed in the user message from 1 to 5,
+  against the same scorecard anchors as everything else, from what the
+  candidate actually said. Give a brief rationale for each. A criterion the
+  candidate never touched is null with the rationale "not covered"; never
+  guess and never give it a 1 for lack of evidence.
+- The scenario asks for a plan. A plausible, well-reasoned plan is evidence
+  of reasoning, prioritisation and awareness of risk, not of having carried
+  one out. Credit a candidate who states their assumptions and says what
+  they would check. Do not credit facts the candidate invented as if they
+  were established data, and never supply facts of your own.
+- Judge the content, not the delivery: never rate confidence, fluency or a
+  persuasive manner.
+
+If the user message says there is no practical case, leave practical_case
+out of the reply.
+
+==================================================
+EXPERIENCE QUESTIONS AND HYPOTHETICAL QUESTIONS
+==================================================
+
+An EXPERIENCE question asks what the candidate has done. For each, capture
+from the transcript, without inventing anything: the Situation, the Task,
+the candidate's own Actions (as distinct from their team's), the Results,
+and what could be checked later. Summarise these in the competency's
+evidence field in that order, with one short direct quote. A number the
+candidate gave without saying how it was measured or by whom is
+UNSUPPORTED: keep it, but list it under claims_to_verify marked
+"(unverified)". Never round, convert or improve a figure.
+
+A HYPOTHETICAL question asks what the candidate would do. A plausible,
+well-reasoned plan is evidence of reasoning, prioritisation and awareness
+of risk. It is NOT evidence of having carried something out. Say which it
+is in the kind field, and do not rate a plan as demonstrated execution
+experience: a hypothetical answer cannot reach the top of the scale for
+execution on its own, however polished.
+
+Judge the content, not how it is delivered. Never rate confidence,
+fluency, polish, a persuasive manner, or how much the candidate resembles
+the interviewer or the people they would work with.
+
+==================================================
+INTERVIEW CONDITIONS (TECHNICAL AND ACCESS ISSUES)
+==================================================
+
+The user message may list conditions of this interview, such as page
+reloads, an interview that ended early and was reinstated, or answers that
+could not be written down. These are circumstances, not candidate
+behaviour. Never lower a rating because of them. Where one leaves an answer
+missing or incomplete, mark that competency PARTIALLY_ASSESSED or
+NOT_ASSESSED, and say in technical_flags, in a neutral sentence, what was
+affected and that a reassessment or additional evidence may be needed.
+Leaving the screen and pressing keys are conduct notes kept for the
+employer: do not score them either way.
 
 ==================================================
 CLAIMS REQUIRING VALIDATION
@@ -524,7 +599,7 @@ OUTPUT SCHEMA
 
 Return JSON matching this schema exactly:
 
-{{"role_assessed": "Senior Backend Engineer", "score": 70, "recommendation": "Recommend", "summary": "Two to four sentence overall assessment, explicitly noting any significant coverage limitations.", "competencies": [{{"name": "Ownership of delivery", "score": 4, "coverage": "FULLY_ASSESSED", "rationale": "One or two sentences.", "evidence": "A short direct quote from the candidate."}}], "strengths": ["..."], "weaknesses": ["..."], "missing_evidence": ["..."], "contradictions": ["..."], "claims_to_verify": ["..."], "candidate_reported": ["Notice period: one month"], "follow_up_questions": ["..."]}}
+{{"role_assessed": "Senior Backend Engineer", "score": 70, "recommendation": "Recommend", "summary": "Two to four sentence overall assessment, explicitly noting any significant coverage limitations.", "competencies": [{{"name": "Ownership of delivery", "score": 4, "coverage": "FULLY_ASSESSED", "kind": "EXPERIENCE", "rationale": "One or two sentences.", "evidence": "Situation, task, own actions and results in one or two sentences, then a short direct quote.", "ownership": "What the candidate personally did.", "outcome": "The quantified result, or an empty string.", "confidence": "medium", "verify": "What a human should check, or an empty string."}}], "strengths": ["..."], "weaknesses": ["..."], "missing_evidence": ["..."], "contradictions": ["..."], "claims_to_verify": ["..."], "technical_flags": ["..."], "candidate_reported": ["Notice period: one month"], "follow_up_questions": ["..."]}}
 
 Field notes:
 
@@ -535,8 +610,22 @@ Field notes:
   the question number. score is the integer 1 to 5 from the scorecard,
   or null when coverage is NOT_ASSESSED. coverage is FULLY_ASSESSED,
   PARTIALLY_ASSESSED or NOT_ASSESSED. rationale is brief and says why
-  that score. evidence is a short direct quote from the candidate, or an
-  empty string when there is none.
+  that score. kind is EXPERIENCE (what they have done) or HYPOTHETICAL
+  (what they would do). evidence summarises situation, task, own actions
+  and results for an experience question (a plan for a hypothetical one),
+  then a short direct quote; an empty string when there is none.
+  ownership is what the candidate personally did, as distinct from the
+  team, or an empty string. outcome is the quantified result they stated,
+  or an empty string. confidence is "high", "medium" or "low": how well the
+  transcript supports this rating (not how confident the candidate
+  sounded). verify says what a human should check, or is an empty string.
+- practical_case: only when the user message has a PRACTICAL CASE. An
+  object with criteria, a list of five objects (key, rating, rationale; the
+  keys are listed in the user message, in order; rating is an integer 1 to
+  5, or null when the criterion was not covered), and summary, one or two
+  sentences on how the candidate handled the case. Leave it out otherwise.
+- technical_flags: the conditions of this interview that affected the
+  evidence, as described under INTERVIEW CONDITIONS; empty list if none.
 - score: integer 0-100. It is the average of the scores of the
   competencies that were assessed, multiplied by 20 and rounded (an
   average of 3.5 is 70). Competencies that were not assessed are left out
@@ -557,8 +646,16 @@ Field notes:
   ask next, aimed at the gaps, evidence gaps and claims above. Plain
   questions; never about a protected characteristic; never asking for a
   previous employer's confidential information.
-- strengths: demonstrated strengths, grounded in transcript evidence.
+- reference_check_questions: two to four questions a human could put to
+  the candidate's referees to check their major achievements and the
+  claims above (for example what the candidate personally did on a named
+  project, and the result). Plain questions; never about a protected
+  characteristic; never asking a referee for confidential information. Empty
+  list if there is nothing to check.
+- strengths: demonstrated strengths, grounded in transcript evidence. Most
+  important first: the first three are shown as the candidate's top three.
 - weaknesses: demonstrated weaknesses (candidate gaps), not evidence gaps.
+  Most important first: the first three are shown as the top three.
 - missing_evidence: topics or probes from the brief that this interview
   did not cover (evidence gaps, not weaknesses) — phrased as neutral
   coverage notes, e.g. "X was not discussed in this interview," never as
@@ -652,6 +749,28 @@ what the candidate demonstrated during the interview.
 {job_context}
 
 
+INTERVIEW CONDITIONS
+====================
+
+Facts about how this interview ran, recorded by the platform. They are
+circumstances, not candidate behaviour. See INTERVIEW CONDITIONS in the
+instructions.
+
+{interview_conditions}
+
+
+SCORING PROFILE
+===============
+
+{scoring_profile}
+
+
+PRACTICAL CASE
+==============
+
+{practical_case}
+
+
 TASK
 ====
 
@@ -688,6 +807,10 @@ def build_interview_scoring_prompt(
     scoring_rubric: str,
     candidate_context: str = "",
     job_context: str = "",
+    interview_conditions: str = "",
+    scoring_profile: list[dict] | None = None,
+    question_tags: list[dict] | None = None,
+    practical_question: dict | None = None,
 ) -> tuple[str, str]:
     """Build the system and user prompts for interview scoring.
 
@@ -708,6 +831,11 @@ def build_interview_scoring_prompt(
 
         job_context:
             Optional job description/context.
+
+        interview_conditions:
+            Optional facts about how the interview ran (reloads, an ending
+            and reinstatement, answers that could not be written down).
+            Platform-recorded, never candidate text.
 
     Returns:
         A tuple containing:
@@ -731,6 +859,62 @@ def build_interview_scoring_prompt(
         transcript=safe_transcript,
         candidate_context=candidate_context.strip() or "Not provided.",
         job_context=job_context.strip() or "Not provided.",
+        interview_conditions=interview_conditions.strip() or "Nothing unusual was recorded.",
+        scoring_profile=describe_scoring_profile(scoring_profile, question_tags),
+        practical_case=describe_practical_case(practical_question),
     )
 
     return system_prompt, user_prompt
+
+
+def describe_practical_case(question: dict | None) -> str:
+    """The PRACTICAL CASE block of the user message: which question is the practical case, and the
+    five criteria to rate it on, in order, with the key to use for each. Without one it says there
+    is none. The question text is the employer's own, shown as data."""
+    if not question:
+        return "There is no practical case in this interview. Leave practical_case out of the reply."
+    from app.modules.interviews.practical_case import CRITERIA
+
+    lines = [
+        f"Question {question['number']} is the practical case: \"{question['text']}\"",
+        "",
+        "Rate the candidate's answer to it, and to any follow-up on it, in practical_case only, on "
+        "these five criteria, in this order, using the key shown. The platform works out the case "
+        "score from your ratings; do not give an overall number.",
+        "",
+    ]
+    lines += [f"- key \"{item['key']}\", {item['name']}: {item['means']}" for item in CRITERIA]
+    return "\n".join(lines)
+
+
+def describe_scoring_profile(profile: list[dict] | None, question_tags: list[dict] | None = None) -> str:
+    """The SCORING PROFILE block of the user message: the competencies to rate, with their
+    weights, and which question was written to test which. Without a profile it says so, and the
+    model chooses the competencies from the brief as before. The names and questions are the
+    employer's own text, shown as data."""
+    if not profile:
+        return "Not set. Choose the competencies from the interview brief, as described above."
+    lines = [
+        "The employer fixed these competencies for this job. Rate EXACTLY these, one entry each in "
+        "the competencies field, in this order, with the name written exactly as given here, and "
+        "add no others. A competency with no evidence in the transcript is NOT_ASSESSED with a "
+        "null score: never guess, and never give it a 1 for lack of evidence. The weights show "
+        "what the employer values; they must never change a rating. The weighted total and the "
+        "band are worked out by the platform from your ratings: do not work out the overall "
+        "score, and the recommendation field is ignored.",
+        "",
+        "Competencies:",
+    ]
+    for item in profile:
+        lines.append(f"- {item['name']} (weight {item['weight']}%){' [key]' if item.get('key') else ''}")
+    tagged = [tag for tag in (question_tags or []) if tag.get("competency")]
+    if tagged:
+        lines += ["", "Questions written to test a competency:"]
+        lines += [
+            f"- Question {tag['number']}: \"{tag['text']}\" tests: {tag['competency']}" for tag in tagged
+        ]
+        lines.append(
+            "Answers to a question that lists no competency, and any follow-up, count for whichever "
+            "of the competencies above they give evidence of."
+        )
+    return "\n".join(lines)

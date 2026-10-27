@@ -33,7 +33,7 @@ const EMPLOYER_STEPS = [
     number: '02',
     icon: Users,
     title: 'We Source & Vet',
-    desc: 'Our team and AI-powered pipeline surfaces qualified candidates from our network. Every applicant is screened before you see them.',
+    desc: 'Our team and smart pipeline surface qualified candidates from our network. Every applicant is screened before you see them.',
   },
   {
     number: '03',

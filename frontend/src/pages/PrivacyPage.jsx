@@ -18,7 +18,7 @@ const SECTIONS = [
   {
     title: 'Data Sharing',
     content:
-      'Candidate profile information is shared with employers only when you apply for a role or set your profile to visible. Contact form submissions are shared internally with the relevant Elevare team.',
+      'Candidate profile information is shared with employers when you apply for a role or when your profile visibility is set to Public. New profiles start as Public, and you can change this at any time in your profile settings to "Applied only" or "Private". A Public profile can also be shared with Elevare\'s clients: organisations that pay Elevare to find candidates for them. Elevare may send a client a link that shows the profiles of selected candidates, including yours, and anyone who opens that link can see the profile details it includes. Contact form submissions are shared internally with the relevant Elevare team.',
   },
   {
     title: 'Gmail and Zoho Mail Integration',
@@ -83,7 +83,7 @@ export default function PrivacyPage() {
             ))}
           </div>
 
-          <p className="mt-16 text-xs text-text-muted">Last updated: July 2026</p>
+          <p className="mt-16 text-xs text-text-muted">Last updated: October 2026</p>
         </section>
       </main>
       <Footer />

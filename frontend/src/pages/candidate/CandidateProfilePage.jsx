@@ -35,6 +35,14 @@ const FORM_FIELDS = [
   'notice_period_days', 'linkedin_url', 'github_url', 'portfolio_url',
 ]
 
+// What each visibility choice means, said under the setting. A new profile starts Public, so the
+// note has to say it plainly: employers can find you until you change it.
+const VISIBILITY_NOTES = {
+  PUBLIC: 'Employers can find you and see your profile. Change this any time.',
+  APPLIED_ONLY: 'Only employers whose jobs you have applied to can see your name and profile.',
+  PRIVATE: 'Employers cannot find you. They only see you if you introduce yourself.',
+}
+
 const INPUT_CLS ='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue'
 const CURRENCIES = ['NGN', 'USD', 'GBP', 'EUR', 'CAD', 'AUD', 'ZAR', 'GHS', 'KES']
 
@@ -338,7 +346,7 @@ export default function CandidateProfilePage() {
     bio: '', skills: [], years_of_experience: '', location: '',
     expected_salary: '', expected_currency: 'NGN', notice_period_days: '',
     linkedin_url: '', github_url: '', portfolio_url: '',
-    open_to_relocation: false, visibility: 'APPLIED_ONLY',
+    open_to_relocation: false, visibility: 'PUBLIC',
   })
   const [initialValues, setInitialValues] = useState(null)
 
@@ -374,7 +382,7 @@ export default function CandidateProfilePage() {
       github_url: profile.github_url ?? '',
       portfolio_url: profile.portfolio_url ?? '',
       open_to_relocation: profile.open_to_relocation ?? false,
-      visibility: profile.visibility ?? 'APPLIED_ONLY',
+      visibility: profile.visibility ?? 'PUBLIC',
     }
     setValues(snapshot)
     setInitialValues(snapshot)
@@ -567,6 +575,9 @@ export default function CandidateProfilePage() {
                     <option value="APPLIED_ONLY">Applied Only - visible to employers you've applied to</option>
                     <option value="PRIVATE">Private - hidden from all employers</option>
                   </select>
+                  <p className="mt-1 text-xs text-text-muted" data-testid="visibility-note">
+                    {VISIBILITY_NOTES[values.visibility] ?? VISIBILITY_NOTES.PUBLIC}
+                  </p>
                 </Field>
 
                 <label className="flex items-center gap-2 text-sm text-text cursor-pointer">

@@ -187,7 +187,7 @@ export default function CandidateMatchesPage() {
               <BrainCircuit size={32} className="text-gray-300 mx-auto" />
               <p className="font-medium text-text">No matches yet</p>
               <p className="text-sm text-text-muted max-w-xs mx-auto">
-                Upload a CV and complete your profile so our AI can find the best-fit roles for you.
+                Upload a CV and complete your profile so we can find the best-fit roles for you.
               </p>
               <Link to="/candidate/profile">
                 <Button size="sm" className="mt-2">Complete Profile</Button>

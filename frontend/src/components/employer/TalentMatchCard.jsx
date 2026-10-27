@@ -157,7 +157,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
       setScoreState('polling')
     } catch (err) {
       setScoreState('idle')
-      onError?.(err.response?.data?.message ?? 'Could not request AI insights. Please try again.')
+      onError?.(err.response?.data?.message ?? 'Could not request insights. Please try again.')
     }
   }
 
@@ -290,7 +290,7 @@ export default function TalentMatchCard({ match, jobId, hasCredits, onCreditSpen
           ) : scoreState === 'timeout' ? (
             <><Sparkles size={11} /> Still working. Check back shortly</>
           ) : (
-            <><Sparkles size={11} /> Get AI insights for this job</>
+            <><Sparkles size={11} /> Get insights for this job</>
           )}
         </button>
       )}

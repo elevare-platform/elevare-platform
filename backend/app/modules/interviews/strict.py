@@ -29,10 +29,14 @@ from app.core.config import settings
 from app.core.exceptions import ValidationException
 from app.modules.interviews.enums import (
     ENDED_STATUSES,
+    ConductEventKind,
+    FollowUpMode,
     InterviewCostComponent,
     InterviewStatus,
     TurnKind,
+    follow_up_mode_of,
 )
+from app.modules.interviews.follow_up import load_follow_up_mode
 from app.modules.interviews.models import (
     Interview,
     InterviewTurn,
@@ -83,9 +87,60 @@ def clean_follow_up(text: str | None) -> str | None:
     return cleaned
 
 
+def follow_up_seconds_for(run: StrictInterviewRun, question_number: int) -> int:
+    """How long a candidate has to answer a follow-up on question ``question_number``: the time
+    the employer set on that question when the interview started, or the platform default
+    (`strict_follow_up_seconds`) for a question with none (and for a run that began before the
+    time could be set)."""
+    questions = run.questions or []
+    if 0 < question_number <= len(questions):
+        seconds = questions[question_number - 1].get("follow_up_seconds")
+        if isinstance(seconds, int) and seconds > 0:
+            return seconds
+    return settings.strict_follow_up_seconds
+
+
+def prepared_probes(text: str | None) -> list[str]:
+    """The employer's probes for a question, as the lines they wrote."""
+    return [line for line in (" ".join(raw.split()) for raw in (text or "").splitlines()) if line]
+
+
+def match_prepared_probe(raw: str | None, probes: list[str]) -> str | None:
+    """The prepared probe the model chose, exactly as the employer wrote it, or None.
+
+    In PROBES_ONLY mode the model may only pick from the employer's list, so what it returns is
+    matched against that list (ignoring case, spacing and a trailing full stop or question mark)
+    and the employer's own wording is what the candidate sees. Anything that is not on the list is
+    dropped: the interview just carries on."""
+
+    def key(value: str) -> str:
+        return " ".join(value.split()).strip("\"' ").rstrip("?.! ").casefold()
+
+    if not raw:
+        return None
+    wanted = key(raw)
+    for probe in probes:
+        if key(probe) == wanted:
+            return probe
+    return None
+
+
 def valid_rules_version(version: str | None) -> bool:
     """A rules version is a short label such as "1": 1 to 20 letters, digits, dot, dash."""
     return bool(version) and len(version) <= 20 and set(version) <= _RULES_VERSION_CHARS
+
+
+def earlier_exchange(thread: list, latest) -> str:
+    """What was already asked and answered on one question before its latest answer, oldest
+    first (the question, then each probe), as text for the follow-up model. Empty for the first
+    answer to a question."""
+    parts = []
+    for other in thread:
+        if other is latest or other.answered_at is None:
+            continue
+        label = "Question" if other.kind == TurnKind.QUESTION.value else "Follow-up"
+        parts.append(f"{label}: {other.question_text}\nAnswer: {other.answer_text or '(no answer)'}")
+    return "\n\n".join(parts)
 
 
 def seconds_between(later: datetime, earlier: datetime) -> int:
@@ -406,10 +461,22 @@ class StrictInterviewService(ConductMixin):
                     "The questions for this interview are not ready. Please contact your recruiter.",
                     code="INTERVIEW_QUESTIONS_MISSING",
                 )
+            # The competency each question was written to test goes with the copy, so the
+            # scorer is told it whatever the employer edits later.
             run.questions = [
-                {"text": question.text, "time_limit_seconds": question.time_limit_seconds}
+                {
+                    "text": question.text,
+                    "time_limit_seconds": question.time_limit_seconds,
+                    "competency": question.competency,
+                    "probes": question.probes,
+                    "follow_up_seconds": question.follow_up_seconds,
+                    "is_practical": question.is_practical,
+                }
                 for question in saved
             ]
+            # The follow-up mode is copied the same way: an edit made later never changes an
+            # interview that has begun.
+            run.follow_up_mode = (await load_follow_up_mode(self._db, interview.job_id)).value
             run.rules_version = rules_version
             run.rules_accepted_at = now
             run.started_at = now
@@ -551,7 +618,7 @@ class StrictInterviewService(ConductMixin):
                 kind=TurnKind.FOLLOW_UP.value,
                 number=turn.question_number,
                 text=follow_up,
-                seconds=min(settings.strict_follow_up_seconds, left),
+                seconds=min(follow_up_seconds_for(run, turn.question_number), left),
                 at=now,
             )
         else:
@@ -570,25 +637,45 @@ class StrictInterviewService(ConductMixin):
         turn: InterviewTurn,
         now: datetime,
     ) -> str | None:
-        """The one follow-up this answer deserves, or None.
+        """The follow-up probe this answer deserves, or None.
 
-        Never for a follow-up (one per question), nor for an answer too short to follow up.
-        Only when it can be asked without costing a later question its full time: what is left
-        after the follow-up's own allowance must still cover every question still to come.
+        ``turn`` is the answer just given, to the question or to an earlier probe. A question gets
+        at most ``strict_max_follow_ups`` probes (two, the same for every candidate), none for an
+        answer too short to follow up, and only when it can be asked without costing a later
+        question its full time: what is left after the probe's own allowance must still cover
+        every question still to come. The model is shown what was already asked and answered on
+        this question, so a second probe never repeats the first.
         """
-        if turn.kind != TurnKind.QUESTION.value or not turn.answer_text:
+        mode = follow_up_mode_of(run.follow_up_mode)
+        if mode == FollowUpMode.NONE:
+            return None  # the employer chose to keep to the written questions
+        if not turn.answer_text:
             return None
         if len(turn.answer_text.split()) < MIN_WORDS_FOR_FOLLOW_UP:
             return None
-        if any(
-            other.kind == TurnKind.FOLLOW_UP.value
-            and other.question_number == turn.question_number
-            for other in turns
-        ):
+        thread = [other for other in turns if other.question_number == turn.question_number]
+        probes_asked = sum(1 for other in thread if other.kind == TurnKind.FOLLOW_UP.value)
+        if probes_asked >= settings.strict_max_follow_ups:
             return None
 
+        # The employer's own probes for this question, minus any already asked of this candidate.
+        questions = run.questions or []
+        asked = {" ".join(other.question_text.split()).casefold() for other in thread}
+        probes = [
+            probe
+            for probe in prepared_probes(
+                questions[turn.question_number - 1].get("probes")
+                if 0 < turn.question_number <= len(questions)
+                else None
+            )
+            if " ".join(probe.split()).casefold() not in asked
+        ]
+        only_prepared = mode == FollowUpMode.PROBES_ONLY
+        if only_prepared and not probes:
+            return None  # nothing prepared (or all used): this mode never makes one up
+
         left = seconds_between(self._deadline(run), now)
-        allowance = min(settings.strict_follow_up_seconds, left)
+        allowance = min(follow_up_seconds_for(run, turn.question_number), left)
         later = (run.questions or [])[turn.question_number :]
         needed_later = sum(question["time_limit_seconds"] for question in later)
         if left < settings.strict_follow_up_min_remaining_seconds:
@@ -607,6 +694,10 @@ class StrictInterviewService(ConductMixin):
                 question=turn.question_text,
                 answer=turn.answer_text,
                 interview_brief=interview.job.interview_brief or "",
+                earlier_exchange=earlier_exchange(thread, turn),
+                probes_left=settings.strict_max_follow_ups - probes_asked,
+                prepared_probes=probes,
+                only_prepared=only_prepared,
             )
         except Exception:
             logger.exception("strict interview %s: follow-up decision failed", interview.id)
@@ -614,11 +705,51 @@ class StrictInterviewService(ConductMixin):
         finally:
             if made_here:
                 await ai_service._client.close()
+        if only_prepared:
+            # Only a probe the employer wrote, in the employer's words.
+            return match_prepared_probe(raw, probes)
         return clean_follow_up(raw)
 
     # ------------------------------------------------------------------
     # The transcript the scorer reads
     # ------------------------------------------------------------------
+
+    async def interview_conditions(self, interview_id: uuid.UUID) -> str:
+        """Facts about how this interview ran that the scorer must treat as circumstances, not as
+        the candidate's behaviour: page reloads, an interview that ended early and was
+        reinstated, and answers that could not be written down. Recorded by the platform, never
+        from what the candidate said. Empty when nothing unusual happened (and for a live
+        interview)."""
+        run = await self.get_run(interview_id)
+        if run is None:
+            return ""
+        events = await self._events(interview_id)
+        lines: list[str] = []
+        reloads = sum(1 for event in events if event.kind == ConductEventKind.RELOAD.value)
+        if reloads:
+            lines.append(
+                f"The page reloaded or reopened {reloads} time{'s' if reloads != 1 else ''}; "
+                "the interview carried on at the same question each time."
+            )
+        reinstated = sum(1 for event in events if event.kind == ConductEventKind.REINSTATED.value)
+        if reinstated:
+            lines.append(
+                f"The interview ended early and was reinstated by the employer {reinstated} "
+                f"time{'s' if reinstated != 1 else ''}, so it was taken in {run.attempt} sittings."
+            )
+        turns = await self._turns(interview_id)
+        missing = [
+            str(turn.question_number)
+            for turn in turns
+            if turn.answered_at is not None and not turn.answer_text
+        ]
+        if missing:
+            lines.append(
+                "These answers could not be written down (nothing was heard or the transcription "
+                f"failed), for question number {', '.join(dict.fromkeys(missing))}: they are "
+                "missing from the transcript, not empty answers."
+            )
+        return "\n".join(f"- {line}" for line in lines)
 
     async def build_transcript(self, interview_id: uuid.UUID) -> tuple[str, bool] | None:
         """The interview as the scorer reads it, built here from the saved answers.

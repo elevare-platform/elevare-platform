@@ -189,7 +189,7 @@ class CreditsService:
         if available < amount:
             raise InsufficientCreditsException(
                 message=(
-                    f"Not enough credits. An AI interview costs {amount} credits "
+                    f"Not enough credits. An interview costs {amount} credits "
                     f"and your balance is {available}."
                 )
             )

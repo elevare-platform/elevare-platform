@@ -299,7 +299,13 @@ function DeadlineBadge({ deadline }) {
   const diff = date.getTime() - now
   const daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24))
 
-  if (diff < 0) return null // already passed - don't show
+  if (diff < 0) {
+    return (
+      <span className="inline-flex items-center h-[22px] px-2.5 rounded-full text-[11px] font-semibold leading-none whitespace-nowrap bg-gray-100 text-gray-600 border border-gray-200">
+        Applications closed
+      </span>
+    )
+  }
 
   const label = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   const urgent = daysLeft <= 3
@@ -507,7 +513,7 @@ function CardBody({ job, variant, onPublish, onClose, onDelete, onResubmit, init
             >
               Details
             </Link>
-            <ApplyButton jobId={job.id} jobStatus={job.status} size="sm" initialApplied={initialApplied} />
+            <ApplyButton jobId={job.id} jobStatus={job.status} deadline={job.application_deadline} size="sm" initialApplied={initialApplied} />
           </div>
         )}
       </div>

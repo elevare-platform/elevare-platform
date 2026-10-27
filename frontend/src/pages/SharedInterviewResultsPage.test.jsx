@@ -132,6 +132,76 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     expect(screen.getByText(/no decision has been made for you/)).toBeInTheDocument()
   })
 
+  it('shows the client the weighted table with the provisional band, or an incomplete score with no band', async () => {
+    const rows = [
+      { name: 'Strategy', weight: 60, key: true, rating: 4 },
+      { name: 'P&L', weight: 40, key: false, rating: 3 },
+    ]
+    const base = { bands: { strong: 85, shortlist: 75, hold: 65 }, key_min_rating: 3, key_flags: [], total_weight: 100 }
+    const complete = { ...base, rows, points: 72, assessed_weight: 100, complete: true, score: 72, band: 'Hold for evidence', unassessed: [] }
+    const incomplete = {
+      ...base, rows: [rows[0], { ...rows[1], rating: null }], points: 48, assessed_weight: 60, complete: false,
+      score: null, band: null, unassessed: ['P&L'],
+    }
+    api.get.mockResolvedValueOnce({
+      data: {
+        ...RESULTS,
+        candidates: [{ ...ENDED_EARLY, status: 'COMPLETED', interview_score: 72, interview_assessment: 'A steady candidate.', score_report: complete }],
+      },
+    })
+    const first = renderPage()
+    // A completed interview is open when the page loads.
+    expect(await screen.findByTestId('weighted-band')).toHaveTextContent('Hold for evidence')
+    first.unmount()
+
+    api.get.mockResolvedValueOnce({
+      data: {
+        ...RESULTS,
+        candidates: [{ ...ENDED_EARLY, status: 'COMPLETED', interview_score: null, interview_assessment: 'INCOMPLETE SCORE.', score_report: incomplete }],
+      },
+    })
+    renderPage()
+    expect(await screen.findByTestId('weighted-incomplete')).toBeInTheDocument()
+    expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
+  })
+
+  it('shows the client the practical case on its own, apart from the weighted score', async () => {
+    const practical = {
+      question_number: 9, complete: true, score: 4, assessed_weight: 100, total_weight: 100, unassessed: [], summary: '',
+      rows: [
+        { key: 'prioritisation', name: 'Prioritisation', weight: 30, rating: 4, rationale: '' },
+        { key: 'realism', name: 'Realism', weight: 25, rating: 4, rationale: '' },
+        { key: 'measurement', name: 'Measurement', weight: 20, rating: 4, rationale: '' },
+        { key: 'risk', name: 'Risk and contingency', weight: 15, rating: 4, rationale: '' },
+        { key: 'clarity', name: 'Clarity of communication', weight: 10, rating: 4, rationale: '' },
+      ],
+    }
+    api.get.mockResolvedValueOnce({
+      data: { ...RESULTS, candidates: [{ ...ENDED_EARLY, status: 'COMPLETED', interview_score: 72, interview_assessment: 'Fine.', practical_case: practical }] },
+    })
+    renderPage()
+
+    expect(await screen.findByTestId('practical-score')).toHaveTextContent('4.0 / 5')
+    expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
+  })
+
+  it('shows the client the assessment record, and never a decision form', async () => {
+    const record = {
+      reference: 'EL-1A2B3C4D', role: 'Sales Manager', interview_date: '2026-10-20T09:17:40Z', duration_minutes: 18,
+      interviewer: 'Elevare structured interview', top_strengths: ['Clear route to market'], top_gaps: [],
+      claims_to_verify: [], reference_check_questions: ['Who led the roll-out?'], panel_decision: null,
+    }
+    api.get.mockResolvedValueOnce({
+      data: { ...RESULTS, candidates: [{ ...ENDED_EARLY, status: 'COMPLETED', interview_score: 72, interview_assessment: 'Fine.', record }] },
+    })
+    renderPage()
+
+    expect(await screen.findByTestId('record-reference')).toHaveTextContent('EL-1A2B3C4D')
+    expect(screen.getByText('Who led the roll-out?')).toBeInTheDocument()
+    expect(screen.queryByTestId('panel-decision')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Record decision' })).not.toBeInTheDocument()
+  })
+
   it('shows a reinstated interview to the client as one clip per attempt', async () => {
     const reinstated = {
       ...ENDED_EARLY,
@@ -197,7 +267,7 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     renderPage()
 
-    expect(await screen.findByText('What the AI was asked to cover')).toBeInTheDocument()
+    expect(await screen.findByText('What the interview was set to cover')).toBeInTheDocument()
     expect(screen.getByText('Probe distributor management.')).toBeInTheDocument()
   })
 
@@ -205,14 +275,14 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     renderPage()
 
-    const heading = await screen.findByText('Questions the AI asked')
+    const heading = await screen.findByText('Questions asked')
     const list = heading.closest('div').querySelector('ol')
     expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
       'Tell me about managing distributors?',
       'What was the hardest part?',
     ])
     // In the conversation every AI turn is labelled and every answer is the candidate's.
-    expect(screen.getAllByText('AI interviewer')).toHaveLength(2)
+    expect(screen.getAllByText('Interviewer')).toHaveLength(2)
     expect(screen.getAllByText('Candidate').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('I grew the network from twelve to forty.')).toBeInTheDocument()
   })
@@ -221,7 +291,7 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     const { container } = renderPage()
 
-    await screen.findByText('Questions the AI asked')
+    await screen.findByText('Questions asked')
     expect(container.querySelector('video')).toHaveAttribute('src', 'https://signed.example/video')
     expect(screen.getByText(/Reload the page if it stops playing/)).toBeInTheDocument()
   })
@@ -270,7 +340,7 @@ describe('SharedInterviewResultsPage', () => {
 
     expect(await screen.findByText('Just the words the recording contains.')).toBeInTheDocument()
     expect(screen.getByText(/no speaker labels/)).toBeInTheDocument()
-    expect(screen.queryByText('Questions the AI asked')).not.toBeInTheDocument()
+    expect(screen.queryByText('Questions asked')).not.toBeInTheDocument()
   })
 
   it('opens and closes a candidate’s details', async () => {
@@ -279,11 +349,11 @@ describe('SharedInterviewResultsPage', () => {
     renderPage()
     await screen.findByText('Ada Obi')
     // The first completed interview is open; the second is not.
-    expect(screen.getAllByText('Questions the AI asked')).toHaveLength(1)
+    expect(screen.getAllByText('Questions asked')).toHaveLength(1)
 
     fireEvent.click(screen.getByText('Chidi Okafor'))
 
-    expect(screen.getAllByText('Questions the AI asked')).toHaveLength(2)
+    expect(screen.getAllByText('Questions asked')).toHaveLength(2)
   })
 
   it('shortens a long interview focus and can show all of it', async () => {

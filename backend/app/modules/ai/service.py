@@ -296,9 +296,20 @@ class AnthropicCVExtractionService(AIService):
         self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async def decide_interview_follow_up(
-        self, *, question: str, answer: str, interview_brief: str
+        self,
+        *,
+        question: str,
+        answer: str,
+        interview_brief: str,
+        earlier_exchange: str = "",
+        probes_left: int = 1,
+        prepared_probes: list[str] | None = None,
+        only_prepared: bool = False,
     ) -> str | None:
         """Decide whether a strict-interview answer needs a follow-up question.
+
+        ``prepared_probes`` are the employer's own probes for this question; with
+        ``only_prepared`` the model may only pick one of them (the caller checks it did).
 
         Returns the follow-up exactly as the model wrote it, or ``None`` when none is needed
         OR the call failed or its reply cannot be used: a follow-up is a nicety, so any
@@ -307,8 +318,8 @@ class AnthropicCVExtractionService(AIService):
         is the candidate's own speech and goes to the model as data (see the prompt).
         """
         from app.modules.ai.prompts.interview_follow_up import (
-            INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
             build_interview_follow_up_prompt,
+            follow_up_system_prompt,
         )
 
         from .schema import InterviewFollowUpDecision
@@ -318,9 +329,16 @@ class AnthropicCVExtractionService(AIService):
                 self._client,
                 model=settings.anthropic_model_fast,
                 max_tokens=400,
-                system=INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
+                system=follow_up_system_prompt(
+                    has_prepared=bool(prepared_probes), only_prepared=only_prepared
+                ),
                 user=build_interview_follow_up_prompt(
-                    question=question, answer=answer, interview_brief=interview_brief
+                    question=question,
+                    answer=answer,
+                    interview_brief=interview_brief,
+                    earlier_exchange=earlier_exchange,
+                    probes_left=probes_left,
+                    prepared_probes=prepared_probes,
                 ),
                 output_type=InterviewFollowUpDecision,
             )
@@ -339,6 +357,46 @@ class AnthropicCVExtractionService(AIService):
         decision = result.parsed
         return decision.question if decision.needs_follow_up else None
 
+    async def draft_scoring_profile(
+        self, *, job_context: str, interview_brief: str, questions: list[str]
+    ) -> list[dict] | None:
+        """Draft the competencies (name and weight) a job without a scoring profile will be scored
+        on, from the role and its interview questions. Returns the model's list as it wrote it
+        (``[{"name", "weight"}, ...]``), or ``None`` when the call failed or its reply cannot be
+        used: the caller checks and repairs it before saving anything, and a failure just means
+        this interview is scored by the simple scorecard."""
+        from app.modules.ai.prompts.scoring_profile_draft import (
+            SCORING_PROFILE_DRAFT_SYSTEM_PROMPT,
+            build_scoring_profile_draft_prompt,
+        )
+
+        from .schema import ScoringProfileDraft
+
+        try:
+            result = await call_structured(
+                self._client,
+                model=settings.anthropic_model,
+                max_tokens=800,
+                system=SCORING_PROFILE_DRAFT_SYSTEM_PROMPT,
+                user=build_scoring_profile_draft_prompt(
+                    job_context=job_context, interview_brief=interview_brief, questions=questions
+                ),
+                output_type=ScoringProfileDraft,
+            )
+        except Exception as e:
+            logger.error("LLM scoring profile draft failed: %s", e)
+            report_if_credit_exhausted(e, where="scoring_profile_draft")
+            return None
+
+        if not result.ok:
+            logger.error(
+                "LLM scoring profile draft returned no usable answer: %s (stop_reason=%s)",
+                result.error,
+                result.stop_reason,
+            )
+            return None
+        return [{"name": item.name, "weight": item.weight} for item in result.parsed.competencies]
+
     async def draft_interview_questions(
         self,
         *,
@@ -350,8 +408,10 @@ class AnthropicCVExtractionService(AIService):
         interview_brief: str,
         count: int,
         total_seconds: int,
+        practical: bool = False,
     ) -> list[tuple[str, int]] | None:
-        """Draft a job's strict-interview questions from its interview brief.
+        """Draft a job's strict-interview questions from its interview brief. With ``practical``
+        the last question is a practical case (a scenario, scored separately).
 
         Returns ``(question, seconds)`` pairs exactly as the model gave them, or ``None`` when
         the call failed or the reply cannot be used. The caller cleans and limits them
@@ -359,8 +419,8 @@ class AnthropicCVExtractionService(AIService):
         trusted. A cheap, fast model is enough for a short draft the employer reviews.
         """
         from app.modules.ai.prompts.interview_questions import (
-            INTERVIEW_QUESTIONS_SYSTEM_PROMPT,
             build_interview_questions_prompt,
+            interview_questions_system_prompt,
         )
 
         from .schema import DraftedInterviewQuestions
@@ -370,7 +430,7 @@ class AnthropicCVExtractionService(AIService):
                 self._client,
                 model=settings.anthropic_model_fast,
                 max_tokens=1500,
-                system=INTERVIEW_QUESTIONS_SYSTEM_PROMPT,
+                system=interview_questions_system_prompt(practical=practical),
                 user=build_interview_questions_prompt(
                     title=title,
                     seniority=seniority,
@@ -380,6 +440,7 @@ class AnthropicCVExtractionService(AIService):
                     interview_brief=interview_brief,
                     count=count,
                     total_seconds=total_seconds,
+                    practical=practical,
                 ),
                 output_type=DraftedInterviewQuestions,
             )
@@ -679,8 +740,21 @@ class AnthropicCVExtractionService(AIService):
         interview_brief: str,
         transcript: str,
         job_context: str = "",
+        interview_conditions: str = "",
+        scoring_profile: dict | None = None,
+        question_tags: list[dict] | None = None,
+        practical_question: dict | None = None,
     ) -> "InterviewScoringResult":
-        """Score an interview transcript against the employer's brief via Claude."""
+        """Score an interview transcript against the employer's brief via Claude.
+
+        With a ``practical_question`` (``{"number", "text"}``, the interview's practical case) the
+        model also rates it on the five practical criteria, and the result carries that report in
+        ``practical``, apart from the score.
+
+        With a ``scoring_profile`` (``{"competencies", "bands", "key_min_rating"}``, a job's
+        weighted competencies) the model rates exactly those competencies and the weighted
+        total, the band and the key flags are worked out here from its ratings (see
+        ``interviews/scoring_profile.py``); the result carries them in ``weighted``."""
         from app.modules.ai.interview_scorecard import (
             clean_competencies,
             clean_list,
@@ -693,12 +767,18 @@ class AnthropicCVExtractionService(AIService):
             build_interview_scoring_prompt,
         )
         from app.modules.ai.schema import InterviewScoringResult
+        from app.modules.interviews.practical_case import report as practical_report
+        from app.modules.interviews.scoring_profile import normalise, weighted_report
 
         system_prompt, user_prompt = build_interview_scoring_prompt(
             interview_brief=interview_brief,
             transcript=transcript,
             scoring_rubric=SCORECARD_RUBRIC,
             job_context=job_context,
+            interview_conditions=interview_conditions,
+            scoring_profile=scoring_profile["competencies"] if scoring_profile else None,
+            question_tags=question_tags,
+            practical_question=practical_question,
         )
 
         raw = ""
@@ -727,17 +807,33 @@ class AnthropicCVExtractionService(AIService):
             # _parse_response returns a non-dict fallback when the JSON is
             # unusable, and a dict without "score" is just as unusable. Both
             # must read as a failure, never as a score of 0.
-            if not isinstance(data, dict) or data.get("score") is None:
+            if not isinstance(data, dict):
                 raise ValueError("response contained no usable score")
 
             competencies = clean_competencies(data.get("competencies"))
-            # The overall score is the average of the assessed competencies on the scorecard
-            # (1 to 5) times 20, as the prompt says. It is worked out here from the model's own
-            # ratings so the number always agrees with the table the employer reads; with no
-            # usable ratings the model's own overall score stands.
-            score = score_from_competencies(competencies)
-            if score is None:
-                score = max(0, min(100, int(data["score"])))
+            weighted = None
+            if scoring_profile:
+                # A scoring profile fixes the competencies, so the model's own overall score is
+                # not used at all: the weighted total comes from its ratings, and a competency it
+                # did not rate is not assessed (never a zero). Ratings are needed, a score is not.
+                if not isinstance(data.get("competencies"), list):
+                    raise ValueError("response contained no competency ratings")
+                rows = normalise(competencies, scoring_profile["competencies"])
+                weighted = weighted_report(
+                    rows, scoring_profile["bands"], scoring_profile["key_min_rating"]
+                )
+                competencies = rows
+                score = weighted["score"] if weighted["complete"] else 0
+            else:
+                if data.get("score") is None:
+                    raise ValueError("response contained no usable score")
+                # The overall score is the average of the assessed competencies on the scorecard
+                # (1 to 5) times 20, as the prompt says. It is worked out here from the model's
+                # own ratings so the number always agrees with the table the employer reads; with
+                # no usable ratings the model's own overall score stands.
+                score = score_from_competencies(competencies)
+                if score is None:
+                    score = max(0, min(100, int(data["score"])))
 
             return InterviewScoringResult(
                 score=score,
@@ -747,9 +843,19 @@ class AnthropicCVExtractionService(AIService):
                 missing_evidence=data.get("missing_evidence", []),
                 contradictions=data.get("contradictions", []),
                 role_assessed=clean_text(data.get("role_assessed")),
-                competencies=competencies,
+                competencies=[
+                    {**row, "score": row["rating"]} if "rating" in row else row for row in competencies
+                ],
+                weighted=weighted,
+                practical=(
+                    practical_report(data.get("practical_case"), practical_question["number"])
+                    if practical_question
+                    else None
+                ),
                 recommendation=clean_recommendation(data.get("recommendation")),
                 claims_to_verify=clean_list(data.get("claims_to_verify")),
+                reference_check_questions=clean_list(data.get("reference_check_questions")),
+                technical_flags=clean_list(data.get("technical_flags")),
                 candidate_reported=clean_list(data.get("candidate_reported")),
                 follow_up_questions=clean_list(data.get("follow_up_questions")),
                 input_tokens=input_tokens,

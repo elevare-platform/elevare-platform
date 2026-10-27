@@ -237,3 +237,47 @@ describe('CandidateProfilePage, skills on a tablet', () => {
     expect(api.put.mock.calls[0][1].skills).toEqual(['Negotiation'])
   })
 })
+
+describe('CandidateProfilePage, who can see the profile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockProfile = WITHOUT_CV
+  })
+
+  it('starts as Public for a profile that has never had a choice saved, and says so plainly', () => {
+    renderPage()
+
+    expect(screen.getByLabelText('Profile Visibility')).toHaveValue('PUBLIC')
+    expect(screen.getByTestId('visibility-note')).toHaveTextContent('Employers can find you and see your profile. Change this any time.')
+  })
+
+  it('keeps a choice the candidate already made, and says what that choice means', () => {
+    mockProfile = { ...WITHOUT_CV, visibility: 'PRIVATE' }
+    renderPage()
+
+    expect(screen.getByLabelText('Profile Visibility')).toHaveValue('PRIVATE')
+    expect(screen.getByTestId('visibility-note')).toHaveTextContent('Employers cannot find you')
+  })
+
+  it('shows the note for each choice as it is changed', () => {
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText('Profile Visibility'), { target: { value: 'APPLIED_ONLY' } })
+    expect(screen.getByTestId('visibility-note')).toHaveTextContent('Only employers whose jobs you have applied to')
+    fireEvent.change(screen.getByLabelText('Profile Visibility'), { target: { value: 'PRIVATE' } })
+    expect(screen.getByTestId('visibility-note')).toHaveTextContent('Employers cannot find you')
+  })
+
+  it('sends the visibility only when the candidate changed it (Public comes from the server for a new profile)', async () => {
+    api.put.mockResolvedValue({ data: { is_profile_complete: false } })
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText('About You'), { target: { value: 'Sales professional' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save Profile' })) })
+    expect(api.put.mock.calls[0][1]).not.toHaveProperty('visibility')
+
+    fireEvent.change(screen.getByLabelText('Profile Visibility'), { target: { value: 'APPLIED_ONLY' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save Profile' })) })
+    expect(api.put.mock.calls[1][1].visibility).toBe('APPLIED_ONLY')
+  })
+})

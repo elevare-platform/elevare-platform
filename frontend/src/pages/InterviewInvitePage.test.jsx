@@ -43,6 +43,16 @@ describe('InterviewInvitePage, which interview the link opens', () => {
     expect(screen.getByText(/at most 20 minutes/)).toBeInTheDocument()
   })
 
+  it.each([
+    ['NONE', /Only the questions on screen are asked, with no follow-up questions/],
+    ['PROBES_ONLY', /from a list the employer prepared/],
+    [undefined, /Up to two short follow-up questions may be asked/],
+  ])('shows the rules for what happens after an answer (%s), as the employer chose', async (mode, shown) => {
+    renderPage({ ...INFO, style: 'strict', follow_up_mode: mode })
+
+    expect(await screen.findByText(shown)).toBeInTheDocument()
+  })
+
   it('opens the live interview when the invitation is a live one', async () => {
     renderPage({ ...INFO, style: 'live' })
 

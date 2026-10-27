@@ -203,15 +203,15 @@ class ConductMixin:
         job = interview.job
         name = resolve_candidate_name(interview.talent_pool_profile) or "A candidate"
         if reason == END_STOPPED:
-            title = f"{name} stopped their AI interview"
+            title = f"{name} stopped their interview"
             body = (
-                f"{name} chose to stop their AI interview for {job.title}. You can look at what "
+                f"{name} chose to stop their interview for {job.title}. You can look at what "
                 "was recorded and, if you wish, reinstate it so they can carry on."
             )
         else:
-            title = f"{name}'s AI interview ended early"
+            title = f"{name}'s interview ended early"
             body = (
-                f"{name}'s AI interview for {job.title} ended because they left the interview "
+                f"{name}'s interview for {job.title} ended because they left the interview "
                 "screen too often or for too long. The notes are for you to review, they are "
                 "not proof of anything. You can reinstate it so they can carry on."
             )

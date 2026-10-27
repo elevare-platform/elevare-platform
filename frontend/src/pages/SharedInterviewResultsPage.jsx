@@ -7,6 +7,9 @@ import api from '@/lib/api'
 import { parseAssessment } from '@/lib/interviewAssessment'
 import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
 import RecordingClips from '@/components/employer/RecordingClips'
+import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
+import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
+import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
 import { showsClips } from '@/lib/recordingClips'
 
 // What the client is told about each candidate's interview.
@@ -117,7 +120,7 @@ function Questions({ questions }) {
     <div className="rounded-lg border border-brand-blue/30 bg-blue-50/50 p-4">
       <h4 className="text-sm font-semibold text-text flex items-center gap-2 mb-2">
         <MessageCircleQuestion size={16} className="text-brand-blue" aria-hidden="true" />
-        Questions the AI asked
+        Questions asked
       </h4>
       <ol className="space-y-1.5 list-decimal pl-5">
         {questions.map((question, i) => (
@@ -135,7 +138,7 @@ function Conversation({ turns }) {
       {turns.map((turn, i) =>
         turn.speaker === 'AI' ? (
           <div key={i} className="border-l-4 border-brand-blue bg-blue-50/60 rounded-r-lg px-3 py-2">
-            <p className="text-[11px] font-semibold text-brand-blue mb-0.5">AI interviewer</p>
+            <p className="text-[11px] font-semibold text-brand-blue mb-0.5">Interviewer</p>
             <p className="text-sm font-semibold text-text whitespace-pre-wrap">{turn.text}</p>
           </div>
         ) : (
@@ -218,6 +221,16 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
 
           <Questions questions={candidate.questions ?? []} />
 
+          {/* A job with a scoring profile: the weighted table, the total or "incomplete", and the
+              suggested band. The written assessment follows in the card below. */}
+          {candidate.score_report && <WeightedScoreCard report={candidate.score_report} />}
+
+          {/* The practical case, scored on its own and never part of the weighted score */}
+          {candidate.practical_case && <PracticalCaseCard report={candidate.practical_case} />}
+
+          {/* The candidate assessment record, without the company's own panel decision */}
+          {candidate.record && <AssessmentRecordCard record={candidate.record} />}
+
           <div className="grid gap-3 sm:grid-cols-2">
             {interviewed && (
               <Assessment
@@ -225,7 +238,7 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
                 score={candidate.interview_score}
                 summary={interview.summary}
                 sections={interview.sections}
-                emptyText="No AI assessment is available for this interview."
+                emptyText="No assessment is available for this interview."
               />
             )}
             <Assessment
@@ -350,7 +363,7 @@ export default function SharedInterviewResultsPage() {
 
         {focus && (
           <div className="rounded-xl border border-border bg-white p-4">
-            <h2 className="text-sm font-semibold text-text mb-1">What the AI was asked to cover</h2>
+            <h2 className="text-sm font-semibold text-text mb-1">What the interview was set to cover</h2>
             <p className={cn('text-sm text-text whitespace-pre-wrap', longFocus && !showAllFocus && 'line-clamp-4')}>
               {focus}
             </p>

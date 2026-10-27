@@ -4,7 +4,13 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.modules.interviews.schema import RecordingClip, StrictDetail
+from app.modules.interviews.schema import (
+    AssessmentRecord,
+    PracticalCaseReport,
+    RecordingClip,
+    StrictDetail,
+    WeightedScoreReport,
+)
 
 
 class ShareLinkResponse(BaseModel):
@@ -58,6 +64,12 @@ class SharedCandidate(BaseModel):
     video_url: str | None = None
     # One clip per attempt of a reinstated strict interview, oldest first (same short-lived links).
     recordings: list[RecordingClip] = []
+    # The weighted score report, for an interview scored with a scoring profile.
+    score_report: WeightedScoreReport | None = None
+    # The practical case, scored on its own out of 5 (None when the interview had none).
+    practical_case: PracticalCaseReport | None = None
+    # The assessment record, without the company's own panel decision.
+    record: AssessmentRecord | None = None
 
     # What the AI asked, one question per entry, then the whole conversation. When the
     # transcript has no speaker labels, ``turns`` is empty and ``transcript`` holds it as

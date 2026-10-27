@@ -57,6 +57,142 @@ class JobInterviewQuestion(BaseModel):
     time_limit_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     # "AI" (drafted) or "EMPLOYER" (written or edited by the employer).
     source: Mapped[str] = mapped_column(String(10), nullable=False, default="EMPLOYER")
+    # The competency of the job's scoring profile this question was written to test, or None
+    # (optional). Used to warn when a weighted competency has no question, and told to the scorer.
+    competency: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # The employer's own follow-up probes for this question, one per line (docs/08_DECISIONS.md,
+    # item 40). Used according to the job's follow-up mode. None when there are none.
+    probes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How long the candidate has to answer a follow-up on this question (docs/08_DECISIONS.md, item
+    # 41). None means the platform's default (`strict_follow_up_seconds`, 90).
+    follow_up_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The practical case of the interview (docs/08_DECISIONS.md, item 43): a realistic scenario the
+    # candidate works through aloud, scored separately out of 5 and never added to the weighted
+    # score. At most one question of a job is the practical case.
+    is_practical: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+
+
+class JobInterviewSettings(BaseModel):
+    """How a job's strict interview behaves, beyond its questions (docs/08_DECISIONS.md, item 40).
+    One row per job; a job without one uses the standard behaviour. A table of its own, not
+    columns on ``jobs``, so the live jobs schema is untouched (migration p22_0034)."""
+
+    __tablename__ = "job_interview_settings"
+    __table_args__ = (UniqueConstraint("job_id", name="uq_job_interview_settings_job"),)
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # NONE, STANDARD or PROBES_ONLY (enums.FollowUpMode).
+    follow_up_mode: Mapped[str] = mapped_column(String(12), nullable=False, default="STANDARD")
+
+
+class InterviewQuestionTemplate(BaseModel):
+    """A set of interview questions a company saved to use again (docs/08_DECISIONS.md, item 46):
+    the questions with their probes, times and practical case, the follow-up choice, and, if the
+    employer chose to include it, the scoring profile the question tags point to. Owned by the
+    company (decision D2), not by the person who saved it: anyone in the company can use it. A table
+    of its own, so nothing existing is touched (migration p22_0038)."""
+
+    __tablename__ = "interview_question_templates"
+    __table_args__ = (
+        sa.Index(
+            "uq_interview_question_templates_org_name",
+            "organization_id",
+            sa.text("lower(name)"),
+            unique=True,
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # [{"text", "time_limit_seconds", "competency", "probes", "follow_up_seconds", "is_practical"}, ...]
+    questions: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # {"competencies", "bands", "key_min_rating"} or None when the set was saved without one.
+    scoring_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    follow_up_mode: Mapped[str] = mapped_column(String(12), nullable=False, default="STANDARD")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Kept as a name too, so the library still reads if the account is removed.
+    created_by_name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
+class JobScoringProfile(BaseModel):
+    """A job's scoring profile (docs/08_DECISIONS.md, item 36): the competencies the strict
+    interview rates, each with a weight (the weights add up to 100), which of them are "key", and
+    the thresholds of the suggested bands. One row per job; a job without one is scored by the
+    generic scorecard. Kept in a table of its own, not as a column on ``jobs``, so adding it never
+    touches the live jobs schema (see migration p22_0033)."""
+
+    __tablename__ = "job_scoring_profiles"
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    # [{"name": str, "weight": int, "key": bool}, ...] in the order the employer set them.
+    competencies: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # {"strong": 85, "shortlist": 75, "hold": 65}: a total at or over a threshold gets that band.
+    bands: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # A key competency rated under this caps the band at "Hold for evidence".
+    key_min_rating: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    # Which template it was started from (None: written by the employer), for the editor.
+    template_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class InterviewWeightedScore(BaseModel):
+    """The weighted score report of one interview scored with a scoring profile: the rows with
+    their ratings, the points, whether it is complete, the band and the key flags, as they were
+    when it was scored (a later edit of the profile never changes a past report). One row per
+    interview. A new table, so the interviews table is untouched."""
+
+    __tablename__ = "interview_weighted_scores"
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    report: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class InterviewPanelDecision(BaseModel):
+    """The hiring panel's own decision about a candidate after an interview, with its rationale and
+    who signed it off (docs/08_DECISIONS.md, item 44; the client's assessment record). A human
+    decision, never the system's: the options stop at the shortlist, because hiring is outside the
+    platform's scope. Append-only: recording a decision again adds a row, and the latest is the one
+    shown, so what was decided before is kept."""
+
+    __tablename__ = "interview_panel_decisions"
+    __table_args__ = (sa.Index("ix_interview_panel_decisions_interview", "interview_id", "decided_at"),)
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # STRONG_SHORTLIST, SHORTLIST, HOLD or DO_NOT_SHORTLIST (enums.PanelDecision).
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    # Who signed it off. Kept as a name too, so the record still reads if the account is removed.
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_by_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class StrictInterviewRun(BaseModel):
@@ -86,8 +222,13 @@ class StrictInterviewRun(BaseModel):
     rules_accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # [{"text": ..., "time_limit_seconds": ...}, ...] in the order asked. None until started.
+    # [{"text": ..., "time_limit_seconds": ..., "competency": ..., "probes": ...}, ...] in the order
+    # asked. None until started.
     questions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # The job's follow-up mode, copied when the interview starts (like the questions) so an edit
+    # made later never changes an interview that has begun. None for a run started before the
+    # mode existed, which is the standard.
+    follow_up_mode: Mapped[str | None] = mapped_column(String(12), nullable=True)
     # When the interview's own clock began. The whole interview ends this long after.
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

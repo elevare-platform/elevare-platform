@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import {
   User, ArrowLeft, ChevronDown, X,
   Share2, Link as LinkIcon, Copy, Check as CheckIcon,
   Upload, CheckCircle2, AlertCircle, Users, Brain, BarChart3, Sparkles, Coins,
-  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil, ListOrdered,
+  Eye, FileText, CalendarCheck, Send, PlayCircle, Pencil, ListOrdered, Scale,
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -20,6 +20,7 @@ import CandidateProfilePanel from '@/components/candidates/CandidateProfilePanel
 import SourcedCvModal from '@/components/employer/SourcedCvModal'
 import CandidateActionModal from '@/components/employer/CandidateActionModal'
 import InviteByEmailForm from '@/components/employer/InviteByEmailForm'
+import ScoringProfileModal from '@/components/employer/ScoringProfileModal'
 import TalentMatchCard from '@/components/employer/TalentMatchCard'
 import { AgeLabel, MinScoreNote, TalentPoolFilterControls } from '@/components/employer/TalentPoolFilters'
 import { useTalentPoolFilters } from '@/hooks/useTalentPoolFilters'
@@ -37,6 +38,8 @@ import { useReportStep } from '@/hooks/useOnboarding'
 import { useRescore } from '@/hooks/useRescore'
 import { describeRescore } from '@/lib/rescore'
 import RescoreBar from '@/components/employer/RescoreBar'
+import NewBadge from '@/components/employer/NewBadge'
+import NotOpenedTab from '@/components/employer/NotOpenedTab'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -74,7 +77,7 @@ const TRANSITIONS = {
 const FILTER_TABS = ['all', 'SUBMITTED', 'REVIEWING', 'SHORTLISTED', 'INTERVIEWING', 'HIRED', 'REJECTED', 'WITHDRAWN']
 
 const SORT_OPTIONS = [
-  { value: 'ai_score', label: 'AI Score' },
+  { value: 'ai_score', label: 'Match score' },
   { value: 'date', label: 'Date Applied' },
   { value: 'match_score', label: 'Match Score' },
 ]
@@ -100,7 +103,7 @@ function formatDate(isoString) {
 
 // ─── AI score badge ───────────────────────────────────────────────────────────
 
-function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weaknesses }) {
+function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weaknesses, onOpen }) {
   const [open, setOpen] = useState(false)
   const [rescoring, setRescoring] = useState(false)
   const [btnRef, setBtnRef] = useState(null)
@@ -123,9 +126,9 @@ function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weakne
       <button
         ref={setBtnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        title={hasScore ? 'AI Score (click for reasoning)' : (failureHelp ?? 'AI score not yet computed')}
-        aria-label={`AI score: ${band.label}`}
+        onClick={() => { if (!open) onOpen?.(); setOpen((v) => !v) }}
+        title={hasScore ? 'Match score (click for reasoning)' : (failureHelp ?? 'Match score not yet computed')}
+        aria-label={`Match score: ${band.label}`}
         className={cn(
           'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer whitespace-nowrap',
           band.className
@@ -146,7 +149,7 @@ function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weakne
               maxHeight: `calc(100vh - ${btnRect.bottom + 24}px)`,
             }}
             role="dialog"
-            aria-label="AI fit reasoning"
+            aria-label="Fit reasoning"
           >
             <button
               type="button"
@@ -473,9 +476,9 @@ function SendInterviewInvitePrompt({
       <div className="w-full max-w-md rounded-xl border border-border bg-white p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-text">Send AI interview invite?</h2>
+            <h2 className="text-lg font-bold text-text">Send interview invite?</h2>
             <p className="text-sm text-text-muted mt-1">
-              {candidateName} will get an email invite to a live AI video interview for this role.
+              {candidateName} will get an email invite to a live video interview for this role.
             </p>
           </div>
           <button
@@ -514,7 +517,7 @@ function SendInterviewInvitePrompt({
 
 // ─── Applicant card ───────────────────────────────────────────────────────────
 
-function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCandidates, interviewList, onRescore }) {
+function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCandidates, interviewList, onRescore, onSeen }) {
   const [status, setStatus] = useState(application.status)
   const [updating, setUpdating] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -551,7 +554,11 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
     }
   }
 
+  // Opening the CV, the cover letter or the profile counts as having looked at this applicant.
+  const markSeen = () => onSeen?.(application.id, application.is_new)
+
   const handleDownloadCv = async () => {
+    markSeen()
     try {
       window.open(application.cv_url, '_blank', 'noopener,noreferrer')
     } catch {
@@ -577,7 +584,10 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-text text-sm break-words">{candidateName}</p>
+          <p className="font-semibold text-text text-sm break-words">
+            {candidateName}
+            {application.is_new && <span className="ml-2 align-middle"><NewBadge /></span>}
+          </p>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
             {application.location && <span>📍 {application.location}</span>}
             {application.years_of_experience != null && (
@@ -588,10 +598,10 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
         </div>
 
         {/* Controls. On a phone they take their own full-width rows, in this order:
-            row 1: AI score, status, interview-list icon; row 2: Move to, CV, View profile.
+            row 1: match score, status, interview-list icon; row 2: Move to, CV, View profile.
             The `order-*` classes set that order; `sm:order-none` puts them back in
             reading order on a wider screen, where nothing is hidden. The heart, the
-            "AI interview sent" tag and the cover letter are desktop only. */}
+            "Interview sent" tag and the cover letter are desktop only. */}
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
           {savedCandidates && application.candidate_profile_id && (
             <div className="hidden sm:block">
@@ -606,7 +616,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
             <div className="order-3 sm:order-none">
               <InterviewListButton
                 onList={interviewList.isOnList({ candidateProfileId: application.candidate_profile_id })}
-                onToggle={() => interviewList.toggle({ candidateProfileId: application.candidate_profile_id })}
+                onToggle={() => { markSeen(); interviewList.toggle({ candidateProfileId: application.candidate_profile_id }) }}
               />
             </div>
           )}
@@ -617,7 +627,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
 
           {hasAiInterview && (
             <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-blue/10 text-brand-blue flex-shrink-0">
-              AI interview sent
+              Interview sent
             </span>
           )}
 
@@ -630,6 +640,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
               fitSummary={application.ai_fit_summary}
               strengths={application.ai_strengths}
               weaknesses={application.ai_weaknesses}
+              onOpen={markSeen}
             />
           </div>
 
@@ -666,7 +677,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
           {application.cover_letter && (
             <button
               type="button"
-              onClick={() => setExpanded((v) => !v)}
+              onClick={() => { markSeen(); setExpanded((v) => !v) }}
               className="hidden sm:inline flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none"
             >
               {expanded ? 'Hide letter' : 'Cover letter'}
@@ -677,7 +688,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
           {application.candidate_profile_id && (
             <button
               type="button"
-              onClick={() => setProfileOpen(true)}
+              onClick={() => { markSeen(); setProfileOpen(true) }}
               className="flex-shrink-0 text-xs text-brand-blue hover:underline focus-visible:outline-none order-7 sm:order-none"
             >
               View profile
@@ -780,7 +791,7 @@ function TalentPoolProfilePanel({ profile, onClose, onRescore }) {
             <div className="rounded-xl border border-border p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
-                  <Brain size={12} /> AI Assessment
+                  <Brain size={12} /> Assessment
                 </p>
                 <span
                   className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(profile.ai_score).className)}
@@ -831,7 +842,7 @@ function TalentPoolProfilePanel({ profile, onClose, onRescore }) {
           {profile.ai_score == null && (
             <div className="rounded-lg bg-surface-muted border border-border px-4 py-3 text-sm text-text-muted text-center">
               {scoreFailureHelp(profile.ai_score_failure)
-                ?? 'AI scoring not yet computed. Attach this profile to a job and trigger scoring.'}
+                ?? 'Scoring not yet computed. Attach this profile to a job and trigger scoring.'}
               {profile.ai_score_failure && onRescore && (
                 <div className="mt-3">
                   <button
@@ -859,11 +870,31 @@ function TalentPoolProfilePanel({ profile, onClose, onRescore }) {
 
 function PipelineTab({
   profiles, loading, error, total, hasMore, filters, jobId,
-  onProfileClick, onRefresh, onLoadMore, interviewList,
+  onProfileClick, onRefresh, onLoadMore, interviewList, onSeen,
+  onlyNew = false, newCount = 0, onShowNew,
 }) {
   const filtered = filters.isFiltered(true)
+  const tabClass = (selected) => cn(
+    'px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
+    selected
+      ? 'bg-brand-blue text-white'
+      : 'bg-surface border border-border text-text-muted hover:text-text'
+  )
   return (
     <div className="space-y-4">
+      {/* All CVs, or only the ones not opened yet, with how many */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Filter the pipeline by opened">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!onlyNew}
+          onClick={() => onShowNew?.(false)}
+          className={tabClass(!onlyNew)}
+        >
+          All
+        </button>
+        <NotOpenedTab selected={onlyNew} count={newCount} onClick={() => onShowNew?.(true)} />
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <p className="text-sm text-text-muted">
           External CVs uploaded and scored against this job.
@@ -903,7 +934,15 @@ function PipelineTab({
         </div>
       )}
 
-      {!loading && !error && profiles.length === 0 && (
+      {!loading && !error && profiles.length === 0 && onlyNew && (
+        <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
+          <Users size={28} className="mx-auto text-text-muted mb-3" />
+          <p className="font-medium text-text text-sm mb-1">You have opened every CV</p>
+          <p className="text-xs text-text-muted">New CVs will show here until you open them.</p>
+        </div>
+      )}
+
+      {!loading && !error && profiles.length === 0 && !onlyNew && (
         <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
           <Users size={28} className="mx-auto text-text-muted mb-3" />
           <p className="font-medium text-text text-sm mb-1">
@@ -943,7 +982,7 @@ function PipelineTab({
                   candidate's name has room to be read */}
               <button
                 type="button"
-                onClick={() => onProfileClick(p)}
+                onClick={() => { onSeen?.(p.id, p.is_new); onProfileClick(p) }}
                 className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 text-left"
               >
                 <span className="hidden sm:flex w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold items-center justify-center flex-shrink-0">
@@ -954,8 +993,9 @@ function PipelineTab({
                   <Users size={15} className="text-brand-blue" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-text truncate">
-                    {p.candidate_name ?? p.candidate_email ?? 'Unnamed Candidate'}
+                  <p className="flex items-center gap-2 text-sm font-semibold text-text">
+                    <span className="truncate">{p.candidate_name ?? p.candidate_email ?? 'Unnamed Candidate'}</span>
+                    {p.is_new && <NewBadge />}
                   </p>
                   <p className="text-xs text-text-muted truncate">
                     {[p.candidate_current_title, p.candidate_email].filter(Boolean).join(' · ') || 'No details yet'}
@@ -983,10 +1023,13 @@ function PipelineTab({
                     talentPoolProfileId: p.id,
                     candidateProfileId: p.candidate_profile_id,
                   })}
-                  onToggle={() => interviewList.toggle({
-                    talentPoolProfileId: p.id,
-                    candidateProfileId: p.candidate_profile_id,
-                  })}
+                  onToggle={() => {
+                    onSeen?.(p.id, p.is_new)
+                    interviewList.toggle({
+                      talentPoolProfileId: p.id,
+                      candidateProfileId: p.candidate_profile_id,
+                    })
+                  }}
                 />
               )}
             </div>
@@ -1037,7 +1080,7 @@ function AiMatchesTab({
     return (
       <div className="text-center py-16 px-4 rounded-xl border border-dashed border-border bg-white">
         <Sparkles size={28} className="mx-auto text-brand-blue mb-3" />
-        <p className="font-medium text-text text-sm mb-1">AI Talent Matches is part of the Professional plan</p>
+        <p className="font-medium text-text text-sm mb-1">Talent Matches is part of the Professional plan</p>
         <p className="text-xs text-text-muted mb-4 max-w-sm mx-auto">
           Upgrade to see the talent pool candidates ranked by how well they fit this job.
         </p>
@@ -1056,7 +1099,7 @@ function AiMatchesTab({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-text-muted flex items-center gap-1.5">
           <Sparkles size={14} className="text-brand-blue" />
-          Talent pool candidates ranked by AI similarity to this job.
+          Talent pool candidates ranked by similarity to this job.
         </p>
         <div className="flex items-center gap-3">
           {!creditsLoading && creditsBalance != null && (
@@ -1337,7 +1380,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
             onClick={() => setShowInterviewDetail(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue/5 transition-colors"
           >
-            <PlayCircle size={13} /> {statusMeta.reviewLabel ?? 'Review AI Interview'}
+            <PlayCircle size={13} /> {statusMeta.reviewLabel ?? 'Review interview'}
           </button>
           <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
         </div>
@@ -1408,6 +1451,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
   const [bulkSummary, setBulkSummary] = useState(null)
   const [showBriefModal, setShowBriefModal] = useState(false)
   const [showQuestionsModal, setShowQuestionsModal] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
   // What an interview costs and the balance, shown before anything is sent and
   // refreshed after each send (a send takes credits).
   const [pricing, setPricing] = useState(null)
@@ -1497,23 +1541,41 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
 
   // The strict interview shows each candidate the same list of questions. Only offered when the
   // platform's interview style is "strict"; with the live interview there are no questions to edit.
+  // The scoring profile (competencies with weights) sits beside it, for the same reason.
   const questionsButton = pricing?.style === 'strict' && (
-    <button
-      type="button"
-      onClick={() => setShowQuestionsModal(true)}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
-    >
-      <ListOrdered size={13} />
-      Interview questions
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setShowQuestionsModal(true)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
+      >
+        <ListOrdered size={13} />
+        Interview questions
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowProfileModal(true)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text hover:bg-surface-muted transition-colors"
+      >
+        <Scale size={13} />
+        Scoring profile
+      </button>
+    </>
   )
 
-  const questionsModal = showQuestionsModal && (
-    <InterviewQuestionsModal
-      jobId={jobId}
-      hasBrief={hasInterviewBrief}
-      onClose={() => setShowQuestionsModal(false)}
-    />
+  const questionsModal = (
+    <>
+      {showQuestionsModal && (
+        <InterviewQuestionsModal
+          jobId={jobId}
+          hasBrief={hasInterviewBrief}
+          onClose={() => setShowQuestionsModal(false)}
+        />
+      )}
+      {showProfileModal && (
+        <ScoringProfileModal jobId={jobId} onClose={() => setShowProfileModal(false)} />
+      )}
+    </>
   )
 
   // Send the interview to an email address with no CV. Only once the interview is set up, since
@@ -1541,7 +1603,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
           <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
           <p className="text-xs text-text-muted">
-            Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above
+            Add candidates from Applicants, Talent Pipeline, or Talent Matches above
             {hasInterviewBrief ? ', or send the interview to an email address.' : '.'}
           </p>
         </div>
@@ -1587,7 +1649,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
             onClick={() => setShowBriefModal(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
           >
-            Set up AI interview →
+            Set up interview →
           </button>
         </div>
       )}
@@ -1637,6 +1699,9 @@ export default function ApplicantsPage() {
   const [pipelineError, setPipelineError] = useState(null)
   const [pipelineCursor, setPipelineCursor] = useState(null)
   const [pipelineTotal, setPipelineTotal] = useState(null)
+  // CVs sourced for this job that the employer has not opened, and whether the tab shows only those
+  const [pipelineNewCount, setPipelineNewCount] = useState(0)
+  const [pipelineOnlyNew, setPipelineOnlyNew] = useState(false)
   const pipelineFilters = useTalentPoolFilters()
   const { toParams: pipelineParams } = pipelineFilters
   const [selectedProfile, setSelectedProfile] = useState(null) // for detail panel
@@ -1662,6 +1727,17 @@ export default function ApplicantsPage() {
       .catch(() => {})
   }, [jobId])
 
+  // Applicants who applied since the employer first used the markers and have not been opened,
+  // and whether the list shows only those.
+  const [newApplicantCount, setNewApplicantCount] = useState(0)
+  const [onlyNew, setOnlyNew] = useState(false)
+  const loadNewApplicantCount = useCallback(() => {
+    api.get(`/api/v1/applications/job/${jobId}/new-count`)
+      .then(({ data }) => setNewApplicantCount(data.count ?? 0))
+      .catch(() => {})
+  }, [jobId])
+  useEffect(() => { loadNewApplicantCount() }, [loadNewApplicantCount])
+
   const showToast = useCallback((msg) => {
     setToast(msg)
     // Longer for a plan/limit error — needs enough time to read and click
@@ -1678,6 +1754,7 @@ export default function ApplicantsPage() {
       if (nextCursor) params.cursor = nextCursor
       // Pass sort=ai_score to backend when that sort is active
       if (sortBy === 'ai_score') params.sort = 'ai_score'
+      if (onlyNew) params.unseen = true
 
       const { data } = await api.get(`/api/v1/applications/job/${jobId}`, { params })
       const items = data.items ?? data
@@ -1696,7 +1773,31 @@ export default function ApplicantsPage() {
     } finally {
       setLoading(false)
     }
+  }, [jobId, onlyNew])
+
+  // The employer opened an applicant (CV, cover letter or profile): it stops being new. The screen
+  // updates at once and the server is told in the background (a failure only means it shows as
+  // new again later). `wasNew` is what the row on screen showed when it was opened.
+  const handleApplicantSeen = useCallback((applicationId, wasNew) => {
+    if (!wasNew) return
+    setApplicants((prev) => prev.map((a) => (a.id === applicationId ? { ...a, is_new: false } : a)))
+    setNewApplicantCount((count) => Math.max(0, count - 1))
+    api.post(`/api/v1/applications/${applicationId}/seen`).catch(() => loadNewApplicantCount())
+  }, [loadNewApplicantCount])
+
+  const loadPipelineNewCount = useCallback(() => {
+    api.get('/api/v1/talent-pool/new-count', { params: { job_id: jobId } })
+      .then(({ data }) => setPipelineNewCount(data.count ?? 0))
+      .catch(() => {})
   }, [jobId])
+  useEffect(() => { loadPipelineNewCount() }, [loadPipelineNewCount])
+
+  const handlePipelineSeen = useCallback((profileId, wasNew) => {
+    if (!wasNew) return
+    setPipeline((prev) => prev.map((p) => (p.id === profileId ? { ...p, is_new: false } : p)))
+    setPipelineNewCount((count) => Math.max(0, count - 1))
+    api.post(`/api/v1/talent-pool/${profileId}/seen`).catch(() => loadPipelineNewCount())
+  }, [loadPipelineNewCount])
 
   // Fetch job title as fallback when there are no applicants yet
   useEffect(() => {
@@ -1725,6 +1826,7 @@ export default function ApplicantsPage() {
     setPipelineError(null)
     try {
       const params = { job_id: jobId, limit: 50, ...pipelineParams(true) }
+      if (pipelineOnlyNew) params.unseen = true
       if (cursor) params.cursor = cursor
       const { data } = await api.get('/api/v1/talent-pool', { params })
       const items = data.items ?? []
@@ -1736,7 +1838,7 @@ export default function ApplicantsPage() {
     } finally {
       setPipelineLoading(false)
     }
-  }, [jobId, pipelineParams])
+  }, [jobId, pipelineParams, pipelineOnlyNew])
 
   // Load pipeline profiles when the Pipeline tab is activated or a filter changes
   useEffect(() => {
@@ -1815,7 +1917,7 @@ export default function ApplicantsPage() {
             {[
               { key: 'applicants', label: 'Applicants' },
               { key: 'pipeline', label: 'Talent Pipeline' },
-              { key: 'ai-matches', label: 'AI Talent Matches' },
+              { key: 'ai-matches', label: 'Talent Matches' },
               { key: 'interview-list', label: 'Interview List' },
             ].map(({ key, label }) => (
               <button key={key} onClick={() => { setMainTab(key); if (key === 'ai-matches') setNewMatchCount(0) }}
@@ -1829,6 +1931,15 @@ export default function ApplicantsPage() {
                 {key === 'ai-matches' && newMatchCount > 0 && (
                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-brand-amber text-white text-[9px] font-bold leading-none">
                     {newMatchCount > 9 ? '9+' : newMatchCount}
+                  </span>
+                )}
+                {/* Applicants and CVs not opened yet, so the employer is told before opening the tab */}
+                {(key === 'applicants' ? newApplicantCount : key === 'pipeline' ? pipelineNewCount : 0) > 0 && (
+                  <span
+                    data-testid={`${key}-new-count`}
+                    className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-brand-blue text-white text-[9px] font-bold leading-none"
+                  >
+                    {Math.min(key === 'applicants' ? newApplicantCount : pipelineNewCount, 99)}
                   </span>
                 )}
               </button>
@@ -1846,8 +1957,12 @@ export default function ApplicantsPage() {
               filters={pipelineFilters}
               jobId={jobId}
               onProfileClick={setSelectedProfile}
+              onSeen={handlePipelineSeen}
+              onlyNew={pipelineOnlyNew}
+              newCount={pipelineNewCount}
+              onShowNew={setPipelineOnlyNew}
               interviewList={interviewList}
-              onRefresh={() => loadPipeline(true)}
+              onRefresh={() => { loadPipeline(true); loadPipelineNewCount() }}
               onLoadMore={() => loadPipeline(false, pipelineCursor)}
             />
           ) : mainTab === 'ai-matches' ? (
@@ -1874,22 +1989,34 @@ export default function ApplicantsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
             {/* One swipeable row on a phone; wraps onto several rows on a wider screen */}
             <div className="flex w-full gap-1.5 overflow-x-auto pb-1 sm:w-auto sm:flex-wrap sm:overflow-visible sm:pb-0" role="tablist" aria-label="Filter applicants by status">
-              {FILTER_TABS.map((tab) => (
-                <button
-                  key={tab}
-                  role="tab"
-                  aria-selected={activeTab === tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={cn(
-                    'px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors whitespace-nowrap flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
-                    activeTab === tab
-                      ? 'bg-brand-blue text-white'
-                      : 'bg-surface border border-border text-text-muted hover:text-text'
-                  )}
-                >
-                  {tab === 'all' ? 'All' : STATUS_LABELS[tab]}
-                </button>
-              ))}
+              {FILTER_TABS.map((tab) => {
+                const selected = activeTab === tab && !(tab === 'all' && onlyNew)
+                return (
+                  <Fragment key={tab}>
+                    <button
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => { setOnlyNew(false); setActiveTab(tab) }}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors whitespace-nowrap flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue',
+                        selected
+                          ? 'bg-brand-blue text-white'
+                          : 'bg-surface border border-border text-text-muted hover:text-text'
+                      )}
+                    >
+                      {tab === 'all' ? 'All' : STATUS_LABELS[tab]}
+                    </button>
+                    {/* Right after "All": the applicants not opened yet, with how many */}
+                    {tab === 'all' && (
+                      <NotOpenedTab
+                        selected={onlyNew}
+                        count={newApplicantCount}
+                        onClick={() => { setActiveTab('all'); setOnlyNew(true) }}
+                      />
+                    )}
+                  </Fragment>
+                )
+              })}
             </div>
 
             <div className="flex items-center gap-2">
@@ -1922,11 +2049,15 @@ export default function ApplicantsPage() {
 
           {!loading && applicants.length === 0 && !error && (
             <div className="text-center py-20">
-              <p className="text-lg font-semibold text-text mb-1">No applicants yet</p>
+              <p className="text-lg font-semibold text-text mb-1">
+                {onlyNew ? 'You have opened every applicant' : 'No applicants yet'}
+              </p>
               <p className="text-sm text-text-muted">
-                {activeTab === 'all'
-                  ? 'Applications will appear here once candidates apply.'
-                  : `No ${STATUS_LABELS[activeTab] ?? activeTab} applicants.`}
+                {onlyNew
+                  ? 'New applicants will show here until you open them.'
+                  : activeTab === 'all'
+                    ? 'Applications will appear here once candidates apply.'
+                    : `No ${STATUS_LABELS[activeTab] ?? activeTab} applicants.`}
               </p>
             </div>
           )}
@@ -1944,6 +2075,7 @@ export default function ApplicantsPage() {
                   savedCandidates={savedCandidates}
                   interviewList={interviewList}
                   onRescore={() => handleRescore({ application_id: app.id })}
+                  onSeen={handleApplicantSeen}
                 />
               ))}
             </div>

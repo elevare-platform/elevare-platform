@@ -200,7 +200,7 @@ describe('TalentPoolPage jobs to attach CVs to', () => {
     // The drawer's "Attach to Job" dropdown is the one whose first option is "No job".
     const noJob = await screen.findByRole('option', { name: /no job \(add to pipeline only\)/i })
     expect(noJob.closest('select')).toHaveValue('job-9')
-    expect(screen.getByText(/AI scoring will run automatically after parsing/)).toBeInTheDocument()
+    expect(screen.getByText(/Scoring will run automatically after parsing/)).toBeInTheDocument()
   })
 })
 

@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import JobNotFoundError
 from app.core.pagination import paginate_cursor
+from app.modules.jobs.deadline import deadline_not_passed
 from app.modules.jobs.enums import (
     ContractType,
     JobStatus,
@@ -110,10 +111,12 @@ class JobRepository:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
-        """Return paginated active jobs with optional filters."""
+        """Return paginated active jobs with optional filters. Jobs whose application deadline
+        has passed are left out: a candidate cannot apply to them."""
         stmt = (
             select(Job)
             .where(Job.status == JobStatus.ACTIVE.value)
+            .where(deadline_not_passed())
             .options(self._with_employer_profile())
         )
 

@@ -149,6 +149,32 @@ async def test_list_active_returns_only_active(db_session):
 
 
 @pytest.mark.asyncio
+async def test_list_active_leaves_out_jobs_whose_application_deadline_has_passed(db_session):
+    """An ACTIVE job past its deadline cannot be applied to, so it is not offered; one with no
+    deadline, or a deadline still ahead, is."""
+    from datetime import UTC, datetime, timedelta
+
+    from tests.conftest import make_employer, make_job
+
+    employer = make_employer()
+    db_session.add(employer)
+    await db_session.flush()
+    now = datetime.now(UTC)
+    db_session.add_all([
+        make_job(employer.id, title="No deadline"),
+        make_job(employer.id, title="Open", application_deadline=now + timedelta(days=3)),
+        make_job(employer.id, title="Expired", application_deadline=now - timedelta(days=3)),
+    ])
+    await db_session.flush()
+
+    result = await JobRepository(db_session).list_active(JobFilterParams(), limit=20)
+
+    titles = {j.title for j in result["items"]}
+    assert {"No deadline", "Open"} <= titles
+    assert "Expired" not in titles
+
+
+@pytest.mark.asyncio
 async def test_list_active_filters_by_work_model(db_session):
     """list_active() filters by work_model when provided."""
     from tests.conftest import make_employer, make_job

@@ -20,12 +20,28 @@ class InterviewQuestionIn(BaseModel):
     text: str = Field(max_length=5000)
     time_limit_seconds: int
     source: QuestionSource = "EMPLOYER"
+    # The competency of the job's scoring profile this question tests (optional).
+    competency: str | None = Field(default=None, max_length=200)
+    # The employer's own follow-up probes for this question, one per line (optional). The real
+    # limits are checked in ``question_rules``; this only stops an absurdly large request.
+    probes: str | None = Field(default=None, max_length=5000)
+    # How long the candidate has to answer a follow-up on this question, in seconds (30 to 300).
+    # Left out, the platform default (90) applies. The range is checked in ``question_rules``.
+    follow_up_seconds: int | None = Field(default=None)
+    # True for the interview's practical case: a scenario scored separately out of 5 and never part
+    # of the weighted score. At most one question of a job (checked in ``question_rules``).
+    is_practical: bool = False
+
+
+FollowUpModeName = Literal["NONE", "STANDARD", "PROBES_ONLY"]
 
 
 class InterviewQuestionsPutRequest(BaseModel):
     """The employer's whole list, in the order shown. An empty list clears the questions."""
 
     questions: list[InterviewQuestionIn] = Field(max_length=50)
+    # What the AI may do after an answer, for this job. Left out, the job keeps what it has.
+    follow_up_mode: FollowUpModeName | None = None
 
 
 class InterviewQuestionsDraftRequest(BaseModel):
@@ -43,17 +59,40 @@ class SavedInterviewQuestion(BaseModel):
     text: str
     time_limit_seconds: int
     source: QuestionSource
+    competency: str | None = None
+    probes: str | None = None
+    follow_up_seconds: int | None = None
+    is_practical: bool = False
 
 
 class DraftedInterviewQuestion(BaseModel):
     text: str
     time_limit_seconds: int
     source: QuestionSource = "AI"
+    competency: str | None = None
+    probes: str | None = None
+    follow_up_seconds: int | None = None
+    is_practical: bool = False
 
 
 class ClosingQuestion(BaseModel):
     text: str
     time_limit_seconds: int
+
+
+class QuestionTemplateInfo(BaseModel):
+    """A ready-made set of questions an employer can start a job from (the Colton Group roles)."""
+
+    code: str
+    title: str
+    question_count: int
+    total_seconds: int
+
+
+class QuestionTemplateApplyRequest(BaseModel):
+    """Which template to start the job from."""
+
+    code: str = Field(min_length=1, max_length=60)
 
 
 class _QuestionLimits(BaseModel):
@@ -68,6 +107,14 @@ class _QuestionLimits(BaseModel):
     # Which interview new invitations use ("live" or "strict"). The questions editor is only
     # shown when it is "strict".
     style: Literal["live", "strict"]
+    # The competencies of the job's scoring profile (for the tag on each question), and which of
+    # them no saved question is tagged with. Both empty for a job without a profile.
+    competencies: list[str] = []
+    untested_competencies: list[str] = []
+    # What the AI may do after an answer, for this job: NONE, STANDARD or PROBES_ONLY.
+    follow_up_mode: FollowUpModeName = "STANDARD"
+    # The ready-made question sets the employer can start from.
+    question_templates: list[QuestionTemplateInfo] = []
 
 
 class InterviewQuestionsResponse(_QuestionLimits):
@@ -78,6 +125,93 @@ class InterviewQuestionsDraftResponse(_QuestionLimits):
     """A draft. Nothing is saved until the employer saves it."""
 
     questions: list[DraftedInterviewQuestion]
+
+
+class LibraryQuestion(BaseModel):
+    """One question of a set in the template library, as it would be loaded."""
+
+    text: str
+    time_limit_seconds: int
+    source: QuestionSource = "EMPLOYER"
+    competency: str | None = None
+    probes: str | None = None
+    follow_up_seconds: int | None = None
+    is_practical: bool = False
+
+
+class LibraryTemplate(BaseModel):
+    """A set of questions in the library: a built-in role set (``kind`` BUILT_IN, ``id`` its code) or
+    one the user's company saved (``kind`` COMPANY, ``id`` its uuid). ``can_edit`` is whether the
+    caller may rename or delete it (the person who saved it, or the company owner)."""
+
+    id: str
+    kind: Literal["BUILT_IN", "COMPANY"]
+    name: str
+    question_count: int
+    total_seconds: int
+    has_practical: bool
+    has_scoring_profile: bool
+    competencies: list[str] = []
+    follow_up_mode: FollowUpModeName = "STANDARD"
+    created_by_name: str | None = None
+    created_at: datetime | None = None
+    can_edit: bool = False
+    questions: list[LibraryQuestion]
+
+
+class QuestionLibraryResponse(BaseModel):
+    """The library: the built-in role sets and the company's saved sets that match the search.
+    ``can_save`` is false for a user who has no company yet."""
+
+    built_in: list[LibraryTemplate]
+    company: list[LibraryTemplate]
+    can_save: bool
+
+
+class JobSetSummary(BaseModel):
+    """Another job of the company that has interview questions, to copy them from."""
+
+    job_id: uuid.UUID
+    title: str
+    question_count: int
+    total_seconds: int
+    has_practical: bool
+
+
+class JobSetsResponse(BaseModel):
+    items: list[JobSetSummary]
+
+
+class SaveTemplateRequest(BaseModel):
+    """Save the questions being edited as a template of the company. ``include_profile`` also keeps the
+    job's scoring profile (the tags need it)."""
+
+    job_id: uuid.UUID
+    name: str = Field(max_length=300)
+    questions: list[InterviewQuestionIn] = Field(max_length=50)
+    include_profile: bool = True
+    follow_up_mode: FollowUpModeName = "STANDARD"
+
+
+class RenameTemplateRequest(BaseModel):
+    name: str = Field(max_length=300)
+
+
+class ApplySavedTemplateRequest(BaseModel):
+    template_id: uuid.UUID
+
+
+class ApplyJobSetRequest(BaseModel):
+    source_job_id: uuid.UUID
+
+
+class InterviewQuestionsTemplateResponse(_QuestionLimits):
+    """The questions of a template the employer started from. ``saved`` is true when they were
+    saved at once; false when their answer times do not fit the interview's time limit, so they
+    are only shown, for the employer to shorten and save."""
+
+    questions: list[DraftedInterviewQuestion]
+    saved: bool
 
 
 class InterviewSessionResponse(BaseModel):
@@ -175,6 +309,8 @@ class CandidateInterviewDetailResponse(CandidateInterviewResponse):
     style: Literal["live", "strict"]
     # A strict interview that has been started (so the screen offers "Continue", not the rules).
     started: bool = False
+    # What the AI may do after an answer, so the rules the candidate reads say the same.
+    follow_up_mode: FollowUpModeName = "STANDARD"
 
 
 class StrictConductEvent(BaseModel):
@@ -224,6 +360,93 @@ class StrictDetail(BaseModel):
     turns: list[StrictAnswer]
 
 
+class WeightedScoreReport(BaseModel):
+    """The weighted score of an interview scored with a scoring profile, as it was when scored.
+
+    ``points`` is earned out of ``assessed_weight`` (the weight of the competencies that were
+    rated) and ``total_weight`` is 100. Only when ``complete`` (every competency rated) are
+    ``score`` and ``band`` set; otherwise the score is incomplete and a human decides. The band is
+    provisional. ``key_flags`` are key competencies rated under ``key_min_rating``."""
+
+    rows: list[dict]
+    points: float
+    assessed_weight: int
+    total_weight: int
+    complete: bool
+    score: int | None = None
+    band: str | None = None
+    bands: dict
+    key_min_rating: int
+    key_flags: list[str] = []
+    unassessed: list[str] = []
+
+
+class PracticalCriterionRow(BaseModel):
+    """One criterion of the practical case: its weight, the 1 to 5 rating (None when it was not
+    covered) and why."""
+
+    key: str
+    name: str
+    weight: int
+    rating: int | None = None
+    rationale: str = ""
+
+
+class PracticalCaseReport(BaseModel):
+    """The practical case of an interview, scored on its own out of 5 and never part of the weighted
+    score (docs/08_DECISIONS.md, item 43). ``score`` is set only when every criterion was rated
+    (``complete``); otherwise a person decides."""
+
+    question_number: int
+    rows: list[PracticalCriterionRow]
+    complete: bool
+    score: float | None = None
+    assessed_weight: int
+    total_weight: int
+    unassessed: list[str] = []
+    summary: str = ""
+
+
+PanelDecisionName = Literal["STRONG_SHORTLIST", "SHORTLIST", "HOLD", "DO_NOT_SHORTLIST"]
+
+
+class PanelDecisionIn(BaseModel):
+    """The hiring panel's decision about a candidate, and why. The real limits (a rationale of a
+    sentence or two) are checked in the service with messages the employer can act on."""
+
+    decision: PanelDecisionName
+    rationale: str = Field(max_length=5000)
+
+
+class PanelDecisionOut(BaseModel):
+    """A decision as it was signed off: what, why, by whom and when."""
+
+    decision: PanelDecisionName
+    label: str
+    rationale: str
+    decided_by_name: str
+    decided_at: datetime
+
+
+class AssessmentRecord(BaseModel):
+    """The candidate assessment record the client's pack asks for (docs/16_COLTON_BRIEF.md, Section
+    7): who and when, how long, the top three strengths and gaps, what to verify and what to ask
+    referees, and the human panel's decision with its sign-off. ``panel_decision`` is only on the
+    employer's own view: it is the company's internal decision, not part of what a shared link
+    shows."""
+
+    reference: str
+    role: str
+    interview_date: datetime | None = None
+    duration_minutes: int | None = None
+    interviewer: str
+    top_strengths: list[str] = []
+    top_gaps: list[str] = []
+    claims_to_verify: list[str] = []
+    reference_check_questions: list[str] = []
+    panel_decision: PanelDecisionOut | None = None
+
+
 class RecordingClip(BaseModel):
     """One recording of a strict interview: an interview the employer reinstated has one clip
     per attempt, each only what that attempt recorded."""
@@ -267,6 +490,12 @@ class InterviewDetailResponse(BaseModel):
     cv_fit_summary: str | None = None
     # Only for a strict interview (None for a live one).
     strict: StrictDetail | None = None
+    # Only for an interview scored with a scoring profile (None otherwise).
+    score_report: WeightedScoreReport | None = None
+    # Only for an interview that had a practical case (None otherwise): reported apart from the score.
+    practical_case: PracticalCaseReport | None = None
+    # The candidate assessment record: header, top strengths and gaps, what to verify, the panel's decision.
+    record: AssessmentRecord | None = None
 
 
 class InterviewPublicInfoResponse(BaseModel):
@@ -284,6 +513,8 @@ class InterviewPublicInfoResponse(BaseModel):
     style: Literal["live", "strict"] = "live"
     # A strict interview that has been started (so the screen offers "Continue", not the rules).
     started: bool = False
+    # What the AI may do after an answer, so the rules the candidate reads say the same.
+    follow_up_mode: FollowUpModeName = "STANDARD"
 
 
 class InterviewReinstateResponse(BaseModel):
@@ -419,3 +650,56 @@ class InterviewInviteBulkSendResponse(BaseModel):
     """Result of a bulk invite send/resend across a job's interview list."""
     sent: int
     skipped: list[dict]
+
+
+class ScoringCompetency(BaseModel):
+    """One competency of a scoring profile: its name, its weight (a whole number of percent) and
+    whether it is a key competency (rated under the minimum caps the band)."""
+
+    name: str = Field(max_length=200)
+    weight: int
+    key: bool = False
+
+
+class ScoringBands(BaseModel):
+    """A total at or over ``strong`` is a Strong shortlist, at or over ``shortlist`` a Shortlist,
+    at or over ``hold`` Hold for evidence, and under that Do not shortlist."""
+
+    strong: int
+    shortlist: int
+    hold: int
+
+
+class ScoringProfileIn(BaseModel):
+    """The scoring profile the employer wants to save for a job. Left out, ``bands`` and
+    ``key_min_rating`` take the defaults (85, 75, 65 and 3)."""
+
+    competencies: list[ScoringCompetency] = Field(max_length=50)
+    bands: ScoringBands | None = None
+    key_min_rating: int = 3
+    template_code: str | None = Field(default=None, max_length=40)
+
+
+class ScoringProfileOut(BaseModel):
+    competencies: list[ScoringCompetency]
+    bands: ScoringBands
+    key_min_rating: int
+    template_code: str | None = None
+
+
+class ScoringTemplate(BaseModel):
+    """A ready-made profile (the Colton Group's three roles) an employer can start from."""
+
+    code: str
+    title: str
+    competencies: list[ScoringCompetency]
+
+
+class ScoringProfileResponse(BaseModel):
+    """A job's scoring profile (None when it has none) with the templates and the defaults the
+    editor starts from."""
+
+    profile: ScoringProfileOut | None
+    templates: list[ScoringTemplate]
+    default_bands: ScoringBands
+    default_key_min_rating: int

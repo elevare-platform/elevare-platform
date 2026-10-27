@@ -4,7 +4,7 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Maximize } from 'lucide-
 import { Button } from '@/components/ui/button'
 import InterviewRules from '@/components/candidate/InterviewRules'
 import { useLeaveWatch } from '@/hooks/useLeaveWatch'
-import { STRICT_MONITORING, STRICT_RULES_VERSION, STRICT_RULE_GROUPS } from '@/lib/interviewRules'
+import { STRICT_MONITORING, STRICT_RULES_VERSION, strictRuleGroups } from '@/lib/interviewRules'
 import { MAX_ATTEMPTS, uploadRecording, withRetry } from '@/lib/interviewUpload'
 import { openRecordingStore } from '@/lib/recordingStore'
 import { salvagePreviousRecordings } from '@/lib/recordingSalvage'
@@ -99,6 +99,9 @@ export default function StrictInterviewFlow({
   // The status of an interview that has already ended when the page opens (ENDED_CONDUCT or STOPPED).
   endedStatus = null,
   maxMinutes = 20,
+  // What the AI may do after an answer, chosen by the employer for this job (NONE, STANDARD or
+  // PROBES_ONLY): the rules shown before the start say which.
+  followUpMode = 'STANDARD',
   // Where the recording is kept while it is made, so a reload does not lose it. Left out, the
   // browser's own storage is used; null (no storage) records in memory only, as before.
   recordingStore: providedStore,
@@ -826,7 +829,7 @@ export default function StrictInterviewFlow({
         {phase === 'gate' && (
           <div className="rounded-xl border border-border bg-surface p-6 space-y-5">
             <div>
-              <h1 className="text-xl font-bold text-text">AI video interview</h1>
+              <h1 className="text-xl font-bold text-text">Video interview</h1>
               {subtitle && <p className="text-sm text-text-muted mt-1">{subtitle}</p>}
               <p className="text-sm text-text-muted mt-2">
                 You will see each question on screen and answer it out loud, to the camera.
@@ -878,7 +881,7 @@ export default function StrictInterviewFlow({
                   <p className="text-sm text-text-muted leading-relaxed mb-4">
                     Please read these rules. You need to accept them before you can start.
                   </p>
-                  <InterviewRules groups={STRICT_RULE_GROUPS} monitoring={STRICT_MONITORING} />
+                  <InterviewRules groups={strictRuleGroups(followUpMode)} monitoring={STRICT_MONITORING} />
                 </div>
                 <label
                   htmlFor="accept-interview-rules"

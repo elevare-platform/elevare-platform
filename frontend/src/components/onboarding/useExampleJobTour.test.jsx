@@ -50,7 +50,7 @@ describe('useExampleJobTour', () => {
     expect(stepsOf().map((s) => s.popover.title)).toEqual([
       'An example job',
       'Applicants',
-      'AI score',
+      'Match score',
       'Add people to the interview list',
       'Upload CVs and score them',
       'The talent pool',
@@ -59,7 +59,7 @@ describe('useExampleJobTour', () => {
       'Rank your pool against a job',
       'Scores arrive as CVs are read',
       'Interview list',
-      'Send AI interviews',
+      'Send interviews',
       'What an interview costs',
     ])
   })
@@ -158,7 +158,7 @@ describe('useExampleJobTour', () => {
   })
 
   it('says the real cost when the account is charged, and a general line when not', async () => {
-    const { unmount } = render('Each AI interview costs 8 credits, taken when you first send it.')
+    const { unmount } = render('Each interview costs 8 credits, taken when you first send it.')
     await waitForDelay()
     expect(stepsOf()[12].popover.description).toContain('costs 8 credits')
     unmount()

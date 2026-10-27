@@ -29,7 +29,7 @@ describe('matchScoreBand', () => {
     expect(matchScoreBand(null, 'SCORING_FAILED').label).toBe('Scoring unavailable')
   })
 
-  it('says the plan limit when this month\'s AI scoring allowance is used up, not a failure', () => {
+  it('says the plan limit when this month\'s scoring allowance is used up, not a failure', () => {
     const band = matchScoreBand(null, 'PLAN_LIMIT')
 
     expect(band.label).toBe('Not scored: plan limit')
@@ -52,7 +52,7 @@ describe('scoreFailureHelp', () => {
   it('explains each failure in one plain sentence', () => {
     expect(scoreFailureHelp('CV_UNREADABLE')).toMatch(/Nothing could be read from this CV/)
     expect(scoreFailureHelp('SCORING_FAILED')).toMatch(/not a low score/)
-    expect(scoreFailureHelp('PLAN_LIMIT')).toMatch(/AI scoring on your plan is used up/)
+    expect(scoreFailureHelp('PLAN_LIMIT')).toMatch(/scoring on your plan is used up/)
     expect(scoreFailureHelp('PLAN_LIMIT')).toMatch(/Upgrade your plan/)
   })
 

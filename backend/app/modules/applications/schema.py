@@ -32,6 +32,10 @@ class ApplicationResponse(BaseModel):
     candidate_profile_id: uuid.UUID | None = (
         None  # profile PK for employer profile view
     )
+    # True until the employer opens this applicant (CV, profile or cover letter), for an
+    # application made after they first used the markers (docs/08_DECISIONS.md, item 35).
+    # Only set on the employer's list of a job's applicants.
+    is_new: bool = False
     # AI match score — null until background task computes it
     match_score: int | None = None
     score_computed_at: datetime | None = None

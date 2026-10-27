@@ -89,7 +89,7 @@ describe('ApplicantsPage, Interview List tab, invite by email', () => {
   it('does not offer it before the interview is set up, when there is nothing to send', async () => {
     renderTab({ brief: '' })
 
-    expect(await screen.findByRole('button', { name: /Set up AI interview/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Set up interview/ })).toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Invite by email' })).not.toBeInTheDocument()
   })
 

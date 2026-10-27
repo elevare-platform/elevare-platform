@@ -187,7 +187,7 @@ export default function SourcedCvModal({ profileId, jobId, hasInterviewBrief, on
                 <div className="rounded-xl border border-border p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
-                      <Brain size={12} /> AI Assessment
+                      <Brain size={12} /> Assessment
                     </p>
                     <span className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(null, profile.ai_score_failure).className)}>
                       {matchScoreBand(null, profile.ai_score_failure).label}
@@ -202,7 +202,7 @@ export default function SourcedCvModal({ profileId, jobId, hasInterviewBrief, on
                 <div className="rounded-xl border border-border p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
-                      <Brain size={12} /> AI Assessment
+                      <Brain size={12} /> Assessment
                     </p>
                     <span
                       className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(profile.ai_score).className)}

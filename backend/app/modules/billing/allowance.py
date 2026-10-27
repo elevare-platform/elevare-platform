@@ -138,7 +138,7 @@ class AllowanceService:
         _, limit = await self._limits(organization_id)
         start, next_start = month_window()
         used = 0 if limit is None else await self._count_scores(organization_id, start)
-        return Allowance("AI scores", limit, used, next_start)
+        return Allowance("Candidate scores", limit, used, next_start)
 
     async def may_score(
         self,

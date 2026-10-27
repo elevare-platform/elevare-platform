@@ -11,7 +11,7 @@ const STEPS = [
   },
   {
     number: '02',
-    title: 'AI Talent Pipeline Matching',
+    title: 'Talent Pipeline Matching',
     description:
       'Our smart recruitment pipelines instantly curate and map the best-fit professionals matching your technical criteria.',
   },

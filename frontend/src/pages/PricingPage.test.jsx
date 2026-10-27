@@ -68,7 +68,7 @@ describe('PricingPage credits', () => {
     renderPricing()
 
     expect(
-      await screen.findByText('40 credits included every month (about 4 AI interviews)')
+      await screen.findByText('40 credits included every month (about 4 interviews)')
     ).toBeInTheDocument()
   })
 
@@ -76,26 +76,26 @@ describe('PricingPage credits', () => {
     mockApi({ costs: { introduction: 1, ai_interview: 12 } })
     renderPricing()
 
-    expect(await screen.findByText('AI interview: 12 credits.')).toBeInTheDocument()
+    expect(await screen.findByText('Interview: 12 credits.')).toBeInTheDocument()
     expect(screen.getByText('Introduction: 1 credit.')).toBeInTheDocument()
-    expect(screen.getByText('40 credits included every month (about 3 AI interviews)')).toBeInTheDocument()
+    expect(screen.getByText('40 credits included every month (about 3 interviews)')).toBeInTheDocument()
   })
 
   it('says how many AI interviews each pack buys', async () => {
     mockApi()
     renderPricing()
 
-    expect(await screen.findByText('about 1 AI interview')).toBeInTheDocument()
-    expect(screen.getByText('about 5 AI interviews')).toBeInTheDocument()
+    expect(await screen.findByText('about 1 interview')).toBeInTheDocument()
+    expect(screen.getByText('about 5 interviews')).toBeInTheDocument()
   })
 
   it('does not state an interview price when interviews are not charged for', async () => {
     mockApi({ costs: { introduction: 1, ai_interview: 0 } })
     renderPricing()
 
-    await screen.findByText('40 credits included every month (introductions and AI interviews)')
-    expect(screen.queryByText(/AI interview: /)).not.toBeInTheDocument()
-    expect(screen.queryByText(/about \d+ AI interview/)).not.toBeInTheDocument()
+    await screen.findByText('40 credits included every month (introductions and interviews)')
+    expect(screen.queryByText(/Interview: /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/about \d+ interview/)).not.toBeInTheDocument()
   })
 
   it('still shows the plans and packs when the costs cannot be loaded', async () => {
@@ -103,18 +103,18 @@ describe('PricingPage credits', () => {
     renderPricing()
 
     expect(
-      await screen.findByText('40 credits included every month (introductions and AI interviews)')
+      await screen.findByText('40 credits included every month (introductions and interviews)')
     ).toBeInTheDocument()
     expect(screen.getByText('Need more credits?')).toBeInTheDocument()
     expect(screen.getByText('Introduction: 1 credit.')).toBeInTheDocument()
-    expect(screen.queryByText(/AI interview: /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Interview: /)).not.toBeInTheDocument()
   })
 
   it('shows no packs section when the packs cannot be loaded', async () => {
     mockApi({ packs: null })
     renderPricing()
 
-    await screen.findByText('40 credits included every month (about 4 AI interviews)')
+    await screen.findByText('40 credits included every month (about 4 interviews)')
     expect(screen.queryByText('Need more credits?')).not.toBeInTheDocument()
   })
 })

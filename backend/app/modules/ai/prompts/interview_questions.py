@@ -21,6 +21,16 @@ Rules:
 """
 
 
+PRACTICAL_CASE_ADDENDUM = """
+8. The LAST of the questions is a PRACTICAL CASE (the message says so). It is a realistic scenario for this role, set in the employer's real context where the job text gives one and otherwise a plausible one, that the candidate works through aloud. It asks for a plan or a decision with specific parts to cover, for example the priorities for the first 90 days, the main numbers or assumptions, how progress would be measured, and the main risks and what they would do about them. It asks the candidate to state their assumptions. Never state invented market facts or figures as if they were established data. Give it between 180 and 300 seconds. It still follows every rule above (plain English, answerable aloud, nothing personal, no hints, no marking criteria), and it is allowed to be longer than the other questions, up to 450 characters.
+"""
+
+
+def interview_questions_system_prompt(*, practical: bool = False) -> str:
+    """The system prompt, with the practical case rule when the last question is to be one."""
+    return INTERVIEW_QUESTIONS_SYSTEM_PROMPT + (PRACTICAL_CASE_ADDENDUM if practical else "")
+
+
 def build_interview_questions_prompt(
     *,
     title: str,
@@ -31,11 +41,13 @@ def build_interview_questions_prompt(
     interview_brief: str,
     count: int,
     total_seconds: int,
+    practical: bool = False,
 ) -> str:
     """The user message: how many questions, the total time they must fit in, and the job as
     data between <job> tags."""
     skills = ", ".join(required_skills) if required_skills else "not given"
-    return f"""Write {count} interview questions for this job.
+    last = "\nThe last of these questions is the practical case.\n" if practical else ""
+    return f"""Write {count} interview questions for this job.{last}
 Total time for all the answers together: {total_seconds} seconds ({total_seconds / 60:g} minutes).
 
 <job>

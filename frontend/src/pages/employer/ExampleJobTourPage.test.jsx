@@ -88,14 +88,14 @@ describe('ExampleJobTourPage', () => {
     expect(screen.getByText('Amaka Obi')).toBeInTheDocument()
     // Once as Amaka's stage, once as a choice in the Move to list.
     expect(screen.getAllByText('Shortlisted').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByLabelText(/AI score: /).length).toBeGreaterThanOrEqual(3)
+    expect(screen.getAllByLabelText(/Match score: /).length).toBeGreaterThanOrEqual(3)
   })
 
   it('shows the reasons behind a score when it is pressed', () => {
     renderPage()
     expect(screen.queryByText('Strengths')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByLabelText(/AI score: /)[0])
+    fireEvent.click(screen.getAllByLabelText(/Match score: /)[0])
 
     expect(screen.getByText('Strengths')).toBeInTheDocument()
     expect(screen.getByText('Gaps')).toBeInTheDocument()
@@ -178,22 +178,22 @@ describe('ExampleJobTourPage', () => {
     it('says scoring runs by itself once a job is chosen for the upload', () => {
       renderPage()
       act(() => tourOptions.setView({ ...EXAMPLE_VIEW_DEFAULT, page: 'pool', drawer: true }))
-      expect(screen.queryByText(/AI scoring will run automatically/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Scoring will run automatically/)).not.toBeInTheDocument()
 
       fireEvent.change(screen.getByLabelText(/Attach to Job/), { target: { value: 'sales' } })
 
-      expect(screen.getByText(/AI scoring will run automatically after parsing/)).toBeInTheDocument()
+      expect(screen.getByText(/Scoring will run automatically after parsing/)).toBeInTheDocument()
     })
 
     it('ranks the pool against the chosen job, best match first', () => {
       renderPage()
       act(() => tourOptions.setView({ ...EXAMPLE_VIEW_DEFAULT, page: 'pool' }))
-      expect(screen.getByText('Select a job to enable AI ranking')).toBeInTheDocument()
+      expect(screen.getByText('Select a job to enable ranking')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /Score all/ })).not.toBeInTheDocument()
 
       fireEvent.change(screen.getByLabelText('View against job:'), { target: { value: 'sales' } })
 
-      expect(screen.getByText('Ranked by AI score')).toBeInTheDocument()
+      expect(screen.getByText('Ranked by match score')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /Score all/ })).toBeInTheDocument()
       expect(screen.getByText('Showing candidates ranked against Sales Manager')).toBeInTheDocument()
       const names = screen.getAllByText(/Segun Adeyemi|Halima Yusuf|Ifeanyi Okoro/).map((el) => el.textContent)
@@ -240,7 +240,7 @@ describe('ExampleJobTourPage', () => {
     addToInterviewList(0)
     fireEvent.click(tab('Interview List'))
 
-    expect(await screen.findByText(/Each AI interview uses credits/)).toBeInTheDocument()
+    expect(await screen.findByText(/Each interview uses credits/)).toBeInTheDocument()
   })
 
   it('opens the send dialog with the cost, and sends nothing', async () => {
@@ -251,7 +251,7 @@ describe('ExampleJobTourPage', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /Send interview link$/ })[0])
 
-    const dialog = screen.getByRole('dialog', { name: 'Send AI interview invite?' })
+    const dialog = screen.getByRole('dialog', { name: 'Send interview invite?' })
     expect(dialog).toHaveTextContent('Amaka Obi will get an email invite')
     expect(dialog).toHaveTextContent('costs 8 credits')
     expect(dialog).toHaveTextContent('nothing is sent from here')

@@ -23,6 +23,7 @@ from app.modules.jobs.access_token_schema import (
     PublicApplicantsResponse,
 )
 from app.modules.jobs.repository import JobRepository
+from app.modules.seen.service import SeenService, item_key
 from app.modules.users.enums import UserRole
 from app.modules.users.models import User
 
@@ -237,6 +238,7 @@ class AccessTokenService:
                     cv_snippet=cv_snippet,
                     cv_download_url=cv_download_url,
                     source="applicant",
+                    item_key=item_key(token.id, "applicant", application.id),
                     created_at=application.created_at,
                     ai_score_computed_at=application.ai_score_computed_at,
                 )
@@ -304,6 +306,7 @@ class AccessTokenService:
                     cv_snippet=cv_snippet,
                     cv_download_url=cv_download_url,
                     source="external",
+                    item_key=item_key(token.id, "external", profile.id),
                     created_at=profile.created_at,
                     ai_score_computed_at=profile.ai_score_computed_at,
                 )
@@ -312,8 +315,32 @@ class AccessTokenService:
         # ── 3. Merge and rank by ai_score descending, nulls last ────────────
         combined.sort(key=lambda x: (x.ai_score is None, -(x.ai_score or 0)))
 
+        # ── 4. What this link's reader has and has not opened ───────────────
+        seen = SeenService(self._db)
+        previous_visit = await seen.record_visit(token.id)
+        opened = await seen.opened_keys(token.id)
+        for item in combined:
+            item.is_unseen = item.item_key not in opened
+            arrived = item.ai_score_computed_at or item.created_at
+            item.is_new_since_last_visit = (
+                previous_visit is not None and arrived is not None and arrived > previous_visit
+            )
+        await self._db.commit()
+
         return PublicApplicantsResponse(
             job_title=job.title,
             expires_at=token.expires_at,
             applicants=combined,
+            unseen_count=sum(1 for item in combined if item.is_unseen),
+            new_since_last_visit_count=sum(1 for item in combined if item.is_new_since_last_visit),
+            previous_visit_at=previous_visit,
         )
+
+    async def mark_item_seen(self, token_str: str, item_key: str) -> None:
+        """The reader of a shared link opened one candidate. 404 for a link that is not valid,
+        so the answer says nothing about links that do not exist. Safe to repeat."""
+        token = await self._repo.get_valid_by_token(token_str)
+        if not token:
+            raise JobNotFoundError()
+        await SeenService(self._db).mark_item_opened(token.id, item_key)
+        await self._db.commit()

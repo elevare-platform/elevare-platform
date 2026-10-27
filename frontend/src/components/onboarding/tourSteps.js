@@ -106,7 +106,7 @@ export const EXAMPLE_JOB_STEPS = [
   },
   {
     target: 'example-score',
-    title: 'AI score',
+    title: 'Match score',
     description:
       'Elevare reads each CV and scores how well the person fits this job. Press the score to see the reasons, with strengths and gaps. It shows how closely their experience matches the role. It is not a pass or fail.',
     side: 'top',
@@ -153,7 +153,7 @@ export const EXAMPLE_JOB_STEPS = [
     target: 'example-pool-attach',
     title: 'Choose the job to score against',
     description:
-      'Attach the CVs to a job and the AI scores each one automatically once it has been read. Leave it empty to only add them to your pool.',
+      'Attach the CVs to a job and each one is scored automatically once it has been read. Leave it empty to only add them to your pool.',
     side: 'left',
     align: 'start',
     view: view({ page: 'pool', drawer: true, poolJob: 'sales', listed: ['a1'] }),
@@ -180,16 +180,16 @@ export const EXAMPLE_JOB_STEPS = [
     target: 'example-interview-list',
     title: 'Interview list',
     description:
-      'The people you added are collected here, from Applicants, Talent Pipeline or AI Talent Matches. Press the button again on a person to take them off.',
+      'The people you added are collected here, from Applicants, Talent Pipeline or Talent Matches. Press the button again on a person to take them off.',
     side: 'top',
     align: 'start',
     view: view({ tab: 'interviews', listed: ['a1', 'p1'] }),
   },
   {
     target: 'example-send-interviews',
-    title: 'Send AI interviews',
+    title: 'Send interviews',
     description:
-      'Tell the AI what to cover once for the whole job. Then send each person an interview link, or send to everyone on the list at once. They open the link and take a video interview with the AI.',
+      'Say what the interview should cover once for the whole job. Then send each person an interview link, or send to everyone on the list at once. They open the link and take a video interview.',
     side: 'bottom',
     align: 'end',
     view: view({ tab: 'interviews', listed: ['a1', 'p1'] }),
@@ -199,7 +199,7 @@ export const EXAMPLE_JOB_STEPS = [
     title: 'What an interview costs',
     // The cost sentence is replaced by the real one when the account is charged.
     description:
-      'Each AI interview uses credits, taken when you first send it. You see the cost and your balance before you send. Your balance and every credit used or refunded are under Billing.',
+      'Each interview uses credits, taken when you first send it. You see the cost and your balance before you send. Your balance and every credit used or refunded are under Billing.',
     side: 'top',
     align: 'start',
     view: view({ tab: 'interviews', dialog: true, listed: ['a1', 'p1'] }),

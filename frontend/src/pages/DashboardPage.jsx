@@ -141,7 +141,7 @@ function SavedCandidatesTab() {
         </div>
         <h2 className="text-xl font-bold text-text">No saved candidates yet</h2>
         <p className="text-text-muted text-sm leading-relaxed">
-          Click the heart icon on any candidate in Candidate Search, AI Talent Matches, or your
+          Click the heart icon on any candidate in Candidate Search, Talent Matches, or your
           applicants list to bookmark them here.
         </p>
       </div>
@@ -211,9 +211,9 @@ function EmployerDashboard({ user }) {
 
   const tabs = [
     { id: 'overview', label: 'Console Overview', icon: LayoutDashboard },
-    { id: 'talent-pipeline', label: 'Talent Pipeline', icon: Sparkles, badge: 'AI' },
+    { id: 'talent-pipeline', label: 'Talent Pipeline', icon: Sparkles },
     { id: 'saved-candidates', label: 'Saved Candidates', icon: Heart },
-    { id: 'ai-recommendations', label: 'Candidate Search', icon: Cpu, badge: 'AI' },
+    { id: 'ai-recommendations', label: 'Candidate Search', icon: Cpu },
     { id: 'cv-parser', label: 'CV Parser', icon: FileSearch },
     { id: 'team', label: 'Team', icon: Users },
     { id: 'billing', label: 'Billing', icon: CreditCard },

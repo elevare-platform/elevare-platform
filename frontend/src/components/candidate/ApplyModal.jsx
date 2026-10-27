@@ -128,15 +128,18 @@ export default function ApplyModal({ jobId, onClose, onSuccess }) {
       onSuccess()
     } catch (err) {
       const status = err.response?.status
-      const detail = err.response?.data?.detail
+      // The API sends its reason in `message` ("Job application deadline has passed."); `detail`
+      // is what a validation error from the framework carries. Reading only `detail` showed
+      // every refusal as "Something went wrong", which looked like a CV problem.
+      const data = err.response?.data
+      const reason = [data?.message, data?.detail].find((value) => typeof value === 'string' && value)
 
       if (status === 409) {
         setError({ message: 'You have already applied for this job.' })
-      } else if (status === 403 && err.response?.data?.code === 'PROFILE_INCOMPLETE') {
-        setError({ message: typeof detail === 'string' ? detail : 'Your profile is incomplete.', profileLink: true })
+      } else if (status === 403 && data?.code === 'PROFILE_INCOMPLETE') {
+        setError({ message: reason ?? 'Your profile is incomplete.', profileLink: true })
       } else {
-        const msg = typeof detail === 'string' ? detail : 'Something went wrong. Please try again.'
-        setError({ message: msg })
+        setError({ message: reason ?? 'Something went wrong. Please try again.' })
       }
     } finally {
       setSubmitting(false)

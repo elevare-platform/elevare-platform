@@ -13,6 +13,8 @@ from app.core.limiter import limiter
 from app.modules.candidates.models import CandidateProfile
 from app.modules.interviews.questions import InterviewQuestionService
 from app.modules.interviews.schema import (
+    ApplyJobSetRequest,
+    ApplySavedTemplateRequest,
     CandidateInterviewDetailResponse,
     CandidateInterviewResponse,
     InterviewCompleteRequest,
@@ -28,17 +30,30 @@ from app.modules.interviews.schema import (
     InterviewQuestionsDraftResponse,
     InterviewQuestionsPutRequest,
     InterviewQuestionsResponse,
+    InterviewQuestionsTemplateResponse,
     InterviewReinstateResponse,
     InterviewResetRequestResponse,
     InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
+    JobSetsResponse,
+    LibraryTemplate,
+    PanelDecisionIn,
+    PanelDecisionOut,
+    QuestionLibraryResponse,
+    QuestionTemplateApplyRequest,
+    RenameTemplateRequest,
+    SaveTemplateRequest,
+    ScoringProfileIn,
+    ScoringProfileResponse,
     StrictEventRequest,
     StrictInterviewStateResponse,
     StrictRecordingPartResponse,
     StrictStartRequest,
 )
+from app.modules.interviews.scoring_profile_service import ScoringProfileService
 from app.modules.interviews.service import InterviewService
+from app.modules.interviews.template_library import QuestionLibraryService
 from app.modules.users.models import User
 
 
@@ -296,6 +311,7 @@ async def get_interview(
             **CandidateInterviewResponse.model_validate(interview).model_dump(),
             style=await service.style_of(interview),
             started=await service.is_started(interview),
+            follow_up_mode=await service.follow_up_mode_for(interview),
         )
     finally:
         await service.close()
@@ -358,6 +374,31 @@ async def reinstate_interview(
         await service.close()
 
 
+@router.put(
+    "/{talent_pool_profile_id}/panel-decision",
+    response_model=PanelDecisionOut,
+    status_code=200,
+)
+async def record_panel_decision(
+    talent_pool_profile_id: uuid.UUID,
+    data: PanelDecisionIn,
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record the hiring panel's decision about a candidate after the interview (strong shortlist,
+    shortlist, hold or do not shortlist), with the reason, signed off by the person recording it.
+    A person's decision: it stops at the shortlist. Only the company that owns the job, and only
+    once the interview has finished. A later decision is added, not overwritten."""
+    service = InterviewService(db)
+    try:
+        return await service.record_panel_decision(
+            current_user, job_id, talent_pool_profile_id, data.decision, data.rationale
+        )
+    finally:
+        await service.close()
+
+
 @router.get("/pricing", response_model=InterviewPricingResponse, status_code=200)
 async def get_interview_pricing(
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
@@ -394,11 +435,128 @@ async def save_job_interview_questions(
     db: AsyncSession = Depends(get_db),
 ):
     """Save the job's whole list of questions in place of the old one. Every problem is named in
-    the refusal (too many, a bad time, times that do not fit the interview). An empty list
-    clears the questions."""
+    the refusal (a bad time, times that do not fit the interview, too many probes). An empty list
+    clears the questions. ``follow_up_mode`` is saved with it when given."""
     return await InterviewQuestionService(db).replace_questions(
-        current_user, job_id, [item.model_dump() for item in data.questions]
+        current_user,
+        job_id,
+        [item.model_dump() for item in data.questions],
+        follow_up_mode=data.follow_up_mode,
     )
+
+
+@router.post(
+    "/jobs/{job_id}/questions/from-template",
+    response_model=InterviewQuestionsTemplateResponse,
+    status_code=200,
+)
+async def start_job_questions_from_template(
+    job_id: uuid.UUID,
+    data: QuestionTemplateApplyRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start the job from a Colton Group role template: the role's scoring profile AND its
+    questions with their probes, replacing the job's current ones, in one step (all or nothing).
+    If the template's answer times do not fit the interview's time limit the questions are not
+    saved but returned to be shortened (``saved`` false). The employer can then edit anything. An
+    unknown template is refused with a 422."""
+    return await InterviewQuestionService(db).apply_template(current_user, job_id, data.code)
+
+
+@router.post(
+    "/jobs/{job_id}/questions/from-saved-template",
+    response_model=InterviewQuestionsTemplateResponse,
+    status_code=200,
+)
+async def start_job_questions_from_saved_template(
+    job_id: uuid.UUID,
+    data: ApplySavedTemplateRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start the job from a set the caller's company saved: its questions, its scoring profile (if it
+    has one) and its follow-up choice, replacing the job's current ones in one step. Shown for
+    shortening, not saved, when its answer times pass the interview's time limit."""
+    return await InterviewQuestionService(db).apply_saved_template(current_user, job_id, data.template_id)
+
+
+@router.post(
+    "/jobs/{job_id}/questions/from-job",
+    response_model=InterviewQuestionsTemplateResponse,
+    status_code=200,
+)
+async def start_job_questions_from_another_job(
+    job_id: uuid.UUID,
+    data: ApplyJobSetRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Copy another job of the same company: its questions, scoring profile and follow-up choice."""
+    return await InterviewQuestionService(db).apply_from_job(current_user, job_id, data.source_job_id)
+
+
+@router.get("/question-templates", response_model=QuestionLibraryResponse, status_code=200)
+async def browse_question_templates(
+    q: str | None = Query(default=None, max_length=100),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """The template library: the built-in role sets and the caller's company's saved sets, with the
+    questions of each so they can be previewed. ``q`` keeps those whose name, competencies or
+    questions contain every word."""
+    return await QuestionLibraryService(db).library(current_user, q)
+
+
+@router.get("/question-templates/jobs", response_model=JobSetsResponse, status_code=200)
+async def browse_company_job_sets(
+    q: str | None = Query(default=None, max_length=100),
+    exclude_job_id: uuid.UUID | None = Query(default=None),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """The caller's company's jobs that have interview questions, newest first, to copy from."""
+    return {"items": await QuestionLibraryService(db).company_jobs(current_user, q, exclude_job_id)}
+
+
+@router.post("/question-templates", response_model=LibraryTemplate, status_code=201)
+async def save_question_template(
+    data: SaveTemplateRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save the questions being edited as a template the whole company can use. 422 when the name is
+    taken or the list breaks a rule."""
+    return await QuestionLibraryService(db).save(
+        current_user,
+        data.job_id,
+        data.name,
+        [item.model_dump() for item in data.questions],
+        data.include_profile,
+        data.follow_up_mode,
+    )
+
+
+@router.patch("/question-templates/{template_id}", response_model=LibraryTemplate, status_code=200)
+async def rename_question_template(
+    template_id: uuid.UUID,
+    data: RenameTemplateRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a saved template. Only the person who saved it, or the company owner."""
+    return await QuestionLibraryService(db).rename(current_user, template_id, data.name)
+
+
+@router.delete("/question-templates/{template_id}", status_code=204)
+async def delete_question_template(
+    template_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a saved template. Jobs already started from it are not affected. Only the person who
+    saved it, or the company owner."""
+    await QuestionLibraryService(db).delete(current_user, template_id)
 
 
 @router.post(
@@ -418,6 +576,53 @@ async def draft_job_interview_questions(
     employer reads and edits the draft and saves it. Needs a brief. Limited to 20 an hour, as it
     is a paid AI call."""
     return await InterviewQuestionService(db).draft_questions(current_user, job_id, data.count)
+
+
+@router.get(
+    "/jobs/{job_id}/scoring-profile", response_model=ScoringProfileResponse, status_code=200
+)
+async def get_job_scoring_profile(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """The job's scoring profile (null when it has none), with the ready-made templates and the
+    defaults the editor starts from. Anyone in the company that owns the job."""
+    return await ScoringProfileService(db).get(current_user, job_id)
+
+
+@router.put(
+    "/jobs/{job_id}/scoring-profile", response_model=ScoringProfileResponse, status_code=200
+)
+async def save_job_scoring_profile(
+    job_id: uuid.UUID,
+    data: ScoringProfileIn,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save the job's scoring profile: competencies with weights adding up to 100, which are key,
+    and the band thresholds. Every problem is named in the refusal. Applies to interviews scored
+    from now on; reports already made are not changed. Strict interview only."""
+    return await ScoringProfileService(db).save(
+        current_user,
+        job_id,
+        [item.model_dump() for item in data.competencies],
+        data.bands.model_dump() if data.bands else None,
+        data.key_min_rating,
+        data.template_code,
+    )
+
+
+@router.delete(
+    "/jobs/{job_id}/scoring-profile", response_model=ScoringProfileResponse, status_code=200
+)
+async def remove_job_scoring_profile(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Take the scoring profile off the job, so it is scored by the generic scorecard again."""
+    return await ScoringProfileService(db).remove(current_user, job_id)
 
 
 @router.post("/{talent_pool_profile_id}/interview-link", response_model=InterviewLinkResponse, status_code=200)

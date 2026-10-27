@@ -313,7 +313,14 @@ export default function JobDetailPage() {
                 {job.application_deadline && (() => {
                   const date = new Date(job.application_deadline)
                   const daysLeft = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                  if (daysLeft < 0) return null
+                  if (daysLeft < 0) {
+                    return (
+                      <span className="inline-flex items-center gap-1.5 font-medium text-text-muted">
+                        <Calendar size={14} />
+                        Applications are closed
+                      </span>
+                    )
+                  }
                   const label = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
                   const urgent = daysLeft <= 3
                   return (
@@ -430,7 +437,7 @@ export default function JobDetailPage() {
               )}
 
               <div className="mt-8">
-                <ApplyButton jobId={job.id} jobStatus={job.status} />
+                <ApplyButton jobId={job.id} jobStatus={job.status} deadline={job.application_deadline} />
               </div>
 
             </article>

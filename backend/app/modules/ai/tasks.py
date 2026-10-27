@@ -2048,7 +2048,7 @@ async def _notify_employer_new_matches(
         recipient_id=employer_id,
         type="NEW_CANDIDATE_MATCHES",
         title=f"{count} new candidate{'s' if count != 1 else ''} match '{job_title}'",
-        body="Open the AI Recruiter to review them.",
+        body="Open the Talent Recruiter to review them.",
         entity_type="JOB",
         entity_id=job_id,
     )

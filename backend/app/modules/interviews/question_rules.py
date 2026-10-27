@@ -1,8 +1,9 @@
 """The rules for a job's strict-interview question list, as plain functions with no database.
 
-Limits come from settings (docs/08_DECISIONS.md): the employer sets 5 questions by default and at
-most 6, and the whole interview is capped at 20 minutes, so the answer times of the list must
-fit inside that cap. Times are in seconds, in steps of 30, from 30 seconds to 10 minutes.
+Limits come from settings (docs/08_DECISIONS.md): the employer sets 5 questions by default, there
+is no cap on how many (item 40: only time limits the list), and the whole interview is capped at
+20 minutes, so the answer times of the list must fit inside that cap. Times are in seconds, in
+steps of 30, from 30 seconds to 10 minutes.
 """
 
 from __future__ import annotations
@@ -16,6 +17,12 @@ MAX_QUESTION_CHARS = 500
 MIN_SECONDS = 30
 MAX_SECONDS = 600
 STEP_SECONDS = 30
+# The employer's own follow-up probes for one question: one per line, a few short lines.
+MAX_PROBES = 6
+MAX_PROBE_CHARS = 300
+# The time to answer a follow-up on one question: 30 seconds to 5 minutes, in steps of 30.
+MIN_FOLLOW_UP_SECONDS = 30
+MAX_FOLLOW_UP_SECONDS = 300
 
 
 # The standard closing question of the assessment scorecard (docs/08_DECISIONS.md, item 31):
@@ -39,12 +46,37 @@ def max_total_seconds() -> int:
     return settings.interview_max_duration_minutes * 60
 
 
+def max_questions() -> int:
+    """The most questions that can fit: every one needs at least the shortest answer time. Not a
+    limit of its own (there is none on the count), just what the time cap allows."""
+    return max_total_seconds() // MIN_SECONDS
+
+
 @dataclass(frozen=True)
 class QuestionDraft:
     """One question and its answer time, before it is saved."""
 
     text: str
     time_limit_seconds: int
+    # The employer's own probes for it, one per line (empty when none).
+    probes: str = ""
+    # The time to answer a follow-up on it; None is the platform default.
+    follow_up_seconds: int | None = None
+    # True for the interview's practical case, scored separately out of 5.
+    is_practical: bool = False
+
+
+def clean_probes(probes: str | None) -> list[str]:
+    """The probes as a list of tidy lines: trimmed, runs of blanks collapsed, blanks and repeats
+    dropped. Does not cut anything that is too long (``problems_with`` reports it)."""
+    seen: set[str] = set()
+    lines: list[str] = []
+    for line in (probes or "").splitlines():
+        cleaned = clean_text(line)
+        if cleaned and cleaned.casefold() not in seen:
+            seen.add(cleaned.casefold())
+            lines.append(cleaned)
+    return lines
 
 
 def clean_text(text: str) -> str:
@@ -58,18 +90,32 @@ def snap_seconds(seconds: int) -> int:
     return max(MIN_SECONDS, min(MAX_SECONDS, snapped))
 
 
-def problems_with(questions: list[QuestionDraft]) -> list[str]:
+def problems_with(questions: list[QuestionDraft], *, check_total: bool = True) -> list[str]:
     """What is wrong with a list the employer wants to save, in words they can act on.
 
     An empty list is fine: it clears the questions. Each message names the problem and, where
-    it helps, the limit.
+    it helps, the limit. ``check_total=False`` leaves out the check that the answer times fit the
+    interview's time limit: a saved template is not tied to one job's limit (applying it to a job
+    shows it for shortening when it does not fit).
     """
     found: list[str] = []
-    limit = settings.strict_interview_max_questions
-    if len(questions) > limit:
-        found.append(f"An interview can have at most {limit} questions.")
+    if sum(1 for question in questions if question.is_practical) > 1:
+        found.append("Only one question can be the practical case.")
 
     for number, question in enumerate(questions, start=1):
+        probes = clean_probes(question.probes)
+        if len(probes) > MAX_PROBES:
+            found.append(f"Question {number} has too many probes. Keep it to {MAX_PROBES}.")
+        if any(len(probe) > MAX_PROBE_CHARS for probe in probes):
+            found.append(
+                f"A probe on question {number} is too long. Keep each under {MAX_PROBE_CHARS} characters."
+            )
+        follow_up = question.follow_up_seconds
+        if follow_up is not None and not MIN_FOLLOW_UP_SECONDS <= follow_up <= MAX_FOLLOW_UP_SECONDS:
+            found.append(
+                f"The follow-up time on question {number} needs between {MIN_FOLLOW_UP_SECONDS} "
+                f"seconds and {MAX_FOLLOW_UP_SECONDS // 60} minutes."
+            )
         length = len(clean_text(question.text))
         if length < MIN_QUESTION_CHARS:
             found.append(f"Question {number} is too short to be a question.")
@@ -85,7 +131,7 @@ def problems_with(questions: list[QuestionDraft]) -> list[str]:
 
     total = sum(question.time_limit_seconds for question in questions)
     cap = max_total_seconds()
-    if total > cap:
+    if check_total and total > cap:
         found.append(
             f"The answer times add up to {_minutes(total)}, but the whole interview is limited "
             f"to {_minutes(cap)}. Shorten some of the times."

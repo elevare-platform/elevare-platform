@@ -253,7 +253,7 @@ export default function BillingPage() {
                   Balance: <span className="font-semibold text-text">{balanceLoading ? '…' : balance ?? 0}</span> credits.
                   {' '}A candidate introduction costs 1 credit
                   {interviewPricing?.charged
-                    ? `, and an AI interview costs ${interviewPricing.credits_per_interview} credits (taken when you first send it, and returned if the link expires unused).`
+                    ? `, and an interview costs${interviewPricing.credits_per_interview} credits (taken when you first send it, and returned if the link expires unused).`
                     : '.'}
                 </p>
                 {!balanceLoading && planCredits > 0 && (
@@ -273,7 +273,7 @@ export default function BillingPage() {
                         <p className="text-xs text-text-muted mt-0.5">{pkg.credits} credits</p>
                         {interviewsForCredits(pkg.credits, interviewPricing) > 0 && (
                           <p className="text-[11px] text-text-muted">
-                            about {interviewsForCredits(pkg.credits, interviewPricing)} AI interview
+                            about {interviewsForCredits(pkg.credits, interviewPricing)} interview
                             {interviewsForCredits(pkg.credits, interviewPricing) === 1 ? '' : 's'}
                           </p>
                         )}

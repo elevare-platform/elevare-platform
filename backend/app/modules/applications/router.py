@@ -88,10 +88,13 @@ async def get_job_applicants(
     ),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
+    unseen: bool = Query(default=False),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     db: AsyncSession = Depends(get_db),
 ) -> ApplicationList:
-    """Employer or admin views applicants for a job."""
+    """Employer or admin views applicants for a job. Each carries ``is_new``; ``unseen=true``
+    keeps only the applicants made since the viewer first used the markers that they have not
+    opened."""
     filters = ApplicationFilters(
         status=status.upper() if status else None,
         sort=sort,
@@ -103,7 +106,32 @@ async def get_job_applicants(
         filters=filters,
         cursor=cursor,
         limit=limit,
+        unseen=unseen,
     )
+
+
+@router.get("/job/{job_id}/new-count", status_code=200, response_model=dict)
+async def new_applicants_count(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """How many of a job's applicants are new to the caller: made since they first used the
+    markers, not opened."""
+    count = await ApplicationService(db).new_applicants_count(job_id, current_user.id, current_user.role)
+    return {"count": count}
+
+
+@router.post("/{application_id}/seen", status_code=200, response_model=dict)
+async def mark_applicant_seen(
+    application_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """The caller opened this applicant: it stops being new for them. Safe to repeat. 404 for an
+    application they cannot see."""
+    await ApplicationService(db).mark_applicant_seen(application_id, current_user.id, current_user.role)
+    return {"seen": True}
 
 
 @router.patch(

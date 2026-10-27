@@ -702,7 +702,7 @@ class ResendEmailService(EmailService):
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color: #475569;">Applied for <strong style="color: #0F172A;">{job_title}</strong></div>
         </div>
 
-        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You can review their profile, CV and AI match score on your dashboard.</p>
+        <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You can review their profile, CV and match score on your dashboard.</p>
 
         {_render_button("Review application", review_url)}
         """
@@ -1086,9 +1086,9 @@ class ResendEmailService(EmailService):
             else ""
         )
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You're invited to an AI video interview</h2>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">You're invited to a video interview</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{company_name}</strong> would like to interview you for the <strong>{job_title}</strong> role.</p>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The interview is conducted by an AI interviewer, not a person. It asks you questions and follows up on your answers. Your camera records the session so the employer can review it afterwards.</p>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The interview is conducted by an automated interviewer, not a person. It asks you questions and follows up on your answers. Your camera records the session so the employer can review it afterwards.</p>
         {device_html}
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">You don't need to log in. Open the link when you're ready, with your camera and microphone available.</p>
         {_render_button("Start interview", interview_url, is_primary=True)}
@@ -1121,14 +1121,14 @@ class ResendEmailService(EmailService):
             _h(company_name),
         )
         body_content_html = f"""
-        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">A candidate needs their AI interview reset</h2>
-        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{candidate_name}</strong> was locked out of their AI interview for <strong>{job_title}</strong> after restarting it twice, and is asking you to resend their invite so they can try again.</p>
+        <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">A candidate needs their interview reset</h2>
+        <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;"><strong>{candidate_name}</strong> was locked out of their interview for<strong>{job_title}</strong> after restarting it twice, and is asking you to resend their invite so they can try again.</p>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Resending their invite from the interview list resets it automatically. Nothing else is needed.</p>
         {_render_button("Manage interview list", manage_url, is_primary=True)}
         """
         html_body = _render_email_layout(
             title=f"Interview reset requested: {job_title}",
-            preheader=f"{candidate_name} is asking you to reset their AI interview for {job_title}.",
+            preheader=f"{candidate_name} is asking you to reset their interview for {job_title}.",
             body_content_html=body_content_html,
             footer_note=f"You're receiving this because you own the {job_title} posting on {company_name}'s Elevare account.",
         )
@@ -1175,7 +1175,7 @@ class ResendEmailService(EmailService):
         <h2 style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 600; line-height: 1.4; color: #0F172A;">Introduction declined</h2>
         <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">The candidate has declined your introduction request for <strong>{job_title}</strong>.</p>
         <p style="margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; line-height: 1.6; color: #334155;">Your credit has been refunded. You can request introductions with other matched candidates from your dashboard.</p>
-        {_render_button("View AI matches", f"{settings.app_url}/employer/jobs")}
+        {_render_button("View matches",f"{settings.app_url}/employer/jobs")}
         """
         html_body = _render_email_layout(
             title=f"Introduction declined: {job_title}",

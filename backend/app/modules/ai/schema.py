@@ -104,7 +104,20 @@ class InterviewScoringResult:
     role_assessed: str = ""
     competencies: list[dict] = field(default_factory=list)
     recommendation: str | None = None
+    # Set when the interview was scored with a job's scoring profile: the weighted report
+    # (rows, points, whether complete, the band, the key flags). ``score`` is then the total
+    # only when it is complete.
+    weighted: dict | None = None
+    # Set when the interview has a practical case: its separate report out of 5 (rows, the case
+    # score, whether complete). Never part of ``score`` (docs/08_DECISIONS.md, item 43).
+    practical: dict | None = None
     claims_to_verify: list[str] = field(default_factory=list)
+    # Questions a human could put to the candidate's referees (the client's assessment record).
+    reference_check_questions: list[str] = field(default_factory=list)
+    # Technical or access conditions that affected the evidence (a reload, an answer that could
+    # not be written down): a reassessment may be needed, and none of it counts against the
+    # candidate.
+    technical_flags: list[str] = field(default_factory=list)
     candidate_reported: list[str] = field(default_factory=list)
     follow_up_questions: list[str] = field(default_factory=list)
     input_tokens: int = 0
@@ -164,6 +177,21 @@ class DraftedInterviewQuestions(BaseModel):
     (interviews/question_rules.py), so this only has to give the API a shape."""
 
     questions: list[DraftedInterviewQuestion]
+
+
+class DraftedCompetency(BaseModel):
+    """One competency of a drafted scoring profile."""
+
+    name: str
+    weight: int
+
+
+class ScoringProfileDraft(BaseModel):
+    """What the scoring profile drafting model must return (sent to the API as a JSON schema). Its
+    names and weights are checked and repaired before anything is saved
+    (interviews/auto_profile.py), so this only has to give the API a shape."""
+
+    competencies: list[DraftedCompetency]
 
 
 class InterviewFollowUpDecision(BaseModel):

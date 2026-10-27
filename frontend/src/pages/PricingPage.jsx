@@ -24,8 +24,8 @@ function plural(count, word) {
 function includedCreditsText(credits, interviewPricing) {
   const interviews = interviewsForCredits(credits, interviewPricing)
   return interviews
-    ? `${credits} credits included every month (about ${plural(interviews, 'AI interview')})`
-    : `${credits} credits included every month (introductions and AI interviews)`
+    ? `${credits} credits included every month (about ${plural(interviews, 'interview')})`
+    : `${credits} credits included every month (introductions and interviews)`
 }
 
 const TIERS = [
@@ -41,7 +41,7 @@ const TIERS = [
       { text: 'Application management dashboard', included: true },
       { text: 'Email notifications', included: true },
       { text: 'Candidate search', included: false },
-      { text: 'AI CV scoring against jobs', included: false },
+      { text: 'CV scoring against jobs', included: false },
       { text: 'Priority support', included: false },
       { text: 'Dedicated account manager', included: false },
     ],
@@ -56,7 +56,7 @@ const TIERS = [
     cta: { label: 'Get Started', href: '/register?role=employer' },
     features: [
       { text: 'Unlimited active job postings', included: true },
-      { text: 'Unlimited talent pool + AI CV scoring', included: true },
+      { text: 'Unlimited talent pool + CV scoring', included: true },
       { text: 'Candidate search with filters and matching', included: true },
       { text: 'Application management dashboard', included: true },
       { text: 'Email notifications', included: true },
@@ -73,7 +73,7 @@ const TIERS = [
     cta: { label: 'Contact Sales', href: '/contact?type=employer_inquiry' },
     features: [
       { text: 'Unlimited active job postings', included: true },
-      { text: 'Unlimited talent pool + AI CV scoring', included: true },
+      { text: 'Unlimited talent pool + CV scoring', included: true },
       { text: 'Candidate search with filters and matching', included: true },
       { text: 'Application management dashboard', included: true },
       { text: 'Priority support', included: true },
@@ -273,7 +273,7 @@ export default function PricingPage() {
                     <p className="text-xs text-text-muted mt-0.5">{pack.credits} credits</p>
                     {interviewsForCredits(pack.credits, interviewPricing) > 0 && (
                       <p className="text-[11px] text-text-muted">
-                        about {plural(interviewsForCredits(pack.credits, interviewPricing), 'AI interview')}
+                        about {plural(interviewsForCredits(pack.credits, interviewPricing), 'interview')}
                       </p>
                     )}
                     <p className="text-2xl font-extrabold text-text mt-3">{formatPrice(pack.price_kobo)}</p>
@@ -303,7 +303,7 @@ export default function PricingPage() {
               {interviewPricing && (
                 <li>
                   <span className="font-semibold text-text">
-                    AI interview: {plural(interviewPricing.credits_per_interview, 'credit')}.
+                    Interview: {plural(interviewPricing.credits_per_interview, 'credit')}.
                   </span>{' '}
                   Taken when you first send the interview link to a candidate. Resending the same
                   link is free, and the credits come back if the link expires unused.

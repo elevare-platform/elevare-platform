@@ -58,6 +58,48 @@ class TurnKind(str, Enum):
     FOLLOW_UP = "FOLLOW_UP"
 
 
+class FollowUpMode(str, Enum):
+    """What the AI may do after an answer in a job's strict interview (docs/08_DECISIONS.md, item
+    40). The employer chooses it per job; the same for every candidate of the job.
+
+    ``NONE``: only the questions on screen, no follow-up. ``STANDARD``: up to
+    ``strict_max_follow_ups`` neutral follow-ups, preferring the question's prepared probes when
+    one fits. ``PROBES_ONLY``: a follow-up only from the probes the employer wrote for that
+    question, never one the AI makes up.
+    """
+
+    NONE = "NONE"
+    STANDARD = "STANDARD"
+    PROBES_ONLY = "PROBES_ONLY"
+
+
+class PanelDecision(str, Enum):
+    """What a hiring panel decides about a candidate after an interview (the client's assessment
+    record: strong shortlist, shortlist, hold, do not shortlist). A person's decision, recorded with
+    a rationale and a sign-off. It stops at the shortlist: hiring is outside the platform's scope."""
+
+    STRONG_SHORTLIST = "STRONG_SHORTLIST"
+    SHORTLIST = "SHORTLIST"
+    HOLD = "HOLD"
+    DO_NOT_SHORTLIST = "DO_NOT_SHORTLIST"
+
+
+PANEL_DECISION_LABELS = {
+    PanelDecision.STRONG_SHORTLIST.value: "Strong shortlist",
+    PanelDecision.SHORTLIST.value: "Shortlist",
+    PanelDecision.HOLD.value: "Hold",
+    PanelDecision.DO_NOT_SHORTLIST.value: "Do not shortlist",
+}
+
+
+def follow_up_mode_of(value: str | None) -> "FollowUpMode":
+    """A stored value as a mode; nothing stored, or anything unknown, is the standard."""
+    try:
+        return FollowUpMode(value) if value else FollowUpMode.STANDARD
+    except ValueError:
+        return FollowUpMode.STANDARD
+
+
 class TranscriptCheckStatus(str, Enum):
     """Outcome of comparing the candidate-device transcript with a server-side
     transcription of the recording."""

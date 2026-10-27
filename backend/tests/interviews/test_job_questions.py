@@ -53,8 +53,11 @@ def _url(job, tail=""):
     return f"/api/v1/interviews/jobs/{job.id}/questions{tail}"
 
 
-async def _save(client, user, job, questions):
-    return await client.put(_url(job), json={"questions": questions}, headers=_headers(user))
+async def _save(client, user, job, questions, follow_up_mode=None):
+    body = {"questions": questions}
+    if follow_up_mode is not None:
+        body["follow_up_mode"] = follow_up_mode
+    return await client.put(_url(job), json=body, headers=_headers(user))
 
 
 async def _rows(db_session, job):
@@ -80,11 +83,20 @@ async def test_a_job_with_no_questions_returns_an_empty_list_and_the_limits(clie
     assert response.json() == {
         "questions": [],
         "total_seconds": 0,
-        "max_questions": 6,
+        # No cap on the count: only what the 20 minutes allow at the shortest answer time.
+        "max_questions": 40,
         "default_questions": 5,
         "max_total_seconds": 1200,
         "closing_question": {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90},
         "style": "live",
+        "competencies": [],
+        "untested_competencies": [],
+        "follow_up_mode": "STANDARD",
+        "question_templates": [
+            {"code": "national_sales_manager", "title": "National Sales Manager", "question_count": 9, "total_seconds": 1290},
+            {"code": "commercial_director", "title": "Commercial Director", "question_count": 9, "total_seconds": 1230},
+            {"code": "senior_marketing_manager", "title": "Senior Marketing Manager", "question_count": 11, "total_seconds": 1290},
+        ],
     }
 
 
@@ -173,13 +185,174 @@ async def test_a_list_that_breaks_a_rule_is_refused_naming_every_problem_and_cha
     assert refused.status_code == 422
     body = refused.json()
     messages = [detail["message"] for detail in body["details"]]
-    assert "An interview can have at most 6 questions." in messages
+    assert not any("at most" in m for m in messages)  # the count itself is not limited
     assert "Question 1 is too short to be a question." in messages
     assert any(m.startswith("Question 2 needs between 30 seconds and 10 minutes") for m in messages)
     assert any("add up to" in m and "limited to 20 minutes" in m for m in messages)
     assert all(detail["field"] == "questions" for detail in body["details"])
     # Refused: the saved list is exactly as it was.
     assert [r.text for r in await _rows(db_session, job)] == ["A good question that is already saved?"]
+
+
+@pytest.mark.asyncio
+async def test_ten_questions_are_saved_when_their_times_fit_the_interview(client, db_session):
+    """There is no cap on how many questions, only on the total time (Colton's roles have 8 to 10)."""
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(
+        client, owner, job, [q("Question number %d about the work?" % n, 90) for n in range(1, 11)]
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["questions"]) == 10
+    assert response.json()["total_seconds"] == 900
+
+
+@pytest.mark.asyncio
+async def test_many_questions_are_still_refused_when_their_times_do_not_fit(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    refused = await _save(
+        client, owner, job, [q("Question number %d about the work?" % n, 120) for n in range(1, 12)]
+    )
+
+    assert refused.status_code == 422
+    assert any("limited to 20 minutes" in d["message"] for d in refused.json()["details"])
+
+
+@pytest.mark.asyncio
+async def test_probes_are_saved_tidied_and_returned_with_the_question(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(
+        client,
+        owner,
+        job,
+        [{**q("Tell us about a launch you led."), "probes": "  What was your  own part?  \n\nWhat did it deliver?\nwhat did it deliver?\n"}],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["questions"][0]["probes"] == "What was your own part?\nWhat did it deliver?"
+    assert (await _rows(db_session, job))[0].probes == "What was your own part?\nWhat did it deliver?"
+
+
+@pytest.mark.asyncio
+async def test_the_follow_up_time_is_saved_per_question_and_none_means_the_default(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(
+        client,
+        owner,
+        job,
+        [{**q("Tell us about a launch you led."), "follow_up_seconds": 150}, q("And another thing you owned?")],
+    )
+
+    assert response.status_code == 200
+    assert [x["follow_up_seconds"] for x in response.json()["questions"]] == [150, None]
+    assert [r.follow_up_seconds for r in await _rows(db_session, job)] == [150, None]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seconds", [0, 29, 301, 3600, -30])
+async def test_a_follow_up_time_outside_30_seconds_to_5_minutes_is_refused(client, db_session, seconds):
+    owner, _teammate, job = await _company(db_session)
+
+    refused = await _save(client, owner, job, [{**q("Tell us about a launch you led."), "follow_up_seconds": seconds}])
+
+    assert refused.status_code == 422
+    assert any(
+        d["message"].startswith("The follow-up time on question 1 needs between 30 seconds and 5 minutes")
+        for d in refused.json()["details"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_one_question_can_be_the_practical_case_and_it_is_saved_and_returned(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(
+        client, owner, job, [q("Tell us about a launch you led."), {**q("Build a 90-day plan and state your assumptions."), "is_practical": True}]
+    )
+
+    assert response.status_code == 200
+    assert [x["is_practical"] for x in response.json()["questions"]] == [False, True]
+    assert [r.is_practical for r in await _rows(db_session, job)] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_only_one_question_can_be_the_practical_case(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    refused = await _save(
+        client,
+        owner,
+        job,
+        [{**q("Build a 90-day plan and state your assumptions."), "is_practical": True}, {**q("Build a second plan and state your assumptions."), "is_practical": True}],
+    )
+
+    assert refused.status_code == 422
+    assert any(d["message"] == "Only one question can be the practical case." for d in refused.json()["details"])
+    assert await _rows(db_session, job) == []
+
+
+@pytest.mark.asyncio
+async def test_a_question_is_not_a_practical_case_unless_it_says_so(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(client, owner, job, [q("Tell us about a launch you led.")])
+
+    assert response.json()["questions"][0]["is_practical"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_question_without_probes_has_none(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(client, owner, job, [{**q("Tell us about a launch you led."), "probes": "  \n "}])
+
+    assert response.json()["questions"][0]["probes"] is None
+
+
+@pytest.mark.asyncio
+async def test_too_many_or_too_long_probes_are_refused(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    refused = await _save(
+        client,
+        owner,
+        job,
+        [
+            {**q("Tell us about a launch you led."), "probes": "\n".join(f"Probe {n}?" for n in range(7))},
+            {**q("And another thing you owned?"), "probes": "x" * 301},
+        ],
+    )
+
+    assert refused.status_code == 422
+    messages = [d["message"] for d in refused.json()["details"]]
+    assert any(m.startswith("Question 1 has too many probes") for m in messages)
+    assert any(m.startswith("A probe on question 2 is too long") for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_the_follow_up_mode_is_saved_with_the_list_and_kept_when_left_out(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    first = await _save(client, owner, job, [q("Tell us about a launch you led.")], follow_up_mode="PROBES_ONLY")
+    again = await _save(client, owner, job, [q("Tell us about a launch you led.")])
+    read = await client.get(_url(job), headers=_headers(owner))
+
+    assert first.json()["follow_up_mode"] == "PROBES_ONLY"
+    assert again.json()["follow_up_mode"] == "PROBES_ONLY"  # left out: the job keeps its mode
+    assert read.json()["follow_up_mode"] == "PROBES_ONLY"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_follow_up_mode_is_refused(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    refused = await _save(client, owner, job, [q("Tell us about a launch you led.")], follow_up_mode="ALWAYS")
+
+    assert refused.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -342,13 +515,52 @@ async def test_a_draft_is_cleaned_marked_as_ai_and_never_saved(client, db_sessio
     assert response.status_code == 200
     body = response.json()
     assert body["questions"] == [
-        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI"},
-        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI"},
+        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None, "is_practical": False},
+        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None, "is_practical": False},
         # The scorecard's standard closing question is always the last one.
-        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI"},
+        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None, "is_practical": False},
     ]
     assert body["total_seconds"] == 300
     assert await _rows(db_session, job) == []  # a draft is only ever returned
+
+
+@pytest.mark.asyncio
+async def test_the_last_question_the_ai_writes_is_the_practical_case_when_it_wrote_them_all(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([
+        ("Tell us about a launch you led and your own part in it.", 120),
+        ("How do you decide what to measure each week?", 90),
+        ("Describe how you handled a team that missed its target.", 120),
+        ("You join and must stand up distribution in three regions with a small team. Walk us through your first 90 days, your assumptions and your risks.", 240),
+    ])
+
+    body = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
+
+    assert fake.asked[0]["practical"] is True
+    assert [q["is_practical"] for q in body["questions"]] == [False, False, False, True, False]  # the closing question last
+    assert body["questions"][3]["text"].startswith("You join and must stand up distribution")
+
+
+@pytest.mark.asyncio
+async def test_no_ordinary_question_is_marked_practical_when_the_ai_wrote_fewer_than_asked(client, db_session, ai):
+    owner, _teammate, job = await _company(db_session)
+    ai([("Tell us about a launch you led and your own part in it.", 120), ("How do you decide what to measure?", 90)])
+
+    body = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
+
+    assert not any(q["is_practical"] for q in body["questions"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("count", "practical"), [(2, False), (3, False), (4, True), (6, True)])
+async def test_a_practical_case_is_asked_for_only_when_there_are_enough_questions(client, db_session, ai, count, practical):
+    """The closing question takes one place, so 4 questions are 3 written by the AI."""
+    owner, _teammate, job = await _company(db_session)
+    fake = ai([("Tell us about a launch you led and your own part in it.", 120)])
+
+    await client.post(_url(job, "/draft"), json={"count": count}, headers=_headers(owner))
+
+    assert fake.asked[0]["practical"] is practical
 
 
 @pytest.mark.asyncio
@@ -367,8 +579,10 @@ async def test_the_draft_is_asked_for_from_the_job_and_five_questions_by_default
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("sent", "asked"), [(3, 2), (6, 5), (40, 5), (2, 1), (1, 1)])
-async def test_the_count_is_never_more_than_an_interview_may_have(client, db_session, ai, sent, asked):
+@pytest.mark.parametrize(("sent", "asked"), [(3, 2), (6, 5), (10, 9), (50, 37), (2, 1), (1, 1)])
+async def test_the_count_is_never_more_than_the_interview_time_allows(client, db_session, ai, sent, asked):
+    """No cap on the count, only on time: 20 minutes holds 38 questions at 30 seconds, one of them
+    the closing question's own 90 seconds, so at most 37 are drafted by the AI."""
     owner, _teammate, job = await _company(db_session)
     fake = ai([("Describe a system you designed and why.", 90)])
 
@@ -387,9 +601,10 @@ async def test_the_model_is_told_how_long_the_interview_is(client, db_session, a
 
     response = (await client.post(_url(job, "/draft"), json={}, headers=_headers(owner))).json()
 
-    # The closing question's 90 seconds are kept out of what the AI may share between its own
-    # (here that leaves less than the 30 seconds each of its four need, so the least they can take).
-    assert fake.asked[0]["total_seconds"] == 120
+    # The closing question's 90 seconds are kept out of what the AI may share between its own:
+    # 3 minutes hold the closing question and three AI questions at the 30 second minimum.
+    assert fake.asked[0]["count"] == 3
+    assert fake.asked[0]["total_seconds"] == 90
     assert response["max_total_seconds"] == 180
     # Even if the model ignores it, what comes back fits and can be saved.
     assert response["total_seconds"] <= 180
