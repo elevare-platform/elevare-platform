@@ -406,6 +406,38 @@ describe('InterviewDetailModal: an interview that ended early', () => {
       )
     })
 
+    it('suggests the band of a complete score, and the panel accepts it in one click', async () => {
+      const report = {
+        rows: [{ name: 'Strategy', weight: 100, key: false, rating: 4 }],
+        points: 80, assessed_weight: 100, total_weight: 100, complete: true, score: 80, band: 'Shortlist',
+        bands: { strong: 85, shortlist: 75, hold: 65 }, key_min_rating: 3, key_flags: [], unassessed: [],
+      }
+      api.get.mockResolvedValue({ data: { ...BASE, ai_score: 80, ai_rationale: 'Fine.', record: RECORD, score_report: report } })
+      api.put.mockResolvedValue({
+        data: { decision: 'SHORTLIST', label: 'Shortlist', rationale: 'x', decided_by_name: 'Ada Obi', decided_at: '2026-10-21T10:00:00Z' },
+      })
+      renderEnded()
+
+      expect(await screen.findByTestId('suggested-decision')).toHaveTextContent('Shortlist, score 80 of 100')
+      fireEvent.click(screen.getByRole('button', { name: 'Accept this suggestion' }))
+
+      expect(await screen.findByTestId('latest-decision')).toHaveTextContent('Matches the suggestion.')
+      expect(api.put).toHaveBeenCalledWith(
+        expect.stringMatching(/panel-decision$/),
+        { decision: 'SHORTLIST', rationale: 'Agreed with the suggested band: Shortlist (score 80 of 100).' },
+        { params: { job_id: expect.any(String) } }
+      )
+    })
+
+    it('does not offer to decide on an interview that is still in progress, and says why', async () => {
+      api.get.mockResolvedValue({ data: { ...BASE, status: 'IN_PROGRESS', record: RECORD } })
+      renderEnded()
+
+      await screen.findByTestId('record-reference')
+      expect(screen.getByText('The interview has not finished yet, so there is nothing to decide on.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Record decision' })).toBeDisabled()
+    })
+
     it('shows no record for an interview whose detail has none, as an older server sends', async () => {
       api.get.mockResolvedValue({ data: { ...BASE, ai_score: 72, ai_rationale: 'Fine.' } })
       renderEnded()
