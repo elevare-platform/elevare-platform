@@ -3,6 +3,18 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 
 vi.mock('@/lib/api', () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }))
 
+// The template library window has its own tests (QuestionLibraryModal.test.jsx). Here a stand-in
+// offers one button that hands the editor the reply the server would give for the chosen set.
+const { library } = vi.hoisted(() => ({ library: { reply: null, name: 'The set' } }))
+vi.mock('./QuestionLibraryModal', () => ({
+  default: ({ jobId, hasQuestions, onApplied, onClose }) => (
+    <div role="dialog" aria-label="Template library" data-job={jobId} data-has-questions={String(hasQuestions)}>
+      <button type="button" onClick={() => onApplied(library.reply, library.name)}>Pick the set</button>
+      <button type="button" onClick={onClose}>Close the library</button>
+    </div>
+  ),
+}))
+
 import api from '@/lib/api'
 import InterviewQuestionsModal from './InterviewQuestionsModal'
 
@@ -418,21 +430,18 @@ describe('InterviewQuestionsModal', () => {
     })
 
     it('keeps the practical mark of a set loaded from a template', async () => {
-      const TEMPLATES = [{ code: 'national_sales_manager', title: 'National Sales Manager', question_count: 2, total_seconds: 360 }]
-      api.get.mockResolvedValueOnce({ data: { ...loaded().data, question_templates: TEMPLATES } })
-      api.post.mockResolvedValueOnce({
-        data: {
-          ...LIMITS,
-          question_templates: TEMPLATES,
-          follow_up_mode: 'STANDARD',
-          saved: true,
-          questions: [saved(1, 'Tell me about a distributor network you built.', 120), { ...saved(2, 'Build a 90-day activation plan.', 240), is_practical: true }],
-        },
-      })
+      api.get.mockResolvedValueOnce(loaded())
+      library.reply = {
+        ...LIMITS,
+        follow_up_mode: 'STANDARD',
+        saved: true,
+        questions: [saved(1, 'Tell me about a distributor network you built.', 120), { ...saved(2, 'Build a 90-day activation plan.', 240), is_practical: true }],
+      }
+      library.name = 'National Sales Manager'
       renderModal()
 
-      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Use this set' }))
+      fireEvent.click(await screen.findByRole('button', { name: /Browse templates/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Pick the set' }))
       await screen.findByDisplayValue('Build a 90-day activation plan.')
 
       expect(practicalBox(1)).not.toBeChecked()
@@ -442,102 +451,64 @@ describe('InterviewQuestionsModal', () => {
 
   // --- the ready-made sets -----------------------------------------------------------------
 
-  describe('the ready-made sets', () => {
-    const TEMPLATES = [
-      { code: 'national_sales_manager', title: 'National Sales Manager', question_count: 8, total_seconds: 1050 },
-      { code: 'senior_marketing_manager', title: 'Senior Marketing Manager', question_count: 10, total_seconds: 1050 },
-    ]
-    const withTemplates = (questions = []) => ({ data: { ...loaded(questions).data, question_templates: TEMPLATES } })
+  describe('starting from a set in the template library', () => {
     const appliedResponse = {
       data: {
         ...LIMITS,
-        question_templates: TEMPLATES,
         follow_up_mode: 'STANDARD',
+        saved: true,
         questions: [
           { ...saved(1, 'You are preparing to launch Seasonings across Nigeria. How would you plan it?', 150), competency: 'Route-to-market', probes: 'Which markets would you prioritise?' },
           { ...saved(2, 'Tell me about a time you built a distributor network.', 120), competency: 'Route-to-market', probes: null },
         ],
       },
     }
-    const useButton = () => screen.getByRole('button', { name: 'Use this set' })
 
-    it('lists the roles with their question counts, and cannot be used until one is chosen', async () => {
-      api.get.mockResolvedValueOnce(withTemplates())
+    // Open the library from the editor and pick a set: the server's reply is what the stand-in hands back.
+    async function pick(reply, name = 'National Sales Manager') {
+      library.reply = reply.data ?? reply
+      library.name = name
+      fireEvent.click(await screen.findByRole('button', { name: /Browse templates/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Pick the set' }))
+    }
+
+    it('opens the library for this job, telling it whether the job already has questions, and closes it again', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'An existing question to keep?')]))
       renderModal()
 
-      const picker = await screen.findByLabelText('Start from a ready-made set')
+      fireEvent.click(await screen.findByRole('button', { name: /Browse templates/ }))
 
-      expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual([
-        'Choose a role',
-        'National Sales Manager (8 questions)',
-        'Senior Marketing Manager (10 questions)',
-      ])
-      expect(useButton()).toBeDisabled()
-      expect(screen.getByText(/word for word, with their optional probes/)).toBeInTheDocument()
+      const library_ = screen.getByRole('dialog', { name: 'Template library' })
+      expect(library_).toHaveAttribute('data-job', 'job-1')
+      expect(library_).toHaveAttribute('data-has-questions', 'true')
+      fireEvent.click(screen.getByRole('button', { name: 'Close the library' }))
+      expect(screen.queryByRole('dialog', { name: 'Template library' })).not.toBeInTheDocument()
     })
 
-    it('is not shown when the server has none', async () => {
-      api.get.mockResolvedValueOnce(loaded())
-      renderModal()
-      await screen.findByRole('button', { name: /Add a question/ })
-
-      expect(screen.queryByLabelText('Start from a ready-made set')).not.toBeInTheDocument()
-    })
-
-    it('asks before replacing the current questions, and does nothing if the answer is no', async () => {
-      api.get.mockResolvedValueOnce(withTemplates([saved(1, 'An existing question to keep?')]))
-      confirmSpy.mockReturnValue(false)
-      renderModal()
-
-      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
-      fireEvent.click(useButton())
-
-      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Replace this job\'s questions and scoring profile with the National Sales Manager set'))
-      expect(api.post).not.toHaveBeenCalled()
-      expect(screen.getByDisplayValue('An existing question to keep?')).toBeInTheDocument()
-    })
-
-    it('loads and saves the role\'s set at once, shows it with its probes, and counts as saved', async () => {
-      api.get.mockResolvedValueOnce(withTemplates([saved(1, 'An existing question to replace?')]))
-      api.post.mockResolvedValueOnce(appliedResponse)
+    it('loads the chosen set, shows it with its probes, and counts it as saved', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'An existing question to replace?')]))
       const { onSaved } = renderModal()
 
-      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
-      fireEvent.click(useButton())
+      await pick(appliedResponse)
 
       expect(await screen.findByDisplayValue(/You are preparing to launch Seasonings across Nigeria/)).toBeInTheDocument()
-      expect(api.post).toHaveBeenCalledWith(`${URL}/from-template`, { code: 'national_sales_manager' })
       expect(screen.queryByDisplayValue('An existing question to replace?')).not.toBeInTheDocument()
       expect(screen.getByDisplayValue('Which markets would you prioritise?')).toBeInTheDocument()
-      expect(screen.getByRole('status')).toHaveTextContent('Loaded the National Sales Manager set: 2 questions')
+      expect(screen.getByRole('status')).toHaveTextContent('Loaded "National Sales Manager": 2 questions.')
       expect(screen.getByRole('status')).toHaveTextContent('It is saved')
+      expect(screen.queryByRole('dialog', { name: 'Template library' })).not.toBeInTheDocument() // the library closes
       expect(saveButton()).toBeDisabled() // nothing unsaved
       expect(onSaved).toHaveBeenCalled()
       expect(api.put).not.toHaveBeenCalled()
     })
 
-    it('does not ask for confirmation to the same degree when there is nothing to replace', async () => {
-      api.get.mockResolvedValueOnce(withTemplates())
-      api.post.mockResolvedValueOnce(appliedResponse)
+    it('says "1 question" for a set of one', async () => {
+      api.get.mockResolvedValueOnce(loaded())
       renderModal()
 
-      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'senior_marketing_manager' } })
-      fireEvent.click(useButton())
+      await pick({ data: { ...appliedResponse.data, questions: [appliedResponse.data.questions[0]] } }, 'Short set')
 
-      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Start from the Senior Marketing Manager set?'))
-      await screen.findByDisplayValue(/You are preparing to launch Seasonings across Nigeria/)
-    })
-
-    it('shows the server\'s refusal and keeps what was there when loading fails', async () => {
-      api.get.mockResolvedValueOnce(withTemplates([saved(1, 'An existing question to keep?')]))
-      api.post.mockRejectedValueOnce({ response: { status: 403, data: { message: 'You do not have access to this job' } } })
-      renderModal()
-
-      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
-      fireEvent.click(useButton())
-
-      expect(await screen.findByRole('alert')).toHaveTextContent('You do not have access to this job')
-      expect(screen.getByDisplayValue('An existing question to keep?')).toBeInTheDocument()
+      expect(await screen.findByRole('status')).toHaveTextContent('Loaded "Short set": 1 question.')
     })
 
     it('shows the set and keeps the time warning when its answer times are longer than the interview allows', async () => {
@@ -546,14 +517,10 @@ describe('InterviewQuestionsModal', () => {
         competency: 'Route-to-market',
         probes: 'Which markets would you prioritise?',
       }))
-      api.get.mockResolvedValueOnce(withTemplates())
-      api.post.mockResolvedValueOnce({
-        data: { ...LIMITS, max_total_seconds: 600, question_templates: TEMPLATES, follow_up_mode: 'STANDARD', saved: false, questions: long },
-      })
+      api.get.mockResolvedValueOnce(loaded())
       const { onSaved } = renderModal()
 
-      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
-      fireEvent.click(useButton())
+      await pick({ data: { ...LIMITS, max_total_seconds: 600, follow_up_mode: 'STANDARD', saved: false, questions: long } })
 
       // The questions are shown, not lost, ...
       expect(await screen.findByDisplayValue('Colton question number 1 about the role.')).toBeInTheDocument()
@@ -577,12 +544,10 @@ describe('InterviewQuestionsModal', () => {
     })
 
     it('can still be edited and saved after a set is loaded, with the tags it came with', async () => {
-      api.get.mockResolvedValueOnce(withTemplates())
-      api.post.mockResolvedValueOnce({ data: { ...appliedResponse.data, competencies: ['Route-to-market'] } })
+      api.get.mockResolvedValueOnce(loaded())
       api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
       renderModal()
-      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
-      fireEvent.click(useButton())
+      await pick({ data: { ...appliedResponse.data, competencies: ['Route-to-market'] } })
       await screen.findByDisplayValue(/You are preparing to launch Seasonings across Nigeria/)
 
       fireEvent.change(screen.getAllByLabelText('Time to answer')[0], { target: { value: '240' } })
@@ -595,6 +560,130 @@ describe('InterviewQuestionsModal', () => {
         ['Route-to-market', 120, null],
       ])
       expect(sent.follow_up_mode).toBe('STANDARD')
+    })
+  })
+
+  // --- saving the questions as a template -------------------------------------------------
+
+  describe('saving the questions as a template for the company', () => {
+    const openForm = () => fireEvent.click(screen.getByRole('button', { name: /Save as template/ }))
+    const nameBox = () => screen.getByLabelText('Name this template')
+    const saveTemplate = () => screen.getByRole('button', { name: 'Save template' })
+    const SAVED = { data: { id: 't-1', kind: 'COMPANY', name: 'Sales set', has_scoring_profile: true, questions: [] } }
+
+    it('is not offered for an empty list', async () => {
+      api.get.mockResolvedValueOnce(loaded())
+      renderModal()
+
+      expect(await screen.findByRole('button', { name: /Save as template/ })).toBeDisabled()
+    })
+
+    it('asks for a name, and cannot be saved without one', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+
+      openForm()
+      expect(saveTemplate()).toBeDisabled()
+      fireEvent.change(nameBox(), { target: { value: '   ' } })
+      expect(saveTemplate()).toBeDisabled()
+      fireEvent.change(nameBox(), { target: { value: 'Sales set' } })
+      expect(saveTemplate()).toBeEnabled()
+    })
+
+    it('sends the questions as they are on the screen, with the job, the name and the follow-up choice', async () => {
+      api.get.mockResolvedValueOnce({ data: { ...loaded([{ ...saved(1, 'First question to answer.'), probes: 'How big was it?', competency: 'Strategy' }]).data, competencies: ['Strategy'], follow_up_mode: 'PROBES_ONLY' } })
+      api.post.mockResolvedValueOnce(SAVED)
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+      fireEvent.change(boxes()[0], { target: { value: 'First question, edited on the screen.' } }) // not saved to the job yet
+
+      openForm()
+      fireEvent.change(nameBox(), { target: { value: 'Sales set' } })
+      fireEvent.click(saveTemplate())
+
+      await waitFor(() => expect(api.post).toHaveBeenCalled())
+      expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/question-templates', {
+        job_id: 'job-1',
+        name: 'Sales set',
+        include_profile: true,
+        follow_up_mode: 'PROBES_ONLY',
+        questions: [
+          { text: 'First question, edited on the screen.', time_limit_seconds: 120, source: 'EMPLOYER', competency: 'Strategy', probes: 'How big was it?', follow_up_seconds: null, is_practical: false },
+        ],
+      })
+      expect(api.put).not.toHaveBeenCalled() // the job's own questions are not touched
+    })
+
+    it('says where to find it once it is saved, and closes the form', async () => {
+      api.get.mockResolvedValueOnce({ data: { ...loaded([saved(1, 'First question to answer.')]).data, competencies: ['Strategy'] } })
+      api.post.mockResolvedValueOnce(SAVED)
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+      openForm()
+      fireEvent.change(nameBox(), { target: { value: 'Sales set' } })
+
+      fireEvent.click(saveTemplate())
+
+      expect(await screen.findByRole('status')).toHaveTextContent('Saved "Sales set" for your whole company, with the scoring profile.')
+      expect(screen.getByRole('status')).toHaveTextContent('under "My company\'s sets"')
+      expect(screen.queryByTestId('save-template-form')).not.toBeInTheDocument()
+    })
+
+    it('does not offer the scoring profile for a job that has none', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+
+      openForm()
+
+      expect(screen.queryByLabelText(/Include this job's scoring profile/)).not.toBeInTheDocument()
+    })
+
+    it('lets the employer leave the scoring profile out, and sends the choice', async () => {
+      api.get.mockResolvedValueOnce({ data: { ...loaded([saved(1, 'First question to answer.')]).data, competencies: ['Strategy'] } })
+      api.post.mockResolvedValueOnce(SAVED)
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+      openForm()
+      fireEvent.click(screen.getByLabelText(/Include this job's scoring profile/))
+      fireEvent.change(nameBox(), { target: { value: 'Sales set' } })
+      fireEvent.click(saveTemplate())
+
+      await waitFor(() => expect(api.post).toHaveBeenCalled())
+      expect(api.post.mock.calls[0][1].include_profile).toBe(false)
+    })
+
+    it('can be saved even when the answer times are longer than this job\'s time limit', async () => {
+      api.get.mockResolvedValueOnce(loaded(Array.from({ length: 9 }, (_, n) => saved(n + 1, `Question number ${n + 1} about the job.`, 150))))
+      renderModal()
+      await screen.findByDisplayValue('Question number 1 about the job.')
+      expect(screen.getByTestId('cannot-save-note')).toBeInTheDocument() // the job's own Save is off
+
+      expect(screen.getByRole('button', { name: /Save as template/ })).toBeEnabled()
+    })
+
+    it('cannot be saved while a question breaks another rule', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'Why?')]))
+      renderModal()
+
+      expect(await screen.findByRole('button', { name: /Save as template/ })).toBeDisabled()
+    })
+
+    it('shows the server\'s words, and keeps the form, when the name is taken', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
+      api.post.mockRejectedValueOnce({
+        response: { status: 422, data: { code: 'TEMPLATE_NAME_TAKEN', message: 'Your company already has a template with that name. Choose another name, or delete the old one.' } },
+      })
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+      openForm()
+      fireEvent.change(nameBox(), { target: { value: 'Sales set' } })
+
+      fireEvent.click(saveTemplate())
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('already has a template with that name')
+      expect(nameBox()).toHaveValue('Sales set')
     })
   })
 

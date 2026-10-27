@@ -13,6 +13,8 @@ from app.core.limiter import limiter
 from app.modules.candidates.models import CandidateProfile
 from app.modules.interviews.questions import InterviewQuestionService
 from app.modules.interviews.schema import (
+    ApplyJobSetRequest,
+    ApplySavedTemplateRequest,
     CandidateInterviewDetailResponse,
     CandidateInterviewResponse,
     InterviewCompleteRequest,
@@ -34,9 +36,14 @@ from app.modules.interviews.schema import (
     InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
+    JobSetsResponse,
+    LibraryTemplate,
     PanelDecisionIn,
     PanelDecisionOut,
+    QuestionLibraryResponse,
     QuestionTemplateApplyRequest,
+    RenameTemplateRequest,
+    SaveTemplateRequest,
     ScoringProfileIn,
     ScoringProfileResponse,
     StrictEventRequest,
@@ -46,6 +53,7 @@ from app.modules.interviews.schema import (
 )
 from app.modules.interviews.scoring_profile_service import ScoringProfileService
 from app.modules.interviews.service import InterviewService
+from app.modules.interviews.template_library import QuestionLibraryService
 from app.modules.users.models import User
 
 
@@ -454,6 +462,101 @@ async def start_job_questions_from_template(
     saved but returned to be shortened (``saved`` false). The employer can then edit anything. An
     unknown template is refused with a 422."""
     return await InterviewQuestionService(db).apply_template(current_user, job_id, data.code)
+
+
+@router.post(
+    "/jobs/{job_id}/questions/from-saved-template",
+    response_model=InterviewQuestionsTemplateResponse,
+    status_code=200,
+)
+async def start_job_questions_from_saved_template(
+    job_id: uuid.UUID,
+    data: ApplySavedTemplateRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start the job from a set the caller's company saved: its questions, its scoring profile (if it
+    has one) and its follow-up choice, replacing the job's current ones in one step. Shown for
+    shortening, not saved, when its answer times pass the interview's time limit."""
+    return await InterviewQuestionService(db).apply_saved_template(current_user, job_id, data.template_id)
+
+
+@router.post(
+    "/jobs/{job_id}/questions/from-job",
+    response_model=InterviewQuestionsTemplateResponse,
+    status_code=200,
+)
+async def start_job_questions_from_another_job(
+    job_id: uuid.UUID,
+    data: ApplyJobSetRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Copy another job of the same company: its questions, scoring profile and follow-up choice."""
+    return await InterviewQuestionService(db).apply_from_job(current_user, job_id, data.source_job_id)
+
+
+@router.get("/question-templates", response_model=QuestionLibraryResponse, status_code=200)
+async def browse_question_templates(
+    q: str | None = Query(default=None, max_length=100),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """The template library: the built-in role sets and the caller's company's saved sets, with the
+    questions of each so they can be previewed. ``q`` keeps those whose name, competencies or
+    questions contain every word."""
+    return await QuestionLibraryService(db).library(current_user, q)
+
+
+@router.get("/question-templates/jobs", response_model=JobSetsResponse, status_code=200)
+async def browse_company_job_sets(
+    q: str | None = Query(default=None, max_length=100),
+    exclude_job_id: uuid.UUID | None = Query(default=None),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """The caller's company's jobs that have interview questions, newest first, to copy from."""
+    return {"items": await QuestionLibraryService(db).company_jobs(current_user, q, exclude_job_id)}
+
+
+@router.post("/question-templates", response_model=LibraryTemplate, status_code=201)
+async def save_question_template(
+    data: SaveTemplateRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save the questions being edited as a template the whole company can use. 422 when the name is
+    taken or the list breaks a rule."""
+    return await QuestionLibraryService(db).save(
+        current_user,
+        data.job_id,
+        data.name,
+        [item.model_dump() for item in data.questions],
+        data.include_profile,
+        data.follow_up_mode,
+    )
+
+
+@router.patch("/question-templates/{template_id}", response_model=LibraryTemplate, status_code=200)
+async def rename_question_template(
+    template_id: uuid.UUID,
+    data: RenameTemplateRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a saved template. Only the person who saved it, or the company owner."""
+    return await QuestionLibraryService(db).rename(current_user, template_id, data.name)
+
+
+@router.delete("/question-templates/{template_id}", status_code=204)
+async def delete_question_template(
+    template_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a saved template. Jobs already started from it are not affected. Only the person who
+    saved it, or the company owner."""
+    await QuestionLibraryService(db).delete(current_user, template_id)
 
 
 @router.post(

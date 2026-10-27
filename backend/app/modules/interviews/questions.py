@@ -35,6 +35,7 @@ from app.modules.interviews.scoring_profile_service import (
     load_profile,
     untested,
 )
+from app.modules.interviews.template_library import QuestionLibraryService
 from app.modules.jobs.repository import JobRepository
 from app.modules.users.models import User
 
@@ -193,25 +194,65 @@ class InterviewQuestionService:
         scoring = next((t for t in scoring_rules.TEMPLATES if t["code"] == code), None)
         if items is None or scoring is None:
             raise ValidationException(message="That template does not exist.")
-        await ScoringProfileService(self._db).save(
-            user,
-            job_id,
-            scoring["competencies"],
-            None,
-            scoring_rules.DEFAULT_KEY_MIN_RATING,
-            code,
-            commit=False,
-        )
+        profile = {
+            "competencies": scoring["competencies"],
+            "bands": None,
+            "key_min_rating": scoring_rules.DEFAULT_KEY_MIN_RATING,
+            "template_code": code,
+        }
+        return await self.apply_set(user, job_id, items, profile, FollowUpMode.STANDARD.value)
+
+    async def apply_saved_template(self, user: User, job_id: uuid.UUID, template_id: uuid.UUID) -> dict:
+        """Start the job from a set the user's company saved (see ``template_library``)."""
+        await self._job_for(user, job_id)
+        items, profile, mode = await QuestionLibraryService(self._db).saved_set(user, template_id)
+        return await self.apply_set(user, job_id, items, profile, mode)
+
+    async def apply_from_job(self, user: User, job_id: uuid.UUID, source_job_id: uuid.UUID) -> dict:
+        """Start the job from another job of the same company: its questions, its scoring profile
+        and its follow-up choice."""
+        await self._job_for(user, job_id)
+        if source_job_id == job_id:
+            raise ValidationException("Choose a different job to copy from.", code="SAME_JOB")
+        items, profile, mode = await QuestionLibraryService(self._db).job_set(user, source_job_id)
+        return await self.apply_set(user, job_id, items, profile, mode)
+
+    async def apply_set(
+        self,
+        user: User,
+        job_id: uuid.UUID,
+        items: list[dict],
+        profile: dict | None,
+        follow_up_mode: str,
+    ) -> dict:
+        """Put a ready-made set on a job: its questions, and its scoring profile when it has one
+        (``{"competencies", "bands", "key_min_rating", "template_code"}``; without one the job's own
+        profile is left as it is), and the follow-up choice. One transaction, all or nothing.
+
+        Shared by the built-in role sets, the company's saved sets and "copy from one of my jobs".
+        If the answer times add up to more than the interview's time limit the questions are NOT
+        saved: they are returned as a draft (``saved`` false) to be shortened, with the profile and
+        the follow-up choice already set so the tags are valid. The reply is the same either way."""
+        if profile is not None:
+            await ScoringProfileService(self._db).save(
+                user,
+                job_id,
+                profile["competencies"],
+                profile.get("bands"),
+                profile.get("key_min_rating", scoring_rules.DEFAULT_KEY_MIN_RATING),
+                profile.get("template_code"),
+                commit=False,
+            )
         fits = sum(item["time_limit_seconds"] for item in items) <= rules.max_total_seconds()
         if fits:
             result = await self.replace_questions(
-                user, job_id, items, follow_up_mode=FollowUpMode.STANDARD.value, commit=False
+                user, job_id, items, follow_up_mode=follow_up_mode, commit=False
             )
             await self._db.commit()
             return {**result, "questions": [_as_draft(q) for q in result["questions"]], "saved": True}
-        await save_follow_up_mode(self._db, job_id, FollowUpMode.STANDARD)
+        await save_follow_up_mode(self._db, job_id, FollowUpMode(follow_up_mode))
         await self._db.commit()
-        answer = await self._answer(job_id, [SimpleNamespace(**item) for item in items])
+        answer = await self._answer(job_id, [SimpleNamespace(**_as_draft(item)) for item in items])
         return {**answer, "questions": [_as_draft(item) for item in items], "saved": False}
 
     async def draft_questions(

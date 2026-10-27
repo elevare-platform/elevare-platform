@@ -91,6 +91,42 @@ class JobInterviewSettings(BaseModel):
     follow_up_mode: Mapped[str] = mapped_column(String(12), nullable=False, default="STANDARD")
 
 
+class InterviewQuestionTemplate(BaseModel):
+    """A set of interview questions a company saved to use again (docs/08_DECISIONS.md, item 46):
+    the questions with their probes, times and practical case, the follow-up choice, and, if the
+    employer chose to include it, the scoring profile the question tags point to. Owned by the
+    company (decision D2), not by the person who saved it: anyone in the company can use it. A table
+    of its own, so nothing existing is touched (migration p22_0038)."""
+
+    __tablename__ = "interview_question_templates"
+    __table_args__ = (
+        sa.Index(
+            "uq_interview_question_templates_org_name",
+            "organization_id",
+            sa.text("lower(name)"),
+            unique=True,
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # [{"text", "time_limit_seconds", "competency", "probes", "follow_up_seconds", "is_practical"}, ...]
+    questions: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # {"competencies", "bands", "key_min_rating"} or None when the set was saved without one.
+    scoring_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    follow_up_mode: Mapped[str] = mapped_column(String(12), nullable=False, default="STANDARD")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Kept as a name too, so the library still reads if the account is removed.
+    created_by_name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
 class JobScoringProfile(BaseModel):
     """A job's scoring profile (docs/08_DECISIONS.md, item 36): the competencies the strict
     interview rates, each with a weight (the weights add up to 100), which of them are "key", and

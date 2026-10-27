@@ -127,6 +127,84 @@ class InterviewQuestionsDraftResponse(_QuestionLimits):
     questions: list[DraftedInterviewQuestion]
 
 
+class LibraryQuestion(BaseModel):
+    """One question of a set in the template library, as it would be loaded."""
+
+    text: str
+    time_limit_seconds: int
+    source: QuestionSource = "EMPLOYER"
+    competency: str | None = None
+    probes: str | None = None
+    follow_up_seconds: int | None = None
+    is_practical: bool = False
+
+
+class LibraryTemplate(BaseModel):
+    """A set of questions in the library: a built-in role set (``kind`` BUILT_IN, ``id`` its code) or
+    one the user's company saved (``kind`` COMPANY, ``id`` its uuid). ``can_edit`` is whether the
+    caller may rename or delete it (the person who saved it, or the company owner)."""
+
+    id: str
+    kind: Literal["BUILT_IN", "COMPANY"]
+    name: str
+    question_count: int
+    total_seconds: int
+    has_practical: bool
+    has_scoring_profile: bool
+    competencies: list[str] = []
+    follow_up_mode: FollowUpModeName = "STANDARD"
+    created_by_name: str | None = None
+    created_at: datetime | None = None
+    can_edit: bool = False
+    questions: list[LibraryQuestion]
+
+
+class QuestionLibraryResponse(BaseModel):
+    """The library: the built-in role sets and the company's saved sets that match the search.
+    ``can_save`` is false for a user who has no company yet."""
+
+    built_in: list[LibraryTemplate]
+    company: list[LibraryTemplate]
+    can_save: bool
+
+
+class JobSetSummary(BaseModel):
+    """Another job of the company that has interview questions, to copy them from."""
+
+    job_id: uuid.UUID
+    title: str
+    question_count: int
+    total_seconds: int
+    has_practical: bool
+
+
+class JobSetsResponse(BaseModel):
+    items: list[JobSetSummary]
+
+
+class SaveTemplateRequest(BaseModel):
+    """Save the questions being edited as a template of the company. ``include_profile`` also keeps the
+    job's scoring profile (the tags need it)."""
+
+    job_id: uuid.UUID
+    name: str = Field(max_length=300)
+    questions: list[InterviewQuestionIn] = Field(max_length=50)
+    include_profile: bool = True
+    follow_up_mode: FollowUpModeName = "STANDARD"
+
+
+class RenameTemplateRequest(BaseModel):
+    name: str = Field(max_length=300)
+
+
+class ApplySavedTemplateRequest(BaseModel):
+    template_id: uuid.UUID
+
+
+class ApplyJobSetRequest(BaseModel):
+    source_job_id: uuid.UUID
+
+
 class InterviewQuestionsTemplateResponse(_QuestionLimits):
     """The questions of a template the employer started from. ``saved`` is true when they were
     saved at once; false when their answer times do not fit the interview's time limit, so they

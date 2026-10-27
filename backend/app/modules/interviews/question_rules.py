@@ -90,11 +90,13 @@ def snap_seconds(seconds: int) -> int:
     return max(MIN_SECONDS, min(MAX_SECONDS, snapped))
 
 
-def problems_with(questions: list[QuestionDraft]) -> list[str]:
+def problems_with(questions: list[QuestionDraft], *, check_total: bool = True) -> list[str]:
     """What is wrong with a list the employer wants to save, in words they can act on.
 
     An empty list is fine: it clears the questions. Each message names the problem and, where
-    it helps, the limit.
+    it helps, the limit. ``check_total=False`` leaves out the check that the answer times fit the
+    interview's time limit: a saved template is not tied to one job's limit (applying it to a job
+    shows it for shortening when it does not fit).
     """
     found: list[str] = []
     if sum(1 for question in questions if question.is_practical) > 1:
@@ -129,7 +131,7 @@ def problems_with(questions: list[QuestionDraft]) -> list[str]:
 
     total = sum(question.time_limit_seconds for question in questions)
     cap = max_total_seconds()
-    if total > cap:
+    if check_total and total > cap:
         found.append(
             f"The answer times add up to {_minutes(total)}, but the whole interview is limited "
             f"to {_minutes(cap)}. Shorten some of the times."

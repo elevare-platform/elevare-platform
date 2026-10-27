@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Loader2, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookmarkPlus, Library, Loader2, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import api from '@/lib/api'
+import QuestionLibraryModal from '@/components/employer/QuestionLibraryModal'
 import {
   DEFAULT_FOLLOW_UP_SECONDS,
   FOLLOW_UP_MODES,
@@ -17,6 +18,8 @@ import {
   timeLeftForFollowUps,
   totalSeconds,
 } from '@/lib/interviewQuestions'
+
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`
 
 // The server's own words when it sent any (its messages name the problem and the limit).
 function serverMessage(err, fallback) {
@@ -46,8 +49,12 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const [followUpMode, setFollowUpMode] = useState('STANDARD')
   const [drafting, setDrafting] = useState(false)
   // The ready-made role set chosen in the picker, and whether it is being loaded.
-  const [templateCode, setTemplateCode] = useState('')
-  const [applying, setApplying] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  // The "Save as template" form: its name, whether the scoring profile goes with it, and saving.
+  const [saveFormOpen, setSaveFormOpen] = useState(false)
+  const [templateName, setTemplateName] = useState('')
+  const [templateWithProfile, setTemplateWithProfile] = useState(true)
+  const [savingTemplate, setSavingTemplate] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -111,46 +118,62 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
       list.map((question, position) => (position === index ? { ...question, follow_up_seconds } : question))
     )
 
-  // Start from one of the ready-made role sets (the Colton Group's): the role's scoring profile AND
-  // its questions with their probes, saved at once, replacing what the job has. The employer can
-  // then change anything and save again.
-  const applyTemplate = async () => {
-    const template = limits?.question_templates?.find((item) => item.code === templateCode)
-    if (!template) return
-    const message = questions.length > 0
-      ? `Replace this job's questions and scoring profile with the ${template.title} set? Interviews already started keep the questions they began with.`
-      : `Start from the ${template.title} set? It also sets the job's scoring profile.`
-    if (!window.confirm(message)) return
-    setApplying(true)
+  // A set chosen in the template library (the Colton Group's, the company's own, or another job's)
+  // has been put on the job: its scoring profile AND questions with their probes, saved at once,
+  // replacing what the job has. The employer can then change anything and save again.
+  const handleApplied = (data, name) => {
+    setLibraryOpen(false)
+    setError(null)
+    setLimits(data)
+    setFollowUpMode(data.follow_up_mode ?? 'STANDARD')
+    setQuestions(data.questions.map((item) => ({ ...item, probes: item.probes ?? '', key: newKey() })))
+    const count = plural(data.questions.length, 'question')
+    if (data.saved === false) {
+      // The answer times of the set add up to more than the interview's time limit, so it could
+      // not be saved: it is shown for the employer to shorten (the red message below says by how
+      // much, and stays until it fits). Its scoring profile is already set.
+      setDirty(true)
+      setNotice(
+        `Loaded "${name}": ${count}. The answer times are longer than the interview allows, so the questions are not saved yet. Shorten some of the times, then save.`
+      )
+    } else {
+      setDirty(false) // it is saved already
+      setNotice(`Loaded "${name}": ${count}. It is saved. Change anything you like, then save again.`)
+      onSaved?.(data)
+    }
+  }
+
+  // Keep the questions as they are on the screen as a template the whole company can use. The answer
+  // times need not fit this job's time limit; applying it to a job shows it for shortening if not.
+  const saveAsTemplate = async () => {
+    setSavingTemplate(true)
     setError(null)
     setNotice(null)
     try {
-      const { data } = await api.post(`/api/v1/interviews/jobs/${jobId}/questions/from-template`, {
-        code: template.code,
+      const { data } = await api.post('/api/v1/interviews/question-templates', {
+        job_id: jobId,
+        name: templateName,
+        include_profile: templateWithProfile,
+        follow_up_mode: followUpMode,
+        questions: questions.map(({ text, time_limit_seconds, source, competency, probes, follow_up_seconds, is_practical }) => ({
+          text,
+          time_limit_seconds,
+          source,
+          competency: competency || null,
+          probes: probes || null,
+          follow_up_seconds: follow_up_seconds ?? null,
+          is_practical: Boolean(is_practical),
+        })),
       })
-      setLimits(data)
-      setFollowUpMode(data.follow_up_mode ?? 'STANDARD')
-      setQuestions(data.questions.map((item) => ({ ...item, probes: item.probes ?? '', key: newKey() })))
-      setTemplateCode('')
-      if (data.saved === false) {
-        // The answer times of the set add up to more than the interview's time limit, so it could
-        // not be saved: it is shown for the employer to shorten (the red message below says by how
-        // much, and stays until it fits). The role's scoring profile is already set.
-        setDirty(true)
-        setNotice(
-          `Loaded the ${template.title} set: ${data.questions.length} questions, each tagged with the competency it tests, and the role's scoring profile is set. The answer times are longer than the interview allows, so the questions are not saved yet. Shorten some of the times, then save.`
-        )
-      } else {
-        setDirty(false) // it is saved already
-        setNotice(
-          `Loaded the ${template.title} set: ${data.questions.length} questions, each tagged with the competency it tests, and the role's scoring profile. It is saved. Change anything you like, then save again.`
-        )
-        onSaved?.(data)
-      }
+      setSaveFormOpen(false)
+      setTemplateName('')
+      setNotice(
+        `Saved "${data.name}" for your whole company${data.has_scoring_profile ? ', with the scoring profile' : ''}. Find it in the template library, under "My company's sets".`
+      )
     } catch (err) {
-      setError(serverMessage(err, 'We could not load that set just now. Please try again.'))
+      setError(serverMessage(err, 'Something went wrong. Please try again.'))
     } finally {
-      setApplying(false)
+      setSavingTemplate(false)
     }
   }
 
@@ -204,6 +227,9 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   }
 
   const problems = limits ? problemsWith(questions, limits) : []
+  // What stops a list being kept as a template: the same rules, except the total time, because a
+  // template is not tied to one job's time limit.
+  const problemsExceptTime = limits ? problemsWith(questions, { ...limits, max_total_seconds: Infinity }) : []
   const total = totalSeconds(questions)
   const overTime = limits ? total > limits.max_total_seconds : false
   // A follow-up is asked only when what is left of the interview still covers every later question,
@@ -276,41 +302,74 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                 )}
               </div>
 
-              {/* The Colton Group's role sets: the questions, their probes and the role's scoring profile */}
-              {(limits.question_templates ?? []).length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted/40 px-3 py-2">
-                  <label htmlFor="question-template" className="text-xs font-semibold text-text">
-                    Start from a ready-made set
-                  </label>
-                  <select
-                    id="question-template"
-                    value={templateCode}
-                    onChange={(event) => setTemplateCode(event.target.value)}
-                    disabled={applying}
-                    className="min-w-0 flex-1 rounded-lg border border-border bg-white px-2 py-1 text-xs"
-                  >
-                    <option value="">Choose a role</option>
-                    {limits.question_templates.map((template) => (
-                      <option key={template.code} value={template.code}>
-                        {template.title} ({template.question_count} questions)
-                      </option>
-                    ))}
-                  </select>
+              {/* The template library: ready-made sets to start from, and keeping this one for later */}
+              <div className="space-y-2 rounded-lg border border-border bg-surface-muted/40 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={applyTemplate}
-                    disabled={!templateCode || applying}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-blue px-3 py-1.5 text-xs font-semibold text-brand-blue transition-colors hover:bg-brand-blue/5 disabled:opacity-50"
+                    onClick={() => setLibraryOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-blue px-3 py-1.5 text-xs font-semibold text-brand-blue transition-colors hover:bg-brand-blue/5"
                   >
-                    {applying && <Loader2 size={13} className="animate-spin" />}
-                    {applying ? 'Loading…' : 'Use this set'}
+                    <Library size={13} /> Browse templates
                   </button>
-                  <p className="basis-full text-xs text-text-muted">
-                    Loads the role&apos;s questions from the Colton Group guide, word for word, with their
-                    optional probes, and sets the job&apos;s scoring profile to match. It replaces the current
-                    ones and saves at once. You can still change anything afterwards.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSaveFormOpen((value) => !value)}
+                    disabled={questions.length === 0 || problemsExceptTime.length > 0}
+                    aria-expanded={saveFormOpen}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-surface-muted disabled:opacity-50"
+                  >
+                    <BookmarkPlus size={13} /> Save as template
+                  </button>
+                  <span className="text-xs text-text-muted">
+                    Start from the Colton Group sets, your company&apos;s own, or another job.
+                  </span>
                 </div>
+                {saveFormOpen && (
+                  <div className="space-y-2 border-t border-border pt-2" data-testid="save-template-form">
+                    <label htmlFor="template-name" className="text-xs font-semibold text-text">Name this template</label>
+                    <input
+                      id="template-name"
+                      value={templateName}
+                      onChange={(event) => setTemplateName(event.target.value)}
+                      maxLength={120}
+                      placeholder="For example: Sales Manager, first interview"
+                      className="w-full rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                    />
+                    {competencies.length > 0 && (
+                      <label className="flex items-start gap-2 text-xs text-text-muted">
+                        <input
+                          type="checkbox"
+                          checked={templateWithProfile}
+                          onChange={(event) => setTemplateWithProfile(event.target.checked)}
+                          className="mt-0.5"
+                        />
+                        <span>Include this job&apos;s scoring profile, so the tags and weights come with the questions.</span>
+                      </label>
+                    )}
+                    <p className="text-xs text-text-muted">
+                      Everyone in your company can use it. It keeps the questions as they are on the screen now,
+                      with their probes, times, follow-up choice and practical case.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={saveAsTemplate}
+                      disabled={!templateName.trim() || savingTemplate}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand-blue px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-blue/90 disabled:opacity-50"
+                    >
+                      {savingTemplate && <Loader2 size={13} className="animate-spin" />}
+                      {savingTemplate ? 'Saving…' : 'Save template'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {libraryOpen && (
+                <QuestionLibraryModal
+                  jobId={jobId}
+                  hasQuestions={questions.length > 0}
+                  onApplied={handleApplied}
+                  onClose={() => setLibraryOpen(false)}
+                />
               )}
 
               {notice && (
