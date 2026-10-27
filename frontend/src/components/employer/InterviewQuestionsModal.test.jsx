@@ -9,11 +9,12 @@ import InterviewQuestionsModal from './InterviewQuestionsModal'
 const URL = '/api/v1/interviews/jobs/job-1/questions'
 const CLOSING = { text: 'Before we finish, tell us what motivates you, your notice period, start date and pay.', time_limit_seconds: 90 }
 const LIMITS = {
-  max_questions: 6,
+  max_questions: 40, // what the time allows, not a limit of its own
   default_questions: 5,
   max_total_seconds: 1200,
   closing_question: CLOSING,
   style: 'strict',
+  follow_up_mode: 'STANDARD',
 }
 
 const saved = (position, text, seconds = 120, source = 'EMPLOYER') => ({
@@ -37,7 +38,8 @@ function renderModal(props = {}) {
   return { onClose, onSaved }
 }
 
-const boxes = () => screen.getAllByRole('textbox')
+// The boxes with the questions' own text (each question also has a box for its probes).
+const boxes = () => screen.getAllByLabelText(/^Question \d+/)
 const saveButton = () => screen.getByRole('button', { name: 'Save questions' })
 
 describe('InterviewQuestionsModal', () => {
@@ -149,13 +151,13 @@ describe('InterviewQuestionsModal', () => {
     expect(await screen.findByRole('button', { name: /Add the standard closing question/ })).toBeEnabled()
   })
 
-  it('does not offer the closing question when the list is full', async () => {
+  it('still offers the closing question with a long list, since only time limits the count', async () => {
     api.get.mockResolvedValueOnce(
       loaded(Array.from({ length: 6 }, (_, i) => saved(i + 1, `Question number ${i + 1} about the job.`, 60)))
     )
     renderModal()
 
-    expect(await screen.findByRole('button', { name: /Add the standard closing question/ })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: /Add the standard closing question/ })).toBeEnabled()
   })
 
   it('works with a server that does not send a closing question', async () => {
@@ -176,7 +178,7 @@ describe('InterviewQuestionsModal', () => {
     expect(api.get).toHaveBeenCalledWith(URL)
     expect(screen.getByDisplayValue('How do you test a risky change?')).toBeInTheDocument()
     expect(screen.getByText('AI draft')).toBeInTheDocument()
-    expect(screen.getByText('2 of 6 questions')).toBeInTheDocument()
+    expect(screen.getByText('2 questions')).toBeInTheDocument()
     expect(screen.getByText(/Answer time: 4 min 30 s of 20 min/)).toBeInTheDocument()
   })
 
@@ -259,15 +261,16 @@ describe('InterviewQuestionsModal', () => {
 
   // --- editing --------------------------------------------------------------------------
 
-  it('lets the employer add a question up to the limit, and then stops', async () => {
-    api.get.mockResolvedValueOnce(loaded(Array.from({ length: 5 }, (_, n) => saved(n + 1, `Question number ${n + 1} text here.`))))
+  it('lets the employer keep adding questions: there is no cap on how many, only on the total time', async () => {
+    api.get.mockResolvedValueOnce(loaded(Array.from({ length: 6 }, (_, n) => saved(n + 1, `Question number ${n + 1} text here.`, 60))))
     renderModal()
     const add = await screen.findByRole('button', { name: /Add a question/ })
 
     fireEvent.click(add)
+    fireEvent.click(add)
 
-    expect(screen.getByText('6 of 6 questions')).toBeInTheDocument()
-    expect(add).toBeDisabled()
+    expect(screen.getByText('8 questions')).toBeInTheDocument()
+    expect(add).toBeEnabled()
   })
 
   it('marks a drafted question as the employer\'s once they change it', async () => {
@@ -341,9 +344,10 @@ describe('InterviewQuestionsModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(api.put).toHaveBeenCalledWith(URL, {
       questions: [
-        { text: 'First question to answer.', time_limit_seconds: 120, source: 'AI', competency: null },
-        { text: 'My own second question here.', time_limit_seconds: 90, source: 'EMPLOYER', competency: null },
+        { text: 'First question to answer.', time_limit_seconds: 120, source: 'AI', competency: null, probes: null },
+        { text: 'My own second question here.', time_limit_seconds: 90, source: 'EMPLOYER', competency: null, probes: null },
       ],
+      follow_up_mode: 'STANDARD',
     })
     expect(onSaved).toHaveBeenCalled()
   })
@@ -351,14 +355,14 @@ describe('InterviewQuestionsModal', () => {
   it('shows the server\'s refusal and stays open when saving fails', async () => {
     api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
     api.put.mockRejectedValueOnce({
-      response: { status: 422, data: { code: 'VALIDATION_FAILED', message: 'x', details: [{ field: 'questions', message: 'An interview can have at most 6 questions.' }] } },
+      response: { status: 422, data: { code: 'VALIDATION_FAILED', message: 'x', details: [{ field: 'questions', message: 'Question 1 is too short to be a question.' }] } },
     })
     const { onClose } = renderModal()
     fireEvent.change(await screen.findByDisplayValue('First question to answer.'), { target: { value: 'First question, now edited.' } })
 
     fireEvent.click(saveButton())
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('at most 6 questions')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Question 1 is too short')
     expect(onClose).not.toHaveBeenCalled()
   })
 
@@ -372,7 +376,105 @@ describe('InterviewQuestionsModal', () => {
     fireEvent.click(saveButton())
 
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(api.put).toHaveBeenCalledWith(URL, { questions: [] })
+    expect(api.put).toHaveBeenCalledWith(URL, { questions: [], follow_up_mode: 'STANDARD' })
+  })
+
+  // --- what the AI does after an answer --------------------------------------------------
+
+  describe('the follow-up choice and the probes', () => {
+    const modeRadio = (name) => screen.getByRole('radio', { name: new RegExp(name) })
+
+    it('shows the job\'s saved choice, and offers the three options', async () => {
+      api.get.mockResolvedValueOnce({ data: { ...loaded([saved(1, 'First question to answer.')]).data, follow_up_mode: 'PROBES_ONLY' } })
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+
+      expect(screen.getAllByRole('radio')).toHaveLength(3)
+      expect(modeRadio('Only my probes')).toBeChecked()
+      expect(modeRadio('Follow up when needed')).not.toBeChecked()
+      expect(modeRadio('Questions only')).not.toBeChecked()
+    })
+
+    it('starts on "Follow up when needed" for a job that never chose', async () => {
+      api.get.mockResolvedValueOnce({ data: { ...loaded([saved(1, 'First question to answer.')]).data, follow_up_mode: undefined } })
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+
+      expect(modeRadio('Follow up when needed')).toBeChecked()
+    })
+
+    it('saves the chosen option with the list', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+
+      fireEvent.click(modeRadio('Questions only'))
+      expect(saveButton()).toBeEnabled() // changing only the choice is a change
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      expect(api.put.mock.calls[0][1].follow_up_mode).toBe('NONE')
+    })
+
+    it('gives each question a box for its own probes, one per line, and saves them', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.'), { ...saved(2, 'Second question to answer.'), probes: 'What was your part?' }]))
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+      const probeBoxes = await screen.findAllByLabelText(/follow-up probes/)
+
+      expect(probeBoxes).toHaveLength(2)
+      expect(probeBoxes[1]).toHaveValue('What was your part?')
+      fireEvent.change(probeBoxes[0], { target: { value: 'How big was it?\nWhat did it deliver?' } })
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      expect(api.put.mock.calls[0][1].questions.map((x) => x.probes)).toEqual([
+        'How big was it?\nWhat did it deliver?',
+        'What was your part?',
+      ])
+    })
+
+    it('keeps an AI draft marked as the AI\'s when probes are added to it', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.', 120, 'AI')]))
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+
+      fireEvent.change(await screen.findByLabelText(/follow-up probes/), { target: { value: 'How big was it?' } })
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      expect(api.put.mock.calls[0][1].questions[0].source).toBe('AI')
+    })
+
+    it('hides the probe boxes for "Questions only", and says what "Only my probes" needs', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+
+      fireEvent.click(modeRadio('Questions only'))
+      expect(screen.queryByLabelText(/follow-up probes/)).not.toBeInTheDocument()
+
+      fireEvent.click(modeRadio('Only my probes'))
+      expect(screen.getByLabelText('Follow-up probes the AI may ask (one per line)')).toBeInTheDocument()
+      expect(screen.getByTestId('no-probes-note')).toHaveTextContent('the AI will not ask any follow-up')
+
+      fireEvent.change(screen.getByLabelText(/follow-up probes/i), { target: { value: 'What was your part?' } })
+      expect(screen.queryByTestId('no-probes-note')).not.toBeInTheDocument()
+    })
+
+    it('refuses too many or too long probes before saving', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
+      renderModal()
+      const box = await screen.findByLabelText(/follow-up probes/)
+
+      fireEvent.change(box, { target: { value: Array.from({ length: 7 }, (_, n) => `Probe ${n}?`).join('\n') } })
+      expect(screen.getByText('Question 1 has too many probes. Keep it to 6.')).toBeInTheDocument()
+      expect(saveButton()).toBeDisabled()
+
+      fireEvent.change(box, { target: { value: 'x'.repeat(301) } })
+      expect(screen.getByText(/A probe on question 1 is too long/)).toBeInTheDocument()
+    })
   })
 
   // --- closing --------------------------------------------------------------------------

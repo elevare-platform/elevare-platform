@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Loader2, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import api from '@/lib/api'
 import {
+  FOLLOW_UP_MODES,
   MAX_QUESTION_CHARS,
   TIME_OPTIONS,
   blankQuestion,
   formatSeconds,
   moveQuestion,
+  probeLines,
   problemsWith,
   removeQuestion,
   totalSeconds,
@@ -36,6 +38,8 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const [limits, setLimits] = useState(null)
   const [questions, setQuestions] = useState([])
   const [dirty, setDirty] = useState(false)
+  // What the AI may do after an answer, for the whole job: STANDARD | PROBES_ONLY | NONE.
+  const [followUpMode, setFollowUpMode] = useState('STANDARD')
   const [drafting, setDrafting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -48,7 +52,8 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
       .then(({ data }) => {
         if (cancelled) return
         setLimits(data)
-        setQuestions(data.questions.map((item) => ({ ...item, key: item.id })))
+        setFollowUpMode(data.follow_up_mode ?? 'STANDARD')
+        setQuestions(data.questions.map((item) => ({ ...item, probes: item.probes ?? '', key: item.id })))
         setStatus('ready')
       })
       .catch(() => {
@@ -78,6 +83,10 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const tag = (index, competency) =>
     edit((list) => list.map((question, position) => (position === index ? { ...question, competency } : question)))
 
+  // Probes are extra, not the question's own wording, so they too keep the "AI draft" mark.
+  const setProbes = (index, probes) =>
+    edit((list) => list.map((question, position) => (position === index ? { ...question, probes } : question)))
+
   const close = () => {
     if (dirty && !window.confirm('You have unsaved changes. Close without saving?')) return
     onClose()
@@ -90,7 +99,7 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
     setNotice(null)
     try {
       const { data } = await api.post(`/api/v1/interviews/jobs/${jobId}/questions/draft`, {})
-      setQuestions(data.questions.map((item) => ({ ...item, key: newKey() })))
+      setQuestions(data.questions.map((item) => ({ ...item, probes: item.probes ?? '', key: newKey() })))
       setDirty(true)
       setNotice(
         `Drafted ${data.questions.length} question${data.questions.length === 1 ? '' : 's'}. Read them, change anything you like, then save.`
@@ -107,12 +116,14 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
     setError(null)
     try {
       const { data } = await api.put(`/api/v1/interviews/jobs/${jobId}/questions`, {
-        questions: questions.map(({ text, time_limit_seconds, source, competency }) => ({
+        questions: questions.map(({ text, time_limit_seconds, source, competency, probes }) => ({
           text,
           time_limit_seconds,
           source,
           competency: competency || null,
+          probes: probes || null,
         })),
+        follow_up_mode: followUpMode,
       })
       onSaved?.(data)
       onClose()
@@ -126,7 +137,8 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const problems = limits ? problemsWith(questions, limits) : []
   const total = totalSeconds(questions)
   const overTime = limits ? total > limits.max_total_seconds : false
-  const atLimit = limits ? questions.length >= limits.max_questions : false
+  // With "Only my probes", a question with no probe never gets a follow-up: say so, so it is not a surprise.
+  const noProbesAtAll = followUpMode === 'PROBES_ONLY' && questions.every((q) => probeLines(q.probes).length === 0)
   // The standard closing question is already in the list (the draft adds it, or it was added
   // here), so it is not offered twice. Matched on its text, which the employer may have edited.
   const hasClosing = Boolean(
@@ -150,7 +162,7 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
             <h2 className="text-lg font-bold text-text">Interview questions</h2>
             <p className="text-sm text-text-muted mt-1">
               Every candidate gets these same questions, in this order, and answers each one by
-              speaking to the camera. The AI may ask a follow-up when an answer needs one.
+              speaking to the camera. Below the questions you choose what the AI does after an answer.
             </p>
           </div>
           <button type="button" onClick={close} className="text-text-muted hover:text-text flex-shrink-0" aria-label="Close">
@@ -268,6 +280,23 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                         ))}
                       </select>
                     </div>
+                    {followUpMode !== 'NONE' && (
+                      <div className="space-y-1">
+                        <label htmlFor={`probes-${question.key}`} className="text-xs text-text-muted">
+                          {followUpMode === 'PROBES_ONLY'
+                            ? 'Follow-up probes the AI may ask (one per line)'
+                            : 'Your own follow-up probes (optional, one per line)'}
+                        </label>
+                        <textarea
+                          id={`probes-${question.key}`}
+                          value={question.probes ?? ''}
+                          onChange={(event) => setProbes(index, event.target.value)}
+                          rows={2}
+                          placeholder="For example: What was your own part in it?"
+                          className="w-full rounded-lg border border-border px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                        />
+                      </div>
+                    )}
                     {competencies.length > 0 && (
                       <div className="flex items-center gap-2">
                         <label htmlFor={`competency-${question.key}`} className="text-xs text-text-muted">
@@ -302,7 +331,6 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                   <button
                     type="button"
                     onClick={() => edit((list) => [...list, blankQuestion(newKey())])}
-                    disabled={atLimit}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-surface-muted disabled:opacity-50"
                   >
                     <Plus size={13} /> Add a question
@@ -316,7 +344,7 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                           { ...blankQuestion(newKey()), ...limits.closing_question },
                         ])
                       }
-                      disabled={atLimit || hasClosing}
+                      disabled={hasClosing}
                       title="Asks about motivation, notice period, start date and pay, which the scorecard collects at the end. You can change or remove it."
                       className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-surface-muted disabled:opacity-50"
                     >
@@ -325,9 +353,43 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                   )}
                 </div>
                 <span className="text-xs text-text-muted">
-                  {questions.length} of {limits.max_questions} questions
+                  {questions.length} question{questions.length === 1 ? '' : 's'}
                 </span>
               </div>
+
+              {/* What the AI does after an answer: the same for every candidate of this job */}
+              <fieldset className="space-y-2 rounded-lg border border-border p-3">
+                <legend className="px-1 text-xs font-semibold text-text">After an answer, the AI may</legend>
+                {FOLLOW_UP_MODES.map((mode) => (
+                  <label key={mode.value} className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="radio"
+                      name="follow-up-mode"
+                      value={mode.value}
+                      checked={followUpMode === mode.value}
+                      onChange={() => {
+                        setFollowUpMode(mode.value)
+                        setDirty(true)
+                        setNotice(null)
+                      }}
+                      className="mt-0.5"
+                    />
+                    <span className="text-xs">
+                      <span className="font-semibold text-text">{mode.label}</span>
+                      <span className="block text-text-muted">{mode.help}</span>
+                    </span>
+                  </label>
+                ))}
+                <p className="text-xs text-text-muted">
+                  The candidate is shown this in the rules before they start, and every candidate of the job gets the same.
+                </p>
+                {noProbesAtAll && (
+                  <p role="note" data-testid="no-probes-note" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    No question has a probe yet, so the AI will not ask any follow-up. Write probes under the
+                    questions, or choose another option.
+                  </p>
+                )}
+              </fieldset>
 
               <p className={overTime ? 'text-xs font-medium text-red-600' : 'text-xs text-text-muted'}>
                 Answer time: {formatSeconds(total)} of {formatSeconds(limits.max_total_seconds)}. The

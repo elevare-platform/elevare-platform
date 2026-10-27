@@ -33,6 +33,25 @@ Rules:
 """
 
 
+PREPARED_PROBES_ADDENDUM = """
+The employer has prepared probes for this question (listed in the message between <probes> tags). When one of them fits a real gap in the answer, use it instead of writing your own, exactly as the employer wrote it. If none fits, you may write your own under the rules above.
+"""
+
+ONLY_PREPARED_ADDENDUM = """
+The employer wants the AI to stay with the prepared probes. You may ask ONLY one of the probes listed in the message between <probes> tags, copied exactly as written, and only when the answer shows the gap that probe addresses (the four reasons above still decide whether a probe is needed at all). Never write a question of your own. If none of the listed probes fits, or the answer is clear enough, do not ask anything.
+"""
+
+
+def follow_up_system_prompt(*, has_prepared: bool = False, only_prepared: bool = False) -> str:
+    """The system prompt for the job's follow-up mode: the standard rules, with the instruction
+    about the employer's prepared probes when there are some."""
+    if only_prepared:
+        return INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT + ONLY_PREPARED_ADDENDUM
+    if has_prepared:
+        return INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT + PREPARED_PROBES_ADDENDUM
+    return INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT
+
+
 def build_interview_follow_up_prompt(
     *,
     question: str,
@@ -40,14 +59,22 @@ def build_interview_follow_up_prompt(
     interview_brief: str,
     earlier_exchange: str = "",
     probes_left: int = 1,
+    prepared_probes: list[str] | None = None,
 ) -> str:
     """The user message: what was just asked, what the interview is trying to find out, how many
-    probes may still be asked on this question, anything already asked and answered on it, and
-    the answer as data between <answer> tags."""
+    probes may still be asked on this question, anything already asked and answered on it, the
+    employer's prepared probes for it (if any), and the answer as data between <answer> tags."""
     earlier = (
         f"\nWhat was already asked and answered on this question, before the answer below:\n"
         f"<earlier>\n{earlier_exchange}\n</earlier>\n"
         if earlier_exchange
+        else ""
+    )
+    probes = (
+        "\nThe employer's prepared probes for this question, one per line:\n<probes>\n"
+        + "\n".join(prepared_probes)
+        + "\n</probes>\n"
+        if prepared_probes
         else ""
     )
     return f"""What the candidate was just asked:
@@ -57,7 +84,7 @@ What the employer wants to find out in this interview (background only):
 {interview_brief}
 
 Probes left for this question (including this one): {probes_left}
-{earlier}
+{probes}{earlier}
 <answer>
 {answer}
 </answer>

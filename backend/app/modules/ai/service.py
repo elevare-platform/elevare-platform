@@ -303,8 +303,13 @@ class AnthropicCVExtractionService(AIService):
         interview_brief: str,
         earlier_exchange: str = "",
         probes_left: int = 1,
+        prepared_probes: list[str] | None = None,
+        only_prepared: bool = False,
     ) -> str | None:
         """Decide whether a strict-interview answer needs a follow-up question.
+
+        ``prepared_probes`` are the employer's own probes for this question; with
+        ``only_prepared`` the model may only pick one of them (the caller checks it did).
 
         Returns the follow-up exactly as the model wrote it, or ``None`` when none is needed
         OR the call failed or its reply cannot be used: a follow-up is a nicety, so any
@@ -313,8 +318,8 @@ class AnthropicCVExtractionService(AIService):
         is the candidate's own speech and goes to the model as data (see the prompt).
         """
         from app.modules.ai.prompts.interview_follow_up import (
-            INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
             build_interview_follow_up_prompt,
+            follow_up_system_prompt,
         )
 
         from .schema import InterviewFollowUpDecision
@@ -324,13 +329,16 @@ class AnthropicCVExtractionService(AIService):
                 self._client,
                 model=settings.anthropic_model_fast,
                 max_tokens=400,
-                system=INTERVIEW_FOLLOW_UP_SYSTEM_PROMPT,
+                system=follow_up_system_prompt(
+                    has_prepared=bool(prepared_probes), only_prepared=only_prepared
+                ),
                 user=build_interview_follow_up_prompt(
                     question=question,
                     answer=answer,
                     interview_brief=interview_brief,
                     earlier_exchange=earlier_exchange,
                     probes_left=probes_left,
+                    prepared_probes=prepared_probes,
                 ),
                 output_type=InterviewFollowUpDecision,
             )

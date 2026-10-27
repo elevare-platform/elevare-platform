@@ -299,6 +299,7 @@ async def get_interview(
             **CandidateInterviewResponse.model_validate(interview).model_dump(),
             style=await service.style_of(interview),
             started=await service.is_started(interview),
+            follow_up_mode=await service.follow_up_mode_for(interview),
         )
     finally:
         await service.close()
@@ -397,10 +398,13 @@ async def save_job_interview_questions(
     db: AsyncSession = Depends(get_db),
 ):
     """Save the job's whole list of questions in place of the old one. Every problem is named in
-    the refusal (too many, a bad time, times that do not fit the interview). An empty list
-    clears the questions."""
+    the refusal (a bad time, times that do not fit the interview, too many probes). An empty list
+    clears the questions. ``follow_up_mode`` is saved with it when given."""
     return await InterviewQuestionService(db).replace_questions(
-        current_user, job_id, [item.model_dump() for item in data.questions]
+        current_user,
+        job_id,
+        [item.model_dump() for item in data.questions],
+        follow_up_mode=data.follow_up_mode,
     )
 
 

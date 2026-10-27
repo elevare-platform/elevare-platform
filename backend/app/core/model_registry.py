@@ -46,6 +46,7 @@ from app.modules.interviews.models import (
     InterviewTurn,
     InterviewWeightedScore,
     JobInterviewQuestion,
+    JobInterviewSettings,
     JobScoringProfile,
     StrictInterviewRun,
 )
@@ -104,6 +105,7 @@ __all__ = [
     "SharedLinkItemView",
     "InterviewListEntry",
     "JobInterviewQuestion",
+    "JobInterviewSettings",
     "StrictInterviewRun",
     "JobScoringProfile",
     "InterviewWeightedScore",

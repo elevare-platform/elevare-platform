@@ -23,6 +23,8 @@ from app.core.exceptions import (
 )
 from app.core.ownership import can_manage_job
 from app.modules.interviews import question_rules as rules
+from app.modules.interviews.enums import FollowUpMode
+from app.modules.interviews.follow_up import load_follow_up_mode, save_follow_up_mode
 from app.modules.interviews.models import JobInterviewQuestion
 from app.modules.interviews.scoring_profile_service import (
     canonical_tag,
@@ -63,11 +65,12 @@ class InterviewQuestionService:
             "untested_competencies": untested(competencies, [q.competency for q in questions]),
             "questions": questions,
             "total_seconds": sum(question.time_limit_seconds for question in questions),
-            "max_questions": settings.strict_interview_max_questions,
+            "max_questions": rules.max_questions(),
             "default_questions": settings.strict_interview_default_questions,
             "max_total_seconds": rules.max_total_seconds(),
             "closing_question": rules.closing_question(),
             "style": settings.interview_style,
+            "follow_up_mode": (await load_follow_up_mode(self._db, job_id)).value,
         }
 
     async def list_questions(self, user: User, job_id: uuid.UUID) -> dict:
@@ -75,17 +78,26 @@ class InterviewQuestionService:
         return await self._answer(job_id, await self._saved(job_id))
 
     async def replace_questions(
-        self, user: User, job_id: uuid.UUID, items: list[dict]
+        self,
+        user: User,
+        job_id: uuid.UUID,
+        items: list[dict],
+        follow_up_mode: str | None = None,
     ) -> dict:
         """Save the employer's list in place of the old one, all or nothing.
 
-        ``items`` are ``{"text", "time_limit_seconds", "source"}`` in the order shown. An
-        empty list clears the questions. Refused, with every problem named, if the list breaks
-        a rule (too many questions, a bad time, times that do not fit the interview).
+        ``items`` are ``{"text", "time_limit_seconds", "source", "competency", "probes"}`` in the
+        order shown. An empty list clears the questions. Refused, with every problem named, if the
+        list breaks a rule (a bad time, times that do not fit the interview, too many probes).
+        ``follow_up_mode`` (NONE, STANDARD or PROBES_ONLY), when given, is saved with the list;
+        left out, the job keeps its mode.
         """
         await self._job_for(user, job_id)
         drafts = [
-            rules.QuestionDraft(item["text"], item["time_limit_seconds"]) for item in items
+            rules.QuestionDraft(
+                item["text"], item["time_limit_seconds"], item.get("probes") or ""
+            )
+            for item in items
         ]
         problems = rules.problems_with(drafts)
         # A tag has to be a competency of the job's scoring profile (spelled as the profile does).
@@ -121,8 +133,11 @@ class InterviewQuestionService:
                     time_limit_seconds=draft.time_limit_seconds,
                     source=item.get("source", "EMPLOYER"),
                     competency=tag,
+                    probes="\n".join(rules.clean_probes(draft.probes)) or None,
                 )
             )
+        if follow_up_mode:
+            await save_follow_up_mode(self._db, job_id, FollowUpMode(follow_up_mode))
         await self._db.commit()
         return await self._answer(job_id, await self._saved(job_id))
 
@@ -131,7 +146,7 @@ class InterviewQuestionService:
     ) -> dict:
         """Ask the AI for a draft list from the job's interview brief. Nothing is saved.
 
-        ``count`` defaults to 5 and is never more than the most an interview may have.
+        ``count`` defaults to 5 and is never more than the interview's time allows.
         """
         job = await self._job_for(user, job_id)
         brief = (job.interview_brief or "").strip()
@@ -142,14 +157,14 @@ class InterviewQuestionService:
         # The whole interview has a length (INTERVIEW_MAX_DURATION_MINUTES): the AI is told it,
         # and never asked for more questions than can each get the shortest answer time.
         total_seconds = rules.max_total_seconds()
-        wanted = max(
-            1,
-            min(
-                count or settings.strict_interview_default_questions,
-                settings.strict_interview_max_questions,
-                total_seconds // rules.MIN_SECONDS,
-            ),
-        )
+        # The most that fit: each needs the shortest answer time, and when there is more than one
+        # the last place goes to the closing question, which takes its own 90 seconds.
+        fits = total_seconds // rules.MIN_SECONDS
+        if fits >= 2:
+            fits = min(
+                fits, (total_seconds - rules.CLOSING_QUESTION_SECONDS) // rules.MIN_SECONDS + 1
+            )
+        wanted = max(1, min(count or settings.strict_interview_default_questions, fits))
 
         # The last place goes to the scorecard's standard closing question (motivation, notice
         # period, start date, compensation), which the employer can change or remove. The AI
@@ -198,9 +213,10 @@ class InterviewQuestionService:
             "untested_competencies": [],
             "questions": questions,
             "total_seconds": sum(draft.time_limit_seconds for draft in drafts),
-            "max_questions": settings.strict_interview_max_questions,
+            "max_questions": rules.max_questions(),
             "default_questions": settings.strict_interview_default_questions,
             "max_total_seconds": rules.max_total_seconds(),
             "closing_question": rules.closing_question(),
             "style": settings.interview_style,
+            "follow_up_mode": (await load_follow_up_mode(self._db, job_id)).value,
         }

@@ -194,6 +194,18 @@ describe('StrictInterviewFlow, before it starts', () => {
     expect(screen.getByText(/Do not read a prepared text, use notes, a phone, a chatbot/)).toBeInTheDocument()
   })
 
+  it.each([
+    ['NONE', /The AI asks only the questions on screen and no follow-up questions/, /up to two/],
+    ['PROBES_ONLY', /from a list the employer prepared for the question/, /up to two/],
+    ['STANDARD', /The AI may ask up to two short follow-up questions/, /list the employer prepared/],
+  ])('tells the candidate what the AI does after an answer in %s mode, and only that', (mode, shown, notShown) => {
+    setup({ followUpMode: mode })
+
+    const rules = screen.getByTestId('interview-rules')
+    expect(within(rules).getByText(shown)).toBeInTheDocument()
+    expect(rules).not.toHaveTextContent(notShown)
+  })
+
   it('gives the 60 seconds away in total a rule of its own, highlighted, saying it can end it with no earlier warning', () => {
     setup()
 

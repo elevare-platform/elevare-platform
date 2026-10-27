@@ -60,6 +60,26 @@ class JobInterviewQuestion(BaseModel):
     # The competency of the job's scoring profile this question was written to test, or None
     # (optional). Used to warn when a weighted competency has no question, and told to the scorer.
     competency: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # The employer's own follow-up probes for this question, one per line (docs/08_DECISIONS.md,
+    # item 40). Used according to the job's follow-up mode. None when there are none.
+    probes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class JobInterviewSettings(BaseModel):
+    """How a job's strict interview behaves, beyond its questions (docs/08_DECISIONS.md, item 40).
+    One row per job; a job without one uses the standard behaviour. A table of its own, not
+    columns on ``jobs``, so the live jobs schema is untouched (migration p22_0034)."""
+
+    __tablename__ = "job_interview_settings"
+    __table_args__ = (UniqueConstraint("job_id", name="uq_job_interview_settings_job"),)
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # NONE, STANDARD or PROBES_ONLY (enums.FollowUpMode).
+    follow_up_mode: Mapped[str] = mapped_column(String(12), nullable=False, default="STANDARD")
 
 
 class JobScoringProfile(BaseModel):
@@ -131,8 +151,13 @@ class StrictInterviewRun(BaseModel):
     rules_accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # [{"text": ..., "time_limit_seconds": ...}, ...] in the order asked. None until started.
+    # [{"text": ..., "time_limit_seconds": ..., "competency": ..., "probes": ...}, ...] in the order
+    # asked. None until started.
     questions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # The job's follow-up mode, copied when the interview starts (like the questions) so an edit
+    # made later never changes an interview that has begun. None for a run started before the
+    # mode existed, which is the standard.
+    follow_up_mode: Mapped[str | None] = mapped_column(String(12), nullable=True)
     # When the interview's own clock began. The whole interview ends this long after.
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

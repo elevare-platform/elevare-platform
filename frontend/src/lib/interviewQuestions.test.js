@@ -1,17 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import {
+  FOLLOW_UP_MODES,
+  MAX_PROBE_CHARS,
   MAX_QUESTION_CHARS,
   TIME_OPTIONS,
   blankQuestion,
   cleanText,
   formatSeconds,
   moveQuestion,
+  probeLines,
   problemsWith,
   removeQuestion,
   totalSeconds,
 } from './interviewQuestions'
 
-const LIMITS = { max_questions: 6, max_total_seconds: 1200 }
+const LIMITS = { max_questions: 40, max_total_seconds: 1200 }
 const GOOD = 'Tell us about a time you handled a production outage.'
 const q = (text = GOOD, seconds = 120) => ({ text, time_limit_seconds: seconds })
 
@@ -51,7 +54,28 @@ describe('totals and tidying', () => {
 
 describe('a new question', () => {
   it('starts empty, written by the employer, with the usual two minutes', () => {
-    expect(blankQuestion('k1')).toEqual({ key: 'k1', text: '', time_limit_seconds: 120, source: 'EMPLOYER' })
+    expect(blankQuestion('k1')).toEqual({ key: 'k1', text: '', time_limit_seconds: 120, source: 'EMPLOYER', probes: '' })
+  })
+})
+
+describe('probeLines', () => {
+  it('splits the probes into tidy lines and drops the blank ones', () => {
+    expect(probeLines('  What was your   part? \n\nHow big?\n  ')).toEqual(['What was your part?', 'How big?'])
+    expect(probeLines(null)).toEqual([])
+    expect(probeLines(undefined)).toEqual([])
+  })
+})
+
+describe('the follow-up choices', () => {
+  it('offers the three modes the server knows, the standard one first', () => {
+    expect(FOLLOW_UP_MODES.map((mode) => mode.value)).toEqual(['STANDARD', 'PROBES_ONLY', 'NONE'])
+    expect(FOLLOW_UP_MODES.every((mode) => mode.label && mode.help)).toBe(true)
+  })
+
+  it('is written the way the rest of the product is: no dashes, no exclamation marks', () => {
+    const all = FOLLOW_UP_MODES.map((mode) => `${mode.label} ${mode.help}`).join(' ')
+
+    expect(all).not.toMatch(/[–—!]/)
   })
 })
 
@@ -81,10 +105,21 @@ describe('problemsWith, the same rules as the server', () => {
     expect(problemsWith([], LIMITS)).toEqual([])
   })
 
-  it('refuses more questions than allowed', () => {
-    expect(problemsWith(Array.from({ length: 7 }, () => q(GOOD, 60)), LIMITS)).toContain(
-      'An interview can have at most 6 questions.'
-    )
+  it('has no limit on how many questions, only on their total time', () => {
+    expect(problemsWith(Array.from({ length: 12 }, () => q(GOOD, 60)), LIMITS)).toEqual([])
+    expect(problemsWith(Array.from({ length: 11 }, () => q(GOOD, 120)), LIMITS)).toHaveLength(1)
+  })
+
+  it('refuses too many or too long probes, and counts blank lines and repeated blanks as nothing', () => {
+    const many = { ...q(), probes: Array.from({ length: 7 }, (_, n) => `Probe ${n}?`).join('\n') }
+    const long = { ...q(), probes: 'x'.repeat(MAX_PROBE_CHARS + 1) }
+    const fine = { ...q(), probes: '\n  What was your   part?  \n\n' }
+
+    expect(problemsWith([many], LIMITS)).toEqual(['Question 1 has too many probes. Keep it to 6.'])
+    expect(problemsWith([q(), long], LIMITS)).toEqual([
+      'A probe on question 2 is too long. Keep each under 300 characters.',
+    ])
+    expect(problemsWith([fine], LIMITS)).toEqual([])
   })
 
   it('names a too short or too long question by its number', () => {

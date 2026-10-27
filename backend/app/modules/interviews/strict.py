@@ -30,10 +30,13 @@ from app.core.exceptions import ValidationException
 from app.modules.interviews.enums import (
     ENDED_STATUSES,
     ConductEventKind,
+    FollowUpMode,
     InterviewCostComponent,
     InterviewStatus,
     TurnKind,
+    follow_up_mode_of,
 )
+from app.modules.interviews.follow_up import load_follow_up_mode
 from app.modules.interviews.models import (
     Interview,
     InterviewTurn,
@@ -82,6 +85,31 @@ def clean_follow_up(text: str | None) -> str | None:
     if not cleaned.endswith("?"):
         return None
     return cleaned
+
+
+def prepared_probes(text: str | None) -> list[str]:
+    """The employer's probes for a question, as the lines they wrote."""
+    return [line for line in (" ".join(raw.split()) for raw in (text or "").splitlines()) if line]
+
+
+def match_prepared_probe(raw: str | None, probes: list[str]) -> str | None:
+    """The prepared probe the model chose, exactly as the employer wrote it, or None.
+
+    In PROBES_ONLY mode the model may only pick from the employer's list, so what it returns is
+    matched against that list (ignoring case, spacing and a trailing full stop or question mark)
+    and the employer's own wording is what the candidate sees. Anything that is not on the list is
+    dropped: the interview just carries on."""
+
+    def key(value: str) -> str:
+        return " ".join(value.split()).strip("\"' ").rstrip("?.! ").casefold()
+
+    if not raw:
+        return None
+    wanted = key(raw)
+    for probe in probes:
+        if key(probe) == wanted:
+            return probe
+    return None
 
 
 def valid_rules_version(version: str | None) -> bool:
@@ -427,9 +455,13 @@ class StrictInterviewService(ConductMixin):
                     "text": question.text,
                     "time_limit_seconds": question.time_limit_seconds,
                     "competency": question.competency,
+                    "probes": question.probes,
                 }
                 for question in saved
             ]
+            # The follow-up mode is copied the same way: an edit made later never changes an
+            # interview that has begun.
+            run.follow_up_mode = (await load_follow_up_mode(self._db, interview.job_id)).value
             run.rules_version = rules_version
             run.rules_accepted_at = now
             run.started_at = now
@@ -599,6 +631,9 @@ class StrictInterviewService(ConductMixin):
         every question still to come. The model is shown what was already asked and answered on
         this question, so a second probe never repeats the first.
         """
+        mode = follow_up_mode_of(run.follow_up_mode)
+        if mode == FollowUpMode.NONE:
+            return None  # the employer chose to keep to the written questions
         if not turn.answer_text:
             return None
         if len(turn.answer_text.split()) < MIN_WORDS_FOR_FOLLOW_UP:
@@ -607,6 +642,22 @@ class StrictInterviewService(ConductMixin):
         probes_asked = sum(1 for other in thread if other.kind == TurnKind.FOLLOW_UP.value)
         if probes_asked >= settings.strict_max_follow_ups:
             return None
+
+        # The employer's own probes for this question, minus any already asked of this candidate.
+        questions = run.questions or []
+        asked = {" ".join(other.question_text.split()).casefold() for other in thread}
+        probes = [
+            probe
+            for probe in prepared_probes(
+                questions[turn.question_number - 1].get("probes")
+                if 0 < turn.question_number <= len(questions)
+                else None
+            )
+            if " ".join(probe.split()).casefold() not in asked
+        ]
+        only_prepared = mode == FollowUpMode.PROBES_ONLY
+        if only_prepared and not probes:
+            return None  # nothing prepared (or all used): this mode never makes one up
 
         left = seconds_between(self._deadline(run), now)
         allowance = min(settings.strict_follow_up_seconds, left)
@@ -630,6 +681,8 @@ class StrictInterviewService(ConductMixin):
                 interview_brief=interview.job.interview_brief or "",
                 earlier_exchange=earlier_exchange(thread, turn),
                 probes_left=settings.strict_max_follow_ups - probes_asked,
+                prepared_probes=probes,
+                only_prepared=only_prepared,
             )
         except Exception:
             logger.exception("strict interview %s: follow-up decision failed", interview.id)
@@ -637,6 +690,9 @@ class StrictInterviewService(ConductMixin):
         finally:
             if made_here:
                 await ai_service._client.close()
+        if only_prepared:
+            # Only a probe the employer wrote, in the employer's words.
+            return match_prepared_probe(raw, probes)
         return clean_follow_up(raw)
 
     # ------------------------------------------------------------------

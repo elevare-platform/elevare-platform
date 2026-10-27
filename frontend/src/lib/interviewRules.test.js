@@ -7,6 +7,7 @@ import {
   STRICT_RULES_VERSION,
   STRICT_RULE_GROUPS,
   numberedRuleGroups,
+  strictRuleGroups,
   visibleRuleGroups,
 } from './interviewRules'
 
@@ -74,6 +75,40 @@ describe('which rules are shown', () => {
   it('never shows an empty group', () => {
     for (const monitoring of [ALL_OFF, ALL_ON]) {
       expect(visibleRuleGroups(monitoring).every((group) => group.rules.length > 0)).toBe(true)
+    }
+  })
+})
+
+describe('the strict interview rules for what the AI does after an answer', () => {
+  const sentenceFor = (mode) =>
+    strictRuleGroups(mode)
+      .flatMap((group) => group.rules)
+      .find((rule) => rule.id === 'questions-on-screen').text
+
+  it('say up to two follow-ups for the standard mode, which is also the default and the fallback', () => {
+    for (const mode of [undefined, 'STANDARD', 'SOMETHING_ELSE']) {
+      expect(sentenceFor(mode)).toMatch(/The AI may ask up to two short follow-up questions on an answer/)
+    }
+  })
+
+  it('say the AI asks only the questions on screen when there are no follow-ups', () => {
+    expect(sentenceFor('NONE')).toMatch(/The AI asks only the questions on screen and no follow-up questions\.$/)
+    expect(sentenceFor('NONE')).not.toMatch(/up to two/)
+  })
+
+  it('say the follow-up comes from the employer\'s own list, never made up, when only probes are allowed', () => {
+    expect(sentenceFor('PROBES_ONLY')).toMatch(/from a list the employer prepared/)
+    expect(sentenceFor('PROBES_ONLY')).toMatch(/does not make up its own/)
+    expect(sentenceFor('PROBES_ONLY')).not.toMatch(/up to two/)
+  })
+
+  it('change nothing else, and are written the way the rest of the product is', () => {
+    const others = (mode) =>
+      strictRuleGroups(mode).flatMap((group) => group.rules).filter((rule) => rule.id !== 'questions-on-screen')
+    expect(others('NONE')).toEqual(others('STANDARD'))
+    expect(others('PROBES_ONLY')).toEqual(others('STANDARD'))
+    for (const mode of ['STANDARD', 'PROBES_ONLY', 'NONE']) {
+      expect(sentenceFor(mode)).not.toMatch(/[–—!]/)
     }
   })
 })

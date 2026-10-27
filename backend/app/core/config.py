@@ -174,7 +174,10 @@ class Settings(BaseSettings):
     interview_style: Literal["live", "strict"] = "live"
     # The strict interview's limits (the user's decisions). Its length in all is
     # interview_max_duration_minutes above, the same setting the live interview uses, so there
-    # is one number to change. The employer sets 5 questions by default, up to 6.
+    # is one number to change. The employer sets 5 questions by default; how many there can be is
+    # decided by time alone (docs/08_DECISIONS.md, item 40), so the old cap of 6 is no longer
+    # enforced. The setting stays defined only so an existing STRICT_INTERVIEW_MAX_QUESTIONS line
+    # in a .env file does not stop the app starting; nothing reads it.
     strict_interview_max_questions: int = 6
     strict_interview_default_questions: int = 5
     # A follow-up question gets its own, shorter allowance. It is only asked while the

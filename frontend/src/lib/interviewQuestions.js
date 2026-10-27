@@ -8,6 +8,36 @@ export const MIN_SECONDS = 30
 export const MAX_SECONDS = 600
 export const STEP_SECONDS = 30
 export const DEFAULT_SECONDS = 120
+// The employer's own follow-up probes for one question: one per line, a few short lines.
+export const MAX_PROBES = 6
+export const MAX_PROBE_CHARS = 300
+
+// What the AI may do after an answer, chosen per job (docs/08_DECISIONS.md, item 40).
+export const FOLLOW_UP_MODES = [
+  {
+    value: 'STANDARD',
+    label: 'Follow up when needed',
+    help: 'The AI may ask up to two short, neutral follow-ups when an answer is unclear about ownership, scale, results or reasoning. If you write probes for a question, it uses them when one fits.',
+  },
+  {
+    value: 'PROBES_ONLY',
+    label: 'Only my probes',
+    help: 'The AI may ask only the probes you write under a question, in your words, and never makes one up. A question with no probes gets no follow-up.',
+  },
+  {
+    value: 'NONE',
+    label: 'Questions only',
+    help: 'The AI asks only the questions above and nothing else, so every candidate gets exactly the same.',
+  },
+]
+
+/** The probes of one question as separate lines: trimmed, blanks dropped. */
+export function probeLines(probes) {
+  return String(probes ?? '')
+    .split('\n')
+    .map((line) => cleanText(line))
+    .filter(Boolean)
+}
 
 // 30 s, 1 min, 1 min 30 s ... 10 min: the choices for the time to answer one question.
 export const TIME_OPTIONS = Array.from(
@@ -34,7 +64,7 @@ export function cleanText(text) {
 
 /** A new, empty question for the employer to fill in. `key` is only for the screen's list. */
 export function blankQuestion(key) {
-  return { key, text: '', time_limit_seconds: DEFAULT_SECONDS, source: 'EMPLOYER' }
+  return { key, text: '', time_limit_seconds: DEFAULT_SECONDS, source: 'EMPLOYER', probes: '' }
 }
 
 /** Move the question at `index` one place up (-1) or down (+1). Returns a new list. */
@@ -52,14 +82,19 @@ export function removeQuestion(questions, index) {
 
 /**
  * What is wrong with the list, in words the employer can act on. Mirrors the server's rules so
- * the Save button can say why it will not work. `limits` is `{ max_questions, max_total_seconds }`.
+ * the Save button can say why it will not work. `limits` is `{ max_total_seconds }`. There is no
+ * limit on how many questions: only the total time (and a question needs at least 30 seconds).
  */
 export function problemsWith(questions, limits) {
   const found = []
-  if (questions.length > limits.max_questions) {
-    found.push(`An interview can have at most ${limits.max_questions} questions.`)
-  }
   questions.forEach((question, index) => {
+    const probes = probeLines(question.probes)
+    if (probes.length > MAX_PROBES) {
+      found.push(`Question ${index + 1} has too many probes. Keep it to ${MAX_PROBES}.`)
+    }
+    if (probes.some((probe) => probe.length > MAX_PROBE_CHARS)) {
+      found.push(`A probe on question ${index + 1} is too long. Keep each under ${MAX_PROBE_CHARS} characters.`)
+    }
     const length = cleanText(question.text).length
     if (length < MIN_QUESTION_CHARS) {
       found.push(`Question ${index + 1} is too short to be a question.`)

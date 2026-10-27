@@ -31,7 +31,9 @@ from app.modules.interviews.enums import (
     InterviewCostComponent,
     InterviewStatus,
     TranscriptCheckStatus,
+    follow_up_mode_of,
 )
+from app.modules.interviews.follow_up import load_follow_up_mode
 from app.modules.interviews.models import Interview, InterviewWeightedScore
 from app.modules.interviews.recording_merge import attempt_of_key, final_key, part_key
 from app.modules.interviews.repository import InterviewRepository
@@ -401,6 +403,7 @@ class InterviewService:
             session_start_count=interview.session_start_count,
             style="strict" if strict else "live",
             started=bool(run and run.started_at is not None),
+            follow_up_mode=await self.follow_up_mode_for(interview) if strict else "STANDARD",
         )
 
     async def create_session_by_token(self, token: str) -> InterviewSessionResponse:
@@ -445,6 +448,15 @@ class InterviewService:
         """Whether this is a strict interview that has been started."""
         run = await self._strict().get_run(interview.id)
         return bool(run and run.started_at is not None)
+
+    async def follow_up_mode_for(self, interview: Interview) -> str:
+        """What the AI may do after an answer in this interview (NONE, STANDARD, PROBES_ONLY), so
+        the rules the candidate reads say the same. Once the interview has started it is the mode
+        copied at the start; before that, the job's mode as it is now."""
+        run = await self._strict().get_run(interview.id)
+        if run is not None and run.started_at is not None:
+            return follow_up_mode_of(run.follow_up_mode).value
+        return (await load_follow_up_mode(self._db, interview.job_id)).value
 
     async def _record_strict_event(
         self, interview: Interview, event_type: str, cause: str | None, key: str | None

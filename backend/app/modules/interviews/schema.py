@@ -22,12 +22,20 @@ class InterviewQuestionIn(BaseModel):
     source: QuestionSource = "EMPLOYER"
     # The competency of the job's scoring profile this question tests (optional).
     competency: str | None = Field(default=None, max_length=200)
+    # The employer's own follow-up probes for this question, one per line (optional). The real
+    # limits are checked in ``question_rules``; this only stops an absurdly large request.
+    probes: str | None = Field(default=None, max_length=5000)
+
+
+FollowUpModeName = Literal["NONE", "STANDARD", "PROBES_ONLY"]
 
 
 class InterviewQuestionsPutRequest(BaseModel):
     """The employer's whole list, in the order shown. An empty list clears the questions."""
 
     questions: list[InterviewQuestionIn] = Field(max_length=50)
+    # What the AI may do after an answer, for this job. Left out, the job keeps what it has.
+    follow_up_mode: FollowUpModeName | None = None
 
 
 class InterviewQuestionsDraftRequest(BaseModel):
@@ -46,6 +54,7 @@ class SavedInterviewQuestion(BaseModel):
     time_limit_seconds: int
     source: QuestionSource
     competency: str | None = None
+    probes: str | None = None
 
 
 class DraftedInterviewQuestion(BaseModel):
@@ -53,6 +62,7 @@ class DraftedInterviewQuestion(BaseModel):
     time_limit_seconds: int
     source: QuestionSource = "AI"
     competency: str | None = None
+    probes: str | None = None
 
 
 class ClosingQuestion(BaseModel):
@@ -76,6 +86,8 @@ class _QuestionLimits(BaseModel):
     # them no saved question is tagged with. Both empty for a job without a profile.
     competencies: list[str] = []
     untested_competencies: list[str] = []
+    # What the AI may do after an answer, for this job: NONE, STANDARD or PROBES_ONLY.
+    follow_up_mode: FollowUpModeName = "STANDARD"
 
 
 class InterviewQuestionsResponse(_QuestionLimits):
@@ -183,6 +195,8 @@ class CandidateInterviewDetailResponse(CandidateInterviewResponse):
     style: Literal["live", "strict"]
     # A strict interview that has been started (so the screen offers "Continue", not the rules).
     started: bool = False
+    # What the AI may do after an answer, so the rules the candidate reads say the same.
+    follow_up_mode: FollowUpModeName = "STANDARD"
 
 
 class StrictConductEvent(BaseModel):
@@ -315,6 +329,8 @@ class InterviewPublicInfoResponse(BaseModel):
     style: Literal["live", "strict"] = "live"
     # A strict interview that has been started (so the screen offers "Continue", not the rules).
     started: bool = False
+    # What the AI may do after an answer, so the rules the candidate reads say the same.
+    follow_up_mode: FollowUpModeName = "STANDARD"
 
 
 class InterviewReinstateResponse(BaseModel):

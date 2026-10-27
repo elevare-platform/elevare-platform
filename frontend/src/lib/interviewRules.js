@@ -139,8 +139,20 @@ export const RULE_GROUPS = [
 // up to two follow-up questions on an answer (the Colton Group framework; the server's setting
 // `strict_max_follow_ups`, change both together). The numbers in the text (4 leaves, 60 seconds) are the
 // server's (settings `strict_max_leaves` and `strict_max_away_seconds`); change both together.
+// Version S7: what the AI does after an answer is the employer's choice for the job (no follow-ups,
+// up to two neutral ones, or only the employer's own prepared probes), and the rule says which
+// (`strictRuleGroups` below; the server's `follow_up_mode`).
 // Change STRICT_RULES_VERSION whenever the wording of a visible rule changes.
-export const STRICT_RULES_VERSION = 'S6'
+export const STRICT_RULES_VERSION = 'S7'
+
+// The end of the "questions-on-screen" rule, by what the AI may do after an answer.
+const FOLLOW_UP_RULE_TEXT = {
+  STANDARD:
+    'The AI may ask up to two short follow-up questions on an answer, to the same standard for every candidate.',
+  PROBES_ONLY:
+    'The AI may ask a short follow-up from a list the employer prepared for the question, the same list for every candidate. It does not make up its own.',
+  NONE: 'The AI asks only the questions on screen and no follow-up questions.',
+}
 
 // The strict interview's own monitoring switches. Separate from MONITORING above, which belongs
 // to the live interview (whose rules must never claim anything it does not do).
@@ -173,7 +185,7 @@ export const STRICT_RULE_GROUPS = [
       },
       {
         id: 'questions-on-screen',
-        text: 'Each question appears on screen with its time. Answer out loud, looking at the camera. Press Next when you finish; the next one opens when the time is up. The AI may ask up to two short follow-up questions on an answer, to the same standard for every candidate.',
+        text: `Each question appears on screen with its time. Answer out loud, looking at the camera. Press Next when you finish; the next one opens when the time is up. ${FOLLOW_UP_RULE_TEXT.STANDARD}`,
       },
       {
         id: 'stay-on-page',
@@ -222,6 +234,21 @@ export const STRICT_RULE_GROUPS = [
     ],
   },
 ]
+
+/** The strict interview's rules for what this job's AI may do after an answer: the same rules, with
+ *  the follow-up sentence of the "questions-on-screen" rule saying NONE, STANDARD or PROBES_ONLY.
+ *  An unknown mode is the standard (how every interview behaved before the choice existed). */
+export function strictRuleGroups(followUpMode = 'STANDARD') {
+  const sentence = FOLLOW_UP_RULE_TEXT[followUpMode] ?? FOLLOW_UP_RULE_TEXT.STANDARD
+  return STRICT_RULE_GROUPS.map((group) => ({
+    ...group,
+    rules: group.rules.map((rule) =>
+      rule.id === 'questions-on-screen'
+        ? { ...rule, text: rule.text.replace(FOLLOW_UP_RULE_TEXT.STANDARD, sentence) }
+        : rule
+    ),
+  }))
+}
 
 /** The groups to show now: only rules whose feature (if any) is switched on, and no empty group. */
 export function visibleRuleGroups(monitoring = MONITORING, groups = RULE_GROUPS) {

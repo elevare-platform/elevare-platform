@@ -63,7 +63,15 @@ class FakeAI:
         self.fail = False
 
     async def decide_interview_follow_up(
-        self, *, question, answer, interview_brief, earlier_exchange="", probes_left=1
+        self,
+        *,
+        question,
+        answer,
+        interview_brief,
+        earlier_exchange="",
+        probes_left=1,
+        prepared_probes=None,
+        only_prepared=False,
     ):
         self.calls.append(
             {
@@ -72,6 +80,8 @@ class FakeAI:
                 "brief": interview_brief,
                 "earlier": earlier_exchange,
                 "probes_left": probes_left,
+                "prepared_probes": prepared_probes,
+                "only_prepared": only_prepared,
             }
         )
         if self.fail:

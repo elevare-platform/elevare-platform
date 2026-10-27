@@ -124,6 +124,7 @@ export default function InterviewInvitePage() {
         requestPartUploadUrl={requestPartUploadUrl}
         subtitle={subtitle}
         maxMinutes={info.max_duration_minutes}
+        followUpMode={info.follow_up_mode}
         // Started before: reloaded mid-interview (IN_PROGRESS), or reinstated by the employer
         // (PENDING again, but already started).
         resuming={Boolean(info.started) || info.status === 'IN_PROGRESS'}

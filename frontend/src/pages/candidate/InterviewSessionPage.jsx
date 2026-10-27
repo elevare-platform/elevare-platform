@@ -119,6 +119,7 @@ export default function InterviewSessionPage() {
           label: 'Back to applications',
           onClick: () => navigate('/candidate/applications'),
         }}
+        followUpMode={interview.follow_up_mode}
         resuming={Boolean(interview.started) || interview.status === 'IN_PROGRESS'}
         reinstated={Boolean(interview.started) && interview.status === 'PENDING'}
         endedStatus={['ENDED_CONDUCT', 'STOPPED'].includes(interview.status) ? interview.status : null}
