@@ -145,13 +145,142 @@ describe('AssessmentRecordCard, the panel decision', () => {
     expect(reasonBox()).toHaveValue('Waiting for the references.')
   })
 
-  it('falls back to a plain line when the server gives no reason', async () => {
-    render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn().mockRejectedValue(new Error('network'))} />)
+  it('falls back to a plain line when the server answers with no reason', async () => {
+    render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn().mockRejectedValue({ response: { status: 500, data: {} } })} />)
     fireEvent.change(choice(), { target: { value: 'HOLD' } })
     fireEvent.change(reasonBox(), { target: { value: 'Waiting for the references.' } })
 
     fireEvent.click(record())
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.')
+  })
+
+  it('says the server could not be reached when there was no answer at all', async () => {
+    render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn().mockRejectedValue(new Error('network'))} />)
+    fireEvent.change(choice(), { target: { value: 'HOLD' } })
+    fireEvent.change(reasonBox(), { target: { value: 'Waiting for the references.' } })
+
+    fireEvent.click(record())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('We could not reach the server')
+  })
+
+  it('says what is missing while the button is off', () => {
+    render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn()} />)
+    expect(screen.getByTestId('why-disabled')).toHaveTextContent('Choose a decision.')
+
+    fireEvent.change(choice(), { target: { value: 'SHORTLIST' } })
+    expect(screen.getByTestId('why-disabled')).toHaveTextContent('Write a reason of at least 10 characters (10 more).')
+
+    fireEvent.change(reasonBox(), { target: { value: 'Good.' } })
+    expect(screen.getByTestId('why-disabled')).toHaveTextContent('(5 more)')
+
+    fireEvent.change(reasonBox(), { target: { value: 'Good route to market.' } })
+    expect(screen.queryByTestId('why-disabled')).not.toBeInTheDocument()
+  })
+
+  it('does not let a decision be recorded before the interview has finished, and says why', () => {
+    render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn()} blockedReason="The interview has not finished yet, so there is nothing to decide on." />)
+    fireEvent.change(choice(), { target: { value: 'HOLD' } })
+    fireEvent.change(reasonBox(), { target: { value: 'Waiting for the references.' } })
+
+    expect(record()).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('nothing to decide on')
+  })
+})
+
+describe('AssessmentRecordCard, a suggested band', () => {
+  const props = { suggestedBand: 'Shortlist', suggestedScore: 78 }
+
+  it('shows the suggestion and offers to accept it or to choose differently, before any form', () => {
+    render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn()} {...props} />)
+
+    expect(screen.getByTestId('suggested-decision')).toHaveTextContent('Shortlist, score 78 of 100')
+    expect(screen.getByRole('button', { name: 'Accept this suggestion' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Choose a different decision' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Record decision' })).not.toBeInTheDocument()
+  })
+
+  it('records the suggestion in one click, with a reason that says it was agreed', async () => {
+    const onDecide = vi.fn().mockResolvedValue()
+    render(<AssessmentRecordCard record={RECORD} onDecide={onDecide} {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept this suggestion' }))
+
+    await waitFor(() =>
+      expect(onDecide).toHaveBeenCalledWith('SHORTLIST', 'Agreed with the suggested band: Shortlist (score 78 of 100).')
+    )
+  })
+
+  it('maps each band to its decision', async () => {
+    const onDecide = vi.fn().mockResolvedValue()
+    render(<AssessmentRecordCard record={RECORD} onDecide={onDecide} suggestedBand="Hold for evidence" suggestedScore={null} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept this suggestion' }))
+
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith('HOLD', 'Agreed with the suggested band: Hold for evidence.'))
+  })
+
+  it('opens the form to choose differently, and records a different decision with its reason and a note that it differs', async () => {
+    const onDecide = vi.fn().mockResolvedValue()
+    render(<AssessmentRecordCard record={RECORD} onDecide={onDecide} {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a different decision' }))
+    fireEvent.change(choice(), { target: { value: 'HOLD' } })
+    expect(screen.getByTestId('differs-note')).toHaveTextContent('This differs from the suggestion (Shortlist)')
+    fireEvent.change(reasonBox(), { target: { value: 'Waiting for the references.' } })
+    fireEvent.click(record())
+
+    await waitFor(() =>
+      expect(onDecide).toHaveBeenCalledWith('HOLD', 'Waiting for the references. (Differs from the suggested band: Shortlist.)')
+    )
+  })
+
+  it('records the same decision as the suggestion by the form with the reason as typed', async () => {
+    const onDecide = vi.fn().mockResolvedValue()
+    render(<AssessmentRecordCard record={RECORD} onDecide={onDecide} {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a different decision' }))
+    fireEvent.change(choice(), { target: { value: 'SHORTLIST' } })
+    fireEvent.change(reasonBox(), { target: { value: 'Agree, with the references to come.' } })
+    fireEvent.click(record())
+
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith('SHORTLIST', 'Agree, with the references to come.'))
+    expect(screen.queryByTestId('differs-note')).not.toBeInTheDocument()
+  })
+
+  it('cannot be accepted before the interview has finished', () => {
+    render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn()} {...props} blockedReason="The interview has not finished yet, so there is nothing to decide on." />)
+
+    expect(screen.getByRole('button', { name: 'Accept this suggestion' })).toBeDisabled()
+  })
+
+  it('shows the server\'s words when accepting fails, and leaves the choice open', async () => {
+    const onDecide = vi.fn().mockRejectedValue({ response: { status: 403, data: { message: 'You do not have access to this job' } } })
+    render(<AssessmentRecordCard record={RECORD} onDecide={onDecide} {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept this suggestion' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('You do not have access to this job')
+    expect(screen.getByRole('button', { name: 'Accept this suggestion' })).toBeEnabled()
+  })
+
+  it('after a decision, says whether it matches the suggestion, and still lets it be changed', () => {
+    const decided = { decision: 'SHORTLIST', label: 'Shortlist', rationale: 'Agreed.', decided_by_name: 'Ada Obi', decided_at: '2026-10-21T10:00:00Z' }
+    const { rerender } = render(<AssessmentRecordCard record={{ ...RECORD, panel_decision: decided }} onDecide={vi.fn()} {...props} />)
+
+    expect(screen.getByTestId('latest-decision')).toHaveTextContent('Matches the suggestion.')
+    expect(screen.getByLabelText('Change the decision')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Accept this suggestion' })).not.toBeInTheDocument()
+
+    rerender(<AssessmentRecordCard record={{ ...RECORD, panel_decision: { ...decided, decision: 'HOLD', label: 'Hold' } }} onDecide={vi.fn()} {...props} />)
+    expect(screen.getByTestId('latest-decision')).toHaveTextContent('Differs from the suggestion (Shortlist).')
+  })
+
+  it('says the panel decides when there is no suggested band, and shows the form at once', () => {
+    render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn()} suggestedBand={null} />)
+
+    expect(screen.getByTestId('no-suggestion')).toHaveTextContent('the panel decides')
+    expect(record()).toBeInTheDocument()
   })
 })

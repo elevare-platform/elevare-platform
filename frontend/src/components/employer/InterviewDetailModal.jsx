@@ -387,7 +387,19 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
 
               {/* The candidate assessment record: the header, the top three strengths and gaps,
                   what to verify, and the hiring panel's own decision with its sign-off */}
-              {detail.record && <AssessmentRecordCard record={detail.record} onDecide={recordDecision} />}
+              {detail.record && (
+                <AssessmentRecordCard
+                  record={detail.record}
+                  onDecide={recordDecision}
+                  suggestedBand={detail.score_report?.complete ? detail.score_report.band : null}
+                  suggestedScore={detail.score_report?.complete ? detail.score_report.score : null}
+                  blockedReason={
+                    detail.status === 'UPLOADED' || detail.status === 'SCORED' || isEndedStatus(detail.status)
+                      ? null
+                      : 'The interview has not finished yet, so there is nothing to decide on.'
+                  }
+                />
+              )}
 
               {/* Transcript */}
               {detail.transcript && (
