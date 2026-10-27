@@ -92,6 +92,11 @@ async def test_a_job_with_no_questions_returns_an_empty_list_and_the_limits(clie
         "competencies": [],
         "untested_competencies": [],
         "follow_up_mode": "STANDARD",
+        "question_templates": [
+            {"code": "national_sales_manager", "title": "National Sales Manager", "question_count": 8, "total_seconds": 1050},
+            {"code": "commercial_director", "title": "Commercial Director", "question_count": 8, "total_seconds": 990},
+            {"code": "senior_marketing_manager", "title": "Senior Marketing Manager", "question_count": 10, "total_seconds": 1050},
+        ],
     }
 
 
@@ -229,6 +234,36 @@ async def test_probes_are_saved_tidied_and_returned_with_the_question(client, db
     assert response.status_code == 200
     assert response.json()["questions"][0]["probes"] == "What was your own part?\nWhat did it deliver?"
     assert (await _rows(db_session, job))[0].probes == "What was your own part?\nWhat did it deliver?"
+
+
+@pytest.mark.asyncio
+async def test_the_follow_up_time_is_saved_per_question_and_none_means_the_default(client, db_session):
+    owner, _teammate, job = await _company(db_session)
+
+    response = await _save(
+        client,
+        owner,
+        job,
+        [{**q("Tell us about a launch you led."), "follow_up_seconds": 150}, q("And another thing you owned?")],
+    )
+
+    assert response.status_code == 200
+    assert [x["follow_up_seconds"] for x in response.json()["questions"]] == [150, None]
+    assert [r.follow_up_seconds for r in await _rows(db_session, job)] == [150, None]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seconds", [0, 29, 301, 3600, -30])
+async def test_a_follow_up_time_outside_30_seconds_to_5_minutes_is_refused(client, db_session, seconds):
+    owner, _teammate, job = await _company(db_session)
+
+    refused = await _save(client, owner, job, [{**q("Tell us about a launch you led."), "follow_up_seconds": seconds}])
+
+    assert refused.status_code == 422
+    assert any(
+        d["message"].startswith("The follow-up time on question 1 needs between 30 seconds and 5 minutes")
+        for d in refused.json()["details"]
+    )
 
 
 @pytest.mark.asyncio
@@ -442,10 +477,10 @@ async def test_a_draft_is_cleaned_marked_as_ai_and_never_saved(client, db_sessio
     assert response.status_code == 200
     body = response.json()
     assert body["questions"] == [
-        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None},
-        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI", "competency": None, "probes": None},
+        {"text": "Describe a system you designed and why.", "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None},
+        {"text": "How do you test a risky change before it ships?", "time_limit_seconds": 120, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None},
         # The scorecard's standard closing question is always the last one.
-        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None},
+        {"text": CLOSING_QUESTION_TEXT, "time_limit_seconds": 90, "source": "AI", "competency": None, "probes": None, "follow_up_seconds": None},
     ]
     assert body["total_seconds"] == 300
     assert await _rows(db_session, job) == []  # a draft is only ever returned

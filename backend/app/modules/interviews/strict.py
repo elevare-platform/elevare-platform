@@ -87,6 +87,19 @@ def clean_follow_up(text: str | None) -> str | None:
     return cleaned
 
 
+def follow_up_seconds_for(run: StrictInterviewRun, question_number: int) -> int:
+    """How long a candidate has to answer a follow-up on question ``question_number``: the time
+    the employer set on that question when the interview started, or the platform default
+    (`strict_follow_up_seconds`) for a question with none (and for a run that began before the
+    time could be set)."""
+    questions = run.questions or []
+    if 0 < question_number <= len(questions):
+        seconds = questions[question_number - 1].get("follow_up_seconds")
+        if isinstance(seconds, int) and seconds > 0:
+            return seconds
+    return settings.strict_follow_up_seconds
+
+
 def prepared_probes(text: str | None) -> list[str]:
     """The employer's probes for a question, as the lines they wrote."""
     return [line for line in (" ".join(raw.split()) for raw in (text or "").splitlines()) if line]
@@ -456,6 +469,7 @@ class StrictInterviewService(ConductMixin):
                     "time_limit_seconds": question.time_limit_seconds,
                     "competency": question.competency,
                     "probes": question.probes,
+                    "follow_up_seconds": question.follow_up_seconds,
                 }
                 for question in saved
             ]
@@ -603,7 +617,7 @@ class StrictInterviewService(ConductMixin):
                 kind=TurnKind.FOLLOW_UP.value,
                 number=turn.question_number,
                 text=follow_up,
-                seconds=min(settings.strict_follow_up_seconds, left),
+                seconds=min(follow_up_seconds_for(run, turn.question_number), left),
                 at=now,
             )
         else:
@@ -660,7 +674,7 @@ class StrictInterviewService(ConductMixin):
             return None  # nothing prepared (or all used): this mode never makes one up
 
         left = seconds_between(self._deadline(run), now)
-        allowance = min(settings.strict_follow_up_seconds, left)
+        allowance = min(follow_up_seconds_for(run, turn.question_number), left)
         later = (run.questions or [])[turn.question_number :]
         needed_later = sum(question["time_limit_seconds"] for question in later)
         if left < settings.strict_follow_up_min_remaining_seconds:

@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Loader2, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import api from '@/lib/api'
 import {
+  DEFAULT_FOLLOW_UP_SECONDS,
   FOLLOW_UP_MODES,
+  FOLLOW_UP_TIME_OPTIONS,
+  LITTLE_TIME_FOR_FOLLOW_UPS,
   MAX_QUESTION_CHARS,
   TIME_OPTIONS,
   blankQuestion,
@@ -11,6 +14,7 @@ import {
   probeLines,
   problemsWith,
   removeQuestion,
+  timeLeftForFollowUps,
   totalSeconds,
 } from '@/lib/interviewQuestions'
 
@@ -41,6 +45,9 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   // What the AI may do after an answer, for the whole job: STANDARD | PROBES_ONLY | NONE.
   const [followUpMode, setFollowUpMode] = useState('STANDARD')
   const [drafting, setDrafting] = useState(false)
+  // The ready-made role set chosen in the picker, and whether it is being loaded.
+  const [templateCode, setTemplateCode] = useState('')
+  const [applying, setApplying] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -87,6 +94,44 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const setProbes = (index, probes) =>
     edit((list) => list.map((question, position) => (position === index ? { ...question, probes } : question)))
 
+  const setFollowUpSeconds = (index, follow_up_seconds) =>
+    edit((list) =>
+      list.map((question, position) => (position === index ? { ...question, follow_up_seconds } : question))
+    )
+
+  // Start from one of the ready-made role sets (the Colton Group's): the role's scoring profile AND
+  // its questions with their probes, saved at once, replacing what the job has. The employer can
+  // then change anything and save again.
+  const applyTemplate = async () => {
+    const template = limits?.question_templates?.find((item) => item.code === templateCode)
+    if (!template) return
+    const message = questions.length > 0
+      ? `Replace this job's questions and scoring profile with the ${template.title} set? Interviews already started keep the questions they began with.`
+      : `Start from the ${template.title} set? It also sets the job's scoring profile.`
+    if (!window.confirm(message)) return
+    setApplying(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const { data } = await api.post(`/api/v1/interviews/jobs/${jobId}/questions/from-template`, {
+        code: template.code,
+      })
+      setLimits(data)
+      setFollowUpMode(data.follow_up_mode ?? 'STANDARD')
+      setQuestions(data.questions.map((item) => ({ ...item, probes: item.probes ?? '', key: newKey() })))
+      setDirty(false) // it is saved already
+      setTemplateCode('')
+      setNotice(
+        `Loaded the ${template.title} set: ${data.questions.length} questions, each tagged with the competency it tests, and the role's scoring profile. It is saved. Change anything you like, then save again.`
+      )
+      onSaved?.(data)
+    } catch (err) {
+      setError(serverMessage(err, 'We could not load that set just now. Please try again.'))
+    } finally {
+      setApplying(false)
+    }
+  }
+
   const close = () => {
     if (dirty && !window.confirm('You have unsaved changes. Close without saving?')) return
     onClose()
@@ -116,12 +161,13 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
     setError(null)
     try {
       const { data } = await api.put(`/api/v1/interviews/jobs/${jobId}/questions`, {
-        questions: questions.map(({ text, time_limit_seconds, source, competency, probes }) => ({
+        questions: questions.map(({ text, time_limit_seconds, source, competency, probes, follow_up_seconds }) => ({
           text,
           time_limit_seconds,
           source,
           competency: competency || null,
           probes: probes || null,
+          follow_up_seconds: follow_up_seconds ?? null,
         })),
         follow_up_mode: followUpMode,
       })
@@ -137,6 +183,11 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
   const problems = limits ? problemsWith(questions, limits) : []
   const total = totalSeconds(questions)
   const overTime = limits ? total > limits.max_total_seconds : false
+  // A follow-up is asked only when what is left of the interview still covers every later question,
+  // so a list that uses nearly all the time leaves no room for one: say so.
+  const timeLeft = limits ? timeLeftForFollowUps(questions, limits) : 0
+  const littleTimeForFollowUps =
+    followUpMode !== 'NONE' && questions.length > 0 && !overTime && timeLeft < LITTLE_TIME_FOR_FOLLOW_UPS
   // With "Only my probes", a question with no probe never gets a follow-up: say so, so it is not a surprise.
   const noProbesAtAll = followUpMode === 'PROBES_ONLY' && questions.every((q) => probeLines(q.probes).length === 0)
   // The standard closing question is already in the list (the draft adds it, or it was added
@@ -201,6 +252,43 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                   </span>
                 )}
               </div>
+
+              {/* The Colton Group's role sets: the questions, their probes and the role's scoring profile */}
+              {(limits.question_templates ?? []).length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted/40 px-3 py-2">
+                  <label htmlFor="question-template" className="text-xs font-semibold text-text">
+                    Start from a ready-made set
+                  </label>
+                  <select
+                    id="question-template"
+                    value={templateCode}
+                    onChange={(event) => setTemplateCode(event.target.value)}
+                    disabled={applying}
+                    className="min-w-0 flex-1 rounded-lg border border-border bg-white px-2 py-1 text-xs"
+                  >
+                    <option value="">Choose a role</option>
+                    {limits.question_templates.map((template) => (
+                      <option key={template.code} value={template.code}>
+                        {template.title} ({template.question_count} questions)
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={applyTemplate}
+                    disabled={!templateCode || applying}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-blue px-3 py-1.5 text-xs font-semibold text-brand-blue transition-colors hover:bg-brand-blue/5 disabled:opacity-50"
+                  >
+                    {applying && <Loader2 size={13} className="animate-spin" />}
+                    {applying ? 'Loading…' : 'Use this set'}
+                  </button>
+                  <p className="basis-full text-xs text-text-muted">
+                    Loads the role&apos;s questions from the Colton Group guide, word for word, with their
+                    optional probes, and sets the job&apos;s scoring profile to match. It replaces the current
+                    ones and saves at once. You can still change anything afterwards.
+                  </p>
+                </div>
+              )}
 
               {notice && (
                 <p role="status" className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
@@ -295,6 +383,23 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                           placeholder="For example: What was your own part in it?"
                           className="w-full rounded-lg border border-border px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
                         />
+                        <div className="flex items-center gap-2">
+                          <label htmlFor={`follow-up-time-${question.key}`} className="text-xs text-text-muted">
+                            Time to answer a follow-up
+                          </label>
+                          <select
+                            id={`follow-up-time-${question.key}`}
+                            value={question.follow_up_seconds ?? DEFAULT_FOLLOW_UP_SECONDS}
+                            onChange={(event) => setFollowUpSeconds(index, Number(event.target.value))}
+                            className="rounded-lg border border-border bg-white px-2 py-1 text-xs"
+                          >
+                            {FOLLOW_UP_TIME_OPTIONS.map((seconds) => (
+                              <option key={seconds} value={seconds}>
+                                {formatSeconds(seconds)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     )}
                     {competencies.length > 0 && (
@@ -396,6 +501,14 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                 interview ends after {formatSeconds(limits.max_total_seconds)} in all, and any follow-up
                 questions use part of that time.
               </p>
+
+              {littleTimeForFollowUps && (
+                <p role="note" data-testid="little-time-for-follow-ups" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Only {formatSeconds(timeLeft)} of the {formatSeconds(limits.max_total_seconds)} is left after the
+                  answer times. A follow-up is asked only when time is left for every question still to come, so
+                  few or none will be asked. Shorten some of the times to leave more room.
+                </p>
+              )}
 
               {problems.length > 0 && (
                 <ul className="space-y-0.5 text-xs text-red-600" aria-label="Problems with the list">

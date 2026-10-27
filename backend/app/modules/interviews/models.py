@@ -63,6 +63,9 @@ class JobInterviewQuestion(BaseModel):
     # The employer's own follow-up probes for this question, one per line (docs/08_DECISIONS.md,
     # item 40). Used according to the job's follow-up mode. None when there are none.
     probes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How long the candidate has to answer a follow-up on this question (docs/08_DECISIONS.md, item
+    # 41). None means the platform's default (`strict_follow_up_seconds`, 90).
+    follow_up_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class JobInterviewSettings(BaseModel):

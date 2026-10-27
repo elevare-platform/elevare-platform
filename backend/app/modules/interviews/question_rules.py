@@ -20,6 +20,9 @@ STEP_SECONDS = 30
 # The employer's own follow-up probes for one question: one per line, a few short lines.
 MAX_PROBES = 6
 MAX_PROBE_CHARS = 300
+# The time to answer a follow-up on one question: 30 seconds to 5 minutes, in steps of 30.
+MIN_FOLLOW_UP_SECONDS = 30
+MAX_FOLLOW_UP_SECONDS = 300
 
 
 # The standard closing question of the assessment scorecard (docs/08_DECISIONS.md, item 31):
@@ -57,6 +60,8 @@ class QuestionDraft:
     time_limit_seconds: int
     # The employer's own probes for it, one per line (empty when none).
     probes: str = ""
+    # The time to answer a follow-up on it; None is the platform default.
+    follow_up_seconds: int | None = None
 
 
 def clean_probes(probes: str | None) -> list[str]:
@@ -98,6 +103,12 @@ def problems_with(questions: list[QuestionDraft]) -> list[str]:
         if any(len(probe) > MAX_PROBE_CHARS for probe in probes):
             found.append(
                 f"A probe on question {number} is too long. Keep each under {MAX_PROBE_CHARS} characters."
+            )
+        follow_up = question.follow_up_seconds
+        if follow_up is not None and not MIN_FOLLOW_UP_SECONDS <= follow_up <= MAX_FOLLOW_UP_SECONDS:
+            found.append(
+                f"The follow-up time on question {number} needs between {MIN_FOLLOW_UP_SECONDS} "
+                f"seconds and {MAX_FOLLOW_UP_SECONDS // 60} minutes."
             )
         length = len(clean_text(question.text))
         if length < MIN_QUESTION_CHARS:

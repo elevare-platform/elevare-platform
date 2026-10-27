@@ -11,6 +11,12 @@ export const DEFAULT_SECONDS = 120
 // The employer's own follow-up probes for one question: one per line, a few short lines.
 export const MAX_PROBES = 6
 export const MAX_PROBE_CHARS = 300
+// The time to answer a follow-up on one question: 30 seconds to 5 minutes, in steps of 30. When
+// the employer sets none the platform's 90 seconds applies (the server's `strict_follow_up_seconds`).
+export const MAX_FOLLOW_UP_SECONDS = 300
+export const DEFAULT_FOLLOW_UP_SECONDS = 90
+// Less than this left of the interview after the answer times, and a follow-up rarely fits.
+export const LITTLE_TIME_FOR_FOLLOW_UPS = 180
 
 // What the AI may do after an answer, chosen per job (docs/08_DECISIONS.md, item 40).
 export const FOLLOW_UP_MODES = [
@@ -31,6 +37,11 @@ export const FOLLOW_UP_MODES = [
   },
 ]
 
+/** How much of the interview is left once every question has had its full answer time. */
+export function timeLeftForFollowUps(questions, limits) {
+  return Math.max(0, limits.max_total_seconds - totalSeconds(questions))
+}
+
 /** The probes of one question as separate lines: trimmed, blanks dropped. */
 export function probeLines(probes) {
   return String(probes ?? '')
@@ -44,6 +55,8 @@ export const TIME_OPTIONS = Array.from(
   { length: (MAX_SECONDS - MIN_SECONDS) / STEP_SECONDS + 1 },
   (_, index) => MIN_SECONDS + index * STEP_SECONDS
 )
+// The same, up to 5 minutes: the choices for the time to answer a follow-up.
+export const FOLLOW_UP_TIME_OPTIONS = TIME_OPTIONS.filter((seconds) => seconds <= 300)
 
 /** 45 as "45 s", 120 as "2 min", 90 as "1 min 30 s". */
 export function formatSeconds(seconds) {
@@ -64,7 +77,14 @@ export function cleanText(text) {
 
 /** A new, empty question for the employer to fill in. `key` is only for the screen's list. */
 export function blankQuestion(key) {
-  return { key, text: '', time_limit_seconds: DEFAULT_SECONDS, source: 'EMPLOYER', probes: '' }
+  return {
+    key,
+    text: '',
+    time_limit_seconds: DEFAULT_SECONDS,
+    source: 'EMPLOYER',
+    probes: '',
+    follow_up_seconds: null,
+  }
 }
 
 /** Move the question at `index` one place up (-1) or down (+1). Returns a new list. */

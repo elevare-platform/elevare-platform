@@ -75,10 +75,12 @@ class ScoringProfileService:
         bands: dict | None,
         key_min_rating: int,
         template_code: str | None,
+        commit: bool = True,
     ) -> dict:
         """Save the job's scoring profile, all or nothing, refused with every problem named if it
         breaks a rule. A question tagged with a competency the new profile no longer has loses its
-        tag (the employer sees it as untagged)."""
+        tag (the employer sees it as untagged). ``commit=False`` leaves the transaction open, for a
+        caller that saves something else with it and commits once."""
         await self._job_for(user, job_id)
         bands = bands or dict(rules.DEFAULT_BANDS)
         problems = rules.problems_with(competencies, bands, key_min_rating)
@@ -100,7 +102,8 @@ class ScoringProfileService:
             profile.template_code = template_code
         await self._db.flush()
         await self._clear_dangling_tags(job_id, [item["name"] for item in tidy])
-        await self._db.commit()
+        if commit:
+            await self._db.commit()
         await self._db.refresh(profile)
         return self._response(profile)
 

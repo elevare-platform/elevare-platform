@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
+  DEFAULT_FOLLOW_UP_SECONDS,
   FOLLOW_UP_MODES,
+  FOLLOW_UP_TIME_OPTIONS,
   MAX_PROBE_CHARS,
   MAX_QUESTION_CHARS,
   TIME_OPTIONS,
@@ -11,6 +13,7 @@ import {
   probeLines,
   problemsWith,
   removeQuestion,
+  timeLeftForFollowUps,
   totalSeconds,
 } from './interviewQuestions'
 
@@ -54,7 +57,33 @@ describe('totals and tidying', () => {
 
 describe('a new question', () => {
   it('starts empty, written by the employer, with the usual two minutes', () => {
-    expect(blankQuestion('k1')).toEqual({ key: 'k1', text: '', time_limit_seconds: 120, source: 'EMPLOYER', probes: '' })
+    expect(blankQuestion('k1')).toEqual({
+      key: 'k1',
+      text: '',
+      time_limit_seconds: 120,
+      source: 'EMPLOYER',
+      probes: '',
+      follow_up_seconds: null,
+    })
+  })
+})
+
+describe('the time to answer a follow-up', () => {
+  it('runs from 30 seconds to 5 minutes in steps of 30 seconds, and includes the default of 90 seconds', () => {
+    expect(FOLLOW_UP_TIME_OPTIONS[0]).toBe(30)
+    expect(FOLLOW_UP_TIME_OPTIONS.at(-1)).toBe(300)
+    expect(FOLLOW_UP_TIME_OPTIONS).toHaveLength(10)
+    expect(FOLLOW_UP_TIME_OPTIONS).toContain(DEFAULT_FOLLOW_UP_SECONDS)
+  })
+})
+
+describe('timeLeftForFollowUps', () => {
+  it('is what is left of the interview after the answer times, and never below nothing', () => {
+    const limits = { max_total_seconds: 1200 }
+
+    expect(timeLeftForFollowUps([q(GOOD, 600), q(GOOD, 300)], limits)).toBe(300)
+    expect(timeLeftForFollowUps([], limits)).toBe(1200)
+    expect(timeLeftForFollowUps([q(GOOD, 600), q(GOOD, 600), q(GOOD, 600)], limits)).toBe(0)
   })
 })
 

@@ -33,6 +33,7 @@ from app.modules.interviews.schema import (
     InterviewScoreRequestResponse,
     InterviewSessionResponse,
     InterviewUploadUrlResponse,
+    QuestionTemplateApplyRequest,
     ScoringProfileIn,
     ScoringProfileResponse,
     StrictEventRequest,
@@ -406,6 +407,23 @@ async def save_job_interview_questions(
         [item.model_dump() for item in data.questions],
         follow_up_mode=data.follow_up_mode,
     )
+
+
+@router.post(
+    "/jobs/{job_id}/questions/from-template",
+    response_model=InterviewQuestionsResponse,
+    status_code=200,
+)
+async def start_job_questions_from_template(
+    job_id: uuid.UUID,
+    data: QuestionTemplateApplyRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start the job from a Colton Group role template: the role's scoring profile AND its
+    questions with their probes, replacing the job's current ones, in one step (all or nothing).
+    The employer can then edit anything. An unknown template is refused with a 422."""
+    return await InterviewQuestionService(db).apply_template(current_user, job_id, data.code)
 
 
 @router.post(

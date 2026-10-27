@@ -344,8 +344,8 @@ describe('InterviewQuestionsModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(api.put).toHaveBeenCalledWith(URL, {
       questions: [
-        { text: 'First question to answer.', time_limit_seconds: 120, source: 'AI', competency: null, probes: null },
-        { text: 'My own second question here.', time_limit_seconds: 90, source: 'EMPLOYER', competency: null, probes: null },
+        { text: 'First question to answer.', time_limit_seconds: 120, source: 'AI', competency: null, probes: null, follow_up_seconds: null },
+        { text: 'My own second question here.', time_limit_seconds: 90, source: 'EMPLOYER', competency: null, probes: null, follow_up_seconds: null },
       ],
       follow_up_mode: 'STANDARD',
     })
@@ -377,6 +377,128 @@ describe('InterviewQuestionsModal', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(api.put).toHaveBeenCalledWith(URL, { questions: [], follow_up_mode: 'STANDARD' })
+  })
+
+  // --- the ready-made sets -----------------------------------------------------------------
+
+  describe('the ready-made sets', () => {
+    const TEMPLATES = [
+      { code: 'national_sales_manager', title: 'National Sales Manager', question_count: 8, total_seconds: 1050 },
+      { code: 'senior_marketing_manager', title: 'Senior Marketing Manager', question_count: 10, total_seconds: 1050 },
+    ]
+    const withTemplates = (questions = []) => ({ data: { ...loaded(questions).data, question_templates: TEMPLATES } })
+    const appliedResponse = {
+      data: {
+        ...LIMITS,
+        question_templates: TEMPLATES,
+        follow_up_mode: 'STANDARD',
+        questions: [
+          { ...saved(1, 'You are preparing to launch Seasonings across Nigeria. How would you plan it?', 150), competency: 'Route-to-market', probes: 'Which markets would you prioritise?' },
+          { ...saved(2, 'Tell me about a time you built a distributor network.', 120), competency: 'Route-to-market', probes: null },
+        ],
+      },
+    }
+    const useButton = () => screen.getByRole('button', { name: 'Use this set' })
+
+    it('lists the roles with their question counts, and cannot be used until one is chosen', async () => {
+      api.get.mockResolvedValueOnce(withTemplates())
+      renderModal()
+
+      const picker = await screen.findByLabelText('Start from a ready-made set')
+
+      expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual([
+        'Choose a role',
+        'National Sales Manager (8 questions)',
+        'Senior Marketing Manager (10 questions)',
+      ])
+      expect(useButton()).toBeDisabled()
+      expect(screen.getByText(/word for word, with their optional probes/)).toBeInTheDocument()
+    })
+
+    it('is not shown when the server has none', async () => {
+      api.get.mockResolvedValueOnce(loaded())
+      renderModal()
+      await screen.findByRole('button', { name: /Add a question/ })
+
+      expect(screen.queryByLabelText('Start from a ready-made set')).not.toBeInTheDocument()
+    })
+
+    it('asks before replacing the current questions, and does nothing if the answer is no', async () => {
+      api.get.mockResolvedValueOnce(withTemplates([saved(1, 'An existing question to keep?')]))
+      confirmSpy.mockReturnValue(false)
+      renderModal()
+
+      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
+      fireEvent.click(useButton())
+
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Replace this job\'s questions and scoring profile with the National Sales Manager set'))
+      expect(api.post).not.toHaveBeenCalled()
+      expect(screen.getByDisplayValue('An existing question to keep?')).toBeInTheDocument()
+    })
+
+    it('loads and saves the role\'s set at once, shows it with its probes, and counts as saved', async () => {
+      api.get.mockResolvedValueOnce(withTemplates([saved(1, 'An existing question to replace?')]))
+      api.post.mockResolvedValueOnce(appliedResponse)
+      const { onSaved } = renderModal()
+
+      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
+      fireEvent.click(useButton())
+
+      expect(await screen.findByDisplayValue(/You are preparing to launch Seasonings across Nigeria/)).toBeInTheDocument()
+      expect(api.post).toHaveBeenCalledWith(`${URL}/from-template`, { code: 'national_sales_manager' })
+      expect(screen.queryByDisplayValue('An existing question to replace?')).not.toBeInTheDocument()
+      expect(screen.getByDisplayValue('Which markets would you prioritise?')).toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent('Loaded the National Sales Manager set: 2 questions')
+      expect(screen.getByRole('status')).toHaveTextContent('It is saved')
+      expect(saveButton()).toBeDisabled() // nothing unsaved
+      expect(onSaved).toHaveBeenCalled()
+      expect(api.put).not.toHaveBeenCalled()
+    })
+
+    it('does not ask for confirmation to the same degree when there is nothing to replace', async () => {
+      api.get.mockResolvedValueOnce(withTemplates())
+      api.post.mockResolvedValueOnce(appliedResponse)
+      renderModal()
+
+      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'senior_marketing_manager' } })
+      fireEvent.click(useButton())
+
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Start from the Senior Marketing Manager set?'))
+      await screen.findByDisplayValue(/You are preparing to launch Seasonings across Nigeria/)
+    })
+
+    it('shows the server\'s refusal and keeps what was there when loading fails', async () => {
+      api.get.mockResolvedValueOnce(withTemplates([saved(1, 'An existing question to keep?')]))
+      api.post.mockRejectedValueOnce({ response: { status: 403, data: { message: 'You do not have access to this job' } } })
+      renderModal()
+
+      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
+      fireEvent.click(useButton())
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('You do not have access to this job')
+      expect(screen.getByDisplayValue('An existing question to keep?')).toBeInTheDocument()
+    })
+
+    it('can still be edited and saved after a set is loaded, with the tags it came with', async () => {
+      api.get.mockResolvedValueOnce(withTemplates())
+      api.post.mockResolvedValueOnce({ data: { ...appliedResponse.data, competencies: ['Route-to-market'] } })
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+      fireEvent.change(await screen.findByLabelText('Start from a ready-made set'), { target: { value: 'national_sales_manager' } })
+      fireEvent.click(useButton())
+      await screen.findByDisplayValue(/You are preparing to launch Seasonings across Nigeria/)
+
+      fireEvent.change(screen.getAllByLabelText('Time to answer')[0], { target: { value: '240' } })
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      const sent = api.put.mock.calls[0][1]
+      expect(sent.questions.map((x) => [x.competency, x.time_limit_seconds, x.probes])).toEqual([
+        ['Route-to-market', 240, 'Which markets would you prioritise?'],
+        ['Route-to-market', 120, null],
+      ])
+      expect(sent.follow_up_mode).toBe('STANDARD')
+    })
   })
 
   // --- what the AI does after an answer --------------------------------------------------
@@ -461,6 +583,77 @@ describe('InterviewQuestionsModal', () => {
 
       fireEvent.change(screen.getByLabelText(/follow-up probes/i), { target: { value: 'What was your part?' } })
       expect(screen.queryByTestId('no-probes-note')).not.toBeInTheDocument()
+    })
+
+    it('gives the follow-up its own time under the probes, 1 min 30 s unless set, and saves what is chosen', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.'), { ...saved(2, 'Second question to answer.'), follow_up_seconds: 180 }]))
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+      const times = await screen.findAllByLabelText('Time to answer a follow-up')
+
+      expect(times[0]).toHaveValue('90') // none set: the platform's 1 min 30 s
+      expect(times[1]).toHaveValue('180')
+      expect(within(times[0]).getAllByRole('option').map((o) => o.textContent)).toEqual([
+        '30 s', '1 min', '1 min 30 s', '2 min', '2 min 30 s', '3 min', '3 min 30 s', '4 min', '4 min 30 s', '5 min',
+      ])
+      fireEvent.change(times[0], { target: { value: '120' } })
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      expect(api.put.mock.calls[0][1].questions.map((x) => x.follow_up_seconds)).toEqual([120, 180])
+    })
+
+    it('saves no follow-up time for a question where none was chosen, so the default applies', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.')]))
+      api.put.mockResolvedValueOnce({ data: { ...LIMITS, questions: [] } })
+      renderModal()
+      await screen.findByLabelText('Time to answer a follow-up')
+
+      fireEvent.click(modeRadio('Only my probes'))
+      fireEvent.click(saveButton())
+
+      await waitFor(() => expect(api.put).toHaveBeenCalled())
+      expect(api.put.mock.calls[0][1].questions[0].follow_up_seconds).toBeNull()
+    })
+
+    it('hides the follow-up time for "Questions only"', async () => {
+      api.get.mockResolvedValueOnce({ data: { ...loaded([saved(1, 'First question to answer.')]).data, follow_up_mode: 'NONE' } })
+      renderModal()
+      await screen.findByDisplayValue('First question to answer.')
+
+      expect(screen.queryByLabelText('Time to answer a follow-up')).not.toBeInTheDocument()
+    })
+
+    it('warns that few follow-ups will fit when the answer times use nearly all the interview', async () => {
+      api.get.mockResolvedValueOnce(loaded(Array.from({ length: 8 }, (_, n) => saved(n + 1, `Question number ${n + 1} about the job.`, 140))))
+      renderModal()
+
+      const note = await screen.findByTestId('little-time-for-follow-ups')
+
+      expect(note).toHaveTextContent('Only 1 min 20 s of the 20 min is left')
+      expect(note).toHaveTextContent('few or none will be asked')
+    })
+
+    it('does not warn when there is room, when follow-ups are off, or when the list is over the limit', async () => {
+      api.get.mockResolvedValueOnce(loaded([saved(1, 'First question to answer.', 120)]))
+      const { unmount } = render(<InterviewQuestionsModal jobId="job-1" hasBrief onClose={vi.fn()} />)
+      await screen.findByLabelText('Time to answer a follow-up')
+      expect(screen.queryByTestId('little-time-for-follow-ups')).not.toBeInTheDocument()
+      unmount()
+
+      const full = Array.from({ length: 8 }, (_, n) => saved(n + 1, `Question number ${n + 1} about the job.`, 140))
+      api.get.mockResolvedValueOnce({ data: { ...loaded(full).data, follow_up_mode: 'NONE' } })
+      const second = render(<InterviewQuestionsModal jobId="job-1" hasBrief onClose={vi.fn()} />)
+      await screen.findByDisplayValue('Question number 1 about the job.')
+      expect(screen.queryByTestId('little-time-for-follow-ups')).not.toBeInTheDocument()
+      second.unmount()
+
+      const over = Array.from({ length: 9 }, (_, n) => saved(n + 1, `Question number ${n + 1} about the job.`, 150))
+      api.get.mockResolvedValueOnce(loaded(over))
+      render(<InterviewQuestionsModal jobId="job-1" hasBrief onClose={vi.fn()} />)
+      await screen.findByDisplayValue('Question number 1 about the job.')
+      expect(screen.queryByTestId('little-time-for-follow-ups')).not.toBeInTheDocument() // the red limit message says it
+      expect(screen.getByRole('list', { name: 'Problems with the list' })).toBeInTheDocument()
     })
 
     it('refuses too many or too long probes before saving', async () => {

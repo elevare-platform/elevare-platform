@@ -25,6 +25,9 @@ class InterviewQuestionIn(BaseModel):
     # The employer's own follow-up probes for this question, one per line (optional). The real
     # limits are checked in ``question_rules``; this only stops an absurdly large request.
     probes: str | None = Field(default=None, max_length=5000)
+    # How long the candidate has to answer a follow-up on this question, in seconds (30 to 300).
+    # Left out, the platform default (90) applies. The range is checked in ``question_rules``.
+    follow_up_seconds: int | None = Field(default=None)
 
 
 FollowUpModeName = Literal["NONE", "STANDARD", "PROBES_ONLY"]
@@ -55,6 +58,7 @@ class SavedInterviewQuestion(BaseModel):
     source: QuestionSource
     competency: str | None = None
     probes: str | None = None
+    follow_up_seconds: int | None = None
 
 
 class DraftedInterviewQuestion(BaseModel):
@@ -63,11 +67,27 @@ class DraftedInterviewQuestion(BaseModel):
     source: QuestionSource = "AI"
     competency: str | None = None
     probes: str | None = None
+    follow_up_seconds: int | None = None
 
 
 class ClosingQuestion(BaseModel):
     text: str
     time_limit_seconds: int
+
+
+class QuestionTemplateInfo(BaseModel):
+    """A ready-made set of questions an employer can start a job from (the Colton Group roles)."""
+
+    code: str
+    title: str
+    question_count: int
+    total_seconds: int
+
+
+class QuestionTemplateApplyRequest(BaseModel):
+    """Which template to start the job from."""
+
+    code: str = Field(min_length=1, max_length=60)
 
 
 class _QuestionLimits(BaseModel):
@@ -88,6 +108,8 @@ class _QuestionLimits(BaseModel):
     untested_competencies: list[str] = []
     # What the AI may do after an answer, for this job: NONE, STANDARD or PROBES_ONLY.
     follow_up_mode: FollowUpModeName = "STANDARD"
+    # The ready-made question sets the employer can start from.
+    question_templates: list[QuestionTemplateInfo] = []
 
 
 class InterviewQuestionsResponse(_QuestionLimits):

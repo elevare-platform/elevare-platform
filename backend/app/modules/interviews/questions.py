@@ -23,10 +23,13 @@ from app.core.exceptions import (
 )
 from app.core.ownership import can_manage_job
 from app.modules.interviews import question_rules as rules
+from app.modules.interviews import question_templates
+from app.modules.interviews import scoring_profile as scoring_rules
 from app.modules.interviews.enums import FollowUpMode
 from app.modules.interviews.follow_up import load_follow_up_mode, save_follow_up_mode
 from app.modules.interviews.models import JobInterviewQuestion
 from app.modules.interviews.scoring_profile_service import (
+    ScoringProfileService,
     canonical_tag,
     load_profile,
     untested,
@@ -71,6 +74,7 @@ class InterviewQuestionService:
             "closing_question": rules.closing_question(),
             "style": settings.interview_style,
             "follow_up_mode": (await load_follow_up_mode(self._db, job_id)).value,
+            "question_templates": question_templates.template_summaries(),
         }
 
     async def list_questions(self, user: User, job_id: uuid.UUID) -> dict:
@@ -83,6 +87,7 @@ class InterviewQuestionService:
         job_id: uuid.UUID,
         items: list[dict],
         follow_up_mode: str | None = None,
+        commit: bool = True,
     ) -> dict:
         """Save the employer's list in place of the old one, all or nothing.
 
@@ -90,12 +95,16 @@ class InterviewQuestionService:
         order shown. An empty list clears the questions. Refused, with every problem named, if the
         list breaks a rule (a bad time, times that do not fit the interview, too many probes).
         ``follow_up_mode`` (NONE, STANDARD or PROBES_ONLY), when given, is saved with the list;
-        left out, the job keeps its mode.
+        left out, the job keeps its mode. ``commit=False`` leaves the transaction open, for a
+        caller that saves something else with it and commits once.
         """
         await self._job_for(user, job_id)
         drafts = [
             rules.QuestionDraft(
-                item["text"], item["time_limit_seconds"], item.get("probes") or ""
+                item["text"],
+                item["time_limit_seconds"],
+                item.get("probes") or "",
+                item.get("follow_up_seconds"),
             )
             for item in items
         ]
@@ -134,12 +143,43 @@ class InterviewQuestionService:
                     source=item.get("source", "EMPLOYER"),
                     competency=tag,
                     probes="\n".join(rules.clean_probes(draft.probes)) or None,
+                    follow_up_seconds=draft.follow_up_seconds,
                 )
             )
         if follow_up_mode:
             await save_follow_up_mode(self._db, job_id, FollowUpMode(follow_up_mode))
-        await self._db.commit()
+        if commit:
+            await self._db.commit()
+        else:
+            await self._db.flush()
         return await self._answer(job_id, await self._saved(job_id))
+
+    async def apply_template(self, user: User, job_id: uuid.UUID, code: str) -> dict:
+        """Start the job from one of the Colton Group role templates: the role's scoring profile
+        (competencies, weights, key flags, bands) AND its questions with their probes, each
+        question tagged with the competency it tests. Replaces the job's current profile and
+        questions, in one transaction (all or nothing), and sets the follow-up mode to "follow up
+        when needed", which is what the client's framework describes. Interviews already started
+        keep the questions they began with."""
+        await self._job_for(user, job_id)
+        items = question_templates.template_items(code)
+        scoring = next((t for t in scoring_rules.TEMPLATES if t["code"] == code), None)
+        if items is None or scoring is None:
+            raise ValidationException(message="That template does not exist.")
+        await ScoringProfileService(self._db).save(
+            user,
+            job_id,
+            scoring["competencies"],
+            None,
+            scoring_rules.DEFAULT_KEY_MIN_RATING,
+            code,
+            commit=False,
+        )
+        result = await self.replace_questions(
+            user, job_id, items, follow_up_mode=FollowUpMode.STANDARD.value, commit=False
+        )
+        await self._db.commit()
+        return result
 
     async def draft_questions(
         self, user: User, job_id: uuid.UUID, count: int | None = None

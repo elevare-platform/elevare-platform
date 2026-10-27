@@ -190,6 +190,95 @@ async def test_probes_only_still_stops_at_the_follow_up_limit(client, db_session
 
 
 # ---------------------------------------------------------------------------
+# A follow-up has its own time, set on the question
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_gets_the_time_set_on_its_question(client, db_session, fakes, clock):
+    interview = await make_strict(db_session)
+    await db_session.execute(
+        update(JobInterviewQuestion)
+        .where(JobInterviewQuestion.job_id == interview.job.id, JobInterviewQuestion.position == 1)
+        .values(follow_up_seconds=150)
+    )
+    await db_session.commit()
+    fakes.ai.replies = [FOLLOW_UP]
+
+    body = await _first_answer(client, interview, clock)
+
+    assert body["turn"]["kind"] == "FOLLOW_UP"
+    assert body["turn"]["time_limit_seconds"] == 150
+
+
+@pytest.mark.asyncio
+async def test_a_question_with_no_time_set_uses_the_platform_default(client, db_session, fakes, clock):
+    interview = await make_strict(db_session)
+    fakes.ai.replies = [FOLLOW_UP]
+
+    body = await _first_answer(client, interview, clock)
+
+    assert body["turn"]["time_limit_seconds"] == settings.strict_follow_up_seconds
+
+
+@pytest.mark.asyncio
+async def test_the_follow_up_time_is_copied_when_the_interview_starts(client, db_session, fakes, clock):
+    interview = await make_strict(db_session)
+    await db_session.execute(update(JobInterviewQuestion).values(follow_up_seconds=120))
+    await db_session.commit()
+    first = (await start(client, interview.token)).json()
+    await db_session.execute(update(JobInterviewQuestion).values(follow_up_seconds=300))  # changed later
+    await db_session.commit()
+    fakes.ai.replies = [FOLLOW_UP]
+    clock.advance(30)
+
+    body = (await answer(client, interview.token, first["turn"]["id"])).json()
+
+    assert body["turn"]["time_limit_seconds"] == 120
+
+
+LONG_QUESTIONS = [("Tell us about a project you are proud of and why.", 240)] + [
+    (f"Describe situation number {n} and what you did about it.", 168) for n in range(2, 7)
+]
+
+
+async def _after_four_minutes(client, db_session, clock, follow_up_seconds):
+    """Question 1 answered with 4 minutes used: 16 minutes are left and questions 2 to 6 need 14."""
+    interview = await make_strict(db_session, questions=LONG_QUESTIONS)
+    if follow_up_seconds is not None:
+        await db_session.execute(update(JobInterviewQuestion).values(follow_up_seconds=follow_up_seconds))
+        await db_session.commit()
+    first = (await start(client, interview.token)).json()
+    clock.advance(4 * 60)
+    return (await answer(client, interview.token, first["turn"]["id"])).json()
+
+
+@pytest.mark.asyncio
+async def test_a_short_follow_up_time_fits_where_a_long_one_would_squeeze_a_later_question(
+    client, db_session, fakes, clock
+):
+    fakes.ai.replies = [FOLLOW_UP]
+
+    body = await _after_four_minutes(client, db_session, clock, follow_up_seconds=90)
+
+    # 16 minutes left, 90 seconds for the follow-up leaves 14 and a half for the 14 minutes to come.
+    assert body["turn"]["kind"] == "FOLLOW_UP" and body["turn"]["time_limit_seconds"] == 90
+
+
+@pytest.mark.asyncio
+async def test_a_long_follow_up_time_is_not_used_when_it_would_squeeze_a_later_question(
+    client, db_session, fakes, clock
+):
+    fakes.ai.replies = [FOLLOW_UP]
+
+    body = await _after_four_minutes(client, db_session, clock, follow_up_seconds=300)
+
+    # 5 minutes for the follow-up would leave 11 for the 14 minutes of questions to come: no follow-up.
+    assert body["turn"]["kind"] == "QUESTION" and body["turn"]["number"] == 2
+    assert fakes.ai.calls == []
+
+
+# ---------------------------------------------------------------------------
 # The mode belongs to the interview once it has started
 # ---------------------------------------------------------------------------
 
