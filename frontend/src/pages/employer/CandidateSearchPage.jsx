@@ -102,7 +102,7 @@ export default function CandidateSearchPage() {
       <Navbar />
       <ToastContainer />
 
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 pt-16 pb-8 space-y-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-16 pb-8 space-y-6">
         <div>
           <h1 className="text-xl font-bold text-text">Candidate Search</h1>
           <p className="text-text-muted text-sm mt-1">

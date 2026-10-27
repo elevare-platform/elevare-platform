@@ -103,7 +103,7 @@ export default function EmployerDashboardPage() {
       <Navbar />
 
       <main className="flex-1 pt-16">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
 
           {/* Header */}
           <div className="flex items-center justify-between">

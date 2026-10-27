@@ -140,7 +140,7 @@ export default function IntroductionsPage() {
       <Navbar />
 
       <main className="min-h-screen bg-background pt-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-2xl font-bold text-text flex items-center gap-2">
               <Send size={22} className="text-brand-blue" />
