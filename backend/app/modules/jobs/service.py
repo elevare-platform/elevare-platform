@@ -15,6 +15,7 @@ from app.core.exceptions import (
     ProfileIncompleteException,
     ValidationException,
 )
+from app.core.ownership import can_manage_job
 from app.modules.employer.enums import KYCStatus
 from app.modules.jobs.enums import JobStatus, ModerationStatus
 from app.modules.jobs.repository import JobRepository
@@ -458,9 +459,9 @@ class JobService:
         job, so a leaked draft URL doesn't even confirm the job exists.
         """
         job = await self._repo.get_by_id(job_id)
-        is_owner = (
-            requesting_user is not None and requesting_user.id == job.employer_id
-        )
+        # The owner is the job's creator or anyone in the creator's company (decision D2): a
+        # teammate must see the brief and the draft, or the interview screens treat the job as unset.
+        is_owner = requesting_user is not None and can_manage_job(requesting_user, job)
         is_admin = requesting_user is not None and requesting_user.role == "ADMIN"
         if job.status == JobStatus.DRAFT.value and not is_owner and not is_admin:
             raise JobNotFoundError()
