@@ -177,7 +177,7 @@ describe('InterviewQuestionsModal', () => {
     expect(await screen.findByDisplayValue('Describe a system you designed.')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith(URL)
     expect(screen.getByDisplayValue('How do you test a risky change?')).toBeInTheDocument()
-    expect(screen.getByText('AI draft')).toBeInTheDocument()
+    expect(screen.getByText('Drafted')).toBeInTheDocument()
     expect(screen.getByText('2 questions')).toBeInTheDocument()
     expect(screen.getByText(/Answer time: 4 min 30 s of 20 min/)).toBeInTheDocument()
   })
@@ -230,7 +230,7 @@ describe('InterviewQuestionsModal', () => {
     expect(api.post).toHaveBeenCalledWith(`${URL}/draft`, {})
     expect(api.put).not.toHaveBeenCalled() // a draft is never saved on its own
     expect(screen.getByRole('status')).toHaveTextContent('Drafted 2 questions')
-    expect(screen.getAllByText('AI draft')).toHaveLength(2)
+    expect(screen.getAllByText('Drafted')).toHaveLength(2)
     expect(saveButton()).toBeEnabled()
   })
 
@@ -280,7 +280,7 @@ describe('InterviewQuestionsModal', () => {
 
     fireEvent.change(box, { target: { value: 'Describe the best system you designed.' } })
 
-    expect(screen.queryByText('AI draft')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drafted')).not.toBeInTheDocument()
   })
 
   it('moves and removes questions', async () => {
@@ -675,8 +675,8 @@ describe('InterviewQuestionsModal', () => {
       expect(screen.queryByLabelText(/follow-up probes/)).not.toBeInTheDocument()
 
       fireEvent.click(modeRadio('Only my probes'))
-      expect(screen.getByLabelText('Follow-up probes the AI may ask (one per line)')).toBeInTheDocument()
-      expect(screen.getByTestId('no-probes-note')).toHaveTextContent('the AI will not ask any follow-up')
+      expect(screen.getByLabelText('Follow-up probes that may be asked (one per line)')).toBeInTheDocument()
+      expect(screen.getByTestId('no-probes-note')).toHaveTextContent('no follow-up will be asked')
 
       fireEvent.change(screen.getByLabelText(/follow-up probes/i), { target: { value: 'What was your part?' } })
       expect(screen.queryByTestId('no-probes-note')).not.toBeInTheDocument()

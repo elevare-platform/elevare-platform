@@ -137,7 +137,7 @@ async def test_an_interview_line_says_which_job_it_was_for(db_session):
 
     page = await _history(db_session, organization)
 
-    assert page.items[0].description == "AI interview invite"
+    assert page.items[0].description == "Interview invite"
     assert page.items[0].detail == "Senior Accountant"
     assert page.items[1].detail is None  # the grant was not for a job
 

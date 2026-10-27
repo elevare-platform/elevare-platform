@@ -33,7 +33,7 @@ export function useTalentMatches(jobId) {
       } else if (err?.response?.data?.code === 'PLAN_UPGRADE_REQUIRED') {
         setPlanRequired(true)
       } else {
-        setError(err?.response?.data?.message ?? err.message ?? 'Failed to load AI matches')
+        setError(err?.response?.data?.message ?? err.message ?? 'Failed to load matches')
       }
     } finally {
       setLoading(false)

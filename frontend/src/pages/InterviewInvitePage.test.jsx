@@ -44,10 +44,10 @@ describe('InterviewInvitePage, which interview the link opens', () => {
   })
 
   it.each([
-    ['NONE', /asks only the questions on screen and no follow-up questions/],
+    ['NONE', /Only the questions on screen are asked, with no follow-up questions/],
     ['PROBES_ONLY', /from a list the employer prepared/],
-    [undefined, /may ask up to two short follow-up questions/],
-  ])('shows the rules for what the AI does after an answer (%s), as the employer chose', async (mode, shown) => {
+    [undefined, /Up to two short follow-up questions may be asked/],
+  ])('shows the rules for what happens after an answer (%s), as the employer chose', async (mode, shown) => {
     renderPage({ ...INFO, style: 'strict', follow_up_mode: mode })
 
     expect(await screen.findByText(shown)).toBeInTheDocument()

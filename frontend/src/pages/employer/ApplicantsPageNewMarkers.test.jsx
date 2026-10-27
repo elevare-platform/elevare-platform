@@ -139,7 +139,7 @@ describe('ApplicantsPage, applicants not opened yet', () => {
     renderPage({ applicants: [application('a1', 'Ada New', { is_new: true, ai_score: 80 })], applicantCount: 1 })
     await screen.findByText('Ada New')
 
-    fireEvent.click(screen.getByRole('button', { name: /AI score/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Match score/ }))
 
     await waitFor(() => expect(screen.queryByTestId('new-badge')).not.toBeInTheDocument())
     expect(api.post).toHaveBeenCalledWith('/api/v1/applications/a1/seen')

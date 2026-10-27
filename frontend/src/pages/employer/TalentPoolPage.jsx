@@ -339,7 +339,7 @@ function UploadDrawer({ open, onClose, onUploaded, jobs, defaultJobId }) {
             </div>
             {jobId && (
               <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
-                <Zap size={11} /> AI scoring will run automatically after parsing
+                <Zap size={11} /> Scoring will run automatically after parsing
               </p>
             )}
           </div>
@@ -556,7 +556,7 @@ function CandidateCard({ profile, rank, isAdmin, onPromote, onStatusChange, onSe
       </div>
 
       {/* Details panel — summary/skills are general (job-independent) and
-          always shown when present; the AI fit assessment below is job-
+          always shown when present; the fit assessment below is job-
           specific and only present when it's actually current for a job. */}
       {expanded && hasDetails && (
         <div className="border-t border-border bg-gradient-to-b from-surface-muted to-white px-5 py-4 space-y-3">
@@ -799,7 +799,7 @@ function StatsBar({ profiles }) {
         { label: 'Total profiles', value: total, icon: Users, color: 'text-brand-blue' },
         { label: 'Scored', value: scored, icon: BarChart3, color: 'text-green-600' },
         { label: 'Shortlisted', value: shortlisted, icon: Star, color: 'text-amber-600' },
-        { label: 'Avg. AI score', value: avgScore != null ? `${avgScore}` : ' - ', icon: Brain, color: 'text-purple-600' },
+        { label: 'Avg. match score', value: avgScore != null ? `${avgScore}` : ' - ', icon: Brain, color: 'text-purple-600' },
       ].map(({ label, value, icon: Icon, color }) => (
         <div key={label} className="rounded-xl border border-border bg-white px-4 py-3 flex items-center gap-3">
           <div className={cn('w-8 h-8 rounded-lg bg-current/10 flex items-center justify-center flex-shrink-0', color.replace('text-', 'bg-').replace('600', '100').replace('blue', 'blue/10'))}>
@@ -966,7 +966,7 @@ export default function TalentPoolPage() {
               <p className="text-sm text-text-muted mt-1">
                 {mode === 'job'
                   ? `Showing candidates ranked against ${activeJobTitle ?? 'selected job'}`
-                  : 'Browse your talent pipeline - select a job to see AI rankings'}
+                  : 'Browse your talent pipeline - select a job to see rankings'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1000,12 +1000,12 @@ export default function TalentPoolPage() {
               </div>
               {mode === 'job' && (
                 <span className="text-xs text-brand-blue bg-brand-blue/10 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-                  <TrendingUp size={11} /> {filters.sortBy === 'score' ? 'Ranked by AI score' : 'Newest first'}
+                  <TrendingUp size={11} /> {filters.sortBy === 'score' ? 'Ranked by match score' : 'Newest first'}
                 </span>
               )}
               {mode === 'pipeline' && (
                 <span className="text-xs text-text-muted bg-surface-muted px-2.5 py-1 rounded-full border border-border">
-                  Select a job to enable AI ranking
+                  Select a job to enable ranking
                 </span>
               )}
             </div>

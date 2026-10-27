@@ -13,9 +13,9 @@ const SLIDES = [
   },
   {
     image: '/hero-images/img16.jpg',
-    headline: 'AI-Powered Recruitment That Saves Time',
+    headline: 'Recruitment That Saves You Time',
     text: 'Our intelligent matching technology filters and pre-vets candidates, delivering the top 5% profiles in record time.',
-    ctaText: 'Explore AI Matching',
+    ctaText: 'Explore Talent Matching',
     ctaLink: '/services',
   },
   {

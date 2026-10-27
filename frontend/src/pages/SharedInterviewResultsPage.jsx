@@ -120,7 +120,7 @@ function Questions({ questions }) {
     <div className="rounded-lg border border-brand-blue/30 bg-blue-50/50 p-4">
       <h4 className="text-sm font-semibold text-text flex items-center gap-2 mb-2">
         <MessageCircleQuestion size={16} className="text-brand-blue" aria-hidden="true" />
-        Questions the AI asked
+        Questions asked
       </h4>
       <ol className="space-y-1.5 list-decimal pl-5">
         {questions.map((question, i) => (
@@ -138,7 +138,7 @@ function Conversation({ turns }) {
       {turns.map((turn, i) =>
         turn.speaker === 'AI' ? (
           <div key={i} className="border-l-4 border-brand-blue bg-blue-50/60 rounded-r-lg px-3 py-2">
-            <p className="text-[11px] font-semibold text-brand-blue mb-0.5">AI interviewer</p>
+            <p className="text-[11px] font-semibold text-brand-blue mb-0.5">Interviewer</p>
             <p className="text-sm font-semibold text-text whitespace-pre-wrap">{turn.text}</p>
           </div>
         ) : (
@@ -238,7 +238,7 @@ function CandidateCard({ candidate, rank, defaultOpen }) {
                 score={candidate.interview_score}
                 summary={interview.summary}
                 sections={interview.sections}
-                emptyText="No AI assessment is available for this interview."
+                emptyText="No assessment is available for this interview."
               />
             )}
             <Assessment
@@ -363,7 +363,7 @@ export default function SharedInterviewResultsPage() {
 
         {focus && (
           <div className="rounded-xl border border-border bg-white p-4">
-            <h2 className="text-sm font-semibold text-text mb-1">What the AI was asked to cover</h2>
+            <h2 className="text-sm font-semibold text-text mb-1">What the interview was set to cover</h2>
             <p className={cn('text-sm text-text whitespace-pre-wrap', longFocus && !showAllFocus && 'line-clamp-4')}>
               {focus}
             </p>

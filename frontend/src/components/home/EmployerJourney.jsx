@@ -13,13 +13,13 @@ const STEPS = [
   {
     icon: Search,
     title: 'Talent Matching',
-    tagline: 'Step 02 - AI-Powered Search',
-    description: 'Our AI matches your job against a curated pool of pre-screened candidates sourced and managed by our recruitment team.',
+    tagline: 'Step 02 - Smart Search',
+    description: 'Our matching technology compares your job against a curated pool of pre-screened candidates sourced and managed by our recruitment team.',
     color: '#1A4D8F',
   },
   {
     icon: Brain,
-    title: 'AI Screening',
+    title: 'Candidate Screening',
     tagline: 'Step 03 - Deterministic Scoring',
     description: 'Candidates are evaluated and ranked based on tech stack fit, years of experience, and seniority alignment.',
     color: '#8b5cf6',
@@ -28,7 +28,7 @@ const STEPS = [
     icon: UserCheck,
     title: 'Shortlisting',
     tagline: 'Step 04 - Curated Matches',
-    description: 'Receive a structured, AI-scored shortlist of the strongest matches, ranked and ready for your review.',
+    description: 'Receive a structured, scored shortlist of the strongest matches, ranked and ready for your review.',
     color: '#06b6d4',
   },
   {

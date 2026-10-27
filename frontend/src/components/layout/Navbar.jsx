@@ -14,7 +14,7 @@ const EMPLOYERS_ITEMS = [
   { label: 'How It Works', href: '/how-it-works#employers' },
   { label: 'Pricing', href: '/pricing' },
   { label: 'Contact Sales', href: '/contact?type=employer_inquiry' },
-  { label: 'Talent Pipeline (AI)', href: '/talent-pipeline' },
+  { label: 'Talent Pipeline', href: '/talent-pipeline' },
   { label: 'Workforce Tools', href: '/workforce-tools' },
   { label: 'B2B Partnerships', href: '/partnership' },
 ]
@@ -253,9 +253,9 @@ function MobileDrawer({ isOpen, onClose, user, onLogout, onBookConsultation }) {
                 onClick={onClose}
                 className="block py-3 text-base font-medium text-text hover:text-brand-blue border-b border-border/50 transition-colors focus-visible:outline-none focus-visible:text-brand-blue flex items-center justify-between"
               >
-                <span>AI Recruiter</span>
+                <span>Talent Recruiter</span>
                 <span className="bg-brand-amber/15 text-brand-amber text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider border border-brand-amber/35">
-                  AI Powered
+                  Featured
                 </span>
               </Link>
               <Link
@@ -411,9 +411,9 @@ export default function Navbar({ onBookConsultation }) {
               to="/ai-recruiter"
               className="text-[13px] font-bold text-text hover:text-brand-blue transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue rounded py-1 whitespace-nowrap flex items-center gap-1.5"
             >
-              AI Recruiter
+              Talent Recruiter
               <span className="bg-brand-amber/15 text-brand-amber text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider animate-pulse border border-brand-amber/35">
-                AI
+                New
               </span>
             </Link>
             <Link

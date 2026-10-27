@@ -23,7 +23,7 @@ const JOB_TITLE = 'Sales Manager'
 
 // What the real pages say, so the example reads the same.
 const GENERIC_COST =
-  'Each AI interview uses credits, taken when you first send it. You see the cost and your balance here before you send.'
+  'Each interview uses credits, taken when you first send it. You see the cost and your balance here before you send.'
 
 const APPLICANTS = [
   {
@@ -69,7 +69,7 @@ const STATUS_LABEL = { SUBMITTED: 'Submitted', REVIEWING: 'Reviewing', SHORTLIST
 const TABS = [
   { key: 'applicants', label: 'Applicants' },
   { key: 'pipeline', label: 'Talent Pipeline' },
-  { key: 'ai-matches', label: 'AI Talent Matches' },
+  { key: 'ai-matches', label: 'Talent Matches' },
   { key: 'interviews', label: 'Interview List' },
 ]
 
@@ -80,7 +80,7 @@ function ScoreBadge({ score, onClick, expanded }) {
       type="button"
       onClick={onClick}
       aria-expanded={expanded}
-      aria-label={`AI score: ${band.label}`}
+      aria-label={`Match score: ${band.label}`}
       className={cn(
         'px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap',
         onClick ? 'cursor-pointer' : 'cursor-default',
@@ -176,9 +176,9 @@ function SendInviteDialog({ name, costText, onClose }) {
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="example-invite-title" className="text-lg font-bold text-text">Send AI interview invite?</h2>
+            <h2 id="example-invite-title" className="text-lg font-bold text-text">Send interview invite?</h2>
             <p className="text-sm text-text-muted mt-1">
-              {name} will get an email invite to a live AI video interview for this role.
+              {name} will get an email invite to a live video interview for this role.
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="text-text-muted hover:text-text flex-shrink-0">
@@ -273,7 +273,7 @@ function UploadDrawer({ poolJob, onChooseJob, onClose }) {
             </div>
             {poolJob && (
               <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
-                <Zap size={11} /> AI scoring will run automatically after parsing
+                <Zap size={11} /> Scoring will run automatically after parsing
               </p>
             )}
           </div>
@@ -304,7 +304,7 @@ function TalentPoolScreen({ view, onChange }) {
           <p className="text-sm text-text-muted mt-1">
             {ranked
               ? `Showing candidates ranked against ${jobTitle}`
-              : 'Browse your talent pipeline - select a job to see AI rankings'}
+              : 'Browse your talent pipeline - select a job to see rankings'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -339,11 +339,11 @@ function TalentPoolScreen({ view, onChange }) {
           </div>
           {ranked ? (
             <span className="text-xs text-brand-blue bg-brand-blue/10 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-              <TrendingUp size={11} /> Ranked by AI score
+              <TrendingUp size={11} /> Ranked by match score
             </span>
           ) : (
             <span className="text-xs text-text-muted bg-surface-muted px-2.5 py-1 rounded-full border border-border">
-              Select a job to enable AI ranking
+              Select a job to enable ranking
             </span>
           )}
         </div>
@@ -525,7 +525,7 @@ export default function ExampleJobTourPage() {
 
               {view.tab === 'ai-matches' && (
                 <div className="text-center py-16 rounded-xl border border-dashed border-border bg-white">
-                  <p className="font-medium text-text text-sm mb-1">AI Talent Matches</p>
+                  <p className="font-medium text-text text-sm mb-1">Talent Matches</p>
                   <p className="text-xs text-text-muted">
                     In your account, people in your talent pool who fit this job are suggested here. Not part of this example.
                   </p>
@@ -537,7 +537,7 @@ export default function ExampleJobTourPage() {
                   <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
                   <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
                   <p className="text-xs text-text-muted">
-                    Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above.
+                    Add candidates from Applicants, Talent Pipeline, or Talent Matches above.
                   </p>
                 </div>
               ) : (

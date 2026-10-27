@@ -267,7 +267,7 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     renderPage()
 
-    expect(await screen.findByText('What the AI was asked to cover')).toBeInTheDocument()
+    expect(await screen.findByText('What the interview was set to cover')).toBeInTheDocument()
     expect(screen.getByText('Probe distributor management.')).toBeInTheDocument()
   })
 
@@ -275,14 +275,14 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     renderPage()
 
-    const heading = await screen.findByText('Questions the AI asked')
+    const heading = await screen.findByText('Questions asked')
     const list = heading.closest('div').querySelector('ol')
     expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
       'Tell me about managing distributors?',
       'What was the hardest part?',
     ])
     // In the conversation every AI turn is labelled and every answer is the candidate's.
-    expect(screen.getAllByText('AI interviewer')).toHaveLength(2)
+    expect(screen.getAllByText('Interviewer')).toHaveLength(2)
     expect(screen.getAllByText('Candidate').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('I grew the network from twelve to forty.')).toBeInTheDocument()
   })
@@ -291,7 +291,7 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     const { container } = renderPage()
 
-    await screen.findByText('Questions the AI asked')
+    await screen.findByText('Questions asked')
     expect(container.querySelector('video')).toHaveAttribute('src', 'https://signed.example/video')
     expect(screen.getByText(/Reload the page if it stops playing/)).toBeInTheDocument()
   })
@@ -340,7 +340,7 @@ describe('SharedInterviewResultsPage', () => {
 
     expect(await screen.findByText('Just the words the recording contains.')).toBeInTheDocument()
     expect(screen.getByText(/no speaker labels/)).toBeInTheDocument()
-    expect(screen.queryByText('Questions the AI asked')).not.toBeInTheDocument()
+    expect(screen.queryByText('Questions asked')).not.toBeInTheDocument()
   })
 
   it('opens and closes a candidate’s details', async () => {
@@ -349,11 +349,11 @@ describe('SharedInterviewResultsPage', () => {
     renderPage()
     await screen.findByText('Ada Obi')
     // The first completed interview is open; the second is not.
-    expect(screen.getAllByText('Questions the AI asked')).toHaveLength(1)
+    expect(screen.getAllByText('Questions asked')).toHaveLength(1)
 
     fireEvent.click(screen.getByText('Chidi Okafor'))
 
-    expect(screen.getAllByText('Questions the AI asked')).toHaveLength(2)
+    expect(screen.getAllByText('Questions asked')).toHaveLength(2)
   })
 
   it('shortens a long interview focus and can show all of it', async () => {

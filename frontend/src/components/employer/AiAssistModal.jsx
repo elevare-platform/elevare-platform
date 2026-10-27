@@ -60,7 +60,7 @@ export function AiAssistModal({ isOpen, onClose, fieldLabel, fieldKey, currentTe
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Sparkles size={18} className="text-brand-blue" />
-            <h2 className="text-sm font-semibold">AI Assist-  {fieldLabel}</h2>
+            <h2 className="text-sm font-semibold">Writing assist: {fieldLabel}</h2>
           </div>
           <button
             type="button"
@@ -187,7 +187,7 @@ export function AiAssistButton({ onClick, className }) {
       )}
     >
       <Sparkles size={13} />
-      AI Assist
+      Writing assist
     </button>
   )
 }

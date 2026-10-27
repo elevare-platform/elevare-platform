@@ -567,7 +567,7 @@ export default function InterviewFlow({
         {phase === 'consent' && sessionStartCount >= 2 && (
           <div className="rounded-xl border border-border bg-surface p-6 space-y-5">
             <div>
-              <h1 className="text-xl font-bold text-text">AI video interview</h1>
+              <h1 className="text-xl font-bold text-text">Video interview</h1>
               {subtitle && <p className="text-sm text-text-muted mt-1">{subtitle}</p>}
             </div>
 
@@ -593,7 +593,7 @@ export default function InterviewFlow({
         {phase === 'consent' && sessionStartCount < 2 && (
           <div className="rounded-xl border border-border bg-surface p-6 space-y-5">
             <div>
-              <h1 className="text-xl font-bold text-text">AI video interview</h1>
+              <h1 className="text-xl font-bold text-text">Video interview</h1>
               {subtitle && <p className="text-sm text-text-muted mt-1">{subtitle}</p>}
             </div>
 
@@ -617,7 +617,7 @@ export default function InterviewFlow({
             </div>
 
             <p className="text-xs text-text-muted">
-              Keep your answers focused. The AI will guide the conversation to cover
+              Keep your answers focused. The interviewer will guide the conversation to cover
               every topic in the time available.
             </p>
 

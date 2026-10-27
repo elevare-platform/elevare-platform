@@ -77,7 +77,7 @@ const TRANSITIONS = {
 const FILTER_TABS = ['all', 'SUBMITTED', 'REVIEWING', 'SHORTLISTED', 'INTERVIEWING', 'HIRED', 'REJECTED', 'WITHDRAWN']
 
 const SORT_OPTIONS = [
-  { value: 'ai_score', label: 'AI Score' },
+  { value: 'ai_score', label: 'Match score' },
   { value: 'date', label: 'Date Applied' },
   { value: 'match_score', label: 'Match Score' },
 ]
@@ -127,8 +127,8 @@ function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weakne
         ref={setBtnRef}
         type="button"
         onClick={() => { if (!open) onOpen?.(); setOpen((v) => !v) }}
-        title={hasScore ? 'AI Score (click for reasoning)' : (failureHelp ?? 'AI score not yet computed')}
-        aria-label={`AI score: ${band.label}`}
+        title={hasScore ? 'Match score (click for reasoning)' : (failureHelp ?? 'Match score not yet computed')}
+        aria-label={`Match score: ${band.label}`}
         className={cn(
           'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer whitespace-nowrap',
           band.className
@@ -149,7 +149,7 @@ function AiScoreBadge({ score, failure, onRescore, fitSummary, strengths, weakne
               maxHeight: `calc(100vh - ${btnRect.bottom + 24}px)`,
             }}
             role="dialog"
-            aria-label="AI fit reasoning"
+            aria-label="Fit reasoning"
           >
             <button
               type="button"
@@ -476,9 +476,9 @@ function SendInterviewInvitePrompt({
       <div className="w-full max-w-md rounded-xl border border-border bg-white p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-text">Send AI interview invite?</h2>
+            <h2 className="text-lg font-bold text-text">Send interview invite?</h2>
             <p className="text-sm text-text-muted mt-1">
-              {candidateName} will get an email invite to a live AI video interview for this role.
+              {candidateName} will get an email invite to a live video interview for this role.
             </p>
           </div>
           <button
@@ -598,10 +598,10 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
         </div>
 
         {/* Controls. On a phone they take their own full-width rows, in this order:
-            row 1: AI score, status, interview-list icon; row 2: Move to, CV, View profile.
+            row 1: match score, status, interview-list icon; row 2: Move to, CV, View profile.
             The `order-*` classes set that order; `sm:order-none` puts them back in
             reading order on a wider screen, where nothing is hidden. The heart, the
-            "AI interview sent" tag and the cover letter are desktop only. */}
+            "Interview sent" tag and the cover letter are desktop only. */}
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
           {savedCandidates && application.candidate_profile_id && (
             <div className="hidden sm:block">
@@ -627,7 +627,7 @@ function ApplicantCard({ application, jobId, job, onJobUpdated, onError, savedCa
 
           {hasAiInterview && (
             <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-blue/10 text-brand-blue flex-shrink-0">
-              AI interview sent
+              Interview sent
             </span>
           )}
 
@@ -791,7 +791,7 @@ function TalentPoolProfilePanel({ profile, onClose, onRescore }) {
             <div className="rounded-xl border border-border p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
-                  <Brain size={12} /> AI Assessment
+                  <Brain size={12} /> Assessment
                 </p>
                 <span
                   className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(profile.ai_score).className)}
@@ -842,7 +842,7 @@ function TalentPoolProfilePanel({ profile, onClose, onRescore }) {
           {profile.ai_score == null && (
             <div className="rounded-lg bg-surface-muted border border-border px-4 py-3 text-sm text-text-muted text-center">
               {scoreFailureHelp(profile.ai_score_failure)
-                ?? 'AI scoring not yet computed. Attach this profile to a job and trigger scoring.'}
+                ?? 'Scoring not yet computed. Attach this profile to a job and trigger scoring.'}
               {profile.ai_score_failure && onRescore && (
                 <div className="mt-3">
                   <button
@@ -1080,7 +1080,7 @@ function AiMatchesTab({
     return (
       <div className="text-center py-16 px-4 rounded-xl border border-dashed border-border bg-white">
         <Sparkles size={28} className="mx-auto text-brand-blue mb-3" />
-        <p className="font-medium text-text text-sm mb-1">AI Talent Matches is part of the Professional plan</p>
+        <p className="font-medium text-text text-sm mb-1">Talent Matches is part of the Professional plan</p>
         <p className="text-xs text-text-muted mb-4 max-w-sm mx-auto">
           Upgrade to see the talent pool candidates ranked by how well they fit this job.
         </p>
@@ -1099,7 +1099,7 @@ function AiMatchesTab({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-text-muted flex items-center gap-1.5">
           <Sparkles size={14} className="text-brand-blue" />
-          Talent pool candidates ranked by AI similarity to this job.
+          Talent pool candidates ranked by similarity to this job.
         </p>
         <div className="flex items-center gap-3">
           {!creditsLoading && creditsBalance != null && (
@@ -1380,7 +1380,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
             onClick={() => setShowInterviewDetail(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue/5 transition-colors"
           >
-            <PlayCircle size={13} /> {statusMeta.reviewLabel ?? 'Review AI Interview'}
+            <PlayCircle size={13} /> {statusMeta.reviewLabel ?? 'Review interview'}
           </button>
           <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
         </div>
@@ -1603,7 +1603,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
           <CalendarCheck size={28} className="mx-auto text-text-muted mb-3" />
           <p className="font-medium text-text text-sm mb-1">No one on the interview list yet</p>
           <p className="text-xs text-text-muted">
-            Add candidates from Applicants, Talent Pipeline, or AI Talent Matches above
+            Add candidates from Applicants, Talent Pipeline, or Talent Matches above
             {hasInterviewBrief ? ', or send the interview to an email address.' : '.'}
           </p>
         </div>
@@ -1649,7 +1649,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
             onClick={() => setShowBriefModal(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
           >
-            Set up AI interview →
+            Set up interview →
           </button>
         </div>
       )}
@@ -1917,7 +1917,7 @@ export default function ApplicantsPage() {
             {[
               { key: 'applicants', label: 'Applicants' },
               { key: 'pipeline', label: 'Talent Pipeline' },
-              { key: 'ai-matches', label: 'AI Talent Matches' },
+              { key: 'ai-matches', label: 'Talent Matches' },
               { key: 'interview-list', label: 'Interview List' },
             ].map(({ key, label }) => (
               <button key={key} onClick={() => { setMainTab(key); if (key === 'ai-matches') setNewMatchCount(0) }}

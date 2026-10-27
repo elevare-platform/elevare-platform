@@ -23,7 +23,7 @@ export default function AIRecruiterPage() {
   return (
     <>
       <Helmet>
-        <title>AI Recruiter & Talent Graph | Elevare Human Solutions</title>
+        <title>Talent Recruiter & Talent Graph | Elevare Human Solutions</title>
         <meta
           name="description"
           content="Automated talent search, candidate discovery, and explainable match scoring for modern recruitment teams."

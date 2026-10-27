@@ -388,7 +388,7 @@ class InterviewService:
             )
         if not application.job.interview_brief:
             raise ValidationException(
-                "This job does not have an AI video interview configured"
+                "This job does not have a video interview configured"
             )
 
         candidate_profile = await self._candidate_repo.get_by_user_id(candidate_id)
@@ -803,9 +803,9 @@ class InterviewService:
             await NotificationRepository(self._db).create(
                 recipient_id=employer.id,
                 type="AI_INTERVIEW_RESET_REQUEST",
-                title=f"{candidate_name} needs their AI interview reset",
+                title=f"{candidate_name} needs their interview reset",
                 body=(
-                    f"{candidate_name} was locked out of their AI interview for "
+                    f"{candidate_name} was locked out of their interview for "
                     f"{job.title} after restarting it twice, and is asking you "
                     "to resend their invite to reset it."
                 ),
@@ -1021,7 +1021,7 @@ class InterviewService:
         """
         if not settings.interview_enabled:
             raise ValidationException(
-                "AI interviews are temporarily unavailable. Please try again later.",
+                "Interviews are temporarily unavailable. Please try again later.",
                 code="AI_INTERVIEWS_DISABLED",
                 status_code=503,
             )
@@ -1073,7 +1073,7 @@ class InterviewService:
         from app.modules.notifications.repository import NotificationRepository
 
         if not job.interview_brief:
-            raise ValidationException("This job does not have an AI interview configured")
+            raise ValidationException("This job does not have an interview configured")
 
         profile = await self._talent_pool_repo.get_by_id_joined_with_other_data(talent_pool_profile_id)
         candidate_email = resolve_candidate_email(profile) if profile else None
@@ -1095,7 +1095,7 @@ class InterviewService:
             return {
                 "sent": False,
                 "reason": (
-                    "Daily AI interview invite limit reached. Please try again "
+                    "Daily interview invite limit reached. Please try again "
                     "tomorrow or contact support to raise it."
                 ),
             }
@@ -1150,17 +1150,17 @@ class InterviewService:
                     "loud to your camera. Use a laptop or desktop computer with Chrome "
                     "or Edge. The employer reviews it afterward."
                 )
-                kind = "an AI interview"
+                kind = "an interview"
             else:
                 what_it_is = (
-                    "It's a real-time voice conversation with an AI interviewer, "
+                    "It's a real-time voice conversation with an automated interviewer, "
                     "reviewed by the employer afterward."
                 )
-                kind = "a live AI interview"
+                kind = "a live interview"
             await NotificationRepository(self._db).create(
                 recipient_id=profile.candidate_profile.user_id,
                 type="AI_INTERVIEW_INVITE",
-                title=f"AI interview invite: {job.title}",
+                title=f"Interview invite: {job.title}",
                 body=(
                     f"{company_name} has invited you to {kind} for the "
                     f"{job.title} role. {what_it_is}\n\nStart here: {interview_url}"
@@ -1214,7 +1214,7 @@ class InterviewService:
         if not can_manage_job(user, job):
             raise PermissionDeniedException("You do not have access to this job")
         if not job.interview_brief:
-            raise ValidationException("This job does not have an AI interview configured")
+            raise ValidationException("This job does not have an interview configured")
 
         address = email.strip().lower()
         profile_id = await self._profile_for_email(user, address)
@@ -1222,7 +1222,7 @@ class InterviewService:
             profile = await self._talent_pool_repo.create(
                 {
                     "source": SourceType.INTERVIEW_INVITE.value,
-                    "source_note": "Invited to an AI interview by email",
+                    "source_note": "Invited to an interview by email",
                     "override_email": address,
                     "added_by": user.id,
                     "status": TalentPoolStatus.NEW.value,
@@ -1310,14 +1310,14 @@ class InterviewService:
             raise PermissionDeniedException("You do not have access to this job")
 
         if not job.interview_brief:
-            raise ValidationException("This job does not have an AI interview configured")
+            raise ValidationException("This job does not have an interview configured")
 
         interview = await self._repo.get_by_job_and_profile(job.id, talent_pool_profile_id)
         if interview is None:
             # Same cost guard as a first email invite.
             if await self._daily_invite_limit_reached(job):
                 raise ValidationException(
-                    "Daily AI interview invite limit reached. Please try again "
+                    "Daily interview invite limit reached. Please try again "
                     "tomorrow or contact support to raise it."
                 )
         elif interview.status in (
@@ -1441,7 +1441,7 @@ class InterviewService:
             )
         elif interview.ai_score is not None:
             raise ValidationException(
-                "This interview already has an AI score.",
+                "This interview already has a score.",
                 code="INTERVIEW_ALREADY_SCORED",
             )
 

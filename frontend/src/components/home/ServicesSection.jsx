@@ -281,7 +281,7 @@ export default function ServicesSection() {
             to="/talent-pipeline"
             className="inline-flex items-center gap-2 px-8 py-3.5 text-sm font-semibold text-brand-blue bg-brand-blue-light hover:bg-brand-blue hover:text-white rounded-md transition-all shadow-sm hover:shadow-md"
           >
-            Explore AI Recruiter
+            Explore Talent Recruiter
             <ArrowRight size={16} strokeWidth={2.5} aria-hidden="true" />
           </Link>
         </div>

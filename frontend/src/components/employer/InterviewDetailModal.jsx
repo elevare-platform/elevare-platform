@@ -225,7 +225,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-white z-10">
           <h2 className="font-semibold text-text">
-            {candidateName ?? 'Candidate'}'s AI interview
+            {candidateName ?? 'Candidate'}'s interview
           </h2>
           <button onClick={onClose} className="p-1.5 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors">
             <X size={18} />
@@ -330,7 +330,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                   emptyMessage={
                     isEndedStatus(detail.status)
                       ? 'This interview ended early, so it has not been scored. Reinstate it so the candidate can finish, or score what was recorded.'
-                      : 'No AI score is available for this interview. It may not be included in your plan, scoring may still be running, or it could not be completed. Please review the recording and transcript directly.'
+                      : 'No score is available for this interview. It may not be included in your plan, scoring may still be running, or it could not be completed. Please review the recording and transcript directly.'
                   }
                   action={
                     // Offered once the interview is finished but has no score.
@@ -348,7 +348,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
                         >
                           <Sparkles size={13} />
-                          {isEndedStatus(detail.status) ? 'Score what was recorded' : 'Generate AI score'}
+                          {isEndedStatus(detail.status) ? 'Score what was recorded' : 'Generate score'}
                         </button>
                         {scoreError && (
                           <p className="text-xs text-red-600">
@@ -386,7 +386,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                     <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2">
                       The transcript sent from the candidate&apos;s device did not match the recording, so
                       this is an automatic transcript of the recording instead. It has no speaker labels, and
-                      any AI score is based on it. Please check the video.
+                      any score is based on it. Please check the video.
                     </p>
                   )}
                   {detail.transcript_check === 'UNAVAILABLE' && (

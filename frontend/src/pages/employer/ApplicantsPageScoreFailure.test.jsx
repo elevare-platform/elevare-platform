@@ -69,9 +69,9 @@ describe('ApplicantsPage, applicants with no score', () => {
     renderApplicants([application('a', { ai_score_failure: 'CV_UNREADABLE' })])
     await screen.findByText('Applicant a')
 
-    fireEvent.click(screen.getByRole('button', { name: 'AI score: Could not read CV' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Match score: Could not read CV' }))
 
-    const panel = screen.getByRole('dialog', { name: 'AI fit reasoning' })
+    const panel = screen.getByRole('dialog', { name: 'Fit reasoning' })
     expect(panel).toHaveTextContent('Nothing could be read from this CV')
     // No made-up number or "match" wording for a candidate who was never scored.
     expect(panel).not.toHaveTextContent('raw:')
@@ -82,18 +82,18 @@ describe('ApplicantsPage, applicants with no score', () => {
     renderApplicants([application('a', { ai_score_failure: 'SCORING_FAILED' })])
     await screen.findByText('Applicant a')
 
-    fireEvent.click(screen.getByRole('button', { name: 'AI score: Scoring unavailable' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Match score: Scoring unavailable' }))
 
-    expect(screen.getByRole('dialog', { name: 'AI fit reasoning' })).toHaveTextContent('not a low score')
+    expect(screen.getByRole('dialog', { name: 'Fit reasoning' })).toHaveTextContent('not a low score')
   })
 
   it('keeps "Not yet scored" for an application that is simply waiting, with nothing to open', async () => {
     renderApplicants([application('a')])
     await screen.findByText('Applicant a')
 
-    fireEvent.click(screen.getByRole('button', { name: 'AI score: Not yet scored' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Match score: Not yet scored' }))
 
-    expect(screen.queryByRole('dialog', { name: 'AI fit reasoning' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Fit reasoning' })).not.toBeInTheDocument()
   })
 
   describe('Rescore', () => {
@@ -130,7 +130,7 @@ describe('ApplicantsPage, applicants with no score', () => {
       renderApplicants([application('a', { ai_score_failure: 'SCORING_FAILED' })])
       await screen.findByText('Applicant a')
 
-      fireEvent.click(screen.getByRole('button', { name: 'AI score: Scoring unavailable' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Match score: Scoring unavailable' }))
       fireEvent.click(screen.getByRole('button', { name: 'Rescore this candidate' }))
 
       await waitFor(() => expect(api.post).toHaveBeenCalledWith(
@@ -146,9 +146,9 @@ describe('ApplicantsPage, applicants with no score', () => {
       ])
       await screen.findByText('Applicant a')
 
-      fireEvent.click(screen.getByRole('button', { name: 'AI score: Strong match' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Match score: Strong match' }))
       expect(screen.queryByRole('button', { name: 'Rescore this candidate' })).not.toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: 'AI score: Not yet scored' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Match score: Not yet scored' }))
       expect(screen.queryByRole('button', { name: 'Rescore this candidate' })).not.toBeInTheDocument()
     })
 
@@ -177,9 +177,9 @@ describe('ApplicantsPage, applicants with no score', () => {
     ])
     await screen.findByText('Applicant a')
 
-    fireEvent.click(screen.getByRole('button', { name: 'AI score: Strong match' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Match score: Strong match' }))
 
-    const panel = screen.getByRole('dialog', { name: 'AI fit reasoning' })
+    const panel = screen.getByRole('dialog', { name: 'Fit reasoning' })
     expect(panel).toHaveTextContent('raw: 78/100')
     expect(panel).toHaveTextContent('A strong fit.')
   })

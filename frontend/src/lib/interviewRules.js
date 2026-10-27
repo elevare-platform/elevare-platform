@@ -7,7 +7,9 @@
 // is not. Change INTERVIEW_RULES_VERSION whenever the wording of a visible rule changes, so a
 // record of "what they accepted" can say which wording.
 
-export const INTERVIEW_RULES_VERSION = '1'
+// Version 2: the word "AI" is gone from the wording (an "automated interviewer" and an "automated
+// assessment" say the same thing); the candidate is still told plainly that it is not a person.
+export const INTERVIEW_RULES_VERSION = '2'
 
 // Flip a flag to true in the same change that builds the feature, and its rules appear.
 export const MONITORING = {
@@ -70,7 +72,7 @@ export const RULE_GROUPS = [
       },
       {
         id: 'own-words',
-        text: 'Answer in your own words, from your own knowledge and experience. Do not use notes, a script, a phone, a second screen, a chatbot or any AI assistant, and do not have anyone whisper or message you answers.',
+        text: 'Answer in your own words, from your own knowledge and experience. Do not use notes, a script, a phone, a second screen, a chatbot or any other assistant tool, and do not have anyone whisper or message you answers.',
       },
       {
         id: 'speak-aloud',
@@ -82,7 +84,7 @@ export const RULE_GROUPS = [
       },
       {
         id: 'do-not-leave',
-        text: 'Do not leave or reload the page. That ends your connection to the AI interviewer. If something goes wrong you get one restart. A second restart locks you out of completing it.',
+        text: 'Do not leave or reload the page. That ends your connection to the interviewer. If something goes wrong you get one restart. A second restart locks you out of completing it.',
       },
       {
         id: 'it-ends',
@@ -108,11 +110,11 @@ export const RULE_GROUPS = [
     rules: [
       {
         id: 'ai-interviewer',
-        text: 'You will be interviewed by an AI interviewer, not a person. It asks questions and follows up on what you say.',
+        text: 'You will be interviewed by an automated interviewer, not a person. It asks questions and follows up on what you say.',
       },
       {
         id: 'recorded-and-reviewed',
-        text: 'Your camera and microphone record the whole session. The employer who invited you reviews the recording and an AI assessment of it.',
+        text: 'Your camera and microphone record the whole session. The employer who invited you reviews the recording and an automated assessment of it.',
       },
       {
         id: 'kept-for-a-while',
@@ -120,7 +122,7 @@ export const RULE_GROUPS = [
       },
       {
         id: 'employer-decides',
-        text: 'The AI assessment helps the employer. Nothing is decided automatically: the employer makes the decision.',
+        text: 'The assessment helps the employer. Nothing is decided automatically: the employer makes the decision.',
       },
     ],
   },
@@ -142,16 +144,18 @@ export const RULE_GROUPS = [
 // Version S7: what the AI does after an answer is the employer's choice for the job (no follow-ups,
 // up to two neutral ones, or only the employer's own prepared probes), and the rule says which
 // (`strictRuleGroups` below; the server's `follow_up_mode`).
+// Version S8: the word "AI" is gone from the wording; the candidate is still told plainly that the
+// answers are transcribed and assessed by an automated system and that a person makes every decision.
 // Change STRICT_RULES_VERSION whenever the wording of a visible rule changes.
-export const STRICT_RULES_VERSION = 'S7'
+export const STRICT_RULES_VERSION = 'S8'
 
 // The end of the "questions-on-screen" rule, by what the AI may do after an answer.
 const FOLLOW_UP_RULE_TEXT = {
   STANDARD:
-    'The AI may ask up to two short follow-up questions on an answer, to the same standard for every candidate.',
+    'Up to two short follow-up questions may be asked on an answer, to the same standard for every candidate.',
   PROBES_ONLY:
-    'The AI may ask a short follow-up from a list the employer prepared for the question, the same list for every candidate. It does not make up its own.',
-  NONE: 'The AI asks only the questions on screen and no follow-up questions.',
+    'A short follow-up may be asked from a list the employer prepared for the question, the same list for every candidate. None is made up.',
+  NONE: 'Only the questions on screen are asked, with no follow-up questions.',
 }
 
 // The strict interview's own monitoring switches. Separate from MONITORING above, which belongs
@@ -181,7 +185,7 @@ export const STRICT_RULE_GROUPS = [
     rules: [
       {
         id: 'own-words',
-        text: 'Be the person invited, alone, with your camera on and your face in view the whole time. Answer out loud, in your own words. Do not read a prepared text, use notes, a phone, a chatbot or any AI assistant, or have anyone help you. Do not record or share the interview or the link.',
+        text: 'Be the person invited, alone, with your camera on and your face in view the whole time. Answer out loud, in your own words. Do not read a prepared text, use notes, a phone, a chatbot or any other assistant tool, or have anyone help you. Do not record or share the interview or the link.',
       },
       {
         id: 'questions-on-screen',
@@ -229,7 +233,7 @@ export const STRICT_RULE_GROUPS = [
     rules: [
       {
         id: 'employer-decides',
-        text: 'This interview is run by an AI, which turns what you say into text. Your camera and microphone record the whole session, and the recording is kept for a limited time. The employer who invited you reviews the recording, your answers and an AI assessment, and makes every decision. The only thing decided automatically is ending the interview as described above, and the notes about leaving the screen are for review and are not proof of anything.',
+        text: 'Your answers are transcribed and assessed by an automated system; a person makes every decision. Your camera and microphone record the whole session, and the recording is kept for a limited time. The employer who invited you reviews the recording, your answers and the assessment. The only thing decided automatically is ending the interview as described above, and the notes about leaving the screen are for review, not proof of anything.',
       },
     ],
   },

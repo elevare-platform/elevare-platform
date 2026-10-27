@@ -35,7 +35,7 @@ function renderModal() {
   )
 }
 
-const generateButton = () => screen.queryByRole('button', { name: /generate ai score/i })
+const generateButton = () => screen.queryByRole('button', { name: /generate score/i })
 
 async function advancePoll() {
   await act(async () => {
@@ -58,7 +58,7 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     api.get.mockResolvedValue({ data: BASE })
     renderModal()
 
-    expect(await screen.findByRole('button', { name: /generate ai score/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /generate score/i })).toBeInTheDocument()
   })
 
   it('does not offer it when the interview already has a score', async () => {
@@ -121,7 +121,7 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
       })
     renderModal()
 
-    fireEvent.click(await screen.findByRole('button', { name: /generate ai score/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /generate score/i }))
 
     expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/score', null, {
       params: { job_id: 'job-1', talent_pool_profile_id: 'profile-1' },
@@ -143,7 +143,7 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     })
     renderModal()
 
-    fireEvent.click(await screen.findByRole('button', { name: /generate ai score/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /generate score/i }))
 
     expect(
       await screen.findByText(/requires a professional plan or above/i)
@@ -160,7 +160,7 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
       .mockResolvedValueOnce({ data: BASE }) // finished again, still no score
     renderModal()
 
-    fireEvent.click(await screen.findByRole('button', { name: /generate ai score/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /generate score/i }))
     await advancePoll()
 
     await waitFor(() =>
@@ -433,8 +433,8 @@ describe('InterviewDetailModal: an interview that ended early', () => {
     renderEnded()
 
     expect(await screen.findByTestId('weighted-incomplete')).toBeInTheDocument()
-    expect(screen.queryByText(/No AI score is available/)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Generate AI score' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/No score is available/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Generate score' })).not.toBeInTheDocument()
   })
 
   it('shows no notes for a live interview', async () => {
@@ -476,6 +476,6 @@ describe('InterviewDetailModal: an interview that ended early', () => {
     renderEnded()
 
     await screen.findByText(/Ended early/)
-    expect(screen.queryByRole('button', { name: /generate ai score/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /generate score/i })).not.toBeInTheDocument()
   })
 })

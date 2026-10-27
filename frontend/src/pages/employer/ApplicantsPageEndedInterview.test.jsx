@@ -110,7 +110,7 @@ describe('ApplicantsPage, Interview List, an interview that ended early', () => 
     renderList('SCORED')
 
     expect(await screen.findByText('Completed')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Review AI Interview/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Review interview/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Review and reinstate/ })).not.toBeInTheDocument()
   })
 })

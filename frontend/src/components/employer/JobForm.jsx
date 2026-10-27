@@ -361,7 +361,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
         <FormMessage>{errors.what_we_offer?.message}</FormMessage>
       </FormField>
 
-      <SectionDivider title="AI Video Interview" />
+      <SectionDivider title="Video Interview" />
 
       {/* Interview brief */}
       <FormField>
@@ -369,9 +369,9 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
           Interview Brief <span className="text-text-muted text-xs">(optional)</span>
         </Label>
         <p className="text-xs text-text-muted mb-1.5">
-          Topics and goals for the AI interviewer to probe. This is not a fixed script; the AI
-          asks real follow-up questions based on the candidate's answers. Leave blank to
-          keep the AI video interview off for this job. Candidates never see this text;
+          Topics and goals for the interviewer to probe. This is not a fixed script; the
+          interviewer can ask follow-up questions based on the candidate's answers. Leave blank to
+          keep the video interview off for this job. Candidates never see this text;
           you'll choose who gets invited from your applicant list.
         </p>
         <textarea
@@ -565,7 +565,7 @@ export function JobForm({ defaultValues, onSubmit, loading = false, error = null
 function UndoBanner({ onUndo }) {
   return (
     <div className="flex items-center gap-1.5 text-xs text-brand-blue">
-      <span>AI suggestion applied.</span>
+      <span>Suggestion applied.</span>
       <button
         type="button"
         onClick={onUndo}

@@ -829,7 +829,7 @@ export default function StrictInterviewFlow({
         {phase === 'gate' && (
           <div className="rounded-xl border border-border bg-surface p-6 space-y-5">
             <div>
-              <h1 className="text-xl font-bold text-text">AI video interview</h1>
+              <h1 className="text-xl font-bold text-text">Video interview</h1>
               {subtitle && <p className="text-sm text-text-muted mt-1">{subtitle}</p>}
               <p className="text-sm text-text-muted mt-2">
                 You will see each question on screen and answer it out loud, to the camera.

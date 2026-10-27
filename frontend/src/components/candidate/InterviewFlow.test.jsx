@@ -28,7 +28,7 @@ describe('InterviewFlow, the rules a candidate accepts before the interview', ()
     }
     expect(within(rules).getByText(/Use one device and one browser/)).toBeInTheDocument()
     expect(within(rules).getByText(/you must be alone/i)).toBeInTheDocument()
-    expect(within(rules).getByText(/You will be interviewed by an AI interviewer, not a person/)).toBeInTheDocument()
+    expect(within(rules).getByText(/You will be interviewed by an automated interviewer, not a person/)).toBeInTheDocument()
   })
 
   it('does not tell the candidate about tab or face monitoring, which does not exist yet', () => {

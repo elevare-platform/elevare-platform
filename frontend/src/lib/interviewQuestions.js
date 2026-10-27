@@ -23,17 +23,17 @@ export const FOLLOW_UP_MODES = [
   {
     value: 'STANDARD',
     label: 'Follow up when needed',
-    help: 'The AI may ask up to two short, neutral follow-ups when an answer is unclear about ownership, scale, results or reasoning. If you write probes for a question, it uses them when one fits.',
+    help: 'The interviewer may ask up to two short, neutral follow-ups when an answer is unclear about ownership, scale, results or reasoning. If you write probes for a question, it uses them when one fits.',
   },
   {
     value: 'PROBES_ONLY',
     label: 'Only my probes',
-    help: 'The AI may ask only the probes you write under a question, in your words, and never makes one up. A question with no probes gets no follow-up.',
+    help: 'Only the probes you write under a question may be asked, in your words; none is ever made up. A question with no probes gets no follow-up.',
   },
   {
     value: 'NONE',
     label: 'Questions only',
-    help: 'The AI asks only the questions above and nothing else, so every candidate gets exactly the same.',
+    help: 'Only the questions above are asked and nothing else, so every candidate gets exactly the same.',
   },
 ]
 

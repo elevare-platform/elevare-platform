@@ -44,7 +44,7 @@ const INTENTS = {
       "Elevare's employer platform gives you access to talent acquisition, workforce transformation advisory, and recruitment consulting. You'll complete a brief company profile to get started, including a KYC step to verify your organisation.",
     features: [
       'Search and browse a curated talent pool',
-      'AI-suggested candidate matches for your roles',
+      'Suggested candidate matches for your roles',
       'CV parsing and automated candidate scoring',
     ],
     primaryLabel: 'Continue as Employer →',

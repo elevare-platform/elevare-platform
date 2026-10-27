@@ -122,7 +122,7 @@ describe('ApplicantsPage, Interview List tab, the questions button', () => {
   it('is offered when there is no brief yet, since fixed questions need no brief', async () => {
     renderInterviewList({ style: 'strict', brief: '' })
 
-    expect(await screen.findByRole('button', { name: /Set up AI interview/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Set up interview/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Interview questions/ })).toBeInTheDocument()
   })
 })

@@ -188,7 +188,7 @@ export default function IntroductionsPage() {
                 {activeTab === 'all' ? 'No introductions yet' : `No ${STATUS_STYLES[activeTab]?.label.toLowerCase()} introductions`}
               </p>
               <p className="text-sm text-text-muted">
-                Request introductions to matched candidates from a job's AI Talent Matches tab.
+                Request introductions to matched candidates from a job's Talent Matches tab.
               </p>
             </div>
           )}

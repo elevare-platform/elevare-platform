@@ -79,7 +79,7 @@ describe('which rules are shown', () => {
   })
 })
 
-describe('the strict interview rules for what the AI does after an answer', () => {
+describe('the strict interview rules for what happens after an answer', () => {
   const sentenceFor = (mode) =>
     strictRuleGroups(mode)
       .flatMap((group) => group.rules)
@@ -87,18 +87,18 @@ describe('the strict interview rules for what the AI does after an answer', () =
 
   it('say up to two follow-ups for the standard mode, which is also the default and the fallback', () => {
     for (const mode of [undefined, 'STANDARD', 'SOMETHING_ELSE']) {
-      expect(sentenceFor(mode)).toMatch(/The AI may ask up to two short follow-up questions on an answer/)
+      expect(sentenceFor(mode)).toMatch(/Up to two short follow-up questions may be asked on an answer/)
     }
   })
 
-  it('say the AI asks only the questions on screen when there are no follow-ups', () => {
-    expect(sentenceFor('NONE')).toMatch(/The AI asks only the questions on screen and no follow-up questions\.$/)
+  it('say only the questions on screen are asked when there are no follow-ups', () => {
+    expect(sentenceFor('NONE')).toMatch(/Only the questions on screen are asked, with no follow-up questions\.$/)
     expect(sentenceFor('NONE')).not.toMatch(/up to two/)
   })
 
   it('say the follow-up comes from the employer\'s own list, never made up, when only probes are allowed', () => {
     expect(sentenceFor('PROBES_ONLY')).toMatch(/from a list the employer prepared/)
-    expect(sentenceFor('PROBES_ONLY')).toMatch(/does not make up its own/)
+    expect(sentenceFor('PROBES_ONLY')).toMatch(/None is made up/)
     expect(sentenceFor('PROBES_ONLY')).not.toMatch(/up to two/)
   })
 
@@ -211,16 +211,28 @@ describe('the strict interview rules', () => {
   it('still cover the device, the single screen, the camera, being alone and no AI help', () => {
     const text = strictRules.map((rule) => rule.text).join(' ')
 
-    for (const part of ['laptop or desktop', 'one screen only', 'camera on', 'alone', 'chatbot or any AI assistant', 'record or share']) {
+    for (const part of ['laptop or desktop', 'one screen only', 'camera on', 'alone', 'chatbot or any other assistant tool', 'record or share']) {
       expect(text, part).toContain(part)
     }
   })
 
-  it('still say the interview is run by an AI, recorded, kept for a limited time, and decided by the employer', () => {
+  it('still tell the candidate, once and plainly, that an automated system assesses the answers and a person decides', () => {
     const text = strictRules.map((rule) => rule.text).join(' ')
 
-    for (const part of ['run by an AI', 'record the whole session', 'kept for a limited time', 'makes every decision']) {
+    for (const part of [
+      'transcribed and assessed by an automated system',
+      'a person makes every decision',
+      'record the whole session',
+      'kept for a limited time',
+    ]) {
       expect(text, part).toContain(part)
+    }
+    expect(text.match(/automated system/g)).toHaveLength(1)
+  })
+
+  it('no longer use the word AI anywhere in what a candidate reads', () => {
+    for (const rule of [...strictRules, ...allRules]) {
+      expect(rule.text, rule.id).not.toMatch(/\bAI\b/)
     }
   })
 

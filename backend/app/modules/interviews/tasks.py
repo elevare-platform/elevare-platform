@@ -733,7 +733,7 @@ async def _transcribe_and_score_interview_async(
                     await NotificationRepository(db).create(
                         recipient_id=interview.job.employer_id,
                         type="AI_INTERVIEW_COMPLETED",
-                        title=f"{candidate_label} completed their AI interview",
+                        title=f"{candidate_label} completed their interview",
                         body=(
                             f"for {interview.job.title}. Open the Interview List to "
                             "review the transcript, score, and recording."

@@ -25,7 +25,7 @@ describe('InterviewBriefSetupModal', () => {
   it('is the first-time setup when there is no brief yet', () => {
     renderModal()
 
-    expect(screen.getByText('Set up AI interview')).toBeInTheDocument()
+    expect(screen.getByText('Set up interview')).toBeInTheDocument()
     expect(textbox()).toHaveValue('')
     expect(screen.getByRole('button', { name: 'Save and enable' })).toBeInTheDocument()
     expect(screen.queryByText(/already started or finished/i)).not.toBeInTheDocument()
@@ -34,7 +34,7 @@ describe('InterviewBriefSetupModal', () => {
   it('opens the existing brief for editing', () => {
     renderModal({ initialBrief: BRIEF })
 
-    expect(screen.getByText('Edit AI interview brief')).toBeInTheDocument()
+    expect(screen.getByText('Edit interview brief')).toBeInTheDocument()
     expect(textbox()).toHaveValue(BRIEF)
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
     // Earlier candidates were asked the old version; say so.

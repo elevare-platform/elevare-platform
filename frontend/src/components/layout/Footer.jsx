@@ -51,7 +51,7 @@ const LEARN_MORE_LINKS = [
 const EMPLOYER_LINKS = [
   { label: 'Pricing', href: '/pricing' },
   { label: 'Post a Job', href: '/employer/jobs/new' },
-  { label: 'Talent Pipeline (AI)', href: '/talent-pipeline' },
+  { label: 'Talent Pipeline', href: '/talent-pipeline' },
   { label: 'Workforce Tools', href: '/workforce-tools' },
   { label: 'B2B Partnerships', href: '/partnership' },
 ]

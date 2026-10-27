@@ -1198,7 +1198,7 @@ async def test_a_strict_invite_notification_describes_the_strict_interview(
     assert "appear on your screen" in body
     assert "laptop or desktop computer with Chrome or Edge" in body
     assert "voice conversation" not in body
-    assert "live AI interview" not in body
+    assert "live interview" not in body
 
 
 @pytest.mark.asyncio
@@ -1207,8 +1207,8 @@ async def test_a_live_invite_notification_is_worded_as_it_always_was(
 ):
     body = await _invite_notification_body(db_session, monkeypatch, "live")
 
-    assert "a live AI interview" in body
-    assert "real-time voice conversation with an AI interviewer" in body
+    assert "a live interview" in body
+    assert "real-time voice conversation with an automated interviewer" in body
     assert "appear on your screen" not in body
 
 

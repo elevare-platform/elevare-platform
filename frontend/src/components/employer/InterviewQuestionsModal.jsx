@@ -236,7 +236,7 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
             <h2 className="text-lg font-bold text-text">Interview questions</h2>
             <p className="text-sm text-text-muted mt-1">
               Every candidate gets these same questions, in this order, and answers each one by
-              speaking to the camera. Below the questions you choose what the AI does after an answer.
+              speaking to the camera. Below the questions you choose what happens after an answer.
             </p>
           </div>
           <button type="button" onClick={close} className="text-text-muted hover:text-text flex-shrink-0" aria-label="Close">
@@ -333,7 +333,7 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                         Question {index + 1}
                         {question.source === 'AI' && (
                           <span className="ml-2 rounded-full bg-brand-blue/10 px-2 py-0.5 text-[10px] font-medium text-brand-blue">
-                            AI draft
+                            Drafted
                           </span>
                         )}
                       </label>
@@ -408,7 +408,7 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                       <div className="space-y-1">
                         <label htmlFor={`probes-${question.key}`} className="text-xs text-text-muted">
                           {followUpMode === 'PROBES_ONLY'
-                            ? 'Follow-up probes the AI may ask (one per line)'
+                            ? 'Follow-up probes that may be asked (one per line)'
                             : 'Your own follow-up probes (optional, one per line)'}
                         </label>
                         <textarea
@@ -500,7 +500,7 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
 
               {/* What the AI does after an answer: the same for every candidate of this job */}
               <fieldset className="space-y-2 rounded-lg border border-border p-3">
-                <legend className="px-1 text-xs font-semibold text-text">After an answer, the AI may</legend>
+                <legend className="px-1 text-xs font-semibold text-text">After an answer, the interviewer may</legend>
                 {FOLLOW_UP_MODES.map((mode) => (
                   <label key={mode.value} className="flex cursor-pointer items-start gap-2">
                     <input
@@ -526,7 +526,7 @@ export default function InterviewQuestionsModal({ jobId, hasBrief, onClose, onSa
                 </p>
                 {noProbesAtAll && (
                   <p role="note" data-testid="no-probes-note" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    No question has a probe yet, so the AI will not ask any follow-up. Write probes under the
+                    No question has a probe yet, so no follow-up will be asked. Write probes under the
                     questions, or choose another option.
                   </p>
                 )}

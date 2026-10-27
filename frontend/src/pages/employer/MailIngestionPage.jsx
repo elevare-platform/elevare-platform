@@ -284,7 +284,7 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
                 </div>
                 {jobId && (
                   <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
-                    <Zap size={11} /> AI scoring runs automatically after parsing
+                    <Zap size={11} /> Scoring runs automatically after parsing
                   </p>
                 )}
               </div>
@@ -327,7 +327,7 @@ function TriggerImportModal({ open, onClose, integration, initialRun, jobs, onVi
                     <CheckCircle2 size={16} className="text-green-600" /> Import complete
                   </div>
                   <p className="text-xs text-green-700">
-                    Parsed CVs are now in your Talent Pool. Parsing and AI scoring continue in the background.
+                    Parsed CVs are now in your Talent Pool. Parsing and scoring continue in the background.
                   </p>
                   <button
                     onClick={() => { reset(); onClose(); onViewTalentPool() }}

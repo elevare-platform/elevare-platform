@@ -37,8 +37,8 @@ MAX_PAGE_SIZE = 100
 _WORDING = {
     "intro_request": ("introduction", "Introduction requested"),
     "intro_refund": ("introduction_refund", "Introduction credit returned"),
-    INTERVIEW_CHARGE: ("interview", "AI interview invite"),
-    INTERVIEW_REFUND: ("interview_refund", "AI interview credits returned"),
+    INTERVIEW_CHARGE: ("interview", "Interview invite"),
+    INTERVIEW_REFUND: ("interview_refund", "Interview credits returned"),
     PLAN_ALLOWANCE: ("plan_credits", "Monthly plan credits"),
     PLAN_ALLOWANCE_EXPIRY: ("plan_credits_expired", "Unused plan credits expired"),
 }

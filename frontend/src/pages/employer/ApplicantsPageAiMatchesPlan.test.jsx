@@ -55,7 +55,7 @@ describe('ApplicantsPage, AI Talent Matches tab and the plan', () => {
       throw { response: { status: 403, data: { code: 'PLAN_UPGRADE_REQUIRED', message: 'This feature requires a Professional plan or above' } } }
     })
 
-    expect(await screen.findByText('AI Talent Matches is part of the Professional plan')).toBeInTheDocument()
+    expect(await screen.findByText('Talent Matches is part of the Professional plan')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'See plans' })).toHaveAttribute('href', '/pricing')
     // Not shown as a red error, and none of the normal tab furniture is left behind.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -68,7 +68,7 @@ describe('ApplicantsPage, AI Talent Matches tab and the plan', () => {
     }))
 
     expect(await screen.findByText('match: Funmilayo Adebayo')).toBeInTheDocument()
-    expect(screen.queryByText('AI Talent Matches is part of the Professional plan')).not.toBeInTheDocument()
+    expect(screen.queryByText('Talent Matches is part of the Professional plan')).not.toBeInTheDocument()
   })
 
   it('still shows any other failure as an error, not as an upgrade message', async () => {
@@ -77,6 +77,6 @@ describe('ApplicantsPage, AI Talent Matches tab and the plan', () => {
     })
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Something broke')
-    expect(screen.queryByText('AI Talent Matches is part of the Professional plan')).not.toBeInTheDocument()
+    expect(screen.queryByText('Talent Matches is part of the Professional plan')).not.toBeInTheDocument()
   })
 })

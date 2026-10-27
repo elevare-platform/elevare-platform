@@ -504,7 +504,7 @@ async def test_stopping_tells_the_employer_the_candidate_chose_to(client, db_ses
             )
         )
     ).scalar_one()
-    assert "stopped their AI interview" in note.title and "chose to stop" in note.body
+    assert "stopped their interview" in note.title and "chose to stop" in note.body
 
 
 @pytest.mark.asyncio

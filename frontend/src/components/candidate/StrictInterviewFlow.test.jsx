@@ -158,7 +158,7 @@ describe('StrictInterviewFlow, before it starts', () => {
   it('shows the strict rules, and not the live interview rules', () => {
     setup()
 
-    expect(screen.getByRole('heading', { name: 'AI video interview' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Video interview' })).toBeInTheDocument()
     expect(screen.getByText(/cannot be taken on a phone or a tablet/)).toBeInTheDocument()
     expect(screen.queryByText(/earphones or headphones/i)).not.toBeInTheDocument()
   })
@@ -190,15 +190,15 @@ describe('StrictInterviewFlow, before it starts', () => {
     const items = within(screen.getByTestId('interview-rules')).getAllByRole('listitem')
     expect(items.length).toBeLessThanOrEqual(12)
     expect(items.length).toBeGreaterThanOrEqual(10)
-    expect(screen.getByText(/The AI may ask up to two short follow-up questions on an answer/)).toBeInTheDocument()
+    expect(screen.getByText(/Up to two short follow-up questions may be asked on an answer/)).toBeInTheDocument()
     expect(screen.getByText(/Do not read a prepared text, use notes, a phone, a chatbot/)).toBeInTheDocument()
   })
 
   it.each([
-    ['NONE', /The AI asks only the questions on screen and no follow-up questions/, /up to two/],
+    ['NONE', /Only the questions on screen are asked, with no follow-up questions/, /up to two/],
     ['PROBES_ONLY', /from a list the employer prepared for the question/, /up to two/],
-    ['STANDARD', /The AI may ask up to two short follow-up questions/, /list the employer prepared/],
-  ])('tells the candidate what the AI does after an answer in %s mode, and only that', (mode, shown, notShown) => {
+    ['STANDARD', /Up to two short follow-up questions may be asked/, /list the employer prepared/],
+  ])('tells the candidate what happens after an answer in %s mode, and only that', (mode, shown, notShown) => {
     setup({ followUpMode: mode })
 
     const rules = screen.getByTestId('interview-rules')
