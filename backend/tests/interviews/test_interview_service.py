@@ -1357,6 +1357,157 @@ async def test_request_scoring_queues_an_unscored_interview(db_session, monkeypa
     mock_task.delay.assert_called_once_with(str(interview.id), notify=False)
 
 
+async def _failed_scoring(db_session, **interview_fields):
+    """An interview whose recording arrived but whose scoring failed for good: FAILED with a
+    completion time. Its credits were given back when it failed, so the organization has paid
+    nothing for it now."""
+    from app.modules.credits.service import CreditsService
+
+    fields = {"status": InterviewStatus.FAILED.value, "completed_at": datetime.now(UTC)}
+    fields.update(interview_fields)
+    employer, job, profile, interview = await _unscored_interview(db_session, **fields)
+    credits = CreditsService(db_session)
+    await credits.grant(employer.organization_id, 100)
+    await credits.charge_interview(employer.organization_id, interview.id, 10)
+    await credits.refund_interview(employer.organization_id, interview.id)
+    return employer, job, profile, interview
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_retries_an_interview_whose_scoring_failed_and_tells_the_employer(
+    db_session, monkeypatch
+):
+    from app.modules.credits.service import CreditsService
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, interview = await _failed_scoring(db_session)
+    monkeypatch.setattr(settings, "interview_credit_cost", 10)
+    before = await CreditsService(db_session).get_balance(employer.organization_id)
+
+    service = InterviewService(db_session)
+    try:
+        result = await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert result == {"queued": True}
+    assert interview.status == InterviewStatus.UPLOADED.value
+    # The employer was never told this interview completed, so this run tells them.
+    mock_task.delay.assert_called_once_with(str(interview.id), notify=True)
+    # The credits given back when it failed are taken again for the retry.
+    assert await CreditsService(db_session).get_balance(employer.organization_id) == before - 10
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_a_failed_interview_still_paid_costs_nothing_more(db_session, monkeypatch):
+    from app.modules.credits.service import CreditsService
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    _patch_scoring_task(monkeypatch)
+    monkeypatch.setattr(settings, "interview_credit_cost", 10)
+    employer, job, profile, interview = await _unscored_interview(
+        db_session, status=InterviewStatus.FAILED.value, completed_at=datetime.now(UTC)
+    )
+    credits = CreditsService(db_session)
+    await credits.grant(employer.organization_id, 100)
+    await credits.charge_interview(employer.organization_id, interview.id, 10)
+    before = await credits.get_balance(employer.organization_id)
+
+    service = InterviewService(db_session)
+    try:
+        await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert await credits.get_balance(employer.organization_id) == before
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_a_failed_interview_changes_nothing_when_credits_are_short(
+    db_session, monkeypatch
+):
+    from app.core.exceptions import InsufficientCreditsException
+    from app.modules.credits.service import CreditsService
+
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, interview = await _failed_scoring(db_session)
+    monkeypatch.setattr(settings, "interview_credit_cost", 10)
+    credits = CreditsService(db_session)
+    await credits.charge_interview(employer.organization_id, uuid4(), 95)  # leaves 5 + the refund
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(InsufficientCreditsException):
+            await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    mock_task.delay.assert_not_called()
+    assert interview.status == InterviewStatus.FAILED.value
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_a_failed_interview_without_a_transcript_uses_the_recording(
+    db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    monkeypatch.setattr(settings, "interview_credit_cost", 0)
+    employer, job, profile, interview = await _failed_scoring(
+        db_session, transcript=None, r2_key="interviews/x/recording.webm"
+    )
+
+    service = InterviewService(db_session)
+    try:
+        await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    mock_task.delay.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_a_failed_interview_with_nothing_to_score_says_so(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    monkeypatch.setattr(settings, "interview_credit_cost", 0)
+    employer, job, profile, interview = await _failed_scoring(db_session, transcript=None, r2_key=None)
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException) as raised:
+            await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert raised.value.code == "INTERVIEW_NO_TRANSCRIPT"
+    mock_task.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_request_scoring_does_not_touch_an_interview_that_never_finished(db_session, monkeypatch):
+    """FAILED with no completion time is a recording that never arrived: it is recovered
+    (reopened or started over), not scored."""
+    monkeypatch.setattr(settings, "plan_gates_enabled", True)
+    mock_task = _patch_scoring_task(monkeypatch)
+    employer, job, profile, interview = await _unscored_interview(
+        db_session, status=InterviewStatus.FAILED.value, completed_at=None
+    )
+
+    service = InterviewService(db_session)
+    try:
+        with pytest.raises(ValidationException) as raised:
+            await service.request_scoring(employer, job.id, profile.id)
+    finally:
+        await service.close()
+
+    assert raised.value.code == "INTERVIEW_NOT_COMPLETED"
+    mock_task.delay.assert_not_called()
+    assert interview.status == InterviewStatus.FAILED.value
+
+
 @pytest.mark.asyncio
 async def test_request_scoring_works_on_the_starter_plan_for_a_paid_interview(
     db_session, monkeypatch

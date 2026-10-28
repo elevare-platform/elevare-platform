@@ -84,6 +84,47 @@ describe('ApplicantsPage, Interview List, an interview that failed', () => {
     expect(screen.queryByRole('button', { name: 'Reopen for the candidate' })).not.toBeInTheDocument()
   })
 
+  it('retries scoring from the row, and says it is scoring again', async () => {
+    api.post.mockResolvedValueOnce({ data: { queued: true } })
+    renderList('FAILED', 'SCORING_FAILED')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry scoring' }))
+
+    expect(await screen.findByText(/Scoring again/)).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/score', null, {
+      params: { job_id: 'job-1', talent_pool_profile_id: 'p-1' },
+    })
+    expect(screen.queryByRole('button', { name: 'Retry scoring' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Review interview/ })).toBeInTheDocument()
+  })
+
+  it('shows the server’s words when the scoring retry is refused, and can be pressed again', async () => {
+    api.post.mockRejectedValueOnce({ response: { data: { code: 'INSUFFICIENT_CREDITS', message: 'Not enough credits' } } })
+    renderList('FAILED', 'SCORING_FAILED')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry scoring' }))
+
+    expect(await screen.findByText(/Not enough credits/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry scoring' })).toBeEnabled()
+  })
+
+  it('says the server could not be reached when the scoring retry gets no answer', async () => {
+    api.post.mockRejectedValueOnce(new Error('network'))
+    renderList('FAILED', 'SCORING_FAILED')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry scoring' }))
+
+    expect(await screen.findByText(/We could not reach the server/)).toBeInTheDocument()
+  })
+
+  it('offers no scoring retry for a recording that never arrived', async () => {
+    renderList('FAILED', 'NEVER_FINISHED')
+
+    await screen.findByText('Recording not received')
+    expect(screen.queryByRole('button', { name: 'Retry scoring' })).not.toBeInTheDocument()
+    expect(screen.getByText(/uses one again/)).toBeInTheDocument()
+  })
+
   it('keeps the old behaviour when the server does not say why it failed', async () => {
     renderList('FAILED')
 

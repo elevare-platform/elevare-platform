@@ -61,6 +61,49 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     expect(await screen.findByRole('button', { name: /generate score/i })).toBeInTheDocument()
   })
 
+  it('offers Retry scoring, not Generate score, when scoring failed after the recording arrived', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, status: 'FAILED' } })
+    renderModal()
+
+    expect(await screen.findByRole('button', { name: 'Retry scoring' })).toBeInTheDocument()
+    expect(generateButton()).not.toBeInTheDocument()
+    expect(screen.getByText(/If its credit was given back, retrying uses one again/)).toBeInTheDocument()
+  })
+
+  it('retries with the same request as a first score, and waits for the result', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...BASE, status: 'FAILED' } })
+    api.post.mockResolvedValueOnce({ data: { queued: true } })
+    api.get.mockResolvedValue({ data: { ...BASE, status: 'SCORED', ai_score: 77, ai_rationale: 'Scored on the second try.' } })
+    renderModal()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry scoring' }))
+    expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/score', null, {
+      params: { job_id: 'job-1', talent_pool_profile_id: 'profile-1' },
+    })
+    await advancePoll()
+
+    expect(await screen.findByText('Scored on the second try.')).toBeInTheDocument()
+  })
+
+  it('shows the server’s words when the retry is refused, such as short of credits', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, status: 'FAILED' } })
+    api.post.mockRejectedValueOnce({ response: { data: { message: 'Not enough credits' } } })
+    renderModal()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry scoring' }))
+
+    expect(await screen.findByText('Not enough credits')).toBeInTheDocument()
+  })
+
+  it('offers no scoring for an interview that failed before it was finished', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, status: 'FAILED', completed_at: null } })
+    renderModal()
+
+    await screen.findByText(/No score is available/)
+    expect(screen.queryByRole('button', { name: 'Retry scoring' })).not.toBeInTheDocument()
+    expect(generateButton()).not.toBeInTheDocument()
+  })
+
   it('does not offer it when the interview already has a score', async () => {
     api.get.mockResolvedValue({ data: { ...BASE, ai_score: 82, ai_rationale: 'Strong answers.' } })
     renderModal()

@@ -1568,6 +1568,7 @@ class InterviewService:
         # both queue scoring. The second sees the interview already processing.
         await self._repo.lock_status(interview.id)
         await self._db.refresh(interview)
+        failed_scoring = False
 
         if interview.status == InterviewStatus.UPLOADED.value:
             # Normally being scored right now. Only if it has sat there for a
@@ -1589,6 +1590,14 @@ class InterviewService:
                     "Please check back in a minute.",
                     code="INTERVIEW_PROCESSING",
                 )
+        elif (
+            interview.status == InterviewStatus.FAILED.value
+            and interview.completed_at is not None
+        ):
+            # Scoring failed after the recording arrived (an interview that was never completed
+            # is recovered, not rescored). The recording and the transcript are kept, and the
+            # task transcribes the recording itself when there is no transcript.
+            failed_scoring = True
         elif interview.status != InterviewStatus.SCORED.value:
             raise ValidationException(
                 "This interview has not been completed yet.",
@@ -1600,15 +1609,22 @@ class InterviewService:
                 code="INTERVIEW_ALREADY_SCORED",
             )
 
-        if not interview.transcript:
+        if not interview.transcript and not (failed_scoring and interview.r2_key):
             raise ValidationException(
                 "There is no transcript to score for this interview.",
                 code="INTERVIEW_NO_TRANSCRIPT",
             )
 
+        if failed_scoring:
+            # The credits were given back when scoring failed, so they are taken again for the
+            # retry (nothing is taken while the interview is still paid). Short on credits: 402
+            # and nothing changes. Saved with the status change below.
+            await self._charge_for_invite(job, interview.id)
+
         await self._repo.update(interview.id, {"status": InterviewStatus.UPLOADED.value})
         await self._db.commit()
-        transcribe_and_score_interview_task.delay(str(interview.id), notify=False)
+        # The employer was never told a failed interview completed, so this run tells them.
+        transcribe_and_score_interview_task.delay(str(interview.id), notify=failed_scoring)
         return {"queued": True}
 
     async def get_monthly_cost_summary(self) -> dict:
