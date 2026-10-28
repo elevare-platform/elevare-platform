@@ -161,6 +161,35 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
   // completion time and is recovered from the Interview List instead).
   const scoringFailed = detail?.status === 'FAILED' && Boolean(detail?.completed_at)
 
+  // The candidate takes the interview again from the start (instead of carrying on where they
+  // stopped): the attempt's answers and recording are deleted, so it asks first.
+  const handleRetake = async () => {
+    if (
+      !window.confirm(
+        'This deletes this attempt’s answers and recording, and sends the candidate a fresh interview with the full time. It cannot be undone. Continue?'
+      )
+    ) {
+      return
+    }
+    setReinstateError(null)
+    setReinstating(true)
+    try {
+      const { data } = await api.post(`/api/v1/interviews/${talentPoolProfileId}/recover`, null, {
+        params: { job_id: jobId, start_over: true },
+      })
+      setReinstated(data)
+      onReinstated?.(data)
+    } catch (err) {
+      setReinstateError(
+        err?.response
+          ? (err.response.data?.message ?? 'Something went wrong. Please try again.')
+          : 'We could not reach the server. Check your connection and try again.'
+      )
+    } finally {
+      setReinstating(false)
+    }
+  }
+
   const handleScore = async () => {
     // Scoring an interview that ended early closes it: it can no longer be reinstated.
     if (
@@ -255,12 +284,25 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
 
           {!loading && !error && detail && reinstated && (
             <div role="status" className="space-y-2 rounded-xl border border-green-200 bg-green-50 p-5 text-center">
-              <p className="font-semibold text-green-800">The interview was reinstated</p>
-              <p className="text-sm text-green-800">
-                {reinstated.email_sent
-                  ? 'The candidate has been emailed the same link. They carry on where they stopped, with the time they had left.'
-                  : 'There is no email address on file for the candidate, so send them the link yourself (Copy link on the Interview List). They carry on where they stopped, with the time they had left.'}
-              </p>
+              {reinstated.outcome === 'started_over' ? (
+                <>
+                  <p className="font-semibold text-green-800">The interview was started over</p>
+                  <p className="text-sm text-green-800">
+                    {reinstated.email_sent
+                      ? 'The candidate has been emailed their link. They take the interview again from the start, with the full time.'
+                      : 'There is no email address on file for the candidate, so send them the link yourself (Copy link on the Interview List). They take the interview again from the start, with the full time.'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-green-800">The interview was reinstated</p>
+                  <p className="text-sm text-green-800">
+                    {reinstated.email_sent
+                      ? 'The candidate has been emailed the same link. They carry on where they stopped, with the time they had left.'
+                      : 'There is no email address on file for the candidate, so send them the link yourself (Copy link on the Interview List). They carry on where they stopped, with the time they had left.'}
+                  </p>
+                </>
+              )}
               <button type="button" onClick={onClose} className="text-xs font-semibold text-green-800 underline">Close</button>
             </div>
           )}
@@ -327,6 +369,20 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                     {reinstating ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
                     {reinstating ? 'Reinstating…' : 'Reinstate this interview'}
                   </button>
+                  <div className="space-y-1 border-t border-amber-200 pt-2">
+                    <p className="text-xs text-amber-900">
+                      Is the recording missing or empty? Have the candidate take the interview again from
+                      the start instead. This deletes this attempt&apos;s answers and recording.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleRetake}
+                      disabled={reinstating}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                    >
+                      Have them retake it
+                    </button>
+                  </div>
                   {reinstateError && <p role="alert" className="text-xs text-red-600">{reinstateError}</p>}
                 </div>
               )}
