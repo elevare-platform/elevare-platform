@@ -14,6 +14,14 @@ export const BAND_NAMES = {
   not: 'Do not shortlist',
 }
 
+// The colours a band is shown in, wherever it appears.
+export const BAND_STYLE = {
+  [BAND_NAMES.strong]: 'bg-green-100 text-green-800 border-green-200',
+  [BAND_NAMES.shortlist]: 'bg-green-50 text-green-700 border-green-200',
+  [BAND_NAMES.hold]: 'bg-amber-100 text-amber-800 border-amber-200',
+  [BAND_NAMES.not]: 'bg-gray-100 text-gray-700 border-gray-200',
+}
+
 /** A new, empty competency for the employer to fill in. `key` is only for the screen's list. */
 export function blankCompetency(key) {
   return { key, name: '', weight: '', isKey: false }

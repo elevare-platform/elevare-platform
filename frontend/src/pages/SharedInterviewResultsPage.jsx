@@ -1,26 +1,12 @@
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
-import { ChevronDown, ChevronUp, MessageCircleQuestion, User } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
-import { parseAssessment } from '@/lib/interviewAssessment'
-import StrictInterviewNotes, { RecordingNotice } from '@/components/employer/StrictInterviewNotes'
-import RecordingClips from '@/components/employer/RecordingClips'
-import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
-import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
-import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
-import { showsClips } from '@/lib/recordingClips'
-
-// What the client is told about each candidate's interview.
-const STATUS = {
-  COMPLETED: { label: 'Completed', className: 'bg-green-50 text-green-700 border-green-200' },
-  ENDED: { label: 'Ended early', className: 'bg-amber-50 text-amber-800 border-amber-200' },
-  IN_PROGRESS: { label: 'Interview in progress', className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  INVITED: { label: 'Invited', className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  NOT_COMPLETED: { label: 'Not completed', className: 'bg-amber-50 text-amber-800 border-amber-200' },
-  NOT_INVITED: { label: 'Not interviewed yet', className: 'bg-gray-100 text-gray-600 border-gray-200' },
-}
+import { BAND_STYLE } from '@/lib/scoringProfile'
+import { STATUS, hasDetail, scoreColour } from '@/lib/sharedResults'
+import SharedCandidateDetail from '@/components/employer/SharedCandidateDetail'
 
 // Why a link does not open, by the error code the server sends.
 const LINK_PROBLEMS = {
@@ -38,241 +24,86 @@ const LINK_PROBLEMS = {
   },
 }
 
-function scoreColour(score) {
-  if (score == null) return 'bg-gray-100 text-gray-500'
-  if (score <= 40) return 'bg-red-100 text-red-600'
-  if (score <= 70) return 'bg-amber-100 text-amber-700'
-  return 'bg-green-100 text-green-700'
+// A search box only helps once the list is long enough to lose someone in.
+const SEARCH_FROM = 6
+
+const SORTS = [
+  { value: 'order', label: 'Order on the list' },
+  { value: 'interview', label: 'Interview score' },
+  { value: 'weighted', label: 'Weighted score' },
+  { value: 'cv', label: 'CV score' },
+]
+
+const SORT_KEY = {
+  interview: (c) => c.interview_score,
+  weighted: (c) => (c.score_report?.complete ? c.score_report.score : null),
+  cv: (c) => c.cv_score,
 }
 
 function formatDate(iso, options) {
   return iso ? new Date(iso).toLocaleDateString('en-GB', options) : null
 }
 
-function ScoreBadge({ label, score }) {
+function ScoreChip({ label, score }) {
+  if (score == null) return null
   return (
-    <div className="text-center">
-      <span
-        className={cn(
-          'w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold mx-auto',
-          scoreColour(score),
-        )}
-      >
-        {score ?? 'N/A'}
-      </span>
-      <span className="block text-[10px] text-text-muted mt-1">{label}</span>
-    </div>
+    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', scoreColour(score))}>
+      <span className="font-medium opacity-80">{label}</span> {score}
+    </span>
   )
 }
 
-function BulletList({ title, items, tone }) {
-  if (!items?.length) return null
-  return (
-    <div>
-      <p className={cn('text-xs font-semibold mb-1', tone === 'good' ? 'text-green-700' : 'text-amber-700')}>
-        {title}
-      </p>
-      <ul className="space-y-1">
-        {items.map((item, i) => (
-          <li key={i} className="text-xs text-text flex items-start gap-2">
-            <span className={tone === 'good' ? 'text-green-500' : 'text-amber-500'}>•</span>
-            {item}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function Assessment({ title, score, summary, strengths, weaknesses, sections, emptyText }) {
-  const hasContent = score != null || summary?.length || strengths?.length || weaknesses?.length || sections?.length
-  return (
-    <div className="rounded-lg border border-border bg-white p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold text-text">{title}</h4>
-        {score != null && (
-          <span className={cn('px-2 py-0.5 rounded-full text-xs font-bold', scoreColour(score))}>{score}</span>
-        )}
-      </div>
-      {!hasContent && <p className="text-xs text-text-muted">{emptyText}</p>}
-      {summary?.map((paragraph, i) => (
-        <p key={i} className="text-sm text-text leading-relaxed">{paragraph}</p>
-      ))}
-      <BulletList title="Strengths" items={strengths} tone="good" />
-      <BulletList title="Considerations" items={weaknesses} tone="warn" />
-      {sections?.map((section) => (
-        <BulletList
-          key={section.title}
-          // The CV column says "Considerations"; the interview column says the same.
-          title={section.title === 'Weaknesses' ? 'Considerations' : section.title}
-          items={section.items}
-          tone={section.title === 'Strengths' ? 'good' : 'warn'}
-        />
-      ))}
-    </div>
-  )
-}
-
-// The questions the AI asked, numbered, so they are the first thing read.
-function Questions({ questions }) {
-  if (!questions.length) return null
-  return (
-    <div className="rounded-lg border border-brand-blue/30 bg-blue-50/50 p-4">
-      <h4 className="text-sm font-semibold text-text flex items-center gap-2 mb-2">
-        <MessageCircleQuestion size={16} className="text-brand-blue" aria-hidden="true" />
-        Questions asked
-      </h4>
-      <ol className="space-y-1.5 list-decimal pl-5">
-        {questions.map((question, i) => (
-          <li key={i} className="text-sm text-text font-medium">{question}</li>
-        ))}
-      </ol>
-    </div>
-  )
-}
-
-// The whole conversation, each AI turn set apart from the candidate's answer.
-function Conversation({ turns }) {
-  return (
-    <div className="space-y-2">
-      {turns.map((turn, i) =>
-        turn.speaker === 'AI' ? (
-          <div key={i} className="border-l-4 border-brand-blue bg-blue-50/60 rounded-r-lg px-3 py-2">
-            <p className="text-[11px] font-semibold text-brand-blue mb-0.5">Interviewer</p>
-            <p className="text-sm font-semibold text-text whitespace-pre-wrap">{turn.text}</p>
-          </div>
-        ) : (
-          <div key={i} className="pl-4 pr-1 py-1">
-            <p className="text-[11px] font-semibold text-text-muted mb-0.5">Candidate</p>
-            <p className="text-sm text-text whitespace-pre-wrap">{turn.text}</p>
-          </div>
-        ),
-      )}
-    </div>
-  )
-}
-
-function CandidateCard({ candidate, rank, defaultOpen }) {
-  const [open, setOpen] = useState(defaultOpen)
+// One line of the list: enough to compare candidates without opening any of them.
+function CandidateRow({ entry, selected, onSelect }) {
+  const { candidate, rank } = entry
   const status = STATUS[candidate.status] ?? STATUS.NOT_INVITED
-  const interview = parseAssessment(candidate.interview_assessment)
-  const interviewed = candidate.status === 'COMPLETED'
-  // An interview that ended early has a recording, answers and notes worth opening, but no
-  // assessment of the interview.
-  const endedEarly = candidate.status === 'ENDED'
-  const hasDetail =
-    interviewed || endedEarly || candidate.cv_score != null || candidate.cv_summary || candidate.cv_strengths?.length
+  const report = candidate.score_report
+  const openable = hasDetail(candidate)
 
-  return (
-    <div className="rounded-xl border border-border bg-white overflow-hidden">
-      <button
-        type="button"
-        onClick={() => hasDetail && setOpen((v) => !v)}
-        aria-expanded={hasDetail ? open : undefined}
-        className="w-full flex items-center gap-4 p-4 text-left"
-      >
-        <span className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold flex items-center justify-center flex-shrink-0">
-          {rank}
-        </span>
-        <span className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
-          <User size={18} className="text-brand-blue" />
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-text text-sm">{candidate.name}</p>
-          {candidate.current_title && (
-            <p className="text-xs text-text-muted line-clamp-1">{candidate.current_title}</p>
-          )}
-          <span className={cn('inline-block mt-1 px-2 py-0.5 rounded-full border text-[11px] font-medium', status.className)}>
+  const body = (
+    <>
+      <span className="w-7 h-7 rounded-full bg-surface-muted text-text-muted text-xs font-semibold flex items-center justify-center flex-shrink-0">
+        {rank}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block font-semibold text-text text-sm break-words">{candidate.name}</span>
+        {candidate.current_title && (
+          <span className="block text-xs text-text-muted line-clamp-1">{candidate.current_title}</span>
+        )}
+        <span className="flex flex-wrap items-center gap-1.5 mt-1">
+          <span className={cn('inline-block px-2 py-0.5 rounded-full border text-[11px] font-medium', status.className)}>
             {status.label}
           </span>
-        </div>
-        {interviewed && <ScoreBadge label="Interview" score={candidate.interview_score} />}
-        {candidate.cv_score != null && <ScoreBadge label="CV" score={candidate.cv_score} />}
-        {hasDetail && (open ? <ChevronUp size={16} className="text-text-muted" /> : <ChevronDown size={16} className="text-text-muted" />)}
+          {candidate.status === 'COMPLETED' && <ScoreChip label="Interview" score={candidate.interview_score} />}
+          <ScoreChip label="CV" score={candidate.cv_score} />
+          {report?.complete && (
+            <span className={cn('inline-block px-2 py-0.5 rounded-full border text-[11px] font-medium', BAND_STYLE[report.band])}>
+              {report.band}
+            </span>
+          )}
+        </span>
+      </span>
+    </>
+  )
+
+  if (!openable) {
+    return <li className="flex items-center gap-3 rounded-xl border border-border bg-white p-3 opacity-80">{body}</li>
+  }
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected ? 'true' : undefined}
+        aria-label={`${rank}. ${candidate.name}`}
+        className={cn(
+          'w-full flex items-center gap-3 rounded-xl border bg-white p-3 text-left transition-colors',
+          selected ? 'border-brand-blue ring-2 ring-brand-blue/20' : 'border-border hover:border-brand-blue/40',
+        )}
+      >
+        {body}
       </button>
-
-      {open && hasDetail && (
-        <div className="border-t border-border px-4 py-4 bg-surface-muted space-y-4">
-          {showsClips(candidate.recordings, candidate.video_url) && (
-            <div>
-              <RecordingClips recordings={candidate.recordings} videoClassName="w-full rounded-lg bg-black" />
-              <p className="text-[11px] text-text-muted mt-1">
-                The video links are refreshed each time this page opens and stop working after about 15
-                minutes. Reload the page if one stops playing.
-              </p>
-              <RecordingNotice strict={candidate.strict} />
-            </div>
-          )}
-          {!candidate.video_url && !showsClips(candidate.recordings, candidate.video_url) && (
-            <RecordingNotice strict={candidate.strict} />
-          )}
-          {candidate.video_url && !showsClips(candidate.recordings, candidate.video_url) && (
-            <div>
-              <video controls preload="metadata" src={candidate.video_url} className="w-full rounded-lg bg-black" />
-              <p className="text-[11px] text-text-muted mt-1">
-                The video link is refreshed each time this page opens and stops working after about 15
-                minutes. Reload the page if it stops playing.
-              </p>
-              <RecordingNotice strict={candidate.strict} />
-            </div>
-          )}
-
-          <StrictInterviewNotes strict={candidate.strict} />
-
-          <Questions questions={candidate.questions ?? []} />
-
-          {/* A job with a scoring profile: the weighted table, the total or "incomplete", and the
-              suggested band. The written assessment follows in the card below. */}
-          {candidate.score_report && <WeightedScoreCard report={candidate.score_report} />}
-
-          {/* The practical case, scored on its own and never part of the weighted score */}
-          {candidate.practical_case && <PracticalCaseCard report={candidate.practical_case} />}
-
-          {/* The candidate assessment record, without the company's own panel decision */}
-          {candidate.record && <AssessmentRecordCard record={candidate.record} />}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {interviewed && (
-              <Assessment
-                title="Interview assessment"
-                score={candidate.interview_score}
-                summary={interview.summary}
-                sections={interview.sections}
-                emptyText="No assessment is available for this interview."
-              />
-            )}
-            <Assessment
-              title="CV assessment"
-              score={candidate.cv_score}
-              summary={candidate.cv_summary ? [candidate.cv_summary] : []}
-              strengths={candidate.cv_strengths}
-              weaknesses={candidate.cv_weaknesses}
-              emptyText="No CV assessment is available for this candidate on this job."
-            />
-          </div>
-
-          {(interviewed || endedEarly) && (
-            <div>
-              <h4 className="text-sm font-semibold text-text mb-2">Interview conversation</h4>
-              {candidate.transcript_note && (
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2">
-                  {candidate.transcript_note}
-                </p>
-              )}
-              {candidate.turns?.length > 0 ? (
-                <Conversation turns={candidate.turns} />
-              ) : candidate.transcript ? (
-                <div className="text-sm text-text leading-relaxed whitespace-pre-wrap rounded-lg border border-border p-3 bg-white">
-                  {candidate.transcript}
-                </div>
-              ) : (
-                <p className="text-xs text-text-muted">No transcript is available.</p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    </li>
   )
 }
 
@@ -288,16 +119,24 @@ function Message({ title, text }) {
 }
 
 /**
- * The page behind a job's "interview results" link: read-only, no login. Shows each
- * candidate on the job's interview list with the interview and CV assessments, the
- * recording, the questions the AI asked and the conversation.
+ * The page behind a job's "interview results" link: read-only, no login. A list of every
+ * candidate on the job's interview list, to compare and sort, and one candidate at a time
+ * beside it with the recording, the interview and CV assessments, the questions the AI asked and
+ * the conversation. The chosen candidate is kept in the address (`?c=3`), so a panel member can
+ * send a colleague straight to someone.
  */
 export default function SharedInterviewResultsPage() {
   const { token } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState(null)
   const [problem, setProblem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showAllFocus, setShowAllFocus] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sort, setSort] = useState('order')
+  // On a phone the list and the candidate take turns; on a wide screen they sit side by side.
+  const [detailOpen, setDetailOpen] = useState(() => searchParams.has('c'))
 
   useEffect(() => {
     let cancelled = false
@@ -316,6 +155,39 @@ export default function SharedInterviewResultsPage() {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [token])
+
+  // Each candidate keeps the number they have on the list, however the list is sorted or filtered.
+  const entries = useMemo(
+    () => (data?.candidates ?? []).map((candidate, i) => ({ candidate, rank: i + 1 })),
+    [data],
+  )
+
+  const statusCounts = useMemo(() => {
+    const counts = {}
+    entries.forEach(({ candidate }) => { counts[candidate.status] = (counts[candidate.status] ?? 0) + 1 })
+    return counts
+  }, [entries])
+
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    let list = entries.filter(({ candidate }) =>
+      (statusFilter === 'all' || candidate.status === statusFilter) &&
+      (!needle || candidate.name.toLowerCase().includes(needle)),
+    )
+    const key = SORT_KEY[sort]
+    if (key) {
+      // Highest first, and anyone without that score after everyone who has one.
+      list = [...list].sort((a, b) => {
+        const x = key(a.candidate)
+        const y = key(b.candidate)
+        if (x == null && y == null) return 0
+        if (x == null) return 1
+        if (y == null) return -1
+        return y - x
+      })
+    }
+    return list
+  }, [entries, search, statusFilter, sort])
 
   const noIndex = (
     <Helmet>
@@ -343,14 +215,38 @@ export default function SharedInterviewResultsPage() {
     )
   }
 
+  // The candidate in the address if there is one to open, else the first finished interview, else
+  // the first anyone can open.
+  const asked = Number(searchParams.get('c'))
+  const requested = entries.find(({ rank, candidate }) => rank === asked && hasDetail(candidate))
+  const selected =
+    requested ??
+    entries.find(({ candidate }) => candidate.status === 'COMPLETED') ??
+    entries.find(({ candidate }) => hasDetail(candidate)) ??
+    null
+
+  const openable = visible.filter(({ candidate }) => hasDetail(candidate))
+  const at = selected ? openable.findIndex((entry) => entry.rank === selected.rank) : -1
+
+  const choose = (entry) => {
+    setSearchParams({ c: String(entry.rank) }, { replace: true })
+    setDetailOpen(true)
+  }
+
   const expiry = formatDate(data.expires_at, { day: 'numeric', month: 'long', year: 'numeric' })
   const focus = data.interview_focus ?? ''
   const longFocus = focus.length > 400
+  const statusChips = [
+    { value: 'all', label: 'All', count: entries.length },
+    ...Object.keys(STATUS)
+      .filter((value) => statusCounts[value])
+      .map((value) => ({ value, label: STATUS[value].label, count: statusCounts[value] })),
+  ]
 
   return (
     <div className="min-h-screen bg-surface-muted">
       {noIndex}
-      <div className="max-w-3xl mx-auto px-4 py-10 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
         <div className="space-y-1">
           <p className="text-xs font-semibold text-text-muted">Interview results</p>
           <h1 className="text-2xl font-bold text-text font-sans">{data.job_title}</h1>
@@ -379,13 +275,88 @@ export default function SharedInterviewResultsPage() {
           </div>
         )}
 
-        {data.candidates.length === 0 ? (
+        {entries.length === 0 ? (
           <p className="text-sm text-text-muted text-center py-10">No candidates on this interview list yet.</p>
         ) : (
-          <div className="space-y-3">
-            {data.candidates.map((candidate, i) => (
-              <CandidateCard key={i} candidate={candidate} rank={i + 1} defaultOpen={i === 0 && candidate.status === 'COMPLETED'} />
-            ))}
+          <div className="grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start">
+            <div className={cn('space-y-3', detailOpen && 'hidden lg:block')}>
+              <div className="space-y-2">
+                <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1.5">
+                  {statusChips.length > 2 && statusChips.map((chip) => (
+                    <button
+                      key={chip.value}
+                      type="button"
+                      aria-pressed={statusFilter === chip.value}
+                      onClick={() => setStatusFilter(chip.value)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-semibold transition-colors',
+                        statusFilter === chip.value
+                          ? 'bg-brand-blue text-white'
+                          : 'bg-white border border-border text-text-muted hover:text-text',
+                      )}
+                    >
+                      {chip.label} ({chip.count})
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  {entries.length >= SEARCH_FROM && (
+                    <div className="relative flex-1 min-w-0">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
+                      <input
+                        type="search"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search by name"
+                        aria-label="Search candidates by name"
+                        className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                      />
+                    </div>
+                  )}
+                  <select
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value)}
+                    aria-label="Sort candidates by"
+                    className="py-2 pl-2 pr-6 text-sm rounded-lg border border-border bg-white focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                  >
+                    {SORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {visible.length === 0 ? (
+                <p className="text-sm text-text-muted text-center py-8">No candidate matches this search.</p>
+              ) : (
+                <ul aria-label="Candidates" className="space-y-2 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
+                  {visible.map((entry) => (
+                    <CandidateRow
+                      key={entry.rank}
+                      entry={entry}
+                      selected={selected?.rank === entry.rank}
+                      onSelect={() => choose(entry)}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className={cn(!detailOpen && 'hidden lg:block')}>
+              {selected ? (
+                <SharedCandidateDetail
+                  key={selected.rank}
+                  candidate={selected.candidate}
+                  rank={selected.rank}
+                  position={at >= 0 ? { index: at + 1, total: openable.length } : null}
+                  onPrevious={at > 0 ? () => choose(openable[at - 1]) : null}
+                  onNext={at >= 0 && at < openable.length - 1 ? () => choose(openable[at + 1]) : null}
+                  onBack={() => setDetailOpen(false)}
+                />
+              ) : (
+                <p className="rounded-xl border border-dashed border-border bg-white p-8 text-center text-sm text-text-muted">
+                  There is nothing to open yet. A candidate appears here once the interview is done.
+                </p>
+              )}
+            </div>
           </div>
         )}
 
