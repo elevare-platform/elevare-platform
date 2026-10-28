@@ -50,10 +50,12 @@ const RESULTS = {
   candidates: [COMPLETED, PENDING],
 }
 
-function renderPage() {
+const openTab = (name) => fireEvent.click(screen.getByRole('tab', { name }))
+
+function renderPage(url = '/shared/interviews/tok123') {
   return render(
     <HelmetProvider>
-      <MemoryRouter initialEntries={['/shared/interviews/tok123']}>
+      <MemoryRouter initialEntries={[url]}>
         <Routes>
           <Route path="/shared/interviews/:token" element={<SharedInterviewResultsPage />} />
         </Routes>
@@ -104,29 +106,28 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [ENDED_EARLY] } })
     renderPage()
 
-    expect(await screen.findByText('Ended early')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Bola Ade/ }))
-
-    expect(screen.getByRole('region', { name: 'Interview notes' })).toBeInTheDocument()
+    // Nobody finished, so the one that ended early opens on its own.
+    expect(await screen.findByRole('region', { name: 'Interview notes' })).toBeInTheDocument()
+    expect(screen.getAllByText('Ended early').length).toBeGreaterThan(0)
     expect(screen.getByRole('note')).toHaveTextContent('away from the interview screen for too long')
     expect(screen.getByText(/version S2, on/)).toBeInTheDocument()
-    expect(screen.getByText('Interview conversation')).toBeInTheDocument()
     expect(document.querySelector('video')).toHaveAttribute('src', 'https://signed.example/ended')
+    openTab('Conversation')
+    expect(screen.getByText('Interview conversation')).toBeInTheDocument()
   })
 
   it('shows no interview assessment for an interview that ended early, only the CV one', async () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [ENDED_EARLY] } })
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: /Bola Ade/ }))
+    await screen.findByText('CV assessment')
 
     expect(screen.queryByText('Interview assessment')).not.toBeInTheDocument()
-    expect(screen.getByText('CV assessment')).toBeInTheDocument()
   })
 
   it('says the notes are not proof and that no decision was made for the client', async () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [ENDED_EARLY] } })
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: /Bola Ade/ }))
+    await screen.findByRole('region', { name: 'Interview notes' })
 
     expect(screen.getByText(/They are not proof of anything/)).toBeInTheDocument()
     expect(screen.getByText(/no decision has been made for you/)).toBeInTheDocument()
@@ -150,8 +151,10 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
       },
     })
     const first = renderPage()
-    // A completed interview is open when the page loads.
-    expect(await screen.findByTestId('weighted-band')).toHaveTextContent('Hold for evidence')
+    // A completed interview is open when the page loads; its scores are on the Scores tab.
+    await screen.findByRole('tab', { name: 'Scores' })
+    openTab('Scores')
+    expect(screen.getByTestId('weighted-band')).toHaveTextContent('Hold for evidence')
     first.unmount()
 
     api.get.mockResolvedValueOnce({
@@ -161,7 +164,9 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
       },
     })
     renderPage()
-    expect(await screen.findByTestId('weighted-incomplete')).toBeInTheDocument()
+    await screen.findByRole('tab', { name: 'Scores' })
+    openTab('Scores')
+    expect(screen.getByTestId('weighted-incomplete')).toBeInTheDocument()
     expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
   })
 
@@ -181,7 +186,9 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     })
     renderPage()
 
-    expect(await screen.findByTestId('practical-score')).toHaveTextContent('4.0 / 5')
+    await screen.findByRole('tab', { name: 'Scores' })
+    openTab('Scores')
+    expect(screen.getByTestId('practical-score')).toHaveTextContent('4.0 / 5')
     expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
   })
 
@@ -196,7 +203,9 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     })
     renderPage()
 
-    expect(await screen.findByTestId('record-reference')).toHaveTextContent('EL-1A2B3C4D')
+    await screen.findByRole('tab', { name: 'Assessment record' })
+    openTab('Assessment record')
+    expect(screen.getByTestId('record-reference')).toHaveTextContent('EL-1A2B3C4D')
     expect(screen.getByText('Who led the roll-out?')).toBeInTheDocument()
     expect(screen.queryByTestId('panel-decision')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Record decision' })).not.toBeInTheDocument()
@@ -214,9 +223,7 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [reinstated] } })
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: /Bola Ade/ }))
-
-    expect(screen.getByText('Attempt 1')).toBeInTheDocument()
+    expect(await screen.findByText('Attempt 1')).toBeInTheDocument()
     expect(screen.getByText('Attempt 2, after the interview was reinstated')).toBeInTheDocument()
     expect([...document.querySelectorAll('video')].map((v) => v.getAttribute('src'))).toEqual([
       'https://signed.example/one',
@@ -237,8 +244,169 @@ describe('SharedInterviewResultsPage, strict interviews', () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [COMPLETED] } })
     renderPage()
 
-    await screen.findByText('Ada Obi')
+    await screen.findByText('Interview assessment')
     expect(screen.queryByRole('region', { name: 'Interview notes' })).not.toBeInTheDocument()
+  })
+})
+
+const person = (name, extra = {}) => ({ ...COMPLETED, name, ...extra })
+const rowNames = () => within(screen.getByRole('list', { name: 'Candidates' })).getAllByRole('listitem').map((li) => li.textContent)
+
+describe('SharedInterviewResultsPage, the list of candidates', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const THREE = [
+    person('Ada Obi', { interview_score: 60, cv_score: 90 }),
+    person('Chidi Okafor', { interview_score: 90, cv_score: 50 }),
+    person('Bola Ade', { interview_score: 75, cv_score: null }),
+  ]
+
+  it('sorts the list by a score, highest first, with anyone without it last, keeping each number', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
+    renderPage()
+    await screen.findByRole('list', { name: 'Candidates' })
+
+    fireEvent.change(screen.getByLabelText('Sort candidates by'), { target: { value: 'interview' } })
+    expect(rowNames().map((t) => t.match(/Ada|Chidi|Bola/)[0])).toEqual(['Chidi', 'Bola', 'Ada'])
+
+    fireEvent.change(screen.getByLabelText('Sort candidates by'), { target: { value: 'cv' } })
+    expect(rowNames().map((t) => t.match(/Ada|Chidi|Bola/)[0])).toEqual(['Ada', 'Chidi', 'Bola'])
+    // Bola was third on the list and still is called 3, however the list is sorted.
+    expect(rowNames()[2]).toMatch(/^3/)
+  })
+
+  it('filters by status, with a count on each, and says nothing when there is one status only', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [THREE[0], ENDED_EARLY, PENDING] } })
+    renderPage()
+    await screen.findByRole('list', { name: 'Candidates' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ended early (1)' }))
+    expect(rowNames()).toHaveLength(1)
+    expect(rowNames()[0]).toMatch(/Bola Ade/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'All (3)' }))
+    expect(rowNames()).toHaveLength(3)
+  })
+
+  it('shows no status filter when every candidate is in the same state', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
+    renderPage()
+    await screen.findByRole('list', { name: 'Candidates' })
+
+    expect(screen.queryByRole('button', { name: /^All/ })).not.toBeInTheDocument()
+  })
+
+  it('searches by name once the list is long, and says when nobody matches', async () => {
+    const many = Array.from({ length: 7 }, (_, i) => person(`Person ${i + 1}`))
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: many } })
+    renderPage()
+    await screen.findByRole('list', { name: 'Candidates' })
+
+    fireEvent.change(screen.getByLabelText('Search candidates by name'), { target: { value: 'person 4' } })
+    expect(rowNames()).toHaveLength(1)
+
+    fireEvent.change(screen.getByLabelText('Search candidates by name'), { target: { value: 'nobody' } })
+    expect(screen.getByText('No candidate matches this search.')).toBeInTheDocument()
+  })
+
+  it('has no search box on a short list', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
+    renderPage()
+    await screen.findByRole('list', { name: 'Candidates' })
+
+    expect(screen.queryByLabelText('Search candidates by name')).not.toBeInTheDocument()
+  })
+
+  it('shows the suggested band on the row of a candidate with a complete weighted score', async () => {
+    const report = {
+      rows: [], bands: {}, key_flags: [], complete: true, score: 88, band: 'Strong shortlist', unassessed: [],
+    }
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [person('Ada Obi', { score_report: report })] } })
+    renderPage()
+
+    const row = within(await screen.findByRole('button', { name: /Ada Obi/ }))
+    expect(row.getByText('Strong shortlist')).toBeInTheDocument()
+  })
+
+  it('steps to the next and previous candidate in the list as it is shown, and stops at the ends', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
+    renderPage()
+    await screen.findByRole('region', { name: 'Ada Obi, interview details' })
+
+    expect(screen.getByText('Candidate 1 of 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Previous candidate' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next candidate' }))
+    expect(screen.getByRole('region', { name: 'Chidi Okafor, interview details' })).toBeInTheDocument()
+    expect(screen.getByText('Candidate 2 of 3')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next candidate' }))
+    expect(screen.getByText('Candidate 3 of 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next candidate' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous candidate' }))
+    expect(screen.getByRole('region', { name: 'Chidi Okafor, interview details' })).toBeInTheDocument()
+  })
+
+  it('skips a candidate with nothing to open when stepping, and gives that row no button', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [THREE[0], PENDING, THREE[1]] } })
+    renderPage()
+    await screen.findByRole('region', { name: 'Ada Obi, interview details' })
+
+    expect(screen.queryByRole('button', { name: /Candidate 2/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next candidate' }))
+    expect(screen.getByRole('region', { name: 'Chidi Okafor, interview details' })).toBeInTheDocument()
+    expect(screen.getByText('Candidate 2 of 2')).toBeInTheDocument()
+  })
+
+  it('opens the candidate named in the address', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
+    renderPage('/shared/interviews/tok123?c=3')
+
+    expect(await screen.findByRole('region', { name: 'Bola Ade, interview details' })).toBeInTheDocument()
+  })
+
+  it('opens the first finished interview when the address names nobody who can be opened', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [PENDING, THREE[0]] } })
+    renderPage('/shared/interviews/tok123?c=1')
+
+    expect(await screen.findByRole('region', { name: 'Ada Obi, interview details' })).toBeInTheDocument()
+  })
+
+  it('says there is nothing to open yet when nobody has an interview or a CV assessment', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [PENDING] } })
+    renderPage()
+
+    expect(await screen.findByText(/There is nothing to open yet/)).toBeInTheDocument()
+    expect(screen.getByText('Not interviewed yet')).toBeInTheDocument()
+  })
+
+  it('opens on the Summary tab for each candidate, and has no Scores or Record tab without them', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
+    renderPage()
+    await screen.findByRole('region', { name: 'Ada Obi, interview details' })
+
+    expect(screen.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('tab', { name: 'Scores' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Assessment record' })).not.toBeInTheDocument()
+
+    openTab('Conversation')
+    fireEvent.click(screen.getByRole('button', { name: 'Next candidate' }))
+    expect(screen.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('on a phone, hides the list while a candidate is open and brings it back', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
+    renderPage()
+    const list = await screen.findByRole('list', { name: 'Candidates' })
+    // Before anyone is chosen the list is what a phone shows.
+    expect(list.closest('div.hidden')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /Chidi Okafor/ }))
+    expect(list.closest('div.hidden')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to all candidates' }))
+    expect(list.closest('div.hidden')).toBeNull()
   })
 })
 
@@ -275,7 +443,9 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     renderPage()
 
-    const heading = await screen.findByText('Questions asked')
+    await screen.findByRole('tab', { name: 'Conversation' })
+    openTab('Conversation')
+    const heading = screen.getByText('Questions asked')
     const list = heading.closest('div').querySelector('ol')
     expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
       'Tell me about managing distributors?',
@@ -291,7 +461,7 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     const { container } = renderPage()
 
-    await screen.findByText('Questions asked')
+    await screen.findByText(/Reload the page if it stops playing/)
     expect(container.querySelector('video')).toHaveAttribute('src', 'https://signed.example/video')
     expect(screen.getByText(/Reload the page if it stops playing/)).toBeInTheDocument()
   })
@@ -314,9 +484,9 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     renderPage()
 
-    await screen.findByText('Ada Obi')
-    expect(screen.getAllByText('82').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('74').length).toBeGreaterThan(0)
+    const row = within(await screen.findByRole('button', { name: /Ada Obi/ }))
+    expect(row.getByText('Interview').parentElement).toHaveTextContent('Interview 82')
+    expect(row.getByText('CV').parentElement).toHaveTextContent('CV 74')
   })
 
   it('lists a candidate who has not interviewed, with a plain status and nothing to open', async () => {
@@ -338,22 +508,25 @@ describe('SharedInterviewResultsPage', () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [plain] } })
     renderPage()
 
-    expect(await screen.findByText('Just the words the recording contains.')).toBeInTheDocument()
+    await screen.findByRole('tab', { name: 'Conversation' })
+    openTab('Conversation')
+    expect(screen.getByText('Just the words the recording contains.')).toBeInTheDocument()
     expect(screen.getByText(/no speaker labels/)).toBeInTheDocument()
     expect(screen.queryByText('Questions asked')).not.toBeInTheDocument()
   })
 
-  it('opens and closes a candidate’s details', async () => {
-    const second = { ...COMPLETED, name: 'Chidi Okafor', interview_score: 60 }
+  it('opens the first finished interview, and another when its row is chosen', async () => {
+    const second = { ...COMPLETED, name: 'Chidi Okafor', interview_score: 60, cv_summary: 'Second CV.' }
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [COMPLETED, second] } })
     renderPage()
-    await screen.findByText('Ada Obi')
-    // The first completed interview is open; the second is not.
-    expect(screen.getAllByText('Questions asked')).toHaveLength(1)
+    const detail = await screen.findByRole('region', { name: 'Ada Obi, interview details' })
+    expect(within(detail).getByText('Strong sales background.')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Chidi Okafor'))
+    fireEvent.click(screen.getByRole('button', { name: /Chidi Okafor/ }))
 
-    expect(screen.getAllByText('Questions asked')).toHaveLength(2)
+    expect(screen.getByRole('region', { name: 'Chidi Okafor, interview details' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Ada Obi, interview details' })).not.toBeInTheDocument()
+    expect(screen.getByText('Second CV.')).toBeInTheDocument()
   })
 
   it('shortens a long interview focus and can show all of it', async () => {
@@ -378,7 +551,7 @@ describe('SharedInterviewResultsPage', () => {
   it('tells search engines to stay away', async () => {
     api.get.mockResolvedValueOnce({ data: RESULTS })
     renderPage()
-    await screen.findByText('Ada Obi')
+    await screen.findByText('Regional Sales Manager')
 
     await waitFor(() =>
       expect(document.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow')

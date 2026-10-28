@@ -1,13 +1,6 @@
 import { Scale } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { BAND_NAMES } from '@/lib/scoringProfile'
-
-const BAND_STYLE = {
-  [BAND_NAMES.strong]: 'bg-green-100 text-green-800 border-green-200',
-  [BAND_NAMES.shortlist]: 'bg-green-50 text-green-700 border-green-200',
-  [BAND_NAMES.hold]: 'bg-amber-100 text-amber-800 border-amber-200',
-  [BAND_NAMES.not]: 'bg-gray-100 text-gray-700 border-gray-200',
-}
+import { BAND_NAMES, BAND_STYLE } from '@/lib/scoringProfile'
 
 const points = (value) => (Number.isInteger(value) ? String(value) : value.toFixed(1))
 
