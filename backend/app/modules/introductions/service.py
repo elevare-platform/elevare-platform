@@ -57,6 +57,8 @@ def _resolve_display_name(profile, accepted: bool) -> str | None:
     if profile.candidate_profile and profile.candidate_profile.user:
         u = profile.candidate_profile.user
         return f"{u.first_name} {u.last_name}".strip() or None
+    if profile.override_name:
+        return profile.override_name
     if profile.parsed_submission and profile.parsed_submission.parsed_data:
         pd = profile.parsed_submission.parsed_data
         return pd.get("full_name") or (

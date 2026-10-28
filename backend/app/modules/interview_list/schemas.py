@@ -51,6 +51,8 @@ class InterviewListEntryResponse(BaseModel):
     # the email as its name and offers nothing to open.
     email_only: bool = False
     candidate_name: str | None = None
+    # True when ``candidate_name`` is the one an employer typed in, not the one read from the CV.
+    name_overridden: bool = False
     current_title: str | None = None
     location: str | None = None
     years_of_experience: int | None = None

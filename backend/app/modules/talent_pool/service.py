@@ -29,6 +29,7 @@ from app.modules.talent_pool.models import TalentPoolProfiles
 from app.modules.talent_pool.repository import TalentPoolRepository
 from app.modules.talent_pool.schema import (
     TalentMatchListResponse,
+    TalentPoolNameResponse,
     TalentPoolProfileResponse,
     TalentPoolPromoteResponse,
     TalentPoolStatusUpdateRequest,
@@ -124,8 +125,15 @@ async def resolve_match_display_fields(
                 # PUBLIC — always show
                 parsed_name = f"{u.first_name} {u.last_name}".strip()
 
+    # A name an employer typed in replaces the one read from the CV. Only for a sourced
+    # candidate: a self-registered one has the name on their own account.
+    name_overridden = bool(profile.override_name) and candidate_profile is None
+    if name_overridden:
+        parsed_name = profile.override_name
+
     return {
         "name": parsed_name,
+        "name_overridden": name_overridden,
         "current_title": parsed_current_title,
         "profession": parsed_profession,
         # Full list, not truncated — callers need the complete set for
@@ -226,6 +234,9 @@ class TalentPoolService:
                 response.skills = data.get("skills") or []
         if profile.override_email:
             response.candidate_email = profile.override_email
+        if profile.override_name and profile.candidate_profile_id is None:
+            response.candidate_name = profile.override_name
+            response.name_overridden = True
         return response
 
     async def _can_auto_score(
@@ -636,6 +647,61 @@ class TalentPoolService:
         profile = await self._repo.update(profile_id, {"override_email": email})
         await self._db.commit()
         return await self.get_profile(profile_id, current_user)
+
+    async def update_name(
+        self,
+        profile_id: uuid.UUID,
+        name: str | None,
+        current_user: User,
+    ) -> TalentPoolNameResponse:
+        """Set, or take away, the name an employer types in when the name read from a sourced
+        CV is wrong. It replaces the CV's name everywhere the candidate is shown; the CV and its
+        parsed data are not changed. ``name`` is already cleaned and ``None`` clears it.
+
+        Who may: anyone in the company of the person who sourced the candidate (decision D2), or
+        an Elevare admin. The name is shown to everyone who sees this profile, so a person who
+        only holds an accepted introduction to an admin-sourced candidate may not change it.
+        """
+        profile = await self._repo.get_by_id(profile_id)
+        if not profile:
+            raise SubmissionNotFound()
+        if profile.candidate_profile_id is not None:
+            raise ValidationException(
+                "This candidate registered themselves, so their name comes from their own profile.",
+                code="NAME_NOT_EDITABLE",
+            )
+        if not await self._may_edit_name(profile, current_user):
+            raise PermissionDeniedException("You don't have access to change this candidate's name.")
+
+        before = profile.override_name
+        profile = await self._repo.update(profile_id, {"override_name": name})
+        await self._db.commit()
+        logger.info(
+            "talent pool name %s: profile=%s by user=%s (was %r, now %r)",
+            "set" if name else "cleared",
+            profile_id,
+            current_user.id,
+            before,
+            name,
+        )
+        response = TalentPoolProfileResponse.model_validate(profile)
+        await self._enrich(profile, response)
+        return TalentPoolNameResponse(
+            id=profile.id,
+            candidate_name=response.candidate_name,
+            name_overridden=response.name_overridden,
+        )
+
+    async def _may_edit_name(self, profile, current_user: User) -> bool:
+        """An admin, the person who sourced the profile, or anyone in that person's company."""
+        if current_user.role == UserRole.ADMIN.value:
+            return True
+        if profile.added_by == current_user.id:
+            return True
+        if current_user.organization_id is None:
+            return False
+        owner = await UserRepository(self._db).get_user_by_id(profile.added_by)
+        return owner is not None and owner.organization_id == current_user.organization_id
 
     async def update_status(
         self,

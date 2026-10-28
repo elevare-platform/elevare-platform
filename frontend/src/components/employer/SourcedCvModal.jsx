@@ -4,6 +4,7 @@ import { X, Users, Brain, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { matchScoreBand, scoreFailureHelp } from '@/lib/matchScore'
+import CandidateNameEditor from '@/components/employer/CandidateNameEditor'
 
 /**
  * SourcedCvModal - shown for sourced-only talent pool profiles (no
@@ -121,9 +122,22 @@ export default function SourcedCvModal({ profileId, jobId, hasInterviewBrief, on
                   <Users size={24} className="text-brand-blue" />
                 </div>
                 <div>
-                  <p className="font-semibold text-text text-base">
-                    {profile.candidate_name ?? profile.candidate_email ?? 'Unnamed Candidate'}
-                  </p>
+                  <div className="font-semibold text-text text-base">
+                    {/* A CV's name is often misread, so it can be corrected here */}
+                    <CandidateNameEditor
+                      profileId={profileId}
+                      name={profile.candidate_name ?? profile.candidate_email}
+                      overridden={Boolean(profile.name_overridden)}
+                      onSaved={(saved) =>
+                        setProfile((current) => ({
+                          ...current,
+                          candidate_name: saved.candidate_name,
+                          name_overridden: saved.name_overridden,
+                        }))
+                      }
+                      fallback="Unnamed Candidate"
+                    />
+                  </div>
                   {profile.candidate_current_title && (
                     <p className="text-sm text-text-muted mt-0.5">{profile.candidate_current_title}</p>
                   )}

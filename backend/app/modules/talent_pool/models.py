@@ -60,6 +60,12 @@ class TalentPoolProfiles(BaseModel):
         String(255),
         nullable=True,
     )
+    # The name an employer typed in when the name read from the CV is wrong. Shown in place of
+    # the CV's name for a sourced candidate (a self-registered one has a real account name).
+    override_name: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+    )
     sourced_for_job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("jobs.id", ondelete="SET NULL"),

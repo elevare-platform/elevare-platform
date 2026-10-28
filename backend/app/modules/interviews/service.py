@@ -214,6 +214,8 @@ def resolve_candidate_name(profile) -> str | None:
     if profile.candidate_profile and profile.candidate_profile.user:
         user = profile.candidate_profile.user
         return f"{user.first_name} {user.last_name}".strip() or None
+    if profile.override_name:
+        return profile.override_name
     if profile.parsed_submission and profile.parsed_submission.parsed_data:
         return profile.parsed_submission.parsed_data.get("full_name")
     return None
