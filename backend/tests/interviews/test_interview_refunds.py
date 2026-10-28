@@ -330,3 +330,126 @@ async def test_a_failure_on_an_admin_owned_job_has_nothing_to_refund(
     updated = await InterviewRepository(db_session).get_by_id(interview.id)
     assert updated.status == InterviewStatus.FAILED.value
     assert await _refund_rows(db_session, interview) == []
+
+
+# ── The stale sweep: a strict interview that was never finished ────────────────
+
+
+async def _stale_interview(db_session, *, strict=True, **kwargs):
+    """A paid interview left IN_PROGRESS for three hours (the sweep's two-hour window)."""
+    from app.modules.interviews.models import StrictInterviewRun
+
+    employer, organization, interview = await _paid_interview(
+        db_session,
+        expired=False,
+        status=InterviewStatus.IN_PROGRESS.value,
+        updated_at=datetime.now(UTC) - timedelta(hours=3),
+        **kwargs,
+    )
+    if strict:
+        db_session.add(StrictInterviewRun(interview_id=interview.id))
+        await db_session.commit()
+    return employer, organization, interview
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_gives_back_the_credits_of_a_strict_interview_it_marks_failed(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, organization, interview = await _stale_interview(db_session)
+    assert await _balance(db_session, organization) == 90
+
+    await interviews_tasks._reap_stale_interviews_async()
+
+    updated = await InterviewRepository(db_session).get_by_id(interview.id)
+    assert updated.status == InterviewStatus.FAILED.value
+    assert await _balance(db_session, organization) == 100
+    assert len(await _refund_rows(db_session, interview)) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_does_not_refund_a_live_interview_the_candidate_abandoned(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, organization, interview = await _stale_interview(db_session, strict=False)
+
+    await interviews_tasks._reap_stale_interviews_async()
+
+    updated = await InterviewRepository(db_session).get_by_id(interview.id)
+    assert updated.status == InterviewStatus.FAILED.value
+    assert await _balance(db_session, organization) == 90
+    assert await _refund_rows(db_session, interview) == []
+
+
+@pytest.mark.asyncio
+async def test_a_second_sweep_does_not_refund_again(db_session, monkeypatch):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, organization, interview = await _stale_interview(db_session)
+
+    await interviews_tasks._reap_stale_interviews_async()
+    await interviews_tasks._reap_stale_interviews_async()
+
+    assert await _balance(db_session, organization) == 100
+    assert len(await _refund_rows(db_session, interview)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failing_refund_never_stops_the_sweep_and_comes_after_the_failed_status(
+    db_session, monkeypatch, caplog
+):
+    """The refund is its own step, after FAILED is saved: when it breaks the sweep still
+    finishes and says so in the log. (The test session shares one transaction, so the status
+    is read at the moment the refund runs rather than after its rollback.)"""
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, interview = await _stale_interview(db_session)
+    interview_id = interview.id
+    seen = []
+
+    async def broken(db, refunded_id):
+        seen.append((await InterviewRepository(db).get_by_id(refunded_id)).status)
+        raise RuntimeError("credits are down")
+
+    monkeypatch.setattr(interviews_tasks, "refund_interview_credits", broken)
+
+    await interviews_tasks._reap_stale_interviews_async()
+
+    assert seen == [InterviewStatus.FAILED.value]
+    assert f"failed to refund credits for interview {interview_id}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_strict_interview_on_an_admin_owned_job_has_nothing_to_refund(
+    db_session, monkeypatch
+):
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    _, _, interview = await _stale_interview(db_session, admin_owned=True)
+
+    await interviews_tasks._reap_stale_interviews_async()
+
+    updated = await InterviewRepository(db_session).get_by_id(interview.id)
+    assert updated.status == InterviewStatus.FAILED.value
+    assert await _refund_rows(db_session, interview) == []
+
+
+@pytest.mark.asyncio
+async def test_recovering_an_interview_the_sweep_refunded_charges_it_again(db_session, monkeypatch):
+    """The refund is not a free pass: the employer who reopens or restarts the interview pays
+    for it again, as for any resend of a refunded interview."""
+    from app.modules.credits.service import CreditsService
+
+    _patch_engine_to_use_test_session(monkeypatch, db_session)
+    monkeypatch.setattr(interview_service_module.settings, "interview_credit_cost", PRICE)
+    employer, organization, interview = await _stale_interview(db_session)
+    await interviews_tasks._reap_stale_interviews_async()
+    assert await _balance(db_session, organization) == 100
+    interview = await InterviewRepository(db_session).get_by_id(interview.id)
+
+    service = InterviewService(db_session)
+    try:
+        await service._charge_for_invite(interview.job, interview.id)
+    finally:
+        await service.close()
+
+    assert await CreditsService(db_session).get_balance(organization.id) == 90

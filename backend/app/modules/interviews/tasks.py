@@ -999,13 +999,44 @@ async def _reap_stale_interviews_async() -> None:
                 logger.info("reap_stale_interviews: no stale interviews to reap")
                 return
 
-            for interview in stale_interviews:
-                await repo.update(interview.id, {"status": InterviewStatus.FAILED.value})
+            # Read before anything is committed or rolled back: a rollback expires the rows.
+            stale_ids = [interview.id for interview in stale_interviews]
+            for interview_id in stale_ids:
+                await repo.update(interview_id, {"status": InterviewStatus.FAILED.value})
             await db.commit()
 
             logger.warning(
                 "reap_stale_interviews: marked %d orphaned interview(s) failed",
-                len(stale_interviews),
+                len(stale_ids),
             )
+
+            # The employer gets no result from a strict interview that was never finished, so
+            # their credits are given back (once; a recovery charges them again). A live
+            # interview the candidate abandoned is not refunded: its realtime cost was spent
+            # and a resend is free. Kept apart from marking FAILED, so a problem here can never
+            # undo that status.
+            for interview_id in stale_ids:
+                try:
+                    strict = await db.execute(
+                        select(StrictInterviewRun.id).where(
+                            StrictInterviewRun.interview_id == interview_id
+                        )
+                    )
+                    if strict.first() is None:
+                        continue
+                    returned = await refund_interview_credits(db, interview_id)
+                    await db.commit()
+                    if returned:
+                        logger.info(
+                            "reap_stale_interviews: refunded %d credit(s) for interview %s",
+                            returned,
+                            interview_id,
+                        )
+                except Exception:
+                    logger.exception(
+                        "reap_stale_interviews: failed to refund credits for interview %s",
+                        interview_id,
+                    )
+                    await db.rollback()
         finally:
             await engine.dispose()

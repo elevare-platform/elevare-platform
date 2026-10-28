@@ -1197,12 +1197,21 @@ const NEVER_FINISHED_META = {
 }
 const SCORING_FAILED_META = {
   button: null,
+  retry: true,
   reviewLabel: 'Review interview',
   badge: 'Scoring failed',
   badgeClass: 'text-red-600',
 }
+// Shown after "Retry scoring" is pressed, until the page is next loaded.
+const SCORING_AGAIN_META = {
+  button: null,
+  reviewLabel: 'Review interview',
+  badge: 'Scoring again. Check back in a minute.',
+  badgeClass: 'text-blue-600',
+}
 
 function interviewMeta(status, failure) {
+  if (status === 'SCORING') return SCORING_AGAIN_META
   if (status === 'FAILED' && failure === 'NEVER_FINISHED') return NEVER_FINISHED_META
   if (status === 'FAILED' && failure === 'SCORING_FAILED') return SCORING_FAILED_META
   return status ? INTERVIEW_STATUS_META[status] : null
@@ -1229,6 +1238,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
   const interviewStatus = statusOverride ?? item.interview_status ?? null
   const statusMeta = interviewMeta(interviewStatus, statusOverride ? null : item.interview_failure)
   const [recovering, setRecovering] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const [confirmStartOver, setConfirmStartOver] = useState(false)
   const [recoverNote, setRecoverNote] = useState(null)
   const needsEmail = sendError === 'No email on file for this candidate'
@@ -1272,6 +1282,30 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
       setSendError(interviewUnavailableMessage(err) ?? 'Something went wrong')
     } finally {
       setSending(false)
+    }
+  }
+
+  // Scores an interview again after scoring failed: the recording and the transcript are kept, so
+  // the candidate does nothing. The credits given back when it failed are taken again.
+  const handleRetryScoring = async () => {
+    if (retrying) return
+    setRetrying(true)
+    setSendError(null)
+    try {
+      await api.post('/api/v1/interviews/score', null, {
+        params: { job_id: jobId, talent_pool_profile_id: item.talent_pool_profile_id },
+      })
+      setStatusOverride('SCORING')
+      onInvited?.()
+    } catch (err) {
+      const message = err.response?.data?.message
+      setSendError(
+        err.response
+          ? (typeof message === 'string' ? message : 'Something went wrong')
+          : 'We could not reach the server. Check your connection and try again.'
+      )
+    } finally {
+      setRetrying(false)
     }
   }
 
@@ -1479,7 +1513,7 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
           <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
           <span className="text-[11px] text-text-muted text-right">
             The candidate finished answering but the recording did not arrive. Reopening works if their
-            browser still has it.
+            browser still has it. If this interview&apos;s credit was given back, either choice uses one again.
           </span>
           {sendError && <span className="text-[11px] text-red-600">Failed: {sendError}</span>}
         </div>
@@ -1497,7 +1531,23 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
           >
             <PlayCircle size={13} /> {statusMeta.reviewLabel ?? 'Review interview'}
           </button>
+          {statusMeta.retry && (
+            <button
+              type="button"
+              onClick={handleRetryScoring}
+              disabled={retrying}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors disabled:opacity-50"
+            >
+              <Sparkles size={13} /> {retrying ? 'Starting…' : 'Retry scoring'}
+            </button>
+          )}
           <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
+          {statusMeta.retry && (
+            <span className="text-[11px] text-text-muted text-right max-w-[16rem]">
+              The recording arrived but scoring did not finish. If its credit was given back, retrying uses one again.
+            </span>
+          )}
+          {sendError && statusMeta.reviewLabel && <span className="text-[11px] text-red-600">Failed: {sendError}</span>}
         </div>
       )}
 

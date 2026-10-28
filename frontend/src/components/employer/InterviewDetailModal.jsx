@@ -157,6 +157,10 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
     }
   }
 
+  // The recording arrived and scoring failed for good (a recording that never arrived has no
+  // completion time and is recovered from the Interview List instead).
+  const scoringFailed = detail?.status === 'FAILED' && Boolean(detail?.completed_at)
+
   const handleScore = async () => {
     // Scoring an interview that ended early closes it: it can no longer be reinstated.
     if (
@@ -362,7 +366,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                         <Loader2 size={13} className="animate-spin" />
                         Scoring this interview…
                       </p>
-                    ) : detail.status === 'SCORED' || detail.status === 'UPLOADED' || isEndedStatus(detail.status) ? (
+                    ) : detail.status === 'SCORED' || detail.status === 'UPLOADED' || isEndedStatus(detail.status) || scoringFailed ? (
                       <div className="space-y-1.5">
                         <button
                           type="button"
@@ -370,8 +374,13 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
                         >
                           <Sparkles size={13} />
-                          {isEndedStatus(detail.status) ? 'Score what was recorded' : 'Generate score'}
+                          {isEndedStatus(detail.status) ? 'Score what was recorded' : scoringFailed ? 'Retry scoring' : 'Generate score'}
                         </button>
+                        {scoringFailed && (
+                          <p className="text-xs text-text-muted">
+                            Scoring did not finish. If its credit was given back, retrying uses one again.
+                          </p>
+                        )}
                         {scoreError && (
                           <p className="text-xs text-red-600">
                             {scoreError}
