@@ -12,7 +12,7 @@ vi.mock('@/lib/strictInterview', async (importOriginal) => ({
   checkDevice: vi.fn(() => ({ ok: true, problems: [] })),
 }))
 
-import { putBlob, uploadRecording } from '@/lib/interviewUpload'
+import { putBlob, uploadRecording, UploadError } from '@/lib/interviewUpload'
 import { checkDevice } from '@/lib/strictInterview'
 import { STRICT_RULES_VERSION } from '@/lib/interviewRules'
 import StrictInterviewFlow from './StrictInterviewFlow'
@@ -569,6 +569,120 @@ describe('StrictInterviewFlow, finishing', () => {
     expect(uploadRecording).toHaveBeenCalledTimes(2)
     expect(uploadRecording.mock.calls[1][0].blob).toBe(uploadRecording.mock.calls[0][0].blob)
     expect(completeUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells the candidate why the upload failed, and tells the server too', async () => {
+    uploadRecording.mockRejectedValueOnce(new UploadError('The upload was rejected (403).', 403, 'rejected'))
+    const reportUploadFailure = vi.fn(async () => {})
+    setup({ sendAnswer: vi.fn(async () => FINISHED), reportUploadFailure })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByText(/did not accept the recording \(code 403\)/)).toBeInTheDocument()
+    expect(reportUploadFailure).toHaveBeenCalledTimes(1)
+    expect(reportUploadFailure).toHaveBeenCalledWith({
+      stage: 'file',
+      reason: 'rejected',
+      http_status: 403,
+      attempt: 1,
+      size_bytes: expect.any(Number),
+    })
+  })
+
+  it('reports every try that failed, counting them, not only the last', async () => {
+    const dropped = new UploadError('The connection dropped during the upload.', undefined, 'blocked_or_dropped')
+    uploadRecording.mockImplementationOnce(async ({ onRetry }) => {
+      onRetry(1, dropped)
+      onRetry(2, dropped)
+      throw dropped
+    })
+    const reportUploadFailure = vi.fn(async () => {})
+    setup({ sendAnswer: vi.fn(async () => FINISHED), reportUploadFailure })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText(/firewall/)
+
+    expect(reportUploadFailure.mock.calls.map(([body]) => [body.stage, body.reason, body.attempt])).toEqual([
+      ['file', 'blocked_or_dropped', 1],
+      ['file', 'blocked_or_dropped', 2],
+      ['file', 'blocked_or_dropped', 3],
+    ])
+  })
+
+  it('reports a failure to confirm the upload as its own stage, with the server’s words', async () => {
+    const reportUploadFailure = vi.fn(async () => {})
+    setup({
+      sendAnswer: vi.fn(async () => FINISHED),
+      reportUploadFailure,
+      completeUpload: vi.fn(async () => {
+        throw { response: { status: 422, data: { code: 'X', message: 'We could not confirm it.' } } }
+      }),
+    })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByText('We could not confirm it.')).toBeInTheDocument()
+    expect(reportUploadFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: 'confirm', reason: 'other', http_status: 422, attempt: 1 })
+    )
+  })
+
+  it('still lets the candidate retry when the report itself cannot be sent', async () => {
+    uploadRecording.mockRejectedValueOnce(new UploadError('x', undefined, 'timeout'))
+    setup({
+      sendAnswer: vi.fn(async () => FINISHED),
+      reportUploadFailure: vi.fn(async () => {
+        throw new Error('offline')
+      }),
+    })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry upload' }))
+
+    expect(await screen.findByText('Interview submitted')).toBeInTheDocument()
+  })
+
+  it('works without a way to report, as for a page that does not give one', async () => {
+    uploadRecording.mockRejectedValueOnce(new UploadError('x', undefined, 'offline'))
+    setup({ sendAnswer: vi.fn(async () => FINISHED) })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByText(/not connected to the internet/)).toBeInTheDocument()
+  })
+
+  it('offers to save the recording to the device when it will not upload, and saves the same recording', async () => {
+    uploadRecording.mockRejectedValueOnce(new UploadError('x', undefined, 'blocked_or_dropped'))
+    URL.createObjectURL = vi.fn(() => 'blob:copy')
+    URL.revokeObjectURL = vi.fn()
+    const clicked = []
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
+      clicked.push({ href: this.href, download: this.download })
+    })
+    setup({ sendAnswer: vi.fn(async () => FINISHED) })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Save the recording to this device' }))
+
+    expect(URL.createObjectURL).toHaveBeenCalledWith(uploadRecording.mock.calls[0][0].blob)
+    expect(clicked).toEqual([{ href: 'blob:copy', download: 'interview-recording.webm' }])
+    click.mockRestore()
+  })
+
+  it('does not offer to save a copy while the recording is still uploading or after it arrived', async () => {
+    setup({ sendAnswer: vi.fn(async () => FINISHED) })
+    await acceptAndStart()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText('Interview submitted')
+
+    expect(screen.queryByRole('button', { name: 'Save the recording to this device' })).not.toBeInTheDocument()
   })
 
   it('goes straight to sending the recording when a returning candidate finds the time was up', async () => {

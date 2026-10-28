@@ -89,6 +89,11 @@ export default function InterviewInvitePage() {
     await api.post(`/api/v1/public/interviews/${token}/complete`, {})
   }, [token])
 
+  // Tells the server that sending the recording failed and why, for the log (best effort).
+  const reportUploadFailure = useCallback(async (body) => {
+    await api.post(`/api/v1/public/interviews/${token}/upload-failure`, body)
+  }, [token])
+
   if (loadError) {
     return (
       <main className="min-h-screen bg-background flex items-center justify-center px-4 py-10">
@@ -121,6 +126,7 @@ export default function InterviewInvitePage() {
         reportEvent={reportStrictEvent}
         stopInterview={stopStrict}
         completeUpload={completeStrict}
+        reportUploadFailure={reportUploadFailure}
         requestPartUploadUrl={requestPartUploadUrl}
         subtitle={subtitle}
         maxMinutes={info.max_duration_minutes}
