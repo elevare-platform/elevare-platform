@@ -25,7 +25,7 @@ from app.modules.interviews.repository import InterviewRepository
 from app.modules.talent_pool.models import TalentPoolProfiles
 from tests.conftest import make_employer, make_organization_for
 
-from .test_strict_conduct import _headers, events_of, run_of, started
+from .test_strict_conduct import _headers, events_of, run_of, started, stop
 from .test_strict_interview import _base, answer, start
 
 ONE_QUESTION = [("Tell us about a system you designed.", 120)]
@@ -50,6 +50,7 @@ def storage(monkeypatch):
     """Storage that holds nothing, and a scoring task that records it was queued."""
     storage = MagicMock()
     storage.get_object_size = AsyncMock(return_value=0)
+    storage.delete_file = AsyncMock()
     monkeypatch.setattr(service_module, "get_storage_service", lambda: storage)
     scoring = MagicMock()
     monkeypatch.setattr(service_module, "transcribe_and_score_interview_task", scoring)
@@ -435,3 +436,106 @@ async def test_an_interview_waiting_for_its_recording_is_stale_after_three_days(
     await _idle_since(db_session, interview, 24 * 3 + 1, with_key=True)
 
     assert [row.id for row in await _stale(db_session)] == [interview.interview.id]
+
+
+# ---------------------------------------------------------------------------
+# An interview that ended early can be started over (a retake)
+# ---------------------------------------------------------------------------
+
+
+async def ended_with_an_empty_recording(client, db_session, clock, *, email=True):
+    """A strict interview the candidate stopped, whose recording arrived with nothing in it: the
+    employer sees "Review and reinstate", no video, and the answers."""
+    interview, first = await started(client, db_session)
+    await answer(client, interview.token, first["turn"]["id"])
+    await stop(client, interview.token)
+    row = interview.interview
+    await db_session.refresh(row)
+    row.r2_key = f"interviews/{row.id}/recording.webm"
+    row.completed_at = datetime.now(UTC)
+    if email:
+        profile = (
+            await db_session.execute(
+                select(TalentPoolProfiles).where(TalentPoolProfiles.id == row.talent_pool_profile_id)
+            )
+        ).scalar_one()
+        profile.override_email = "candidate@example.com"
+    await db_session.commit()
+    clock.advance(3600)
+    return interview
+
+
+@pytest.mark.asyncio
+async def test_an_interview_that_ended_early_can_be_started_over_for_a_retake(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview = await ended_with_an_empty_recording(client, db_session, clock)
+    old_key = (await refreshed(db_session, interview)).r2_key
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+    assert resp.json()["outcome"] == "started_over" and resp.json()["email_sent"] is True
+    invite_email.delay.assert_called_once()
+    row = await refreshed(db_session, interview)
+    assert row.status == InterviewStatus.PENDING.value
+    assert row.r2_key is None and row.completed_at is None and row.transcript is None
+    assert row.video_expires_at is None
+    # The old recording is removed from storage.
+    storage.storage.delete_file.assert_awaited_once_with(old_key)
+    # The candidate takes it from the top, with the rules and the whole clock.
+    fresh = (await start(client, interview.token)).json()
+    assert fresh["ended"] is None and fresh["turn"]["number"] == 1
+    assert fresh["seconds_left_total"] == 20 * 60
+
+
+@pytest.mark.asyncio
+async def test_a_retake_discards_the_attempts_answers_and_timeline(client, db_session, fakes, clock, storage, invite_email):
+    interview = await ended_with_an_empty_recording(client, db_session, clock)
+
+    await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    turns = (
+        await db_session.execute(select(InterviewTurn).where(InterviewTurn.interview_id == interview.interview.id))
+    ).scalars().all()
+    assert turns == [] and await events_of(db_session, interview.interview) == []
+
+
+@pytest.mark.asyncio
+async def test_an_interview_that_ended_early_is_reinstated_not_reopened(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview = await ended_with_an_empty_recording(client, db_session, clock)
+
+    resp = await client.post(_recover_url(interview), headers=_headers(interview.employer))
+
+    assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_NOT_RECOVERABLE"
+    assert "Reinstate" in resp.json()["message"]
+    assert (await refreshed(db_session, interview)).status == InterviewStatus.STOPPED.value
+    storage.storage.delete_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_interview_that_was_scored_cannot_be_started_over(client, db_session, fakes, clock, storage, invite_email):
+    interview, _ = await started(client, db_session)
+    row = interview.interview
+    row.status = InterviewStatus.SCORED.value
+    row.completed_at = datetime.now(UTC)
+    await db_session.commit()
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_NOT_RECOVERABLE"
+    assert (await refreshed(db_session, interview)).status == InterviewStatus.SCORED.value
+    storage.storage.delete_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_cannot_be_deleted_never_undoes_the_retake(client, db_session, fakes, clock, storage, invite_email):
+    interview = await ended_with_an_empty_recording(client, db_session, clock)
+    storage.storage.delete_file = AsyncMock(side_effect=RuntimeError("storage is down"))
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200 and resp.json()["outcome"] == "started_over"
+    assert (await refreshed(db_session, interview)).status == InterviewStatus.PENDING.value

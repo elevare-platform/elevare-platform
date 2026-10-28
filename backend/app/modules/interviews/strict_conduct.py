@@ -408,25 +408,29 @@ class ConductMixin:
         return updated
 
     async def _failed_before_finishing(
-        self, interview: Interview
+        self, interview: Interview, *, allow_ended: bool = False
     ) -> StrictInterviewRun:
         """The run of an interview that failed before it was finished, with the row locked.
 
         An interview becomes FAILED without ever being completed when its recording never
         arrived and the stale sweep gave up on it. Everything else that is FAILED (scoring
-        failed after the recording arrived) has a completion time and is not this.
+        failed after the recording arrived) has a completion time and is not this. With
+        ``allow_ended`` an interview that ended early (not scored) also qualifies, for a
+        retake; it is otherwise carried on with by reinstating it.
         """
         status = await self._repo.lock_status(interview.id)
         await self._db.refresh(interview)
         run = await self.get_run(interview.id)
-        if (
-            status != InterviewStatus.FAILED.value
-            or interview.completed_at is not None
-            or run is None
-            or run.started_at is None
-        ):
+        failed = (
+            status == InterviewStatus.FAILED.value and interview.completed_at is None
+        )
+        ended = allow_ended and status in ENDED_STATUSES
+        if not (failed or ended) or run is None or run.started_at is None:
             raise ValidationException(
-                "Only an interview that was started but never finished can be recovered.",
+                "Only an interview that was started but never finished, or that ended early, "
+                "can be started over."
+                if allow_ended
+                else "Only an interview that was started but never finished can be recovered.",
                 code="INTERVIEW_NOT_RECOVERABLE",
             )
         return run
@@ -474,8 +478,12 @@ class ConductMixin:
         finished: new questions copied when they start, a new clock, no answers. Used when the
         recording of the first attempt is gone, so what is left of it could not be reviewed. The
         caller has already checked that the employer may manage this job and has taken the
-        payment."""
-        run = await self._failed_before_finishing(interview)
+        payment.
+
+        Also used for an interview that ended early (or was stopped), when the employer would
+        rather have the candidate take it again than reinstate it: everything of the attempt is
+        discarded, the recording included (the caller removes the files)."""
+        run = await self._failed_before_finishing(interview, allow_ended=True)
         now = self._clock()
 
         for model in (InterviewTurn, InterviewConductEvent, InterviewTranscriptCheck):
@@ -503,6 +511,8 @@ class ConductMixin:
                 "r2_key": None,
                 "transcript": None,
                 "started_at": None,
+                "completed_at": None,
+                "video_expires_at": None,
                 "token": interview.token or secrets.token_urlsafe(32),
                 "token_expires_at": now + timedelta(days=REINSTATE_LINK_DAYS),
                 "session_start_count": 0,

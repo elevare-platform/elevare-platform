@@ -307,6 +307,66 @@ describe('InterviewDetailModal: an interview that ended early', () => {
     expect(onReinstated).not.toHaveBeenCalled()
   })
 
+  it('asks before having the candidate retake it, and does nothing when the employer declines', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { onReinstated } = renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Have them retake it' }))
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/deletes this attempt.s answers and recording/))
+    expect(api.post).not.toHaveBeenCalled()
+    expect(onReinstated).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('starts it over once confirmed, says the candidate takes it from the start, and tells the list', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    api.post.mockResolvedValue({
+      data: { outcome: 'started_over', status: 'PENDING', interview_url: 'https://x/i/t', email_sent: true },
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { onReinstated } = renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Have them retake it' }))
+
+    expect(await screen.findByText('The interview was started over')).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/profile-1/recover', null, {
+      params: { job_id: 'job-1', start_over: true },
+    })
+    expect(screen.getByText(/from the start, with the full time/)).toBeInTheDocument()
+    expect(onReinstated).toHaveBeenCalledTimes(1)
+    confirm.mockRestore()
+  })
+
+  it('tells the owner to send the link themselves when a retake has no email on file', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    api.post.mockResolvedValue({
+      data: { outcome: 'started_over', status: 'PENDING', interview_url: 'https://x/i/t', email_sent: false },
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Have them retake it' }))
+
+    expect(await screen.findByText(/no email address on file/)).toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
+  it('shows the server’s words when a retake is refused, and the network message when there is no answer', async () => {
+    api.get.mockResolvedValue({ data: ENDED })
+    api.post.mockRejectedValueOnce({ response: { data: { message: 'Not enough credits' } } })
+    api.post.mockRejectedValueOnce(new Error('network'))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderEnded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Have them retake it' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not enough credits')
+    fireEvent.click(screen.getByRole('button', { name: 'Have them retake it' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('We could not reach the server'))
+    confirm.mockRestore()
+  })
+
   it('offers no reinstate button for an interview that finished', async () => {
     api.get.mockResolvedValue({ data: { ...BASE, strict: { ...STRICT, ended: null } } })
     renderEnded()

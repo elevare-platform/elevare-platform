@@ -637,6 +637,17 @@ class InterviewService:
         )
         return True
 
+    async def _delete_recordings(self, keys: list[str]) -> None:
+        """Remove the stored files of an attempt that was started over. Best effort and after the
+        reset is saved: a file that cannot be removed is only left behind (the retention sweep
+        no longer knows it), and never undoes the restart."""
+        storage = get_storage_service()
+        for key in keys:
+            try:
+                await storage.delete_file(key)
+            except Exception:
+                logger.warning("start_over: could not delete %s", key, exc_info=True)
+
     async def recover_failed(
         self,
         user: User,
@@ -655,7 +666,9 @@ class InterviewService:
         * ``reopened``: the candidate is sent the link again and finishes where they stopped,
           sending the recording their browser kept (``start_over`` false).
         * ``started_over``: a fresh interview with new questions and a new clock, for when the
-          recording is gone (``start_over`` true). The unfinished attempt is discarded.
+          recording is gone (``start_over`` true). The unfinished attempt is discarded, its
+          recording files included. Also allowed for an interview that ended early or was
+          stopped, when the employer wants a retake rather than a reinstatement.
 
         Organization-level ownership (decision D2). Free while the interview is still paid; one
         whose credits were refunded is charged again, as a resend is. Safe to press twice: the
@@ -674,6 +687,12 @@ class InterviewService:
         if not await strict.is_strict(interview.id):
             raise ValidationException(
                 "Only a strict interview can be recovered this way.",
+                code="INTERVIEW_NOT_RECOVERABLE",
+            )
+
+        if not start_over and interview.status in ENDED_STATUSES:
+            raise ValidationException(
+                "This interview ended early. Reinstate it so the candidate carries on, or start it over.",
                 code="INTERVIEW_NOT_RECOVERABLE",
             )
 
@@ -711,7 +730,12 @@ class InterviewService:
 
         await self._charge_for_invite(job, interview.id)
         if start_over:
+            # The files of the attempt being discarded, read before the run is reset.
+            run = await strict.get_run(interview.id)
+            old_keys = [interview.r2_key, *((run.previous_recordings or []) if run else [])]
+            old_keys += [part_key(interview.id, n) for n in range(1, (run.recording_parts if run else 0) + 1)]
             updated = await strict.start_over(interview)
+            await self._delete_recordings([key for key in old_keys if key])
             outcome = "started_over"
         else:
             updated = await strict.reopen_failed(interview)
