@@ -11,12 +11,19 @@ export const RETRY_DELAYS_MS = [2000, 6000]
 export const PUT_TIMEOUT_MS = 20 * 60 * 1000
 
 export class UploadError extends Error {
-  constructor(message, status) {
+  // `reason` is what the browser could tell: 'rejected' (the storage service answered with an
+  // error), 'offline', 'blocked_or_dropped' (a failed connection; the browser cannot say whether
+  // the network dropped it or a firewall, VPN or ad blocker stopped it), 'timeout' or
+  // 'interrupted'.
+  constructor(message, status, reason = 'other') {
     super(message)
     this.name = 'UploadError'
     this.status = status
+    this.reason = reason
   }
 }
+
+const connectionFailure = () => (navigator.onLine === false ? 'offline' : 'blocked_or_dropped')
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -47,12 +54,13 @@ export function putBlob({
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve()
       } else {
-        reject(new UploadError(`The upload was rejected (${xhr.status}).`, xhr.status))
+        reject(new UploadError(`The upload was rejected (${xhr.status}).`, xhr.status, 'rejected'))
       }
     }
-    xhr.onerror = () => reject(new UploadError('The connection dropped during the upload.'))
-    xhr.ontimeout = () => reject(new UploadError('The upload took too long.'))
-    xhr.onabort = () => reject(new UploadError('The upload was interrupted.'))
+    xhr.onerror = () =>
+      reject(new UploadError('The connection dropped during the upload.', undefined, connectionFailure()))
+    xhr.ontimeout = () => reject(new UploadError('The upload took too long.', undefined, 'timeout'))
+    xhr.onabort = () => reject(new UploadError('The upload was interrupted.', undefined, 'interrupted'))
 
     xhr.send(blob)
   })
@@ -90,6 +98,52 @@ export async function withRetry(
     }
   }
   throw lastError
+}
+
+const RETRY = 'press "Retry upload"'
+const RETRY_SENTENCE = 'Press "Retry upload".'
+
+/**
+ * What went wrong when sending the recording, for the candidate and for the log. `stage` is where:
+ * 'url' (asking our server for the upload address), 'file' (sending the file to storage) or
+ * 'confirm' (telling our server it arrived). `message` is the server's own words when it sent any,
+ * else a plain explanation with what to try, or null when nothing more can be said (the caller
+ * shows its own line). `reason` and `status` are what the log gets.
+ */
+export function describeUploadFailure(err, { fileUploaded = false } = {}) {
+  const stage = err instanceof UploadError ? 'file' : fileUploaded ? 'confirm' : 'url'
+  const serverMessage = err?.response?.data?.message
+  let reason
+  let status
+  if (err instanceof UploadError) {
+    reason = err.reason
+    status = err.status
+  } else if (err?.response) {
+    status = err.response.status
+    reason = status >= 500 ? 'server_error' : 'other'
+  } else {
+    reason = err?.code === 'ECONNABORTED' ? 'timeout' : connectionFailure()
+  }
+
+  const text = {
+    offline: `Your device is not connected to the internet. Reconnect, then ${RETRY}.`,
+    blocked_or_dropped:
+      'The connection dropped, or something on this network (a firewall, a VPN or an ad blocker) ' +
+      `stopped the upload. Switch off any VPN, or move to another network such as your phone's hotspot, then ${RETRY}.`,
+    timeout: `The upload took too long, which is usually a slow connection. Try a faster network, then ${RETRY}.`,
+    interrupted: `The upload was interrupted. ${RETRY_SENTENCE}`,
+    rejected:
+      `The storage service did not accept the recording (code ${status}). ${RETRY_SENTENCE} ` +
+      'If it keeps happening, tell your recruiter this code.',
+    server_error: `Our server had a problem (code ${status}). Please wait a minute, then ${RETRY}.`,
+  }[reason]
+
+  return {
+    stage,
+    reason,
+    status: status ?? null,
+    message: typeof serverMessage === 'string' && serverMessage ? serverMessage : (text ?? null),
+  }
 }
 
 /**

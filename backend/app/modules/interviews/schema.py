@@ -600,6 +600,22 @@ class StrictEventRequest(BaseModel):
     key: str | None = Field(default=None, max_length=40)
 
 
+class UploadFailureRequest(BaseModel):
+    """What the candidate's screen saw when sending the recording failed. The file goes straight
+    from the browser to storage, so the server would otherwise never hear of it. Only written to
+    the log, to explain a "recording not received"; it changes nothing about the interview."""
+
+    # Where it failed: asking for the upload address, sending the file, or confirming it.
+    stage: Literal["url", "file", "confirm"]
+    # What the browser could tell: no connection, a dropped or blocked connection (it cannot say
+    # which), the storage service refusing, taking too long, being interrupted, or our server.
+    reason: Literal["offline", "blocked_or_dropped", "rejected", "timeout", "interrupted", "server_error", "other"]
+    http_status: int | None = Field(default=None, ge=0, le=599)
+    # Which try this was, counting from 1.
+    attempt: int = Field(default=1, ge=1, le=20)
+    size_bytes: int | None = Field(default=None, ge=0, le=10_000_000_000)
+
+
 class InterviewScoreRequestResponse(BaseModel):
     """Result of asking for a finished interview to be AI-scored."""
 

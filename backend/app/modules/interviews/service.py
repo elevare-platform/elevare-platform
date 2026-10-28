@@ -53,6 +53,7 @@ from app.modules.interviews.schema import (
     RealtimeUsageDetail,
     RecordingClip,
     StrictRecordingPartResponse,
+    UploadFailureRequest,
 )
 from app.modules.interviews.scoring_access import assert_can_score_interviews
 from app.modules.interviews.strict import StrictInterviewService
@@ -525,6 +526,34 @@ class InterviewService:
         return await self._strict().record_event(
             interview, event_type=event_type, cause=cause, key=key
         )
+
+    def _log_upload_failure(self, interview: Interview, body: UploadFailureRequest) -> None:
+        """One line a person can search for (``interview_upload_failure``) when a candidate's
+        recording does not arrive. Nothing is stored and the interview is not touched."""
+        logger.warning(
+            "interview_upload_failure interview=%s job=%s stage=%s reason=%s http_status=%s "
+            "attempt=%s size_bytes=%s status=%s",
+            interview.id,
+            interview.job_id,
+            body.stage,
+            body.reason,
+            body.http_status,
+            body.attempt,
+            body.size_bytes,
+            interview.status,
+        )
+
+    async def report_upload_failure_by_token(self, token: str, body: UploadFailureRequest) -> None:
+        """The candidate's screen reports that sending the recording failed (emailed link)."""
+        interview = await self._resolve_interview_by_token(token)
+        self._log_upload_failure(interview, body)
+
+    async def report_upload_failure(
+        self, application_id: uuid.UUID, candidate_id: uuid.UUID, body: UploadFailureRequest
+    ) -> None:
+        """The same, from a logged-in candidate."""
+        interview = await self._resolve_owned_interview(application_id, candidate_id)
+        self._log_upload_failure(interview, body)
 
     async def strict_event_by_token(
         self, token: str, event_type: str, cause: str | None, key: str | None

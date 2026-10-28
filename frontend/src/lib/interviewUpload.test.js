@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { putBlob, withRetry, isRetryable, uploadRecording } from './interviewUpload'
+import { putBlob, withRetry, isRetryable, uploadRecording, describeUploadFailure, UploadError } from './interviewUpload'
 
 // A minimal stand-in for XMLHttpRequest that finishes the way the test says.
 function fakeXhrFactory(outcomes) {
@@ -62,6 +62,66 @@ describe('putBlob', () => {
         putBlob({ url: 'u', blob: new Blob(['x']), contentType: 'video/webm', createXhr }),
       ).rejects.toThrow()
     }
+  })
+})
+
+describe('putBlob, why it failed', () => {
+  const failure = async (outcome) => {
+    const { createXhr } = fakeXhrFactory([outcome])
+    try {
+      await putBlob({ url: 'u', blob: new Blob(['x']), contentType: 'video/webm', createXhr })
+    } catch (err) {
+      return err
+    }
+    return null
+  }
+
+  it('says the storage service refused it, with its code', async () => {
+    const err = await failure({ status: 403 })
+    expect(err).toBeInstanceOf(UploadError)
+    expect([err.reason, err.status]).toEqual(['rejected', 403])
+  })
+
+  it('says the connection failed, or that the device is offline, or that it took too long', async () => {
+    expect((await failure({ error: true })).reason).toBe('blocked_or_dropped')
+    expect((await failure({ timeout: true })).reason).toBe('timeout')
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    expect((await failure({ error: true })).reason).toBe('offline')
+    online.mockRestore()
+  })
+})
+
+describe('describeUploadFailure', () => {
+  const rejected = new UploadError('x', 403, 'rejected')
+
+  it('tells where it failed: asking for the address, sending the file, or confirming it', () => {
+    expect(describeUploadFailure(new Error('Network Error')).stage).toBe('url')
+    expect(describeUploadFailure(rejected).stage).toBe('file')
+    expect(describeUploadFailure(new Error('Network Error'), { fileUploaded: true }).stage).toBe('confirm')
+  })
+
+  it('explains each cause in plain words with what to try', () => {
+    const message = (err) => describeUploadFailure(err).message
+    expect(message(rejected)).toMatch(/did not accept the recording \(code 403\).*Retry upload.*tell your recruiter this code/)
+    expect(message(new UploadError('x', undefined, 'blocked_or_dropped'))).toMatch(/firewall.*VPN.*hotspot.*Retry upload/)
+    expect(message(new UploadError('x', undefined, 'offline'))).toMatch(/not connected to the internet/)
+    expect(message(new UploadError('x', undefined, 'timeout'))).toMatch(/too long.*slow connection/)
+    expect(message(new UploadError('x', undefined, 'interrupted'))).toMatch(/interrupted/)
+    expect(message({ response: { status: 503, data: {} } })).toMatch(/Our server had a problem \(code 503\)/)
+  })
+
+  it('uses the server’s own words when it sent any', () => {
+    const err = { response: { status: 422, data: { message: 'We did not receive your recording.' } } }
+    expect(describeUploadFailure(err)).toMatchObject({ message: 'We did not receive your recording.', reason: 'other', status: 422 })
+  })
+
+  it('has nothing to say when it cannot tell, so the screen uses its own line', () => {
+    expect(describeUploadFailure({ response: { status: 404, data: {} } }).message).toBeNull()
+  })
+
+  it('treats a request with no answer as a failed connection, or a timeout', () => {
+    expect(describeUploadFailure(new Error('Network Error')).reason).toBe('blocked_or_dropped')
+    expect(describeUploadFailure({ code: 'ECONNABORTED' }).reason).toBe('timeout')
   })
 })
 

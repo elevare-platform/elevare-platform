@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import InterviewRules from '@/components/candidate/InterviewRules'
 import { useLeaveWatch } from '@/hooks/useLeaveWatch'
 import { STRICT_MONITORING, STRICT_RULES_VERSION, strictRuleGroups } from '@/lib/interviewRules'
-import { MAX_ATTEMPTS, uploadRecording, withRetry } from '@/lib/interviewUpload'
+import { MAX_ATTEMPTS, describeUploadFailure, uploadRecording, withRetry } from '@/lib/interviewUpload'
 import { openRecordingStore } from '@/lib/recordingStore'
 import { salvagePreviousRecordings } from '@/lib/recordingSalvage'
 import {
@@ -87,6 +87,8 @@ export default function StrictInterviewFlow({
   stopInterview,
   requestUploadUrl,
   completeUpload,
+  // Tells the server a try at sending the recording failed, and why (optional, best effort).
+  reportUploadFailure,
   requestPartUploadUrl,
   backTo,
   backLabel = 'Back',
@@ -135,6 +137,8 @@ export default function StrictInterviewFlow({
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadStep, setUploadStep] = useState('sending')
   const [uploadNote, setUploadNote] = useState(null)
+  // Whether the recording is still in memory to be saved to the device, once an upload has failed.
+  const [canSaveCopy, setCanSaveCopy] = useState(false)
 
   const videoRef = useRef(null)
   const previewRef = useRef(null)
@@ -291,6 +295,23 @@ export default function StrictInterviewFlow({
     setUploadStep('sending')
     setUploadProgress(fileUploadedRef.current ? 100 : 0)
     setPhase('uploading')
+    // Every failed try is told to the server too (the file goes straight to storage, so the
+    // server would never hear of it), so a "recording not received" can be explained from the log.
+    // Best effort: a report that does not get through changes nothing here.
+    let failedTries = 0
+    const noteFailure = (err) => {
+      const failure = describeUploadFailure(err, { fileUploaded: fileUploadedRef.current })
+      failedTries += 1
+      const report = {
+        stage: failure.stage,
+        reason: failure.reason,
+        http_status: failure.status,
+        attempt: failedTries,
+        size_bytes: recordingBlobRef.current?.size ?? null,
+      }
+      Promise.resolve().then(() => reportUploadFailure?.(report)).catch(() => {})
+      return failure
+    }
     try {
       if (!fileUploadedRef.current) {
         await uploadRecording({
@@ -298,26 +319,46 @@ export default function StrictInterviewFlow({
           blob: recordingBlobRef.current,
           contentType: 'video/webm',
           onProgress: setUploadProgress,
-          onRetry: (attempt) => setUploadNote(
-            `Your connection was interrupted. Trying again (attempt ${attempt + 1} of ${MAX_ATTEMPTS})…`
-          ),
+          onRetry: (attempt, err) => {
+            noteFailure(err)
+            setUploadNote(
+              `Your connection was interrupted. Trying again (attempt ${attempt + 1} of ${MAX_ATTEMPTS})…`
+            )
+          },
         })
         fileUploadedRef.current = true
       }
       setUploadNote(null)
       setUploadProgress(100)
       setUploadStep('confirming')
-      await withRetry(() => completeUpload())
+      await withRetry(() => completeUpload(), { onRetry: (_attempt, err) => noteFailure(err) })
       recordingBlobRef.current = null
       // The interview is over and the server has it all, so nothing needs keeping here.
       recordingStore?.deleteInterview(interviewIdRef.current)
       setPhase(endedReasonRef.current ? 'ended' : 'done')
     } catch (err) {
+      const failure = noteFailure(err)
       if (err?.response?.data?.code === 'RECORDING_NOT_RECEIVED') fileUploadedRef.current = false
-      setError(serverMessage(err, 'We could not upload your recording. Your connection may have dropped.'))
+      setError(failure.message ?? 'We could not upload your recording. Your connection may have dropped.')
+      setCanSaveCopy(Boolean(recordingBlobRef.current))
       setPhase('upload_error')
     }
-  }, [requestUploadUrl, completeUpload, recordingStore])
+  }, [requestUploadUrl, completeUpload, recordingStore, reportUploadFailure])
+
+  // A copy of the recording on the candidate's own device, for when it will not upload: it is
+  // theirs to keep and to send to the recruiter, so a failed upload never costs them the video.
+  const saveRecordingCopy = useCallback(() => {
+    const blob = recordingBlobRef.current
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'interview-recording.webm'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }, [])
 
   // The questions are done, or the interview ended early (`reason` is the server's: too many
   // leaves, too long away, or stopped). Either way the recording is sent and the interview
@@ -1011,6 +1052,17 @@ export default function StrictInterviewFlow({
               again. Please don&apos;t close or reload this page, or the recording will be lost.
             </p>
             <Button onClick={submitRecording} className="w-full">Retry upload</Button>
+            {canSaveCopy && (
+              <div className="space-y-1 border-t border-amber-200 pt-3">
+                <p className="text-xs text-amber-800">
+                  Still not working? Save a copy of the recording to this device and send the file to
+                  your recruiter. Please keep this page open until you have saved it.
+                </p>
+                <Button variant="outline" onClick={saveRecordingCopy} className="w-full">
+                  Save the recording to this device
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

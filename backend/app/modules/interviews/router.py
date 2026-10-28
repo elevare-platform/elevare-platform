@@ -3,7 +3,7 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -51,6 +51,7 @@ from app.modules.interviews.schema import (
     StrictInterviewStateResponse,
     StrictRecordingPartResponse,
     StrictStartRequest,
+    UploadFailureRequest,
 )
 from app.modules.interviews.scoring_profile_service import ScoringProfileService
 from app.modules.interviews.service import InterviewService
@@ -128,6 +129,28 @@ async def report_strict_event(
             cause=body.cause,
             key=body.key,
         )
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/applications/{application_id}/upload-failure",
+    status_code=204,
+)
+async def report_upload_failure(
+    application_id: uuid.UUID,
+    body: UploadFailureRequest,
+    candidate: CandidateProfile = Depends(get_candidate),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """The screen reports that sending the recording failed, so the reason can be found in the
+    log. Changes nothing about the interview."""
+    service = InterviewService(db)
+    try:
+        await service.report_upload_failure(
+            application_id=application_id, candidate_id=candidate.user_id, body=body
+        )
+        return Response(status_code=204)
     finally:
         await service.close()
 
@@ -835,6 +858,26 @@ async def report_strict_event_by_token(
         return await service.strict_event_by_token(
             token, event_type=body.type, cause=body.cause, key=body.key
         )
+    finally:
+        await service.close()
+
+
+@public_router.post(
+    "/{token}/upload-failure",
+    status_code=204,
+)
+@limiter.limit("30/minute")
+async def report_upload_failure_by_token(
+    request: Request,
+    token: str,
+    body: UploadFailureRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """The screen reports that sending the recording failed (emailed link)."""
+    service = InterviewService(db)
+    try:
+        await service.report_upload_failure_by_token(token, body)
+        return Response(status_code=204)
     finally:
         await service.close()
 
