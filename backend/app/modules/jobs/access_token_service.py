@@ -268,7 +268,7 @@ class AccessTokenService:
                 if submission and submission.parsed_data:
                     parsed_data = submission.parsed_data
 
-            full_name_raw = parsed_data.get("full_name") or (
+            full_name_raw = profile.override_name or parsed_data.get("full_name") or (
                 f"{parsed_data.get('first_name', '')} {parsed_data.get('last_name', '')}".strip()
                 or None
             )

@@ -63,6 +63,23 @@ const recovered = (extra = {}) => ({
   data: { outcome: 'reopened', status: 'PENDING', interview_url: 'https://app.test/interview/abc', email_sent: true, ...extra },
 })
 
+describe('ApplicantsPage, Interview List, correcting a name read wrongly from a CV', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('lets the person who sourced the CV correct the name, and shows it at once', async () => {
+    api.patch.mockResolvedValueOnce({ data: { id: 'p-1', candidate_name: 'Lateef Jakande', name_overridden: true } })
+    renderList('PENDING')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Correct the name' }))
+    fireEvent.change(screen.getByLabelText("Candidate's name"), { target: { value: 'Lateef Jakande' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save name' }))
+
+    expect(await screen.findByText('Lateef Jakande')).toBeInTheDocument()
+    expect(api.patch).toHaveBeenCalledWith('/api/v1/talent-pool/p-1/name', { name: 'Lateef Jakande' })
+    expect(screen.getByText('(corrected)')).toBeInTheDocument()
+  })
+})
+
 describe('ApplicantsPage, Interview List, an interview that failed', () => {
   beforeEach(() => vi.clearAllMocks())
 

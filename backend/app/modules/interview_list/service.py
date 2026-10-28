@@ -159,6 +159,7 @@ class InterviewListService:
                     has_cv_access=has_cv_access,
                     email_only=email_only,
                     candidate_name=profile.override_email if email_only else fields["name"],
+                    name_overridden=fields["name_overridden"] and not email_only,
                     current_title=fields["current_title"],
                     location=fields["location"],
                     years_of_experience=fields["years_of_experience"],

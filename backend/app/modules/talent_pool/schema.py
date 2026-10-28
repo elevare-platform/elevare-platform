@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 from app.modules.talent_pool.models import TalentPoolProfiles
 
@@ -31,6 +31,39 @@ class TalentPoolEmailUpdateRequest(BaseModel):
     email: EmailStr
 
 
+MAX_NAME_CHARS = 120
+
+
+class TalentPoolNameUpdateRequest(BaseModel):
+    """Payload for the name an employer types in when the name read from a CV is wrong. Empty or
+    null takes the typed name away, so the name read from the CV is shown again."""
+
+    name: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _clean(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            return None
+        if len(cleaned) > MAX_NAME_CHARS:
+            raise ValueError(f"The name can be at most {MAX_NAME_CHARS} characters.")
+        if any(ord(char) < 32 or ord(char) == 127 for char in cleaned):
+            raise ValueError("The name cannot contain control characters.")
+        return cleaned
+
+
+class TalentPoolNameResponse(BaseModel):
+    """The name shown for a candidate after it was set or cleared."""
+
+    id: uuid.UUID
+    candidate_name: str | None
+    # True when the name shown is the one an employer typed, not the one read from the CV.
+    name_overridden: bool
+
+
 class TalentPoolProfileResponse(BaseModel):
     """Full talent pool profile returned by the API, enriched with parsed CV data."""
 
@@ -55,6 +88,8 @@ class TalentPoolProfileResponse(BaseModel):
 
     # Enriched from parsed_data — not stored on the model, populated by the service
     candidate_name: str | None = None
+    # True when ``candidate_name`` is the one an employer typed in, not the one read from the CV.
+    name_overridden: bool = False
     candidate_email: str | None = None
     candidate_current_title: str | None = None
     # General, job-independent CV summary and skills — always valid to show,

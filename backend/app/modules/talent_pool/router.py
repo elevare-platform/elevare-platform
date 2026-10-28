@@ -10,6 +10,8 @@ from app.core.dependencies import get_db, require_role
 from app.core.limiter import limiter
 from app.modules.talent_pool.schema import (
     TalentPoolEmailUpdateRequest,
+    TalentPoolNameResponse,
+    TalentPoolNameUpdateRequest,
     TalentPoolProfileResponse,
     TalentPoolPromoteResponse,
     TalentPoolStatusUpdateRequest,
@@ -195,6 +197,19 @@ async def update_email(
 ) -> TalentPoolProfileResponse:
     """Set an employer-entered override email for a candidate with no resolvable one."""
     return await service.update_email(profile_id, data.email, current_user)
+
+
+@router.patch("/{profile_id}/name", response_model=TalentPoolNameResponse)
+async def update_name(
+    profile_id: uuid.UUID,
+    data: TalentPoolNameUpdateRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    service: TalentPoolService = Depends(_get_talent_pool_service),
+) -> TalentPoolNameResponse:
+    """Set the name shown for a sourced candidate when the name read from their CV is wrong, or
+    clear it (empty or null) to show the CV's name again. Anyone in the company that sourced the
+    candidate, or an admin."""
+    return await service.update_name(profile_id, data.name, current_user)
 
 
 @router.post("/{profile_id}/promote", response_model=TalentPoolPromoteResponse)

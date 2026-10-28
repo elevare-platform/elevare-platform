@@ -64,6 +64,8 @@ def _profile_mock(email="candidate@test.com"):
     # No self-registered candidate attached
     m.candidate_profile_id = None
     m.candidate_profile = None
+    # No name typed in by an employer: the CV's name is shown
+    m.override_name = None
     # Sourced by a different entity (an admin), not the requesting employer
     m.added_by = uuid.uuid4()
     m.added_by_user = MagicMock()

@@ -40,6 +40,7 @@ import { describeRescore } from '@/lib/rescore'
 import RescoreBar from '@/components/employer/RescoreBar'
 import NewBadge from '@/components/employer/NewBadge'
 import NotOpenedTab from '@/components/employer/NotOpenedTab'
+import CandidateNameEditor from '@/components/employer/CandidateNameEditor'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -1237,6 +1238,11 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
   const canViewCv = item.has_cv_access
   const interviewStatus = statusOverride ?? item.interview_status ?? null
   const statusMeta = interviewMeta(interviewStatus, statusOverride ? null : item.interview_failure)
+  // The name shown: the one on the list, until it is corrected here.
+  const [shownName, setShownName] = useState({
+    candidate_name: item.candidate_name ?? null,
+    name_overridden: Boolean(item.name_overridden),
+  })
   const [recovering, setRecovering] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [confirmStartOver, setConfirmStartOver] = useState(false)
@@ -1409,7 +1415,20 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
         </span>
 
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-text text-sm break-words sm:truncate">{item.candidate_name ?? 'Private profile'}</p>
+          {/* A CV's name is often misread, so the person who sourced it can correct it */}
+          {item.ownership === 'own_sourced' && !item.email_only ? (
+            <div className="font-semibold text-text text-sm break-words">
+              <CandidateNameEditor
+                profileId={item.talent_pool_profile_id}
+                name={shownName.candidate_name}
+                overridden={shownName.name_overridden}
+                onSaved={setShownName}
+                fallback="Private profile"
+              />
+            </div>
+          ) : (
+            <p className="font-semibold text-text text-sm break-words sm:truncate">{item.candidate_name ?? 'Private profile'}</p>
+          )}
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-text-muted">
             {item.current_title && <span>{item.current_title}</span>}
             {item.location && <span>{item.location}</span>}
