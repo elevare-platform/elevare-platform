@@ -63,6 +63,62 @@ const recovered = (extra = {}) => ({
   data: { outcome: 'reopened', status: 'PENDING', interview_url: 'https://app.test/interview/abc', email_sent: true, ...extra },
 })
 
+describe('ApplicantsPage, Interview List, letting a candidate who completed take the interview again', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('offers it on a completed interview, and on one whose scoring failed, but not while it is being scored', async () => {
+    const completed = renderList('SCORED')
+    expect(await screen.findByRole('button', { name: 'Let them take it again' })).toBeInTheDocument()
+    completed.unmount()
+
+    const failed = renderList('FAILED', 'SCORING_FAILED')
+    expect(await screen.findByRole('button', { name: 'Let them take it again' })).toBeInTheDocument()
+    failed.unmount()
+
+    renderList('UPLOADED')
+    await screen.findByText('Completed')
+    expect(screen.queryByRole('button', { name: 'Let them take it again' })).not.toBeInTheDocument()
+  })
+
+  it('asks first, saying the first attempt is deleted and the credits are used again, and does nothing if declined', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderList('SCORED')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Let them take it again' }))
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/deletes the first attempt.s score, answers and recording.*credits again/))
+    expect(api.post).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('starts it over once confirmed, tells the employer the candidate was sent a fresh link, and shows the row as sent', async () => {
+    api.post.mockResolvedValueOnce(recovered({ outcome: 'started_over' }))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderList('SCORED')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Let them take it again' }))
+
+    expect(await screen.findByText('The candidate was sent their link again.')).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/p-1/recover', null, {
+      params: { job_id: 'job-1', start_over: true },
+    })
+    expect(screen.getByText('Sent: awaiting response')).toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
+  it('shows the server’s words when it is refused, such as too few credits, and keeps the button', async () => {
+    api.post.mockRejectedValueOnce({ response: { data: { code: 'INSUFFICIENT_CREDITS', message: 'Not enough credits. An interview costs 10 credits and your balance is 5.' } } })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderList('SCORED')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Let them take it again' }))
+
+    expect(await screen.findByText(/Not enough credits/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Let them take it again' })).toBeEnabled()
+    confirm.mockRestore()
+  })
+})
+
 describe('ApplicantsPage, Interview List, correcting a name read wrongly from a CV', () => {
   beforeEach(() => vi.clearAllMocks())
 

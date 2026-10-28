@@ -19,7 +19,9 @@ from app.modules.interviews.enums import STALE_UPLOAD_TIMEOUT, InterviewStatus
 from app.modules.interviews.models import (
     Interview,
     InterviewConductEvent,
+    InterviewPanelDecision,
     InterviewTurn,
+    InterviewWeightedScore,
 )
 from app.modules.interviews.repository import InterviewRepository
 from app.modules.talent_pool.models import TalentPoolProfiles
@@ -516,17 +518,15 @@ async def test_an_interview_that_ended_early_is_reinstated_not_reopened(
 
 
 @pytest.mark.asyncio
-async def test_an_interview_that_was_scored_cannot_be_started_over(client, db_session, fakes, clock, storage, invite_email):
+async def test_an_interview_the_candidate_is_in_the_middle_of_cannot_be_started_over(
+    client, db_session, fakes, clock, storage, invite_email
+):
     interview, _ = await started(client, db_session)
-    row = interview.interview
-    row.status = InterviewStatus.SCORED.value
-    row.completed_at = datetime.now(UTC)
-    await db_session.commit()
 
     resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
 
     assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_NOT_RECOVERABLE"
-    assert (await refreshed(db_session, interview)).status == InterviewStatus.SCORED.value
+    assert (await refreshed(db_session, interview)).status == InterviewStatus.IN_PROGRESS.value
     storage.storage.delete_file.assert_not_awaited()
 
 
@@ -539,3 +539,195 @@ async def test_a_file_that_cannot_be_deleted_never_undoes_the_retake(client, db_
 
     assert resp.status_code == 200 and resp.json()["outcome"] == "started_over"
     assert (await refreshed(db_session, interview)).status == InterviewStatus.PENDING.value
+
+
+# ---------------------------------------------------------------------------
+# A COMPLETED interview can be taken again (the employer's retake)
+# ---------------------------------------------------------------------------
+
+
+async def scored_interview(client, db_session, clock, *, score=38):
+    """A strict interview that was finished and scored low, with a weighted report, a recording
+    and a panel decision, which the employer now wants the candidate to take again."""
+    interview, first = await started(client, db_session)
+    await answer(client, interview.token, first["turn"]["id"])
+    row = interview.interview
+    await db_session.refresh(row)
+    row.status = InterviewStatus.SCORED.value
+    row.completed_at = datetime.now(UTC)
+    row.r2_key = f"interviews/{row.id}/recording.webm"
+    row.ai_score = score
+    row.ai_rationale = "Thin answers."
+    row.ai_scored_at = datetime.now(UTC)
+    row.transcript = "AI: q\n\nCandidate: a"
+    db_session.add(InterviewWeightedScore(interview_id=row.id, report={"score": score, "complete": True}))
+    db_session.add(
+        InterviewPanelDecision(
+            interview_id=row.id,
+            decision="DO_NOT_SHORTLIST",
+            rationale="Too thin for the role.",
+            decided_by=interview.employer.id,
+            decided_by_name="Panel Member",
+            decided_at=datetime.now(UTC),
+        )
+    )
+    profile = (
+        await db_session.execute(
+            select(TalentPoolProfiles).where(TalentPoolProfiles.id == row.talent_pool_profile_id)
+        )
+    ).scalar_one()
+    profile.override_email = "candidate@example.com"
+    await db_session.commit()
+    clock.advance(3600)
+    return interview
+
+
+@pytest.mark.asyncio
+async def test_a_scored_interview_can_be_taken_again_and_the_first_result_is_replaced(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview = await scored_interview(client, db_session, clock)
+    old_key = (await refreshed(db_session, interview)).r2_key
+    interview_id = interview.interview.id
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+    assert resp.json()["outcome"] == "started_over" and resp.json()["email_sent"] is True
+    invite_email.delay.assert_called_once()
+    row = await refreshed(db_session, interview)
+    assert row.status == InterviewStatus.PENDING.value
+    # The first score, its written assessment and its report are gone, with the answers and recording.
+    assert (row.ai_score, row.ai_rationale, row.ai_scored_at) == (None, None, None)
+    assert row.completed_at is None and row.transcript is None and row.r2_key is None
+    reports = (await db_session.execute(select(InterviewWeightedScore).where(InterviewWeightedScore.interview_id == interview_id))).scalars().all()
+    turns = (await db_session.execute(select(InterviewTurn).where(InterviewTurn.interview_id == interview_id))).scalars().all()
+    assert reports == [] and turns == []
+    storage.storage.delete_file.assert_awaited_once_with(old_key)
+    # The hiring panel's earlier decision is kept (an append-only record); it carries its date.
+    decisions = (await db_session.execute(select(InterviewPanelDecision).where(InterviewPanelDecision.interview_id == interview_id))).scalars().all()
+    assert [d.decision for d in decisions] == ["DO_NOT_SHORTLIST"]
+    # The candidate takes it from the top with a full clock.
+    fresh = (await start(client, interview.token)).json()
+    assert fresh["turn"]["number"] == 1 and fresh["seconds_left_total"] == 20 * 60
+
+
+@pytest.mark.asyncio
+async def test_a_scored_interview_is_not_reopened_or_reinstated_only_started_over(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview = await scored_interview(client, db_session, clock)
+
+    resp = await client.post(_recover_url(interview), headers=_headers(interview.employer))
+
+    assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_NOT_RECOVERABLE"
+    assert "start it over" in resp.json()["message"]
+    row = await refreshed(db_session, interview)
+    assert row.status == InterviewStatus.SCORED.value and row.ai_score == 38
+    storage.storage.delete_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_interview_being_scored_right_now_cannot_be_taken_again(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview = await scored_interview(client, db_session, clock)
+    interview.interview.status = InterviewStatus.UPLOADED.value
+    await db_session.commit()
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_PROCESSING"
+    assert (await refreshed(db_session, interview)).ai_score == 38
+
+
+@pytest.mark.asyncio
+async def test_an_interview_whose_scoring_failed_can_be_taken_again(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview = await scored_interview(client, db_session, clock)
+    interview.interview.status = InterviewStatus.FAILED.value
+    interview.interview.ai_score = None
+    await db_session.commit()
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200 and resp.json()["outcome"] == "started_over"
+    assert (await refreshed(db_session, interview)).status == InterviewStatus.PENDING.value
+
+
+async def _paid_organization(db_session, interview, *, balance=100, cost=10):
+    """The job's owner gets an organization with credits, and the interview was charged at invite."""
+    from app.modules.credits.service import CreditsService
+
+    organization = await make_organization_for(db_session, interview.employer, company_name="Acme")
+    credits = CreditsService(db_session)
+    await credits.grant(organization.id, balance)
+    await credits.charge_interview(organization.id, interview.interview.id, cost)
+    await db_session.commit()
+    return organization, credits
+
+
+@pytest.mark.asyncio
+async def test_a_retake_takes_the_interviews_credits_again(
+    client, db_session, fakes, clock, storage, invite_email, monkeypatch
+):
+    monkeypatch.setattr(service_module.settings, "interview_credit_cost", 10)
+    interview = await scored_interview(client, db_session, clock)
+    organization, credits = await _paid_organization(db_session, interview)
+    assert await credits.get_balance(organization.id) == 90
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+    assert await credits.get_balance(organization.id) == 80
+
+
+@pytest.mark.asyncio
+async def test_pressing_retake_twice_takes_the_credits_once(
+    client, db_session, fakes, clock, storage, invite_email, monkeypatch
+):
+    monkeypatch.setattr(service_module.settings, "interview_credit_cost", 10)
+    interview = await scored_interview(client, db_session, clock)
+    organization, credits = await _paid_organization(db_session, interview)
+
+    first = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+    second = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert first.status_code == 200
+    # The second finds an interview that is already pending, which is not recoverable.
+    assert second.status_code == 422 and second.json()["code"] == "INTERVIEW_NOT_RECOVERABLE"
+    assert await credits.get_balance(organization.id) == 80
+
+
+@pytest.mark.asyncio
+async def test_a_retake_with_too_few_credits_changes_nothing(
+    client, db_session, fakes, clock, storage, invite_email, monkeypatch
+):
+    monkeypatch.setattr(service_module.settings, "interview_credit_cost", 10)
+    interview = await scored_interview(client, db_session, clock)
+    organization, credits = await _paid_organization(db_session, interview, balance=15)  # 5 left
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 402
+    row = await refreshed(db_session, interview)
+    assert row.status == InterviewStatus.SCORED.value and row.ai_score == 38 and row.r2_key
+    turns = (await db_session.execute(select(InterviewTurn).where(InterviewTurn.interview_id == row.id))).scalars().all()
+    assert turns
+    assert await credits.get_balance(organization.id) == 5
+    invite_email.delay.assert_not_called()
+    storage.storage.delete_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_stranger_cannot_make_a_candidate_retake(client, db_session, fakes, clock, storage, invite_email):
+    interview = await scored_interview(client, db_session, clock)
+    stranger = make_employer()
+    db_session.add(stranger)
+    await db_session.commit()
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(stranger))
+
+    assert resp.status_code == 403
+    assert (await refreshed(db_session, interview)).ai_score == 38

@@ -162,12 +162,22 @@ class CreditsService:
         )
 
     async def charge_interview(
-        self, organization_id: uuid.UUID, interview_id: uuid.UUID, amount: int
+        self,
+        organization_id: uuid.UUID,
+        interview_id: uuid.UUID,
+        amount: int,
+        *,
+        again: bool = False,
     ) -> bool:
         """Take ``amount`` credits for an interview, unless it is already paid.
 
         Returns True when credits were taken now, False when nothing was taken (a
         price of 0, or the interview is already paid, as on a resend).
+
+        ``again`` takes the credits even though the interview is paid: for a candidate
+        who is let take a COMPLETED interview a second time, which is a new interview with
+        its own cost. The interview then has two charges, so it counts as paid until both
+        are refunded (see ``has_outstanding_interview_charge``).
 
         The organization's balance row is locked first, so everything touching
         this organization's credits runs one at a time: "is it already paid?" and
@@ -181,7 +191,7 @@ class CreditsService:
         if amount <= 0:
             return False
         balance = await self._repo.get_or_create_balance(organization_id, lock=True)
-        if await self._repo.has_outstanding_interview_charge(
+        if not again and await self._repo.has_outstanding_interview_charge(
             organization_id, interview_id
         ):
             return False

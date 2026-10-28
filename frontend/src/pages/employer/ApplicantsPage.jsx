@@ -1177,7 +1177,7 @@ const INTERVIEW_STATUS_META = {
   PENDING: { button: 'Resend', badge: 'Sent: awaiting response', badgeClass: 'text-amber-600' },
   IN_PROGRESS: { button: 'Resend', badge: 'In progress', badgeClass: 'text-blue-600' },
   UPLOADED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
-  SCORED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
+  SCORED: { button: null, retake: true, badge: 'Completed', badgeClass: 'text-green-600' },
   EXPIRED: { button: 'Resend', badge: 'Link expired', badgeClass: 'text-red-600' },
   // Older servers do not say why a FAILED interview failed, so this is the fallback.
   FAILED: { button: 'Resend', badge: 'Scoring failed', badgeClass: 'text-red-600' },
@@ -1199,6 +1199,7 @@ const NEVER_FINISHED_META = {
 const SCORING_FAILED_META = {
   button: null,
   retry: true,
+  retake: true,
   reviewLabel: 'Review interview',
   badge: 'Scoring failed',
   badgeClass: 'text-red-600',
@@ -1313,6 +1314,19 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
     } finally {
       setRetrying(false)
     }
+  }
+
+  // Lets a candidate who completed the interview take it again (for example after a low score).
+  // It replaces the first attempt, so it asks first, and it takes the interview's credits again.
+  const handleRetakeCompleted = () => {
+    if (
+      !window.confirm(
+        'The candidate will take the interview again from the start. This deletes the first attempt’s score, answers and recording, uses the interview’s credits again, and emails them a fresh link. It cannot be undone. Continue?'
+      )
+    ) {
+      return
+    }
+    handleRecover(true)
   }
 
   // Recovers an interview whose recording never arrived: reopen it so the candidate can send the
@@ -1566,7 +1580,20 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
               The recording arrived but scoring did not finish. If its credit was given back, retrying uses one again.
             </span>
           )}
-          {sendError && statusMeta.reviewLabel && <span className="text-[11px] text-red-600">Failed: {sendError}</span>}
+          {/* A completed interview can be taken again, for example after a low score */}
+          {statusMeta.retake && (
+            <button
+              type="button"
+              onClick={handleRetakeCompleted}
+              disabled={recovering}
+              className="text-[11px] font-medium text-text-muted hover:text-brand-blue transition-colors disabled:opacity-50"
+            >
+              {recovering ? 'Working…' : 'Let them take it again'}
+            </button>
+          )}
+          {sendError && (statusMeta.reviewLabel || statusMeta.retake) && (
+            <span className="text-[11px] text-red-600">Failed: {sendError}</span>
+          )}
         </div>
       )}
 

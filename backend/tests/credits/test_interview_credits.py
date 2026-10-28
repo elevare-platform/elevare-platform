@@ -276,3 +276,56 @@ async def test_two_simultaneous_invites_for_different_interviews_cannot_both_use
 
     assert sorted(results) == ["charged", "refused"]
     assert await _balance(committed_org) == 0
+
+
+# ── A completed interview taken a second time (a retake) ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_retake_takes_the_credits_again_though_the_interview_is_paid(db_session):
+    organization = await _org(db_session)
+    interview_id = uuid4()
+    service = CreditsService(db_session)
+    await service.charge_interview(organization.id, interview_id, COST)
+
+    charged = await service.charge_interview(organization.id, interview_id, COST, again=True)
+
+    assert charged is True
+    assert await service.get_balance(organization.id) == 80
+    assert await _ledger(db_session, organization.id, interview_id) == [
+        ("interview_charge", -COST),
+        ("interview_charge", -COST),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_retaken_interview_is_paid_until_both_charges_are_refunded(db_session):
+    organization = await _org(db_session)
+    interview_id = uuid4()
+    service = CreditsService(db_session)
+    await service.charge_interview(organization.id, interview_id, COST)
+    await service.charge_interview(organization.id, interview_id, COST, again=True)
+
+    first = await service.refund_interview(organization.id, interview_id)
+    still_paid = await _paid(db_session, organization.id, interview_id)
+    second = await service.refund_interview(organization.id, interview_id)
+    third = await service.refund_interview(organization.id, interview_id)
+
+    assert (first, second, third) == (COST, COST, 0)
+    assert still_paid is True
+    assert not await _paid(db_session, organization.id, interview_id)
+    assert await service.get_balance(organization.id) == 100
+
+
+@pytest.mark.asyncio
+async def test_a_retake_with_too_few_credits_takes_nothing(db_session):
+    organization = await _org(db_session, balance=15)
+    interview_id = uuid4()
+    service = CreditsService(db_session)
+    await service.charge_interview(organization.id, interview_id, COST)  # 5 left
+
+    with pytest.raises(InsufficientCreditsException):
+        await service.charge_interview(organization.id, interview_id, COST, again=True)
+
+    assert await service.get_balance(organization.id) == 5
+    assert len(await _ledger(db_session, organization.id, interview_id)) == 1

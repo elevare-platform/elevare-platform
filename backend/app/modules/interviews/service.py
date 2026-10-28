@@ -698,6 +698,28 @@ class InterviewService:
                 code="INTERVIEW_NOT_RECOVERABLE",
             )
 
+        # A COMPLETED interview (scored, or whose scoring failed) can be taken again, only by
+        # starting it over: the first result is replaced. Looked at under the row lock, so a
+        # double click cannot take the credits twice (the second finds it already restarted).
+        retake = False
+        await self._repo.lock_status(interview.id)
+        await self._db.refresh(interview)
+        finished = interview.status == InterviewStatus.SCORED.value or (
+            interview.status == InterviewStatus.FAILED.value and interview.completed_at is not None
+        )
+        if finished and not start_over:
+            raise ValidationException(
+                "This interview is finished. To let the candidate take it again, start it over.",
+                code="INTERVIEW_NOT_RECOVERABLE",
+            )
+        if start_over and interview.status == InterviewStatus.UPLOADED.value:
+            raise ValidationException(
+                "This interview is still being scored. Please try again in a few minutes.",
+                code="INTERVIEW_PROCESSING",
+            )
+        if start_over and finished:
+            retake = True
+
         if not start_over and interview.r2_key:
             # The recording may have reached storage with only the confirmation lost.
             try:
@@ -730,10 +752,19 @@ class InterviewService:
                     "email_sent": False,
                 }
 
-        await self._charge_for_invite(job, interview.id)
+        # A retake is a new interview with its own cost: it takes the credits again even though
+        # the first attempt is paid. Every other recovery is free while the interview is paid.
+        await self._charge_for_invite(job, interview.id, again=retake)
         if start_over:
             # The files of the attempt being discarded, read before the run is reset.
             run = await strict.get_run(interview.id)
+            if retake:
+                logger.info(
+                    "interview retake: interview=%s by user=%s discards score=%s",
+                    interview.id,
+                    user.id,
+                    interview.ai_score,
+                )
             old_keys = [interview.r2_key, *((run.previous_recordings or []) if run else [])]
             old_keys += [part_key(interview.id, n) for n in range(1, (run.recording_parts if run else 0) + 1)]
             updated = await strict.start_over(interview)
@@ -1207,9 +1238,12 @@ class InterviewService:
                 status_code=503,
             )
 
-    async def _charge_for_invite(self, job: Job, interview_id: uuid.UUID) -> None:
+    async def _charge_for_invite(
+        self, job: Job, interview_id: uuid.UUID, *, again: bool = False
+    ) -> None:
         """Take the interview's credits from the organization that owns the job,
-        unless the interview is already paid.
+        unless the interview is already paid. ``again`` takes them even so, for a
+        completed interview the employer lets the candidate take a second time.
 
         Never charged: Elevare's own admin-owned jobs, a job whose owner has no
         organization (there is no wallet to take from), and a price of 0.
@@ -1228,7 +1262,7 @@ class InterviewService:
         # Every organization pays the same way, a subscriber included: from the
         # credits its plan includes each month first, then from credits it bought.
         await CreditsService(self._db).charge_interview(
-            employer.organization_id, interview_id, cost
+            employer.organization_id, interview_id, cost, again=again
         )
 
     async def _daily_invite_limit_reached(self, job: Job) -> bool:
