@@ -315,6 +315,33 @@ async def test_the_owner_is_told_whether_the_job_has_interview_questions(db_sess
 
 
 @pytest.mark.asyncio
+async def test_a_teammate_reads_the_draft_and_the_brief_but_another_company_does_not(db_session):
+    """Ownership is the company's (decision D2): someone else in the creator's company sees the draft,
+    the brief and the interview-questions flag; a user of another company sees none of it."""
+    from tests.conftest import make_employer, make_job, make_organization_for
+
+    creator = make_employer()
+    teammate = make_employer()
+    outsider = make_employer()
+    db_session.add_all([creator, teammate, outsider])
+    await db_session.flush()
+    organization = await make_organization_for(db_session, creator)
+    teammate.organization_id = organization.id
+    db_session.add(teammate)
+    await make_organization_for(db_session, outsider)
+    job = make_job(creator.id, status=JobStatus.DRAFT.value, interview_brief="Probe the pipeline.")
+    db_session.add(job)
+    await db_session.flush()
+    service = JobService(db_session)
+
+    seen = await service.get_job_by_id(job.id, requesting_user=teammate)
+
+    assert seen.interview_brief == "Probe the pipeline."
+    with pytest.raises(JobNotFoundError):
+        await service.get_job_by_id(job.id, requesting_user=outsider)
+
+
+@pytest.mark.asyncio
 async def test_update_job_applies_changes(db_session):
     """update_job applies partial changes to the job."""
     from tests.conftest import make_employer, make_job
