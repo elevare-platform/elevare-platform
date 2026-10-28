@@ -28,6 +28,7 @@ from app.modules.interviews.auto_profile import ensure_profile
 from app.modules.interviews.credits import refund_if_unused, refund_interview_credits
 from app.modules.interviews.enums import (
     STALE_INTERVIEW_TIMEOUT,
+    STALE_UPLOAD_TIMEOUT,
     InterviewCostComponent,
     InterviewStatus,
     TranscriptCheckStatus,
@@ -989,8 +990,11 @@ async def _reap_stale_interviews_async() -> None:
     async with sessionLocal() as db:
         try:
             repo = InterviewRepository(db)
-            cutoff = datetime.now(UTC) - STALE_INTERVIEW_TIMEOUT
-            stale_interviews = await repo.get_stale_in_progress_interviews(cutoff)
+            now = datetime.now(UTC)
+            stale_interviews = await repo.get_stale_in_progress_interviews(
+                now - STALE_INTERVIEW_TIMEOUT,
+                upload_before=now - STALE_UPLOAD_TIMEOUT,
+            )
             if not stale_interviews:
                 logger.info("reap_stale_interviews: no stale interviews to reap")
                 return

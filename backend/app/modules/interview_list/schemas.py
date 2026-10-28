@@ -59,6 +59,10 @@ class InterviewListEntryResponse(BaseModel):
     added_at: datetime
     interview_status: str | None = None
     """Current ``InterviewStatus`` for this candidate on this job, or ``None`` if never invited."""
+    interview_failure: str | None = None
+    """Why a FAILED interview failed: ``NEVER_FINISHED`` (the recording never arrived, nothing was
+    scored; the employer can reopen it or start it over) or ``SCORING_FAILED`` (the recording
+    arrived and scoring failed). ``None`` when the interview has not failed."""
 
     model_config = {"from_attributes": True}
 

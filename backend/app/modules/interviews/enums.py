@@ -12,6 +12,11 @@ from enum import Enum
 # interview_max_duration_minutes), so this generously covers a real
 # session plus upload time before calling it abandoned.
 STALE_INTERVIEW_TIMEOUT = timedelta(hours=2)
+# An interview that reached the upload step (its recording address was issued) is waiting for a
+# recording, not abandoned: the candidate is retrying on a poor connection or will come back.
+# The employer's "Resend" and the candidate's retry both work while it is in progress, so it is
+# given this long before it is marked failed.
+STALE_UPLOAD_TIMEOUT = timedelta(days=3)
 
 
 class InterviewStatus(str, Enum):

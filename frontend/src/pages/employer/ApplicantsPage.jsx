@@ -1178,11 +1178,34 @@ const INTERVIEW_STATUS_META = {
   UPLOADED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
   SCORED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
   EXPIRED: { button: 'Resend', badge: 'Link expired', badgeClass: 'text-red-600' },
+  // Older servers do not say why a FAILED interview failed, so this is the fallback.
   FAILED: { button: 'Resend', badge: 'Scoring failed', badgeClass: 'text-red-600' },
   // A strict interview that ended early: no Resend (the link would only show the candidate that
   // it ended). The employer reviews it and can reinstate it from the review window.
   ENDED_CONDUCT: { button: null, reviewLabel: 'Review and reinstate', badge: 'Ended early', badgeClass: 'text-amber-600' },
   STOPPED: { button: null, reviewLabel: 'Review and reinstate', badge: 'Stopped by the candidate', badgeClass: 'text-amber-600' },
+}
+
+// A FAILED interview failed for one of two reasons, and the server says which. The recording
+// never arriving is recovered with Reopen or Start over; a scoring failure is reviewed (the
+// recording and the transcript are there), and a resend could not help.
+const NEVER_FINISHED_META = {
+  button: null,
+  recover: true,
+  badge: 'Recording not received',
+  badgeClass: 'text-red-600',
+}
+const SCORING_FAILED_META = {
+  button: null,
+  reviewLabel: 'Review interview',
+  badge: 'Scoring failed',
+  badgeClass: 'text-red-600',
+}
+
+function interviewMeta(status, failure) {
+  if (status === 'FAILED' && failure === 'NEVER_FINISHED') return NEVER_FINISHED_META
+  if (status === 'FAILED' && failure === 'SCORING_FAILED') return SCORING_FAILED_META
+  return status ? INTERVIEW_STATUS_META[status] : null
 }
 
 function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited }) {
@@ -1204,7 +1227,10 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
   const isSelfRegistered = item.ownership === 'self_registered' && item.candidate_profile_id
   const canViewCv = item.has_cv_access
   const interviewStatus = statusOverride ?? item.interview_status ?? null
-  const statusMeta = interviewStatus ? INTERVIEW_STATUS_META[interviewStatus] : null
+  const statusMeta = interviewMeta(interviewStatus, statusOverride ? null : item.interview_failure)
+  const [recovering, setRecovering] = useState(false)
+  const [confirmStartOver, setConfirmStartOver] = useState(false)
+  const [recoverNote, setRecoverNote] = useState(null)
   const needsEmail = sendError === 'No email on file for this candidate'
 
   const handleViewClick = () => {
@@ -1246,6 +1272,46 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
       setSendError(interviewUnavailableMessage(err) ?? 'Something went wrong')
     } finally {
       setSending(false)
+    }
+  }
+
+  // Recovers an interview whose recording never arrived: reopen it so the candidate can send the
+  // recording their browser kept, or start it over. If the recording turns out to be in storage,
+  // the server just completes it.
+  const handleRecover = async (startOver) => {
+    if (recovering) return
+    setRecovering(true)
+    setSendError(null)
+    setRecoverNote(null)
+    setConfirmStartOver(false)
+    try {
+      const { data } = await api.post(
+        `/api/v1/interviews/${item.talent_pool_profile_id}/recover`,
+        null,
+        { params: { job_id: jobId, start_over: startOver } }
+      )
+      if (data.outcome === 'completed') {
+        setStatusOverride('UPLOADED')
+        setRecoverNote('The recording was found. It is being scored.')
+      } else {
+        setStatusOverride('PENDING')
+        if (data.email_sent) {
+          setRecoverNote('The candidate was sent their link again.')
+        } else {
+          setRecoverNote('There is no email on file. Send them this link:')
+          setManualLink(data.interview_url)
+        }
+      }
+      onInvited?.()
+    } catch (err) {
+      const message = err.response?.data?.message
+      setSendError(
+        err.response
+          ? (typeof message === 'string' ? message : 'Something went wrong')
+          : 'We could not reach the server. Check your connection and try again.'
+      )
+    } finally {
+      setRecovering(false)
     }
   }
 
@@ -1373,7 +1439,56 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
           )}
         </div>
       )}
-      {hasInterviewBrief && statusMeta?.button === null && (
+      {hasInterviewBrief && statusMeta?.recover && (
+        <div className="flex flex-col items-end gap-1 flex-shrink-0 max-w-[16rem]">
+          <button
+            type="button"
+            onClick={() => handleRecover(false)}
+            disabled={recovering}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-blue text-brand-blue hover:bg-brand-blue/5 transition-colors disabled:opacity-50"
+          >
+            <Send size={13} />
+            {recovering ? 'Working…' : 'Reopen for the candidate'}
+          </button>
+          {!confirmStartOver && (
+            <button
+              type="button"
+              onClick={() => setConfirmStartOver(true)}
+              disabled={recovering}
+              className="text-[11px] font-medium text-text-muted hover:text-brand-blue transition-colors disabled:opacity-50"
+            >
+              Start over instead
+            </button>
+          )}
+          {confirmStartOver && (
+            <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900 space-y-1.5">
+              <p>
+                This deletes the answers from the unfinished interview and gives the candidate a fresh
+                one with the full time. Only do it if they cannot send the first recording.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setConfirmStartOver(false)} className="font-medium text-text-muted hover:text-text">
+                  Cancel
+                </button>
+                <button type="button" onClick={() => handleRecover(true)} className="font-semibold text-red-700 hover:underline">
+                  Delete and start over
+                </button>
+              </div>
+            </div>
+          )}
+          <span className={cn('text-[11px]', statusMeta.badgeClass)}>{statusMeta.badge}</span>
+          <span className="text-[11px] text-text-muted text-right">
+            The candidate finished answering but the recording did not arrive. Reopening works if their
+            browser still has it.
+          </span>
+          {sendError && <span className="text-[11px] text-red-600">Failed: {sendError}</span>}
+        </div>
+      )}
+      {recoverNote && (
+        // The link itself, when there is no email to send it to, is the box under "Copy link".
+        <div className="w-full text-xs text-text-muted" role="status">{recoverNote}</div>
+      )}
+      {hasInterviewBrief && statusMeta?.button === null && !statusMeta?.recover && (
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
           <button
             type="button"

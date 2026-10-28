@@ -575,27 +575,121 @@ class InterviewService:
             raise InterviewNotFound()
         updated = await self._strict().reinstate(interview)
 
-        sent = False
+        sent = await self._email_strict_link(job, talent_pool_profile_id, updated.token)
+        return {
+            "status": updated.status,
+            "interview_url": f"{settings.app_url}/interview/{updated.token}",
+            "email_sent": sent,
+        }
+
+    async def _email_strict_link(
+        self, job: Job, talent_pool_profile_id: uuid.UUID, token: str | None
+    ) -> bool:
+        """Email the candidate their strict interview link again. False when there is no address
+        on file or no link to send."""
         profile = await self._talent_pool_repo.get_by_id_joined_with_other_data(
             talent_pool_profile_id
         )
         candidate_email = resolve_candidate_email(profile) if profile else None
-        if candidate_email and updated.token:
-            organization = job.employer.organization if job.employer else None
-            company_name = (
-                organization.company_name if organization and organization.company_name else None
-            )
-            from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME
+        if not candidate_email or not token:
+            return False
+        organization = job.employer.organization if job.employer else None
+        company_name = (
+            organization.company_name if organization and organization.company_name else None
+        )
+        from app.modules.jobs.schemas import PLATFORM_COMPANY_NAME
 
-            send_ai_interview_invite_email.delay(
-                candidate_email=candidate_email,
-                interview_url=f"{settings.app_url}/interview/{updated.token}",
-                job_title=job.title,
-                company_name=company_name or PLATFORM_COMPANY_NAME,
-                strict=True,
+        send_ai_interview_invite_email.delay(
+            candidate_email=candidate_email,
+            interview_url=f"{settings.app_url}/interview/{token}",
+            job_title=job.title,
+            company_name=company_name or PLATFORM_COMPANY_NAME,
+            strict=True,
+        )
+        return True
+
+    async def recover_failed(
+        self,
+        user: User,
+        job_id: uuid.UUID,
+        talent_pool_profile_id: uuid.UUID,
+        *,
+        start_over: bool,
+    ) -> dict:
+        """The employer recovers a strict interview that failed before it was finished (the
+        candidate answered, but the recording never arrived and the stale sweep gave up).
+
+        Three outcomes, by what is true now:
+        * ``completed``: the recording turns out to be in storage after all (only the
+          confirmation was lost), so the interview is completed and scored, and the candidate
+          does nothing.
+        * ``reopened``: the candidate is sent the link again and finishes where they stopped,
+          sending the recording their browser kept (``start_over`` false).
+        * ``started_over``: a fresh interview with new questions and a new clock, for when the
+          recording is gone (``start_over`` true). The unfinished attempt is discarded.
+
+        Organization-level ownership (decision D2). Free while the interview is still paid; one
+        whose credits were refunded is charged again, as a resend is. Safe to press twice: the
+        second call finds an interview that is no longer FAILED and is refused.
+        """
+        from app.modules.jobs.repository import JobRepository
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if job is None or not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+        interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
+        if interview is None:
+            raise InterviewNotFound()
+        self._assert_interviews_enabled()
+        strict = self._strict()
+        if not await strict.is_strict(interview.id):
+            raise ValidationException(
+                "Only a strict interview can be recovered this way.",
+                code="INTERVIEW_NOT_RECOVERABLE",
             )
-            sent = True
+
+        if not start_over and interview.r2_key:
+            # The recording may have reached storage with only the confirmation lost.
+            try:
+                size = await get_storage_service().get_object_size(interview.r2_key)
+            except Exception:
+                logger.warning(
+                    "recover_failed: could not ask storage about %s", interview.r2_key, exc_info=True
+                )
+                size = 0
+            if size:
+                await self._repo.lock_status(interview.id)
+                await self._db.refresh(interview)
+                if (
+                    interview.status != InterviewStatus.FAILED.value
+                    or interview.completed_at is not None
+                ):
+                    raise ValidationException(
+                        "Only an interview that was started but never finished can be recovered.",
+                        code="INTERVIEW_NOT_RECOVERABLE",
+                    )
+                await self._charge_for_invite(job, interview.id)
+                await self._repo.update(
+                    interview.id, {"status": InterviewStatus.IN_PROGRESS.value}
+                )
+                done = await self._complete_upload(interview)
+                return {
+                    "outcome": "completed",
+                    "status": done.status,
+                    "interview_url": None,
+                    "email_sent": False,
+                }
+
+        await self._charge_for_invite(job, interview.id)
+        if start_over:
+            updated = await strict.start_over(interview)
+            outcome = "started_over"
+        else:
+            updated = await strict.reopen_failed(interview)
+            outcome = "reopened"
+        sent = await self._email_strict_link(job, talent_pool_profile_id, updated.token)
         return {
+            "outcome": outcome,
             "status": updated.status,
             "interview_url": f"{settings.app_url}/interview/{updated.token}",
             "email_sent": sent,
