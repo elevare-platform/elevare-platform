@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -103,6 +103,24 @@ class InterviewRepository:
             row[0]: compute_display_status(row[1], row[2]) for row in result.all()
         }
 
+    async def list_unfinished_failures_for_job(
+        self, job_id: uuid.UUID, talent_pool_profile_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """The candidates (by talent_pool_profile_id) whose interview is FAILED without ever
+        having been completed: the recording never arrived, so nothing was scored. A FAILED
+        interview with a completion time failed in scoring, which is a different problem."""
+        if not talent_pool_profile_ids:
+            return set()
+        result = await self._db.execute(
+            select(Interview.talent_pool_profile_id).where(
+                Interview.job_id == job_id,
+                Interview.talent_pool_profile_id.in_(talent_pool_profile_ids),
+                Interview.status == InterviewStatus.FAILED.value,
+                Interview.completed_at.is_(None),
+            )
+        )
+        return {row[0] for row in result.all()}
+
     async def list_statuses_for_profile(
         self, talent_pool_profile_id: uuid.UUID, job_ids: list[uuid.UUID]
     ) -> dict[uuid.UUID, str]:
@@ -140,7 +158,10 @@ class InterviewRepository:
         return list(result.scalars().all())
 
     async def get_stale_in_progress_interviews(
-        self, before: datetime, limit: int = 200
+        self,
+        before: datetime,
+        limit: int = 200,
+        upload_before: datetime | None = None,
     ) -> list[Interview]:
         """Return interviews stuck IN_PROGRESS with no activity since
         `before` — abandoned mid-interview (closed tab, crashed browser),
@@ -148,13 +169,22 @@ class InterviewRepository:
         created_at/started_at: every real activity (session start/restart,
         upload, complete) bumps updated_at, so a truly abandoned
         interview's updated_at freezes at its last session start while a
-        genuinely long-running one keeps moving."""
+        genuinely long-running one keeps moving.
+
+        An interview that reached the upload step (it has a recording key,
+        issued with the upload address) is waiting for its recording, so it
+        is only returned once it has been idle since `upload_before`, which
+        is later than `before`."""
         stmt = (
             select(Interview)
             .where(Interview.status == InterviewStatus.IN_PROGRESS.value)
             .where(Interview.updated_at < before)
             .limit(limit)
         )
+        if upload_before is not None:
+            stmt = stmt.where(
+                or_(Interview.r2_key.is_(None), Interview.updated_at < upload_before)
+            )
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
 import uuid
 from datetime import datetime, timedelta
 
@@ -401,6 +402,111 @@ class ConductMixin:
                 "completed_at": None,
                 "video_expires_at": None,
                 "token_expires_at": now + timedelta(days=REINSTATE_LINK_DAYS),
+            },
+        )
+        await self._db.commit()
+        return updated
+
+    async def _failed_before_finishing(
+        self, interview: Interview
+    ) -> StrictInterviewRun:
+        """The run of an interview that failed before it was finished, with the row locked.
+
+        An interview becomes FAILED without ever being completed when its recording never
+        arrived and the stale sweep gave up on it. Everything else that is FAILED (scoring
+        failed after the recording arrived) has a completion time and is not this.
+        """
+        status = await self._repo.lock_status(interview.id)
+        await self._db.refresh(interview)
+        run = await self.get_run(interview.id)
+        if (
+            status != InterviewStatus.FAILED.value
+            or interview.completed_at is not None
+            or run is None
+            or run.started_at is None
+        ):
+            raise ValidationException(
+                "Only an interview that was started but never finished can be recovered.",
+                code="INTERVIEW_NOT_RECOVERABLE",
+            )
+        return run
+
+    async def reopen_failed(self, interview: Interview) -> Interview:
+        """Let the candidate finish an interview that failed before it was finished: they open
+        the link again and the recording their browser kept is sent. The caller has already
+        checked that the employer may manage this job and has taken the payment.
+
+        The clock stands still from the last thing the candidate did until they open the link
+        (the same rule as a reinstated interview), the answers stay, and the recording that was
+        never received is forgotten so no clip points at a file that is not there.
+        """
+        run = await self._failed_before_finishing(interview)
+        turns = await self._turns(interview.id)
+        now = self._clock()
+
+        moments = [run.last_seen_at, run.started_at]
+        for turn in turns:
+            moments.append(turn.answered_at or turn.opened_at)
+        run.paused_at = max(moment for moment in moments if moment is not None)
+        run.ended_at = None
+        run.end_reason = None
+        run.away_since = None
+        run.away_kind = None
+        # Not heard from yet: the candidate's first visit must not count as a reload.
+        run.last_seen_at = None
+
+        updated = await self._repo.update(
+            interview.id,
+            {
+                "status": InterviewStatus.PENDING.value,
+                "r2_key": None,
+                "token": interview.token or secrets.token_urlsafe(32),
+                "token_expires_at": now + timedelta(days=REINSTATE_LINK_DAYS),
+                "session_start_count": 0,
+                "reset_requested_at": None,
+            },
+        )
+        await self._db.commit()
+        return updated
+
+    async def start_over(self, interview: Interview) -> Interview:
+        """Give the candidate a fresh interview in place of one that failed before it was
+        finished: new questions copied when they start, a new clock, no answers. Used when the
+        recording of the first attempt is gone, so what is left of it could not be reviewed. The
+        caller has already checked that the employer may manage this job and has taken the
+        payment."""
+        run = await self._failed_before_finishing(interview)
+        now = self._clock()
+
+        for model in (InterviewTurn, InterviewConductEvent, InterviewTranscriptCheck):
+            await self._db.execute(delete(model).where(model.interview_id == interview.id))
+
+        run.rules_version = None
+        run.rules_accepted_at = None
+        run.questions = None
+        run.follow_up_mode = None
+        run.started_at = None
+        run.recording_parts = 0
+        run.attempt = 1
+        run.last_seen_at = None
+        run.away_since = None
+        run.away_kind = None
+        run.ended_at = None
+        run.end_reason = None
+        run.paused_at = None
+        run.previous_recordings = None
+
+        updated = await self._repo.update(
+            interview.id,
+            {
+                "status": InterviewStatus.PENDING.value,
+                "r2_key": None,
+                "transcript": None,
+                "started_at": None,
+                "token": interview.token or secrets.token_urlsafe(32),
+                "token_expires_at": now + timedelta(days=REINSTATE_LINK_DAYS),
+                "session_start_count": 0,
+                "reset_requested_at": None,
             },
         )
         await self._db.commit()

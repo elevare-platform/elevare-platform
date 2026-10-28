@@ -31,6 +31,7 @@ from app.modules.interviews.schema import (
     InterviewQuestionsPutRequest,
     InterviewQuestionsResponse,
     InterviewQuestionsTemplateResponse,
+    InterviewRecoverResponse,
     InterviewReinstateResponse,
     InterviewResetRequestResponse,
     InterviewScoreRequestResponse,
@@ -370,6 +371,31 @@ async def reinstate_interview(
     service = InterviewService(db)
     try:
         return await service.reinstate(current_user, job_id, talent_pool_profile_id)
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/{talent_pool_profile_id}/recover",
+    response_model=InterviewRecoverResponse,
+    status_code=200,
+)
+async def recover_failed_interview(
+    talent_pool_profile_id: uuid.UUID,
+    job_id: uuid.UUID = Query(...),
+    start_over: bool = Query(False),
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recover an interview that failed before the candidate finished it: complete it if its
+    recording is in storage, reopen it so the candidate can send the recording their browser
+    kept, or (start_over) give them a fresh one. Only the company that owns the job may do this.
+    Free while the interview is still paid."""
+    service = InterviewService(db)
+    try:
+        return await service.recover_failed(
+            current_user, job_id, talent_pool_profile_id, start_over=start_over
+        )
     finally:
         await service.close()
 

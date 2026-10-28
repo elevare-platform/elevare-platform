@@ -122,9 +122,10 @@ class InterviewListService:
         from app.modules.introductions.repository import IntroductionRepository
 
         intro_repo = IntroductionRepository(self._db)
-        interview_statuses = await InterviewRepository(self._db).list_statuses_for_job(
-            job_id, [entry.talent_pool_profile_id for entry in entries]
-        )
+        interview_repo = InterviewRepository(self._db)
+        profile_ids = [entry.talent_pool_profile_id for entry in entries]
+        interview_statuses = await interview_repo.list_statuses_for_job(job_id, profile_ids)
+        unfinished = await interview_repo.list_unfinished_failures_for_job(job_id, profile_ids)
 
         items = []
         for entry in entries:
@@ -165,6 +166,13 @@ class InterviewListService:
                     note=entry.note,
                     added_at=entry.created_at,
                     interview_status=interview_statuses.get(profile.id),
+                    interview_failure=(
+                        "NEVER_FINISHED"
+                        if profile.id in unfinished
+                        else "SCORING_FAILED"
+                        if interview_statuses.get(profile.id) == "FAILED"
+                        else None
+                    ),
                 )
             )
 

@@ -526,6 +526,20 @@ class InterviewReinstateResponse(BaseModel):
     email_sent: bool
 
 
+class InterviewRecoverResponse(BaseModel):
+    """What an employer gets back after recovering an interview that failed before it finished."""
+
+    # "completed" (the recording was in storage; scoring has been queued), "reopened" (the
+    # candidate carries on and sends the recording their browser kept) or "started_over" (a fresh
+    # interview).
+    outcome: str
+    status: str
+    # None for "completed": the candidate has nothing to do.
+    interview_url: str | None = None
+    # Whether the candidate was sent the link by email (not when no address is on file).
+    email_sent: bool
+
+
 class StrictRecordingPartResponse(BaseModel):
     """Where to upload an earlier recording the browser kept across a reload, and which part
     number it is. The server joins the parts with the final recording before scoring."""
