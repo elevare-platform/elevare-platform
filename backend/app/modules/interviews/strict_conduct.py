@@ -45,6 +45,7 @@ from app.modules.interviews.models import (
     InterviewConductEvent,
     InterviewTranscriptCheck,
     InterviewTurn,
+    InterviewWeightedScore,
     StrictInterviewRun,
 )
 
@@ -408,7 +409,11 @@ class ConductMixin:
         return updated
 
     async def _failed_before_finishing(
-        self, interview: Interview, *, allow_ended: bool = False
+        self,
+        interview: Interview,
+        *,
+        allow_ended: bool = False,
+        allow_completed: bool = False,
     ) -> StrictInterviewRun:
         """The run of an interview that failed before it was finished, with the row locked.
 
@@ -416,7 +421,10 @@ class ConductMixin:
         arrived and the stale sweep gave up on it. Everything else that is FAILED (scoring
         failed after the recording arrived) has a completion time and is not this. With
         ``allow_ended`` an interview that ended early (not scored) also qualifies, for a
-        retake; it is otherwise carried on with by reinstating it.
+        retake; it is otherwise carried on with by reinstating it. With ``allow_completed`` a
+        finished interview (scored, or whose scoring failed) qualifies too, for a retake the
+        employer asks for; one still being scored does not, since the scoring would then land
+        on the new attempt.
         """
         status = await self._repo.lock_status(interview.id)
         await self._db.refresh(interview)
@@ -425,11 +433,15 @@ class ConductMixin:
             status == InterviewStatus.FAILED.value and interview.completed_at is None
         )
         ended = allow_ended and status in ENDED_STATUSES
-        if not (failed or ended) or run is None or run.started_at is None:
+        completed = allow_completed and (
+            status == InterviewStatus.SCORED.value
+            or (status == InterviewStatus.FAILED.value and interview.completed_at is not None)
+        )
+        if not (failed or ended or completed) or run is None or run.started_at is None:
             raise ValidationException(
-                "Only an interview that was started but never finished, or that ended early, "
-                "can be started over."
-                if allow_ended
+                "Only an interview that was started and then finished, ended early or failed can be "
+                "started over."
+                if allow_completed
                 else "Only an interview that was started but never finished can be recovered.",
                 code="INTERVIEW_NOT_RECOVERABLE",
             )
@@ -482,11 +494,24 @@ class ConductMixin:
 
         Also used for an interview that ended early (or was stopped), when the employer would
         rather have the candidate take it again than reinstate it: everything of the attempt is
-        discarded, the recording included (the caller removes the files)."""
-        run = await self._failed_before_finishing(interview, allow_ended=True)
+        discarded, the recording included (the caller removes the files).
+
+        And for a COMPLETED interview (scored, or whose scoring failed) the employer lets the
+        candidate take again, for example after a low score: the score, its report and the
+        written assessment are discarded with the answers. What is kept: the cost rows (real
+        spend), and the hiring panel's decisions, an append-only record of what the company
+        decided at the time (each carries its date)."""
+        run = await self._failed_before_finishing(
+            interview, allow_ended=True, allow_completed=True
+        )
         now = self._clock()
 
-        for model in (InterviewTurn, InterviewConductEvent, InterviewTranscriptCheck):
+        for model in (
+            InterviewTurn,
+            InterviewConductEvent,
+            InterviewTranscriptCheck,
+            InterviewWeightedScore,
+        ):
             await self._db.execute(delete(model).where(model.interview_id == interview.id))
 
         run.rules_version = None
@@ -510,6 +535,9 @@ class ConductMixin:
                 "status": InterviewStatus.PENDING.value,
                 "r2_key": None,
                 "transcript": None,
+                "ai_score": None,
+                "ai_rationale": None,
+                "ai_scored_at": None,
                 "started_at": None,
                 "completed_at": None,
                 "video_expires_at": None,
