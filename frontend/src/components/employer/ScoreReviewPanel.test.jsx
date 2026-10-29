@@ -70,7 +70,7 @@ describe('ScoreReviewPanel, the total', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
     expect(api.put).toHaveBeenCalledWith(
       '/api/v1/interviews/p-1/score-review',
-      { score: 89, ratings: null, reason: 'Panel read it differently' },
+      { score: 89, ratings: null, rationale: null, reason: 'Panel read it differently' },
       { params: { job_id: 'job-1' } }
     )
   })
@@ -83,7 +83,7 @@ describe('ScoreReviewPanel, the total', () => {
     fireEvent.click(save())
 
     await waitFor(() => expect(api.put).toHaveBeenCalled())
-    expect(api.put.mock.calls[0][1]).toEqual({ score: 70, ratings: null, reason: null })
+    expect(api.put.mock.calls[0][1]).toEqual({ score: 70, ratings: null, rationale: null, reason: null })
   })
 
   it('does not save an empty total, one outside 0 to 100, or the total it already has', () => {
@@ -181,7 +181,7 @@ describe('ScoreReviewPanel, the competency ratings', () => {
     fireEvent.click(save())
 
     await waitFor(() => expect(api.put).toHaveBeenCalled())
-    expect(api.put.mock.calls[0][1]).toEqual({ score: null, ratings: { Strategy: 5 }, reason: null })
+    expect(api.put.mock.calls[0][1]).toEqual({ score: null, ratings: { Strategy: 5 }, rationale: null, reason: null })
   })
 
   it('sends the typed total as well, which wins over the ratings, once the total is typed', async () => {
@@ -195,7 +195,7 @@ describe('ScoreReviewPanel, the competency ratings', () => {
     fireEvent.click(save())
 
     await waitFor(() => expect(api.put).toHaveBeenCalled())
-    expect(api.put.mock.calls[0][1]).toEqual({ score: 95, ratings: { Strategy: 4, 'P&L': 4 }, reason: null })
+    expect(api.put.mock.calls[0][1]).toEqual({ score: 95, ratings: { Strategy: 4, 'P&L': 4 }, rationale: null, reason: null })
   })
 
   it('goes back to working the total out from the ratings on request', () => {
@@ -245,5 +245,113 @@ describe('ScoreReviewPanel, the competency ratings', () => {
     expect(rating('Strategy')).toHaveValue('5')
     expect(totalInput()).toHaveValue(95)
     expect(screen.getByRole('button', { name: 'Work the total out from the ratings' })).toBeInTheDocument()
+  })
+})
+
+describe('ScoreReviewPanel, the written assessment', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const SYSTEM_TEXT = 'A steady candidate.\n\nWeighted score: 60 of 100. Suggested band (provisional): Do not shortlist.'
+  const WITH_TEXT = {
+    ...WITH_ROWS,
+    ai_rationale: SYSTEM_TEXT,
+    score_review: { ...WITH_ROWS.score_review, original_rationale: SYSTEM_TEXT },
+  }
+  const textBox = () => screen.getByLabelText(/^Written assessment/)
+
+  it('shows the text everyone reads, ready to edit, and says the system’s text is kept', () => {
+    setup(WITH_TEXT)
+
+    expect(textBox()).toHaveValue(SYSTEM_TEXT)
+    expect(screen.getByText(/The system.s own text is kept and can be put back/)).toBeInTheDocument()
+    expect(save()).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /Use the system.s text/ })).not.toBeInTheDocument()
+  })
+
+  it('saves an edited text on its own, with nothing else changed', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    const { onChanged } = setup(WITH_TEXT)
+
+    fireEvent.change(textBox(), { target: { value: '  A confident operator with a clear route to market.  ' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/v1/interviews/p-1/score-review',
+      { score: null, ratings: null, rationale: 'A confident operator with a clear route to market.', reason: null },
+      { params: { job_id: 'job-1' } }
+    )
+  })
+
+  it('sends the text together with changed ratings', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup(WITH_TEXT)
+
+    fireEvent.change(rating('Strategy'), { target: { value: '5' } })
+    fireEvent.change(textBox(), { target: { value: 'Rewritten.' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1]).toEqual({ score: null, ratings: { Strategy: 5 }, rationale: 'Rewritten.', reason: null })
+  })
+
+  it('offers to put the system’s text back, and sends no text when the box equals it', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup(WITH_TEXT)
+
+    fireEvent.change(textBox(), { target: { value: 'Something else.' } })
+    fireEvent.click(screen.getByRole('button', { name: /Use the system.s text/ }))
+    expect(textBox()).toHaveValue(SYSTEM_TEXT)
+    expect(save()).toBeDisabled() // back to the system's text and nothing else changed
+
+    fireEvent.change(rating('Strategy'), { target: { value: '4' } })
+    fireEvent.click(save())
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1].rationale).toBeNull()
+  })
+
+  it('keeps an earlier written assessment when something else is changed', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    const written = 'The admin’s earlier text.'
+    setup({ ...WITH_TEXT, ai_rationale: written, reviewed: true })
+
+    expect(textBox()).toHaveValue(written)
+    fireEvent.change(rating('Strategy'), { target: { value: '5' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1].rationale).toBe(written)
+  })
+
+  it('does not save an empty text as a new assessment', () => {
+    setup(WITH_TEXT)
+
+    fireEvent.change(textBox(), { target: { value: '   ' } })
+
+    expect(save()).toBeDisabled()
+  })
+
+  it('does not send a total just because the text was edited on a job without competencies', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup({ ...PLAIN, ai_rationale: 'System text.', score_review: { ...PLAIN.score_review, original_rationale: 'System text.' } })
+
+    fireEvent.change(textBox(), { target: { value: 'Admin text.' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1]).toEqual({ score: null, ratings: null, rationale: 'Admin text.', reason: null })
+  })
+
+  it('lists an edited written assessment in the history', () => {
+    setup({
+      ...WITH_TEXT,
+      reviewed: true,
+      score_review: {
+        ...WITH_TEXT.score_review,
+        reviews: [{ score: null, ratings: {}, rationale_changed: true, reason: null, reviewed_by_name: 'Ada Admin', reviewed_at: '2026-10-29T10:00:00Z' }],
+      },
+    })
+
+    expect(screen.getByTestId('review-history')).toHaveTextContent('Reviewed, written assessment edited by Ada Admin')
   })
 })

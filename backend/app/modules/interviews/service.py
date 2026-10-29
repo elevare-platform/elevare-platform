@@ -1870,6 +1870,7 @@ class InterviewService:
             report=score_report,
             review_score=reviews[0].score if reviews else None,
             review_ratings=(reviews[0].ratings or {}) if reviews else None,
+            review_rationale=reviews[0].rationale if reviews else None,
         )
         # The job's switch: with scores off, the employer and the shared link are not sent the
         # total, the band, the practical case's total or the assessment lines that state them. An
@@ -2076,10 +2077,13 @@ class InterviewService:
             "original_band": stored_report.get("band"),
             # The system's own rating of each competency, to compare the reviewer's against.
             "original_ratings": {row["name"]: row.get("rating") for row in stored_report.get("rows", [])},
+            # The system's own written assessment, which is kept whatever an admin wrote in its place.
+            "original_rationale": interview.ai_rationale,
             "reviews": [
                 {
                     "score": row.score,
                     "ratings": row.ratings or {},
+                    "rationale_changed": bool(row.rationale),
                     "reason": row.reason,
                     "reviewed_by_name": row.reviewed_by_name,
                     "reviewed_at": row.reviewed_at,
@@ -2096,13 +2100,15 @@ class InterviewService:
         score: int | None,
         reason: str | None,
         ratings: dict | None = None,
+        rationale: str | None = None,
         *,
         clear: bool = False,
     ) -> dict:
-        """An Elevare admin changes the competency ratings and/or sets the total of a scored
-        interview in place of the system's, or (``clear``) takes the review away again. The total
-        follows the ratings by the system's formula unless one was typed, and the band follows the
-        total by the job's cut-offs.
+        """An Elevare admin changes the competency ratings, sets the total and/or writes the written
+        assessment of a scored interview in place of the system's, or (``clear``) takes the review
+        away again. The total follows the ratings by the system's formula unless one was typed, and
+        the band follows the total by the job's cut-offs. A written assessment is shown as written,
+        in place of the system's text, which is kept.
 
         Admin only, for any job (decision item 52). Append-only: each change is a new row with who
         made it, when, the optional reason, the ratings that differ from the system's and the
@@ -2118,9 +2124,10 @@ class InterviewService:
             raise ValidationException(
                 f"The score must be between {MIN_SCORE} and {MAX_SCORE}.", code="INVALID_SCORE"
             )
-        if not clear and score is None and not ratings:
+        cleaned_rationale = rationale.strip() if rationale else None
+        if not clear and score is None and not ratings and not cleaned_rationale:
             raise ValidationException(
-                "Set a score or change a rating.", code="NOTHING_TO_REVIEW"
+                "Set a score, change a rating or edit the written assessment.", code="NOTHING_TO_REVIEW"
             )
         job = await JobRepository(self._db).get_by_id(job_id)
         if job is None:
@@ -2148,6 +2155,12 @@ class InterviewService:
         # Only the ratings that differ from the system's own are kept, under the competency's own
         # name. A name the job's profile does not have, or a rating outside 1 to 5, is refused.
         changed: dict[str, int] = {}
+        # A written assessment equal to the system's own is no change: the system's text is shown.
+        edited_rationale = (
+            cleaned_rationale
+            if cleaned_rationale and cleaned_rationale != (interview.ai_rationale or "").strip()
+            else None
+        )
         if ratings:
             rows = {row["name"].casefold(): row for row in report.get("rows", [])}
             if not rows:
@@ -2165,16 +2178,22 @@ class InterviewService:
                     raise ValidationException("A rating must be a whole number from 1 to 5.", code="INVALID_RATING")
                 if rating != row.get("rating"):
                     changed[row["name"]] = rating
-            if score is None and not changed:
+            if score is None and not changed and not edited_rationale:
                 raise ValidationException(
                     "Those ratings are the system's own, so there is nothing to change.", code="NOTHING_TO_REVIEW"
                 )
+        if not clear and score is None and not changed and not edited_rationale:
+            raise ValidationException(
+                "That written assessment is the system's own, so there is nothing to change.",
+                code="NOTHING_TO_REVIEW",
+            )
         name = " ".join(f"{user.first_name} {user.last_name}".split()) or user.email
         cleaned_reason = " ".join(reason.split()) if reason else None
         row = InterviewScoreReview(
             interview_id=interview.id,
             score=score,
             ratings=changed or None,
+            rationale=edited_rationale,
             reason=cleaned_reason or None,
             reviewed_by=user.id,
             reviewed_by_name=name[:200],
@@ -2185,7 +2204,8 @@ class InterviewService:
         self._db.add(row)
         await self._db.commit()
         logger.info(
-            "interview score %s: interview=%s by admin=%s (system score %s, band %s, now score %s, ratings %s)",
+            "interview score %s: interview=%s by admin=%s (system score %s, band %s, now score %s, "
+            "ratings %s, written assessment %s)",
             "review removed" if clear else "reviewed",
             interview.id,
             user.id,
@@ -2193,6 +2213,7 @@ class InterviewService:
             report.get("band"),
             score,
             changed or None,
+            f"edited ({len(edited_rationale)} characters)" if edited_rationale else "the system's",
         )
         shown = apply_review(
             score=interview.ai_score,
@@ -2200,6 +2221,7 @@ class InterviewService:
             report=report if "rows" in report else None,
             review_score=score,
             review_ratings=changed,
+            review_rationale=edited_rationale,
         )
         return {
             "score": shown.score,

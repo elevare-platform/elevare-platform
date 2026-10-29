@@ -39,6 +39,7 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
   )
   const [typedValue, setTypedValue] = useState(detail.ai_score ?? '')
   const [reason, setReason] = useState('')
+  const [text, setText] = useState(detail.ai_rationale ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -55,10 +56,19 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
   )
   const ratingsMoved = rows.some((row) => String(ratings[row.name]) !== String(startRatings[row.name]))
   const totalMoved = totalValid && number !== detail.ai_score
-  const dirty = ratingsMoved || totalMoved
-  // What is sent: the changed ratings, and the total only when it was typed.
-  const sendScore = totalTyped || !rows.length ? number : null
-  const canSave = dirty && (sendScore === null ? Object.keys(changedRatings).length > 0 : totalValid)
+  // The written assessment: what is shown now, and what the system itself wrote.
+  const shownText = detail.ai_rationale ?? ''
+  const systemText = review.original_rationale ?? ''
+  const textMoved = text.trim() !== shownText.trim()
+  const dirty = ratingsMoved || totalMoved || textMoved
+  // What is sent is the whole review: the changed ratings, the total only when it was typed (or an
+  // earlier review's typed total is being kept), and the written assessment only when it differs
+  // from the system's own.
+  const keepTyped = totalTyped || !rows.length
+  const sendScore = keepTyped && (totalMoved || detail.reviewed) ? number : null
+  const sendRationale = text.trim() && text.trim() !== systemText.trim() ? text.trim() : null
+  const hasChange = sendScore !== null || Object.keys(changedRatings).length > 0 || sendRationale !== null
+  const canSave = dirty && hasChange && (sendScore === null || totalValid)
 
   const request = async (call) => {
     if (saving) return
@@ -89,6 +99,7 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
         {
           score: sendScore,
           ratings: Object.keys(changedRatings).length ? changedRatings : null,
+          rationale: sendRationale,
           reason: reason.trim() || null,
         },
         { params: { job_id: jobId } }
@@ -185,6 +196,34 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
         </div>
 
         <div>
+          <label htmlFor="review-text" className="block text-[11px] font-medium text-text-muted">
+            Written assessment (everyone who reads this interview sees this text)
+          </label>
+          <textarea
+            id="review-text"
+            rows={10}
+            maxLength={20000}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-border px-2.5 py-1.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+          />
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <p className="text-[11px] text-text-muted">
+              Your text replaces the system&apos;s. The system&apos;s own text is kept and can be put back.
+            </p>
+            {text.trim() !== systemText.trim() && (
+              <button
+                type="button"
+                onClick={() => setText(systemText)}
+                className="text-[11px] font-medium text-brand-blue hover:underline"
+              >
+                Use the system&apos;s text
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div>
           <label htmlFor="review-reason" className="block text-[11px] font-medium text-text-muted">
             Reason (optional)
           </label>
@@ -230,12 +269,13 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
           <ul className="space-y-1" data-testid="review-history">
             {review.reviews.map((row, index) => {
               const moved = Object.entries(row.ratings ?? {})
-              const nothing = row.score == null && moved.length === 0
+              const nothing = row.score == null && moved.length === 0 && !row.rationale_changed
               return (
                 <li key={index} className="text-xs text-text">
                   {nothing ? 'Review removed' : 'Reviewed'}
                   {row.score != null ? `, total set to ${row.score}` : ''}
-                  {moved.length > 0 ? `, ratings ${moved.map(([name, rating]) => `${name} ${rating}`).join(', ')}` : ''} by{' '}
+                  {moved.length > 0 ? `, ratings ${moved.map(([name, rating]) => `${name} ${rating}`).join(', ')}` : ''}
+                  {row.rationale_changed ? ', written assessment edited' : ''} by{' '}
                   {row.reviewed_by_name}, {formatWhen(row.reviewed_at)}
                   {row.reason ? `. ${row.reason}` : ''}
                 </li>

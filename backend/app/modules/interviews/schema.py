@@ -388,11 +388,16 @@ class WeightedScoreReport(BaseModel):
 
 class ScoreReviewRequest(BaseModel):
     """An Elevare admin's review of a finished interview: the competency ratings to change
-    (``{name: 1 to 5}``) and/or a total (0 to 100) that wins over the one the ratings give, with an
-    optional reason. At least one of the two is needed."""
+    (``{name: 1 to 5}``), a total (0 to 100) that wins over the one the ratings give, and/or a
+    written assessment in place of the system's, with an optional reason. Each save is the whole of
+    the review (the latest replaces the earlier), and at least one thing must differ from the
+    system's own."""
 
     score: int | None = Field(default=None, ge=0, le=100)
     ratings: dict[str, int] | None = None
+    # The written assessment, in place of the system's text (which is kept). Null or the system's own
+    # text: the system's text is shown.
+    rationale: str | None = Field(default=None, max_length=20000)
     reason: str | None = Field(default=None, max_length=1000)
 
 

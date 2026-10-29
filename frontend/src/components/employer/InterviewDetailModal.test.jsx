@@ -168,7 +168,12 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
 
   it('reloads the interview after an administrator saves a score, and shows it tagged', async () => {
     api.get.mockResolvedValueOnce({
-      data: { ...BASE, ai_score: 58, ai_rationale: 'Fine.', score_review: { original_score: 58, original_band: null, reviews: [] } },
+      data: {
+        ...BASE,
+        ai_score: 58,
+        ai_rationale: 'Fine.',
+        score_review: { original_score: 58, original_band: null, original_rationale: 'Fine.', reviews: [] },
+      },
     })
     api.put.mockResolvedValue({ data: { score: 89, band: null, reviewed: true } })
     api.get.mockResolvedValueOnce({
@@ -177,7 +182,7 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
         ai_score: 89,
         ai_rationale: 'Fine.',
         reviewed: true,
-        score_review: { original_score: 58, original_band: null, reviews: [] },
+        score_review: { original_score: 58, original_band: null, original_rationale: 'Fine.', reviews: [] },
       },
     })
     renderModal()
@@ -188,7 +193,7 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     expect(await screen.findByTestId('reviewed-tag')).toBeInTheDocument()
     expect(api.put).toHaveBeenCalledWith(
       '/api/v1/interviews/profile-1/score-review',
-      { score: 89, ratings: null, reason: null },
+      { score: 89, ratings: null, rationale: null, reason: null },
       { params: { job_id: 'job-1' } }
     )
   })

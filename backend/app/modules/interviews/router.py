@@ -471,7 +471,7 @@ async def review_interview_score(
     service = InterviewService(db)
     try:
         return await service.review_score(
-            current_user, job_id, talent_pool_profile_id, data.score, data.reason, data.ratings
+            current_user, job_id, talent_pool_profile_id, data.score, data.reason, data.ratings, data.rationale
         )
     finally:
         await service.close()

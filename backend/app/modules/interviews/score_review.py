@@ -62,6 +62,7 @@ def apply_review(
     report: dict | None,
     review_score: int | None,
     review_ratings: dict | None = None,
+    review_rationale: str | None = None,
 ) -> Shown:
     """The score, the written assessment and the weighted report to show, given the latest review
     (``None`` for both when there is no review or it was taken away: the system's own result is
@@ -73,15 +74,22 @@ def apply_review(
     band follows the total by the job's cut-offs, with no cap for a low key competency (the cap
     lasts until a person has looked), the score counts as complete, and the lines of the written
     assessment that carry the total and the changed ratings are replaced so the text agrees with the
-    numbers. Without a report (a job with no scoring profile) only a typed total changes anything."""
+    numbers. Without a report (a job with no scoring profile) only a typed total changes anything.
+
+    ``review_rationale`` is a written assessment the reviewer wrote: it is shown as it is, in place of
+    the system's text and of any rewriting of its score lines, and it counts as a review on its own
+    (the system's text is kept; this does not touch it)."""
     changes = review_ratings or {}
     if review_score is None and not changes:
+        if review_rationale:
+            return Shown(score=score, rationale=review_rationale, report=report, reviewed=True)
         return Shown(score=score, rationale=rationale, report=report, reviewed=False)
 
     if not report or "bands" not in report:
+        text = review_rationale or rationale
         if review_score is None:
-            return Shown(score=score, rationale=rationale, report=report, reviewed=False)
-        return Shown(score=review_score, rationale=rationale, report=report, reviewed=True)
+            return Shown(score=score, rationale=text, report=report, reviewed=bool(review_rationale))
+        return Shown(score=review_score, rationale=text, report=report, reviewed=True)
 
     by_name = {name.casefold(): rating for name, rating in changes.items() if valid_rating(rating)}
     rows = [
@@ -126,4 +134,4 @@ def apply_review(
         for before, after in zip(report.get("rows", []), rows, strict=False):
             if before.get("rating") != after["rating"]:
                 new_rationale = new_rationale.replace(_head(before, before.get("rating")), _head(after, after["rating"]), 1)
-    return Shown(score=total, rationale=new_rationale, report=shown_report, reviewed=True)
+    return Shown(score=total, rationale=review_rationale or new_rationale, report=shown_report, reviewed=True)
