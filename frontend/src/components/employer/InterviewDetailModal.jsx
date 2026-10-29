@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Brain, FileText, FileCheck2, Loader2, RotateCcw, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -21,6 +21,40 @@ import { showsClips } from '@/lib/recordingClips'
 // every few seconds, for up to two minutes.
 export const SCORE_POLL_INTERVAL_MS = 3000
 const SCORE_POLL_MAX_TRIES = 40
+// While an admin's request to score an interview again is open, the window checks this often.
+export const RESCORE_POLL_INTERVAL_MS = 4000
+
+/**
+ * RescoreNotice - what the window says about an admin's request to score the interview again: while
+ * it runs (the earlier result is hidden, the window updates by itself), and when it did not finish
+ * (the earlier result is unchanged and shown). Only an Elevare admin is ever sent `rescore`.
+ */
+function RescoreNotice({ rescore }) {
+  if (rescore.status === 'PENDING' && !rescore.stale) {
+    return (
+      <div role="status" data-testid="rescore-pending" className="space-y-1 rounded-xl border border-brand-blue/30 bg-blue-50 p-4">
+        <p className="flex items-center gap-2 text-sm font-semibold text-brand-blue">
+          <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Scoring this interview again…
+        </p>
+        <p className="text-xs text-text-muted">
+          The earlier score, band, ratings, written assessment and scorecard are hidden until the new ones are
+          ready. This usually takes a minute or two, and this window updates by itself.
+        </p>
+      </div>
+    )
+  }
+  const reason = rescore.stale
+    ? 'There was no answer after ten minutes, so it was probably lost.'
+    : rescore.error || 'Something went wrong.'
+  return (
+    <div role="alert" data-testid="rescore-failed" className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <p className="text-sm font-semibold text-amber-900">Scoring this interview again did not finish</p>
+      <p className="text-xs text-amber-900">
+        {reason} The earlier result is unchanged and is shown below. You can ask for it to be scored again.
+      </p>
+    </div>
+  )
+}
 
 /**
  * AssessmentCard - one AI-generated fit score + narrative, used for both
@@ -120,7 +154,28 @@ function AssessmentCard({
  * from the Interview List row this is opened from.
  */
 export default function InterviewDetailModal({ jobId, talentPoolProfileId, candidateName, onClose, onReinstated }) {
-  const [detail, setDetail] = useState(null)
+  const [rawDetail, setDetail] = useState(null)
+  // An admin's request to score the interview again is open: the earlier result is not shown (it is
+  // being replaced), only the recording, the transcript and the rest. Everything below reads `detail`.
+  const rescore = rawDetail?.rescore ?? null
+  const rescoring = rescore?.status === 'PENDING' && !rescore.stale
+  const detail = useMemo(
+    () =>
+      rescoring
+        ? {
+            ...rawDetail,
+            ai_score: null,
+            ai_rationale: null,
+            reviewed: false,
+            score_report: null,
+            practical_case: null,
+            scorecard: null,
+            record: null,
+            score_review: null,
+          }
+        : rawDetail,
+    [rawDetail, rescoring]
+  )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   // An interview that ended early can be reinstated: the candidate carries on where they stopped.
@@ -134,6 +189,23 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
   const pollTimerRef = useRef(null)
 
   useEffect(() => () => clearTimeout(pollTimerRef.current), [])
+
+  // While the interview is being scored again, read it every few seconds until the new result is in
+  // (or the request has failed), so the window fills in by itself.
+  useEffect(() => {
+    if (!rescoring) return undefined
+    const timer = setInterval(async () => {
+      try {
+        const { data } = await api.get('/api/v1/interviews/detail', {
+          params: { job_id: jobId, talent_pool_profile_id: talentPoolProfileId },
+        })
+        setDetail(data)
+      } catch {
+        /* a failed check is not a failed scoring; keep waiting */
+      }
+    }, RESCORE_POLL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [rescoring, jobId, talentPoolProfileId])
 
   // Checks the interview every few seconds until it is no longer being
   // processed. Used both after asking for a score and when the window is opened
@@ -426,6 +498,9 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
               {/* A strict interview: the rules accepted, how it went on the screen, each answer. */}
               <StrictInterviewNotes strict={detail.strict} />
 
+              {/* An admin's request to score the interview again: running, or it did not finish */}
+              {rescore && <RescoreNotice rescore={rescore} />}
+
               {/* The practical case, scored on its own and never part of the weighted score */}
               {detail.practical_case && <PracticalCaseCard report={detail.practical_case} />}
 
@@ -439,7 +514,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{detail.ai_rationale}</p>
                     )}
                   </WeightedScoreCard>
-                ) : detail.writeup_hidden ? null : (
+                ) : detail.writeup_hidden || rescoring ? null : (
                 <AssessmentCard
                   icon={Brain}
                   title="Interview Assessment"

@@ -221,6 +221,29 @@ class InterviewPanelDecision(BaseModel):
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class InterviewRescore(BaseModel):
+    """An Elevare admin asked for an interview to be scored again (docs/08_DECISIONS.md, item 62):
+    PENDING while the second scoring runs, FAILED when it did not work (the earlier result is then
+    unchanged), DONE once the new result is in. One row per interview, reused for each request. A table
+    of its own (migration p22_0046), so no existing table changes."""
+
+    __tablename__ = "interview_rescores"
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
 class InterviewScoreReview(BaseModel):
     """The score an Elevare admin sets for a finished interview in place of the one the system
     worked out (docs/08_DECISIONS.md, item 52), with who set it, when, an optional reason, and the
