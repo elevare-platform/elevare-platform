@@ -355,3 +355,150 @@ describe('ScoreReviewPanel, the written assessment', () => {
     expect(screen.getByTestId('review-history')).toHaveTextContent('Reviewed, written assessment edited by Ada Admin')
   })
 })
+
+describe('ScoreReviewPanel, the scorecard and half-point ratings', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const CARD_DETAIL = {
+    ...WITH_ROWS,
+    ai_rationale: 'System text.',
+    record: { top_strengths: ['Clear route to market.'] },
+    practical_case: { complete: true, score: 4 },
+    scorecard: {
+      rows: [
+        { name: 'Strategy', weight: 60, rating: 3, evidence: 'System evidence for strategy.' },
+        { name: 'P&L', weight: 40, rating: 3, evidence: 'System evidence for P&L.' },
+      ],
+      practical_rating: 4,
+      strengths: ['Clear route to market.'],
+      decision: null,
+    },
+    score_review: {
+      ...WITH_ROWS.score_review,
+      original_rationale: 'System text.',
+      original_evidence: { Strategy: 'System evidence for strategy.', 'P&L': 'System evidence for P&L.' },
+    },
+  }
+  const evidenceBox = (name) => screen.getByLabelText(`Evidence / Verification: ${name}`)
+
+  it('offers ratings in steps of a half, and works the total out from them', () => {
+    setup(CARD_DETAIL)
+
+    const options = within(rating('Strategy')).getAllByRole('option').map((o) => o.getAttribute('value'))
+    expect(options).toEqual(['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5'])
+    fireEvent.change(rating('Strategy'), { target: { value: '3.5' } })
+
+    expect(totalInput()).toHaveValue(Math.round((3.5 / 5) * 60 + (3 / 5) * 40)) // 66
+  })
+
+  it('sends a half-point rating as a number', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup(CARD_DETAIL)
+
+    fireEvent.change(rating('Strategy'), { target: { value: '4.5' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1].ratings).toEqual({ Strategy: 4.5 })
+  })
+
+  it('shows the scorecard fields as they are printed now, ready to edit', () => {
+    setup(CARD_DETAIL)
+
+    expect(evidenceBox('Strategy')).toHaveValue('System evidence for strategy.')
+    expect(screen.getByLabelText('Practical case rating')).toHaveValue('4')
+    expect(screen.getByLabelText(/^Strengths/)).toHaveValue('Clear route to market.')
+    expect(screen.getByLabelText('Human decision')).toHaveValue('')
+    expect(save()).toBeDisabled()
+  })
+
+  it('has no scorecard fields for an interview scored without competencies', () => {
+    setup(PLAIN)
+
+    expect(screen.queryByLabelText('Human decision')).not.toBeInTheDocument()
+  })
+
+  it('sends only the evidence that differs from the system’s, with the other fields it changed', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup(CARD_DETAIL)
+
+    fireEvent.change(evidenceBox('Strategy'), { target: { value: '  Written by hand.  ' } })
+    fireEvent.change(screen.getByLabelText('Practical case rating'), { target: { value: '3.5' } })
+    fireEvent.change(screen.getByLabelText(/^Strengths/), { target: { value: 'First.\nSecond.' } })
+    fireEvent.change(screen.getByLabelText('Human decision'), { target: { value: 'Proceed to Final Interview' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1]).toEqual({
+      score: null,
+      ratings: null,
+      rationale: null,
+      scorecard: {
+        evidence: { Strategy: 'Written by hand.' },
+        practical_rating: 3.5,
+        strengths: 'First.\nSecond.',
+        decision: 'Proceed to Final Interview',
+      },
+      reason: null,
+    })
+  })
+
+  it('can be saved with the human decision alone', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup(CARD_DETAIL)
+
+    fireEvent.change(screen.getByLabelText('Human decision'), { target: { value: 'Hold.' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1].scorecard).toEqual({ decision: 'Hold.' })
+  })
+
+  it('keeps an earlier hand-written decision and evidence when something else is changed', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup({
+      ...CARD_DETAIL,
+      reviewed: true,
+      scorecard: {
+        ...CARD_DETAIL.scorecard,
+        decision: 'Earlier decision.',
+        rows: [{ ...CARD_DETAIL.scorecard.rows[0], evidence: 'Earlier evidence.' }, CARD_DETAIL.scorecard.rows[1]],
+      },
+    })
+
+    fireEvent.change(rating('Strategy'), { target: { value: '4' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1].scorecard).toEqual({
+      evidence: { Strategy: 'Earlier evidence.' },
+      decision: 'Earlier decision.',
+    })
+  })
+
+  it('does not send evidence that has been put back to the system’s', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup(CARD_DETAIL)
+
+    fireEvent.change(evidenceBox('Strategy'), { target: { value: 'Something else.' } })
+    fireEvent.change(evidenceBox('Strategy'), { target: { value: 'System evidence for strategy.' } })
+    fireEvent.change(rating('P&L'), { target: { value: '4' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1].scorecard).toBeUndefined()
+  })
+
+  it('lists a hand-filled scorecard in the history', () => {
+    setup({
+      ...CARD_DETAIL,
+      reviewed: true,
+      score_review: {
+        ...CARD_DETAIL.score_review,
+        reviews: [{ score: null, ratings: {}, scorecard_changed: true, reason: null, reviewed_by_name: 'Ada Admin', reviewed_at: '2026-10-29T10:00:00Z' }],
+      },
+    })
+
+    expect(screen.getByTestId('review-history')).toHaveTextContent('Reviewed, scorecard filled in by Ada Admin')
+  })
+})

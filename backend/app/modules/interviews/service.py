@@ -22,6 +22,7 @@ from app.core.exceptions import (
 from app.core.ownership import can_manage_job
 from app.core.schema_guard import tolerate_missing
 from app.core.storage import get_storage_service
+from app.modules.ai.interview_scorecard import clean_rating, valid_rating
 from app.modules.applications.repository import ApplicationRepository
 from app.modules.candidates.repository import CandidateRepository
 from app.modules.credits.service import CreditsService
@@ -61,9 +62,9 @@ from app.modules.interviews.score_review import (
     MAX_SCORE,
     MIN_SCORE,
     apply_review,
-    valid_rating,
 )
 from app.modules.interviews.score_visibility import hide_scores
+from app.modules.interviews.scorecard import build_scorecard, system_evidence
 from app.modules.interviews.scoring_access import assert_can_score_interviews
 from app.modules.interviews.strict import StrictInterviewService
 from app.modules.interviews.tasks import (
@@ -1877,7 +1878,8 @@ class InterviewService:
         # Elevare admin (the only reader with the review history) always gets the real values.
         scores_hidden = not include_review_history and not await self._scores_visible(job.id)
         shown_score, shown_rationale, shown_report = shown.score, shown.rationale, shown.report
-        reviewed = shown.reviewed
+        # A scorecard an admin filled in by hand counts as a review on its own (the "Reviewed" tag).
+        reviewed = shown.reviewed or bool(reviews and reviews[0].scorecard)
         if scores_hidden:
             hidden = hide_scores(
                 rationale=shown.rationale, report=shown.report, practical=practical_case
@@ -1920,6 +1922,17 @@ class InterviewService:
             stored_report.get("record") or {},
             include_panel_decision=include_panel_decision,
         )
+        # The scorecard as Elevare prints it: built from what is shown (a reviewed rating or total
+        # included) and what an admin filled in by hand.
+        scorecard = build_scorecard(
+            report=shown_report,
+            practical=practical_case,
+            admin=reviews[0].scorecard if reviews else None,
+            top_strengths=record.get("top_strengths") or [],
+            panel_decision=((record.get("panel_decision") or {}).get("label")),
+            total=shown.score,
+            hidden=scores_hidden,
+        )
 
         # A transcript that did not match the recording is not shown: the
         # employer sees the recording's own transcript, which is also what
@@ -1958,6 +1971,7 @@ class InterviewService:
             cv_weaknesses=cv_weaknesses,
             cv_fit_summary=cv_fit_summary,
             strict=strict,
+            scorecard=scorecard,
         )
 
     async def _assessment_record(
@@ -2079,11 +2093,14 @@ class InterviewService:
             "original_ratings": {row["name"]: row.get("rating") for row in stored_report.get("rows", [])},
             # The system's own written assessment, which is kept whatever an admin wrote in its place.
             "original_rationale": interview.ai_rationale,
+            # What the system wrote for each competency's Evidence / Verification, to compare with.
+            "original_evidence": {row["name"]: system_evidence(row) for row in stored_report.get("rows", [])},
             "reviews": [
                 {
                     "score": row.score,
                     "ratings": row.ratings or {},
                     "rationale_changed": bool(row.rationale),
+                    "scorecard_changed": bool(row.scorecard),
                     "reason": row.reason,
                     "reviewed_by_name": row.reviewed_by_name,
                     "reviewed_at": row.reviewed_at,
@@ -2091,6 +2108,54 @@ class InterviewService:
                 for row in reviews
             ],
         }
+
+    @staticmethod
+    def _clean_scorecard(scorecard: dict | None, report: dict) -> dict:
+        """The hand-filled scorecard fields as they are kept: evidence under each competency's own
+        name (an unknown name is refused), a practical rating in half steps, the strengths and the
+        decision wording, trimmed, with anything empty left out."""
+        if not scorecard:
+            return {}
+        kept: dict = {}
+        evidence = scorecard.get("evidence") or {}
+        if evidence:
+            rows = {row["name"].casefold(): row["name"] for row in report.get("rows", [])}
+            if not rows:
+                raise ValidationException(
+                    "This interview was not scored on competencies, so there is no evidence to fill in.",
+                    code="NO_COMPETENCIES",
+                )
+            cleaned: dict[str, str] = {}
+            for given, text in evidence.items():
+                name = rows.get(str(given).casefold())
+                if name is None:
+                    raise ValidationException(
+                        f"\"{given}\" is not a competency of this interview.", code="UNKNOWN_COMPETENCY"
+                    )
+                line = " ".join(str(text).split())
+                if len(line) > 1000:
+                    raise ValidationException(
+                        "The evidence for a competency can be at most 1000 characters.", code="EVIDENCE_TOO_LONG"
+                    )
+                if line:
+                    cleaned[name] = line
+            if cleaned:
+                kept["evidence"] = cleaned
+        practical = scorecard.get("practical_rating")
+        if practical is not None:
+            if not valid_rating(practical):
+                raise ValidationException(
+                    "The practical case rating must be from 1 to 5, in steps of a half (for example 3.5).",
+                    code="INVALID_RATING",
+                )
+            kept["practical_rating"] = clean_rating(practical)
+        strengths = "\n".join(line.strip() for line in str(scorecard.get("strengths") or "").splitlines() if line.strip())
+        if strengths:
+            kept["strengths"] = strengths
+        decision = " ".join(str(scorecard.get("decision") or "").split())
+        if decision:
+            kept["decision"] = decision
+        return kept
 
     async def review_score(
         self,
@@ -2101,6 +2166,7 @@ class InterviewService:
         reason: str | None,
         ratings: dict | None = None,
         rationale: str | None = None,
+        scorecard: dict | None = None,
         *,
         clear: bool = False,
     ) -> dict:
@@ -2125,9 +2191,10 @@ class InterviewService:
                 f"The score must be between {MIN_SCORE} and {MAX_SCORE}.", code="INVALID_SCORE"
             )
         cleaned_rationale = rationale.strip() if rationale else None
-        if not clear and score is None and not ratings and not cleaned_rationale:
+        if not clear and score is None and not ratings and not cleaned_rationale and not scorecard:
             raise ValidationException(
-                "Set a score, change a rating or edit the written assessment.", code="NOTHING_TO_REVIEW"
+                "Set a score, change a rating, edit the written assessment or fill in the scorecard.",
+                code="NOTHING_TO_REVIEW",
             )
         job = await JobRepository(self._db).get_by_id(job_id)
         if job is None:
@@ -2154,7 +2221,9 @@ class InterviewService:
 
         # Only the ratings that differ from the system's own are kept, under the competency's own
         # name. A name the job's profile does not have, or a rating outside 1 to 5, is refused.
-        changed: dict[str, int] = {}
+        changed: dict[str, int | float] = {}
+        # The hand-filled scorecard fields, tidied: only what was filled in is kept.
+        filled = self._clean_scorecard(scorecard, report)
         # A written assessment equal to the system's own is no change: the system's text is shown.
         edited_rationale = (
             cleaned_rationale
@@ -2175,14 +2244,17 @@ class InterviewService:
                         f"\"{given}\" is not a competency of this interview.", code="UNKNOWN_COMPETENCY"
                     )
                 if not valid_rating(rating):
-                    raise ValidationException("A rating must be a whole number from 1 to 5.", code="INVALID_RATING")
-                if rating != row.get("rating"):
-                    changed[row["name"]] = rating
-            if score is None and not changed and not edited_rationale:
+                    raise ValidationException(
+                        "A rating must be from 1 to 5, in steps of a half (for example 3.5).",
+                        code="INVALID_RATING",
+                    )
+                if clean_rating(rating) != row.get("rating"):
+                    changed[row["name"]] = clean_rating(rating)
+            if score is None and not changed and not edited_rationale and not filled:
                 raise ValidationException(
                     "Those ratings are the system's own, so there is nothing to change.", code="NOTHING_TO_REVIEW"
                 )
-        if not clear and score is None and not changed and not edited_rationale:
+        if not clear and score is None and not changed and not edited_rationale and not filled:
             raise ValidationException(
                 "That written assessment is the system's own, so there is nothing to change.",
                 code="NOTHING_TO_REVIEW",
@@ -2194,6 +2266,7 @@ class InterviewService:
             score=score,
             ratings=changed or None,
             rationale=edited_rationale,
+            scorecard=filled or None,
             reason=cleaned_reason or None,
             reviewed_by=user.id,
             reviewed_by_name=name[:200],
@@ -2226,7 +2299,7 @@ class InterviewService:
         return {
             "score": shown.score,
             "band": (shown.report or {}).get("band"),
-            "reviewed": shown.reviewed,
+            "reviewed": shown.reviewed or bool(filled),
         }
 
     async def _latest_panel_decision(self, interview_id: uuid.UUID) -> dict | None:

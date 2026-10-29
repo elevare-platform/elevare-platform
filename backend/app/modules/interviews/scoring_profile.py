@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.modules.ai.interview_scorecard import clean_rating
+
 MIN_COMPETENCIES = 2
 MAX_COMPETENCIES = 12
 MAX_NAME_CHARS = 80
@@ -135,16 +137,18 @@ def normalise(rated: list[dict], profile: list[dict]) -> list[dict]:
     rows = []
     for competency in profile:
         item = by_name.get(competency["name"].casefold(), {})
-        rating = item.get("score")
-        usable = isinstance(rating, int) and not isinstance(rating, bool) and MIN_RATING <= rating <= MAX_RATING
+        # A rating from 1 to 5 in steps of a half; anything else is not assessed.
+        rating = clean_rating(item.get("score"))
+        usable = rating is not None
         rows.append(
             {
                 "name": competency["name"],
                 "weight": competency["weight"],
                 "key": bool(competency.get("key")),
-                "rating": rating if usable else None,
+                "rating": rating,
                 "coverage": item.get("coverage") if usable else "NOT_ASSESSED",
                 "rationale": item.get("rationale", ""),
+                "scorecard_evidence": item.get("scorecard_evidence", "") if usable else "",
                 "evidence": item.get("evidence", ""),
                 "kind": item.get("kind"),
                 "ownership": item.get("ownership", ""),

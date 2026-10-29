@@ -392,6 +392,32 @@ describe('SharedInterviewResultsPage, the list of candidates', () => {
     expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
   })
 
+  it('gives the client a Scorecard tab laid out as the printed scorecard, named for the candidate', async () => {
+    const scorecard = {
+      rows: [{ name: 'Strategy', weight: 100, key: true, rating: 3.5, points: 35, evidence: 'Lagos mapping and a corridor pilot.' }],
+      total_points: 35, max_points: 50, total_score: 70, practical_rating: null, strengths: ['Clear.'], decision: 'Proceed to Final Interview', panel_decision: null, hidden: false,
+    }
+    const record = { reference: 'EL-1', role: 'National Sales Manager', interview_date: null, duration_minutes: 10, interviewer: 'x', top_strengths: [], top_gaps: [], claims_to_verify: [], reference_check_questions: [], panel_decision: null }
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [person('Ehi Okpepe', { scorecard, record })] } })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Scorecard' }))
+
+    const sheet = screen.getByRole('region', { name: 'Scorecard' })
+    expect(within(sheet).getByRole('heading', { name: 'Interview Scorecard: National Sales Manager' })).toBeInTheDocument()
+    expect(within(sheet).getByText(/Candidate Name:/).parentElement).toHaveTextContent('Candidate Name: Ehi Okpepe')
+    expect(within(sheet).getByTestId('scorecard-total')).toHaveTextContent('35.0 / 50 (70/100)')
+    expect(within(sheet).getByTestId('scorecard-decision')).toHaveTextContent('Proceed to Final Interview')
+  })
+
+  it('has no Scorecard tab for a candidate whose interview was not scored on competencies', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [person('Ada Obi', { scorecard: null })] } })
+    renderPage()
+
+    await screen.findByRole('tab', { name: 'Summary' })
+    expect(screen.queryByRole('tab', { name: 'Scorecard' })).not.toBeInTheDocument()
+  })
+
   it('shows no tag for a score nobody reviewed', async () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
     renderPage()

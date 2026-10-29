@@ -235,6 +235,10 @@ class InterviewScoreReview(BaseModel):
     # The written assessment the admin wrote in place of the system's text (``interviews.ai_rationale``,
     # which is never overwritten). Empty: the system's own text is shown.
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What the admin filled in by hand on the scorecard: {"evidence": {competency: text},
+    # "practical_rating": 1 to 5 in halves, "strengths": text, "decision": text}; only what was
+    # filled in. Empty: the system's own are shown.
+    scorecard: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

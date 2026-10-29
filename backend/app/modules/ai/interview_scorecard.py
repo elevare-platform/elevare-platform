@@ -17,6 +17,36 @@ COVERAGE = ("FULLY_ASSESSED", "PARTIALLY_ASSESSED", "NOT_ASSESSED")
 KINDS = ("EXPERIENCE", "HYPOTHETICAL")
 CONFIDENCE = ("high", "medium", "low")
 
+
+def valid_rating(value: Any) -> bool:
+    """A rating from 1 to 5 in steps of a half (3.5), given as a whole number or a decimal. A
+    boolean, a string or a rating between the steps (3.3) is not one."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    return 1 <= value <= 5 and (value * 2) == int(value * 2)
+
+
+def clean_rating(value: Any) -> int | float | None:
+    """The rating as a whole number when it is one (4.0 becomes 4) or a half point (3.5), or None
+    when it is not a rating."""
+    if not valid_rating(value):
+        return None
+    return int(value) if value == int(value) else float(value)
+
+
+def format_rating(value: int | float) -> str:
+    """A rating as it is written: ``4`` or ``3.5``."""
+    return str(int(value)) if value == int(value) else f"{value:g}"
+
+
+def rating_name(value: int | float) -> str:
+    """What a rating is called. A half point sits between two levels, so it is named for both
+    (3.5 is 'Competent to Strong')."""
+    whole = int(value)
+    if value == whole:
+        return RATING_NAMES[whole]
+    return f"{RATING_NAMES[whole]} to {RATING_NAMES[whole + 1]}"
+
 MAX_COMPETENCIES = 12  # a scoring profile may have this many; the generic scorecard asks for at most 8
 MAX_LIST_ITEMS = 10
 MAX_TEXT = 600
@@ -47,9 +77,10 @@ def clean_recommendation(value: Any) -> str | None:
 
 
 def clean_competencies(value: Any) -> list[dict]:
-    """The rated competencies: each with a name, a rating from 1 to 5 (or None when it was not
-    assessed), how fully it was covered, a rationale and a short quote. Entries without a name
-    are dropped; a rating outside 1 to 5 becomes None; a competency marked not assessed never
+    """The rated competencies: each with a name, a rating from 1 to 5 in steps of a half (or None
+    when it was not assessed), how fully it was covered, a rationale, a short quote and the text for
+    the scorecard's Evidence / Verification column. Entries without a name are dropped; a rating
+    outside 1 to 5, or between the half steps, becomes None; a competency marked not assessed never
     keeps a rating."""
     if not isinstance(value, list):
         return []
@@ -60,8 +91,7 @@ def clean_competencies(value: Any) -> list[dict]:
         name = clean_text(entry.get("name"), 120)
         if not name:
             continue
-        score = entry.get("score")
-        score = score if isinstance(score, int) and not isinstance(score, bool) and 1 <= score <= 5 else None
+        score = clean_rating(entry.get("score"))
         coverage = entry.get("coverage")
         coverage = coverage if coverage in COVERAGE else "FULLY_ASSESSED"
         if coverage == "NOT_ASSESSED":
@@ -77,6 +107,9 @@ def clean_competencies(value: Any) -> list[dict]:
                 "coverage": coverage,
                 "kind": kind if kind in KINDS else None,
                 "rationale": clean_text(entry.get("rationale")),
+                # The scorecard's Evidence / Verification column: a few specific, checkable
+                # sentences. Empty for a competency that was not assessed.
+                "scorecard_evidence": clean_text(entry.get("scorecard_evidence"), 500) if score is not None else "",
                 "evidence": clean_text(entry.get("evidence"), 500),
                 "ownership": clean_text(entry.get("ownership"), 300),
                 "outcome": clean_text(entry.get("outcome"), 300),

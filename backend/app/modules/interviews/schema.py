@@ -386,6 +386,17 @@ class WeightedScoreReport(BaseModel):
     hidden: bool = False
 
 
+class ScorecardEdit(BaseModel):
+    """What an Elevare admin fills in by hand on the scorecard: the text of a competency's Evidence /
+    Verification (by competency name), the practical case rating (1 to 5 in steps of a half), the
+    strengths (one per line) and the human decision wording. Anything left out is the system's own."""
+
+    evidence: dict[str, str] | None = None
+    practical_rating: float | None = None
+    strengths: str | None = Field(default=None, max_length=2000)
+    decision: str | None = Field(default=None, max_length=300)
+
+
 class ScoreReviewRequest(BaseModel):
     """An Elevare admin's review of a finished interview: the competency ratings to change
     (``{name: 1 to 5}``), a total (0 to 100) that wins over the one the ratings give, and/or a
@@ -394,7 +405,8 @@ class ScoreReviewRequest(BaseModel):
     system's own."""
 
     score: int | None = Field(default=None, ge=0, le=100)
-    ratings: dict[str, int] | None = None
+    ratings: dict[str, float] | None = None
+    scorecard: ScorecardEdit | None = None
     # The written assessment, in place of the system's text (which is kept). Null or the system's own
     # text: the system's text is shown.
     rationale: str | None = Field(default=None, max_length=20000)
@@ -541,6 +553,11 @@ class InterviewDetailResponse(BaseModel):
     cv_fit_summary: str | None = None
     # Only for a strict interview (None for a live one).
     strict: StrictDetail | None = None
+    # The scorecard as Elevare prints it (competencies with weight, rating, weighted points and
+    # evidence, the totals, the practical case rating, the strengths and the human decision), for an
+    # interview scored on competencies; None otherwise. The points and totals are left out when the
+    # job's switch has scores off.
+    scorecard: dict | None = None
     # Only for an interview scored with a scoring profile (None otherwise).
     score_report: WeightedScoreReport | None = None
     # Only for an interview that had a practical case (None otherwise): reported apart from the score.

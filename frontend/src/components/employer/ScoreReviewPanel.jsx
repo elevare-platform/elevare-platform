@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { Loader2, ShieldCheck } from 'lucide-react'
 import api from '@/lib/api'
 import { bandForScore } from '@/lib/scoringProfile'
+import { RATING_OPTIONS, ratingName } from '@/lib/scorecard'
 
 const MAX_REASON_CHARS = 1000
-const RATING_NAMES = { 1: 'Insufficient evidence', 2: 'Limited', 3: 'Competent', 4: 'Strong', 5: 'Exceptional' }
 
 const formatWhen = (iso) =>
   iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
@@ -40,6 +40,15 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
   const [typedValue, setTypedValue] = useState(detail.ai_score ?? '')
   const [reason, setReason] = useState('')
   const [text, setText] = useState(detail.ai_rationale ?? '')
+  // The scorecard as it is printed: the evidence of each competency, the practical case rating, the
+  // strengths (one per line) and the human decision wording.
+  const card = detail.scorecard ?? null
+  const cardRows = card?.rows ?? []
+  const [evidence, setEvidence] = useState(() => Object.fromEntries(cardRows.map((row) => [row.name, row.evidence ?? ''])))
+  const [startEvidence] = useState(evidence)
+  const [practical, setPractical] = useState(card?.practical_rating ?? '')
+  const [strengths, setStrengths] = useState((card?.strengths ?? []).join('\n'))
+  const [decision, setDecision] = useState(card?.decision ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -60,14 +69,41 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
   const shownText = detail.ai_rationale ?? ''
   const systemText = review.original_rationale ?? ''
   const textMoved = text.trim() !== shownText.trim()
-  const dirty = ratingsMoved || totalMoved || textMoved
+  // The scorecard fields: what differs from what the system wrote is sent.
+  const systemEvidence = review.original_evidence ?? {}
+  const systemPractical = detail.practical_case?.complete ? detail.practical_case.score : null
+  const systemStrengths = (detail.record?.top_strengths ?? []).join('\n')
+  const evidenceSent = Object.fromEntries(
+    cardRows
+      .filter((row) => (evidence[row.name] ?? '').trim() && evidence[row.name].trim() !== (systemEvidence[row.name] ?? '').trim())
+      .map((row) => [row.name, evidence[row.name].trim()])
+  )
+  const practicalSent = practical !== '' && Number(practical) !== systemPractical ? Number(practical) : null
+  const strengthsSent = strengths.trim() && strengths.trim() !== systemStrengths.trim() ? strengths.trim() : null
+  const decisionSent = decision.trim() || null
+  const scorecardSent =
+    Object.keys(evidenceSent).length || practicalSent !== null || strengthsSent || decisionSent
+      ? {
+          ...(Object.keys(evidenceSent).length ? { evidence: evidenceSent } : {}),
+          ...(practicalSent !== null ? { practical_rating: practicalSent } : {}),
+          ...(strengthsSent ? { strengths: strengthsSent } : {}),
+          ...(decisionSent ? { decision: decisionSent } : {}),
+        }
+      : null
+  const cardMoved =
+    cardRows.some((row) => (evidence[row.name] ?? '').trim() !== (startEvidence[row.name] ?? '').trim()) ||
+    String(practical) !== String(card?.practical_rating ?? '') ||
+    strengths.trim() !== (card?.strengths ?? []).join('\n').trim() ||
+    decision.trim() !== (card?.decision ?? '').trim()
+  const dirty = ratingsMoved || totalMoved || textMoved || cardMoved
   // What is sent is the whole review: the changed ratings, the total only when it was typed (or an
   // earlier review's typed total is being kept), and the written assessment only when it differs
   // from the system's own.
   const keepTyped = totalTyped || !rows.length
   const sendScore = keepTyped && (totalMoved || detail.reviewed) ? number : null
   const sendRationale = text.trim() && text.trim() !== systemText.trim() ? text.trim() : null
-  const hasChange = sendScore !== null || Object.keys(changedRatings).length > 0 || sendRationale !== null
+  const hasChange =
+    sendScore !== null || Object.keys(changedRatings).length > 0 || sendRationale !== null || scorecardSent !== null
   const canSave = dirty && hasChange && (sendScore === null || totalValid)
 
   const request = async (call) => {
@@ -100,6 +136,7 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
           score: sendScore,
           ratings: Object.keys(changedRatings).length ? changedRatings : null,
           rationale: sendRationale,
+          ...(scorecardSent ? { scorecard: scorecardSent } : {}),
           reason: reason.trim() || null,
         },
         { params: { job_id: jobId } }
@@ -147,9 +184,9 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
                       className="rounded-lg border border-border px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
                     >
                       {original[row.name] == null && <option value="">Not assessed</option>}
-                      {[1, 2, 3, 4, 5].map((rating) => (
+                      {RATING_OPTIONS.map((rating) => (
                         <option key={rating} value={rating}>
-                          {rating} {RATING_NAMES[rating]}
+                          {rating} {ratingName(rating)}
                         </option>
                       ))}
                     </select>
@@ -194,6 +231,76 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
             </button>
           )}
         </div>
+
+        {card && (
+          <fieldset className="space-y-3 rounded-lg border border-border bg-white p-3">
+            <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+              Scorecard (as printed)
+            </legend>
+            {cardRows.map((row) => (
+              <div key={row.name}>
+                <label htmlFor={`evidence-${row.name}`} className="block text-[11px] font-medium text-text-muted">
+                  Evidence / Verification: {row.name}
+                </label>
+                <textarea
+                  id={`evidence-${row.name}`}
+                  rows={2}
+                  maxLength={1000}
+                  value={evidence[row.name] ?? ''}
+                  onChange={(event) => setEvidence((current) => ({ ...current, [row.name]: event.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-border px-2.5 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                />
+              </div>
+            ))}
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label htmlFor="card-practical" className="block text-[11px] font-medium text-text-muted">
+                  Practical case rating
+                </label>
+                <select
+                  id="card-practical"
+                  value={practical}
+                  onChange={(event) => setPractical(event.target.value)}
+                  className="mt-1 rounded-lg border border-border px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                >
+                  <option value="">None</option>
+                  {RATING_OPTIONS.map((rating) => (
+                    <option key={rating} value={rating}>
+                      {rating} {ratingName(rating)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-[14rem] flex-1">
+                <label htmlFor="card-decision" className="block text-[11px] font-medium text-text-muted">
+                  Human decision
+                </label>
+                <input
+                  id="card-decision"
+                  type="text"
+                  maxLength={300}
+                  value={decision}
+                  onChange={(event) => setDecision(event.target.value)}
+                  placeholder="For example: Proceed to Final Interview / Offer Consideration"
+                  className="mt-1 w-full rounded-lg border border-border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="card-strengths" className="block text-[11px] font-medium text-text-muted">
+                Strengths (one per line)
+              </label>
+              <textarea
+                id="card-strengths"
+                rows={3}
+                maxLength={2000}
+                value={strengths}
+                onChange={(event) => setStrengths(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-border px-2.5 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+              />
+            </div>
+          </fieldset>
+        )}
 
         <div>
           <label htmlFor="review-text" className="block text-[11px] font-medium text-text-muted">
@@ -269,13 +376,15 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
           <ul className="space-y-1" data-testid="review-history">
             {review.reviews.map((row, index) => {
               const moved = Object.entries(row.ratings ?? {})
-              const nothing = row.score == null && moved.length === 0 && !row.rationale_changed
+              const nothing =
+                row.score == null && moved.length === 0 && !row.rationale_changed && !row.scorecard_changed
               return (
                 <li key={index} className="text-xs text-text">
                   {nothing ? 'Review removed' : 'Reviewed'}
                   {row.score != null ? `, total set to ${row.score}` : ''}
                   {moved.length > 0 ? `, ratings ${moved.map(([name, rating]) => `${name} ${rating}`).join(', ')}` : ''}
-                  {row.rationale_changed ? ', written assessment edited' : ''} by{' '}
+                  {row.rationale_changed ? ', written assessment edited' : ''}
+                  {row.scorecard_changed ? ', scorecard filled in' : ''} by{' '}
                   {row.reviewed_by_name}, {formatWhen(row.reviewed_at)}
                   {row.reason ? `. ${row.reason}` : ''}
                 </li>

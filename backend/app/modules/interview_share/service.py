@@ -253,6 +253,7 @@ class InterviewShareService:
         candidate.recordings = detail.recordings
         candidate.score_report = detail.score_report
         candidate.practical_case = detail.practical_case
+        candidate.scorecard = detail.scorecard
         candidate.record = detail.record
         candidate.strict = detail.strict
         candidate.questions = questions_asked(turns)

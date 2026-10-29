@@ -155,11 +155,42 @@ def test_a_rating_for_a_name_the_profile_does_not_have_is_dropped():
     assert len(rows) == 6 and all(row["rating"] is None for row in rows)
 
 
-@pytest.mark.parametrize("bad", [0, 6, -1, 3.5, "4", True, None])
-def test_a_rating_that_is_not_a_whole_number_from_1_to_5_is_not_assessed(bad):
+@pytest.mark.parametrize("bad", [0, 6, -1, 3.3, 4.75, "4", True, None, 5.5, 0.5])
+def test_a_rating_that_is_not_from_1_to_5_in_steps_of_a_half_is_not_assessed(bad):
     [row] = normalise([{"name": "A", "score": bad}], [{"name": "A", "weight": 100, "key": False}])
 
     assert row["rating"] is None and row["coverage"] == "NOT_ASSESSED"
+
+
+@pytest.mark.parametrize("given, kept", [(3.5, 3.5), (4, 4), (4.0, 4), (1.5, 1.5), (5, 5)])
+def test_a_whole_or_half_point_rating_is_kept_and_a_whole_one_stays_a_whole_number(given, kept):
+    [row] = normalise([{"name": "A", "score": given}], [{"name": "A", "weight": 100, "key": False}])
+
+    assert row["rating"] == kept and isinstance(row["rating"], type(kept))
+
+
+def test_a_half_point_rating_counts_in_the_weighted_total_and_the_key_competency_check():
+    rows = normalise(
+        [{"name": "A", "score": 3.5}, {"name": "B", "score": 2.5}],
+        [{"name": "A", "weight": 60, "key": False}, {"name": "B", "weight": 40, "key": True}],
+    )
+
+    report = weighted_report(rows)
+
+    assert report["points"] == 3.5 / 5 * 60 + 2.5 / 5 * 40 == 62.0 and report["score"] == 62
+    assert report["key_flags"] == ["B"]  # 2.5 is under the key minimum of 3
+
+
+def test_the_scorecard_evidence_is_carried_into_the_row_of_a_rated_competency_only():
+    rows = normalise(
+        [
+            {"name": "A", "score": 4, "scorecard_evidence": "Lagos mapping, a corridor pilot."},
+            {"name": "B", "score": None, "scorecard_evidence": "Should not survive."},
+        ],
+        [{"name": "A", "weight": 50, "key": False}, {"name": "B", "weight": 50, "key": False}],
+    )
+
+    assert rows[0]["scorecard_evidence"] == "Lagos mapping, a corridor pilot." and rows[1]["scorecard_evidence"] == ""
 
 
 # --- the weighted score ------------------------------------------------------------------------

@@ -160,8 +160,10 @@ class InterviewRepository:
                 report=report if report and "rows" in report else None,
                 review_score=review.score if review else None,
                 review_ratings=(review.ratings or {}) if review else None,
+                review_rationale=review.rationale if review else None,
             )
-            shown[profile_id] = (result.score, result.reviewed)
+            # A scorecard filled in by hand counts as a review on its own.
+            shown[profile_id] = (result.score, result.reviewed or bool(review and review.scorecard))
         return shown
 
     async def list_unfinished_failures_for_job(
