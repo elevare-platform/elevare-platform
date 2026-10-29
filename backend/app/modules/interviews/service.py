@@ -69,6 +69,7 @@ from app.modules.interviews.scoring_access import assert_can_score_interviews
 from app.modules.interviews.strict import StrictInterviewService
 from app.modules.interviews.tasks import (
     merge_interview_recording_task,
+    rescore_interview_task,
     send_ai_interview_invite_email,
     send_interview_restart_request_email,
     transcribe_and_score_interview_task,
@@ -1695,6 +1696,38 @@ class InterviewService:
         await self._db.commit()
         # The employer was never told a failed interview completed, so this run tells them.
         transcribe_and_score_interview_task.delay(str(interview.id), notify=failed_scoring)
+        return {"queued": True}
+
+    async def request_rescore(
+        self, user: User, job_id: uuid.UUID, talent_pool_profile_id: uuid.UUID
+    ) -> dict:
+        """Queue a second scoring of an interview that is already scored, from its stored
+        transcript (decision item 58). Elevare admin only, for any job. One more model call at
+        Elevare's cost: the candidate and the company are not charged, and the employer is not
+        told. The interview stays scored while it runs, so the earlier result shows until the new
+        one replaces it; if the call fails nothing changes. The earlier system result and the
+        admin's edits stay in the review history."""
+        from app.core.exceptions import JobNotFoundError
+        from app.modules.jobs.repository import JobRepository
+
+        if user.role != UserRole.ADMIN.value:
+            raise PermissionDeniedException("Only an Elevare administrator can score an interview again")
+        if await JobRepository(self._db).get_by_id(job_id) is None:
+            raise JobNotFoundError()
+        interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
+        if interview is None:
+            raise InterviewNotFound()
+        if interview.status != InterviewStatus.SCORED.value:
+            raise ValidationException(
+                "Only a scored interview can be scored again.", code="INTERVIEW_NOT_SCORED"
+            )
+        if not interview.transcript:
+            raise ValidationException(
+                "There is no transcript to score for this interview.", code="INTERVIEW_NO_TRANSCRIPT"
+            )
+        name = " ".join(f"{user.first_name} {user.last_name}".split()) or user.email
+        rescore_interview_task.delay(str(interview.id), str(user.id), name)
+        logger.info("interview rescore queued: interview=%s by admin=%s", interview.id, user.id)
         return {"queued": True}
 
     async def get_monthly_cost_summary(self) -> dict:

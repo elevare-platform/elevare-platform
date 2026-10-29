@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
-vi.mock('@/lib/api', () => ({ default: { put: vi.fn(), delete: vi.fn() } }))
+vi.mock('@/lib/api', () => ({ default: { put: vi.fn(), delete: vi.fn(), post: vi.fn() } }))
 
 import api from '@/lib/api'
 import ScoreReviewPanel from './ScoreReviewPanel'
@@ -520,5 +520,66 @@ describe('ScoreReviewPanel, the scorecard and half-point ratings', () => {
     })
 
     expect(screen.getByTestId('review-history')).toHaveTextContent('Reviewed, scorecard filled in by Ada Admin')
+  })
+})
+
+describe('ScoreReviewPanel, scoring again', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const again = () => screen.getByRole('button', { name: 'Score this interview again' })
+
+  it('asks first, and says what will be replaced and what is kept', () => {
+    setup(WITH_ROWS)
+
+    fireEvent.click(again())
+
+    const box = screen.getByTestId('rescore')
+    expect(box).toHaveTextContent('one more model call')
+    expect(box).toHaveTextContent('your edits are taken off but stay in the history')
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('can be cancelled without asking the server', () => {
+    setup(WITH_ROWS)
+    fireEvent.click(again())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(api.post).not.toHaveBeenCalled()
+    expect(again()).toBeInTheDocument()
+  })
+
+  it('asks the server once, then says scoring has started and cannot be asked again from the window', async () => {
+    api.post.mockResolvedValueOnce({ data: { queued: true } })
+    setup(WITH_ROWS)
+    fireEvent.click(again())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, score it again' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Scoring has started')
+    expect(api.post).toHaveBeenCalledTimes(1)
+    expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/p-1/rescore', null, { params: { job_id: 'job-1' } })
+    expect(screen.queryByRole('button', { name: 'Score this interview again' })).not.toBeInTheDocument()
+  })
+
+  it('shows the server’s words and lets the admin try again when it is refused', async () => {
+    api.post.mockRejectedValueOnce({ response: { data: { message: 'Only a scored interview can be scored again.' } } })
+    setup(WITH_ROWS)
+    fireEvent.click(again())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, score it again' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Only a scored interview can be scored again.')
+    expect(again()).toBeInTheDocument()
+  })
+
+  it('says it could not reach the server when there is no answer', async () => {
+    api.post.mockRejectedValueOnce(new Error('Network Error'))
+    setup(WITH_ROWS)
+    fireEvent.click(again())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, score it again' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('We could not reach the server')
   })
 })

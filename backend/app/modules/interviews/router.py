@@ -486,6 +486,28 @@ async def review_interview_score(
         await service.close()
 
 
+@router.post(
+    "/{talent_pool_profile_id}/rescore",
+    response_model=InterviewScoreRequestResponse,
+    status_code=202,
+)
+async def rescore_interview(
+    talent_pool_profile_id: uuid.UUID,
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Score an already scored interview again from its stored transcript, replacing the system's
+    score, assessment and report when it finishes (nothing changes if it fails). An Elevare admin
+    only, for any job. No credits are taken. The earlier system result and any edits stay in the
+    review history, and the new system result is what shows. Runs in the background."""
+    service = InterviewService(db)
+    try:
+        return await service.request_rescore(current_user, job_id, talent_pool_profile_id)
+    finally:
+        await service.close()
+
+
 @router.delete(
     "/{talent_pool_profile_id}/score-review",
     response_model=ScoreReviewResponse,

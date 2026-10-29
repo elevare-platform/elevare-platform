@@ -39,6 +39,8 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
   )
   const [typedValue, setTypedValue] = useState(detail.ai_score ?? '')
   const [reason, setReason] = useState('')
+  const [rescore, setRescore] = useState('idle')
+  const [rescoreError, setRescoreError] = useState(null)
   const [text, setText] = useState(detail.ai_rationale ?? '')
   // The scorecard as it is printed: the evidence of each competency, the practical case rating, the
   // strengths (one per line) and the human decision wording.
@@ -142,6 +144,26 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
         { params: { job_id: jobId } }
       )
     )
+  }
+
+  // Ask for the transcript to be scored again: 'idle' -> 'confirming' -> 'sending' -> 'queued'.
+  // Once asked it cannot be asked twice from this window (a double click would be a second call).
+  const scoreAgain = async () => {
+    if (rescore === 'sending' || rescore === 'queued') return
+    setRescore('sending')
+    setRescoreError(null)
+    try {
+      await api.post(`/api/v1/interviews/${talentPoolProfileId}/rescore`, null, { params: { job_id: jobId } })
+      setRescore('queued')
+    } catch (err) {
+      const message = err?.response?.data?.message
+      setRescoreError(
+        err?.response
+          ? (typeof message === 'string' ? message : 'Something went wrong. Please try again.')
+          : 'We could not reach the server. Check your connection and try again.'
+      )
+      setRescore('idle')
+    }
   }
 
   const remove = () =>
@@ -373,6 +395,57 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
           )}
         </div>
       </form>
+
+      <div className="space-y-1.5 border-t border-border pt-3" data-testid="rescore">
+        {rescore === 'queued' ? (
+          <p role="status" className="text-xs text-text-muted">
+            Scoring has started. Close and reopen this window in a minute or two to see the new result. If
+            the score has not changed, it did not go through; you can ask again.
+          </p>
+        ) : rescore === 'confirming' || rescore === 'sending' ? (
+          <>
+            <p className="text-xs text-text-muted">
+              The transcript will be scored again. This costs one more model call (not charged to the company).
+              When it finishes, the score, the band, the competency ratings and the written assessment are
+              replaced by the new ones, and your edits are taken off but stay in the history below. If it fails,
+              nothing changes.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={scoreAgain}
+                disabled={rescore === 'sending'}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-blue px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {rescore === 'sending' && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
+                Yes, score it again
+              </button>
+              <button
+                type="button"
+                onClick={() => setRescore('idle')}
+                disabled={rescore === 'sending'}
+                className="text-xs font-medium text-brand-blue hover:underline disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setRescore('confirming')}
+            disabled={saving}
+            className="text-xs font-medium text-brand-blue hover:underline disabled:opacity-50"
+          >
+            Score this interview again
+          </button>
+        )}
+        {rescoreError && (
+          <p role="alert" className="text-xs text-red-600">
+            {rescoreError}
+          </p>
+        )}
+      </div>
 
       {review.reviews.length > 0 && (
         <div>
