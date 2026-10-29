@@ -257,7 +257,7 @@ export default function SharedCandidateDetail({ candidate, rank, position, onPre
             {active === 'summary' && (
               <>
                 <StrictInterviewNotes strict={candidate.strict} />
-                {interviewed && (
+                {interviewed && !candidate.writeup_hidden && (
                   <Assessment
                     title="Interview assessment"
                     score={candidate.interview_score}
@@ -321,7 +321,9 @@ export default function SharedCandidateDetail({ candidate, rank, position, onPre
             )}
 
             {/* The candidate assessment record, without the company's own panel decision */}
-            {active === 'record' && candidate.record && <AssessmentRecordCard record={candidate.record} />}
+            {active === 'record' && candidate.record && (
+              <AssessmentRecordCard record={candidate.record} gapsHidden={candidate.gaps_hidden} />
+            )}
           </div>
         </div>
       </div>

@@ -384,6 +384,9 @@ class WeightedScoreReport(BaseModel):
     # True when the job's switch has the total and the band left out: the rows (competency, weight,
     # rating) are still sent, ``score`` and ``band`` are not.
     hidden: bool = False
+    # True when the job's score number switch is off: the band and the ratings are sent, the total,
+    # the points and the cut-offs are not.
+    number_hidden: bool = False
 
 
 class ScorecardEdit(BaseModel):
@@ -446,6 +449,22 @@ class ScorecardSummaryResponse(BaseModel):
     show_summary: bool
 
 
+class ResultDisplayRequest(BaseModel):
+    """Switch parts of a job's interview results on or off; only the fields sent are changed."""
+
+    show_score_number: bool | None = None
+    show_gaps: bool | None = None
+    show_writeup: bool | None = None
+
+
+class ResultDisplayResponse(BaseModel):
+    """Which parts of a job's interview results an employer and the shared link are shown."""
+
+    show_score_number: bool
+    show_gaps: bool
+    show_writeup: bool
+
+
 class PracticalCriterionRow(BaseModel):
     """One criterion of the practical case: its weight, the 1 to 5 rating (None when it was not
     covered) and why."""
@@ -472,6 +491,8 @@ class PracticalCaseReport(BaseModel):
     summary: str = ""
     # True when the job's switch has this case's total left out (the criteria and ratings are kept).
     hidden: bool = False
+    # True when the job's score number switch is off (the same: the total is left out).
+    number_hidden: bool = False
 
 
 PanelDecisionName = Literal["STRONG_SHORTLIST", "SHORTLIST", "HOLD", "DO_NOT_SHORTLIST"]
@@ -550,6 +571,12 @@ class InterviewDetailResponse(BaseModel):
     # True when the job's switch has the interview's score and provisional band left out of this
     # reply (never for an Elevare admin, who always gets the real values).
     scores_hidden: bool = False
+    # The job's other display switches (decision item 61), each true when that part has been left
+    # out of this reply for an employer or the shared link (never for an Elevare admin): the score
+    # number (the band and the ratings stay), the gaps and risks, and the written assessment.
+    score_number_hidden: bool = False
+    gaps_hidden: bool = False
+    writeup_hidden: bool = False
     # Only for an Elevare admin: the system's own score and band and every review of it.
     score_review: dict | None = None
     # The latest attempt's recording (the only one, for an interview never reinstated).

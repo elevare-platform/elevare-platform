@@ -52,9 +52,17 @@ function List({ title, items, ordered = false, empty }) {
  *
  * `suggestedBand` (the band label of a complete weighted score) and `suggestedScore` let the panel
  * accept the suggestion in one click, or choose a different decision and say why. `blockedReason`
- * says why a decision cannot be recorded yet (the interview has not finished).
+ * says why a decision cannot be recorded yet (the interview has not finished). `gapsHidden` leaves
+ * the top three gaps or risks out (the job's switch).
  */
-export default function AssessmentRecordCard({ record, onDecide, suggestedBand = null, suggestedScore = null, blockedReason = null }) {
+export default function AssessmentRecordCard({
+  record,
+  onDecide,
+  suggestedBand = null,
+  suggestedScore = null,
+  blockedReason = null,
+  gapsHidden = false,
+}) {
   const [decision, setDecision] = useState('')
   const [rationale, setRationale] = useState('')
   const [saving, setSaving] = useState(false)
@@ -139,9 +147,10 @@ export default function AssessmentRecordCard({ record, onDecide, suggestedBand =
         </div>
       </dl>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* The job's switch has the gaps and risks left out: the strengths alone */}
+      <div className={gapsHidden ? undefined : 'grid gap-4 sm:grid-cols-2'}>
         <List title="Top three demonstrated strengths" items={record.top_strengths} ordered empty="None recorded." />
-        <List title="Top three gaps or risks" items={record.top_gaps} ordered empty="None recorded." />
+        {!gapsHidden && <List title="Top three gaps or risks" items={record.top_gaps} ordered empty="None recorded." />}
       </div>
       <List
         title="Unverified claims (what the candidate said, not checked)"

@@ -56,6 +56,11 @@ class SharedCandidate(BaseModel):
     # True when an Elevare reviewer set the score shown (the small "Reviewed" tag). Who and why are
     # not part of the shared page.
     interview_reviewed: bool = False
+    # What the job's display switches have left out (see the interview detail): the score number
+    # (the band and the ratings stay), the gaps and risks, and the written assessment.
+    score_number_hidden: bool = False
+    gaps_hidden: bool = False
+    writeup_hidden: bool = False
 
     # The AI's assessment of the CV for this job, shown alongside.
     cv_score: int | None = None

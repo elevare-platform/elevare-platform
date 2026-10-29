@@ -14,6 +14,9 @@ const points = (value) => (Number.isInteger(value) ? String(value) : value.toFix
  */
 export default function WeightedScoreCard({ report, title = 'Interview Assessment', children }) {
   const { complete, score, band, rows, key_flags: keyFlags = [], unassessed = [] } = report
+  // The job's score number switch is off: the band and the ratings are shown, but no total and no
+  // points, nor the counts of points in the incomplete notice.
+  const numberHidden = Boolean(report.number_hidden)
 
   // The job's switch has the total and the band left out: only the competencies and their ratings.
   if (report.hidden) {
@@ -61,9 +64,11 @@ export default function WeightedScoreCard({ report, title = 'Interview Assessmen
         {complete ? (
           <span className="inline-flex items-center gap-1.5">
             {report.reviewed && <ReviewedTag />}
-            <span className="rounded-full bg-brand-blue/10 px-2.5 py-0.5 text-xs font-bold text-brand-blue" data-testid="weighted-total">
-              {score} / 100
-            </span>
+            {!numberHidden && (
+              <span className="rounded-full bg-brand-blue/10 px-2.5 py-0.5 text-xs font-bold text-brand-blue" data-testid="weighted-total">
+                {score} / 100
+              </span>
+            )}
           </span>
         ) : (
           <span className="rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800" data-testid="weighted-incomplete">
@@ -84,8 +89,9 @@ export default function WeightedScoreCard({ report, title = 'Interview Assessmen
         </div>
       ) : (
         <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          {points(report.points)} of {report.assessed_weight} weighted points could be assessed (not assessed:{' '}
-          {unassessed.join(', ')}). No full score and no band are given. A person decides whether more evidence is needed.
+          {numberHidden
+            ? `Not every competency could be assessed (not assessed: ${unassessed.join(', ')}). No band is given. A person decides whether more evidence is needed.`
+            : `${points(report.points)} of ${report.assessed_weight} weighted points could be assessed (not assessed: ${unassessed.join(', ')}). No full score and no band are given. A person decides whether more evidence is needed.`}
         </p>
       )}
 
@@ -102,7 +108,7 @@ export default function WeightedScoreCard({ report, title = 'Interview Assessmen
             <th className="py-1.5 pr-2 font-medium">Competency</th>
             <th className="px-2 py-1.5 text-right font-medium">Weight</th>
             <th className="px-2 py-1.5 text-right font-medium">Rating</th>
-            <th className="pl-2 py-1.5 text-right font-medium">Points</th>
+            {!numberHidden && <th className="pl-2 py-1.5 text-right font-medium">Points</th>}
           </tr>
         </thead>
         <tbody>
@@ -118,17 +124,20 @@ export default function WeightedScoreCard({ report, title = 'Interview Assessmen
               <td className="px-2 py-1.5 text-right text-text">
                 {row.rating == null ? <span className="text-amber-700">Not assessed</span> : `${row.rating} of 5`}
               </td>
-              <td className="pl-2 py-1.5 text-right text-text">
-                {row.rating == null ? '–' : points((row.rating / 5) * row.weight)}
-              </td>
+              {!numberHidden && (
+                <td className="pl-2 py-1.5 text-right text-text">
+                  {row.rating == null ? '–' : points((row.rating / 5) * row.weight)}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
 
       <p className="text-[11px] text-text-muted">
-        Points are the rating out of 5 times the weight. The band is a label on the total from proposed
-        thresholds, for a panel to read; a person makes every decision.
+        {numberHidden
+          ? 'The band is a label from proposed thresholds, for a panel to read; a person makes every decision.'
+          : 'Points are the rating out of 5 times the weight. The band is a label on the total from proposed thresholds, for a panel to read; a person makes every decision.'}
       </p>
 
       {children}

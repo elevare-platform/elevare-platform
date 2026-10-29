@@ -135,6 +135,61 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     expect(screen.queryByText(/Suggested by the assessment/)).not.toBeInTheDocument()
   })
 
+  const RECORD = {
+    reference: 'EL-1', role: 'Sales', interview_date: null, duration_minutes: 10, interviewer: 'x',
+    top_strengths: ['Owns the numbers'], top_gaps: [], claims_to_verify: [], reference_check_questions: [], panel_decision: null,
+  }
+
+  it('with the score number off shows the band and ratings, no total and no points, and the written assessment', async () => {
+    const report = {
+      rows: [{ name: 'Strategy', weight: 100, key: true, rating: 4 }],
+      points: 0, assessed_weight: 100, total_weight: 100, complete: true, score: null, band: 'Shortlist', bands: {},
+      key_min_rating: 3, key_flags: [], unassessed: [], number_hidden: true,
+    }
+    api.get.mockResolvedValue({
+      data: { ...BASE, ai_score: null, score_number_hidden: true, score_report: report, ai_rationale: 'Strong on strategy.', record: RECORD },
+    })
+    renderModal()
+
+    expect(await screen.findByTestId('weighted-band')).toHaveTextContent('Shortlist')
+    expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Points')).not.toBeInTheDocument()
+    expect(screen.getByText('Strong on strategy.')).toBeInTheDocument()
+  })
+
+  it('with the gaps off has no gaps card in the record', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, ai_score: 70, gaps_hidden: true, record: RECORD } })
+    renderModal()
+
+    expect(await screen.findByText('Top three demonstrated strengths')).toBeInTheDocument()
+    expect(screen.queryByText('Top three gaps or risks')).not.toBeInTheDocument()
+  })
+
+  it('with the written assessment off shows no assessment text and not the empty-score message, but keeps the band', async () => {
+    const report = {
+      rows: [{ name: 'Strategy', weight: 100, key: true, rating: 4 }],
+      points: 80, assessed_weight: 100, total_weight: 100, complete: true, score: 80, band: 'Shortlist', bands: { strong: 85, shortlist: 75, hold: 65 },
+      key_min_rating: 3, key_flags: [], unassessed: [],
+    }
+    api.get.mockResolvedValue({
+      data: { ...BASE, ai_score: 80, writeup_hidden: true, ai_rationale: null, score_report: report, record: RECORD },
+    })
+    renderModal()
+
+    expect(await screen.findByTestId('weighted-band')).toHaveTextContent('Shortlist')
+    expect(screen.queryByText(/No score is available/)).not.toBeInTheDocument()
+    expect(screen.queryByText('A steady candidate.')).not.toBeInTheDocument()
+  })
+
+  it('with the written assessment off and no scoring profile shows no assessment card at all', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, ai_score: 80, writeup_hidden: true, ai_rationale: null } })
+    renderModal()
+
+    await screen.findByText(/CV Assessment/i)
+    expect(screen.queryByText('Interview Assessment')).not.toBeInTheDocument()
+    expect(screen.queryByText(/No score is available/)).not.toBeInTheDocument()
+  })
+
   it('shows the scorecard as it is printed, headed with the candidate, the role and the date, with a button to print it', async () => {
     const scorecard = {
       rows: [{ name: 'Strategy', weight: 100, key: true, rating: 4, points: 40, evidence: 'Mapped Lagos and ran a pilot.' }],

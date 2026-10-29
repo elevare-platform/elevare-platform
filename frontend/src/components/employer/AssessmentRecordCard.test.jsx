@@ -277,6 +277,19 @@ describe('AssessmentRecordCard, a suggested band', () => {
     expect(screen.getByTestId('latest-decision')).toHaveTextContent('Differs from the suggestion (Shortlist).')
   })
 
+  it('shows the top three gaps or risks, and leaves them out when the job’s switch has them off', () => {
+    const { rerender } = render(<AssessmentRecordCard record={RECORD} />)
+    expect(screen.getByText('Top three gaps or risks')).toBeInTheDocument()
+    expect(screen.getByText('Light on supply chain')).toBeInTheDocument()
+
+    rerender(<AssessmentRecordCard record={{ ...RECORD, top_gaps: [] }} gapsHidden />)
+
+    expect(screen.queryByText('Top three gaps or risks')).not.toBeInTheDocument()
+    expect(screen.queryByText('None recorded.')).not.toBeInTheDocument()
+    expect(screen.getByText('Top three demonstrated strengths')).toBeInTheDocument()
+    expect(screen.getByText('Opened 40 outlets (unverified)')).toBeInTheDocument()
+  })
+
   it('says the panel decides when there is no suggested band, and shows the form at once', () => {
     render(<AssessmentRecordCard record={RECORD} onDecide={vi.fn()} suggestedBand={null} />)
 

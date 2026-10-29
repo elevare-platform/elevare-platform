@@ -63,7 +63,11 @@ from app.modules.interviews.score_review import (
     MIN_SCORE,
     apply_review,
 )
-from app.modules.interviews.score_visibility import hide_scores
+from app.modules.interviews.score_visibility import (
+    hide_numbers,
+    hide_scores,
+    strip_gaps,
+)
 from app.modules.interviews.scorecard import build_scorecard, system_evidence
 from app.modules.interviews.scoring_access import assert_can_score_interviews
 from app.modules.interviews.strict import StrictInterviewService
@@ -1924,6 +1928,21 @@ class InterviewService:
             shown_score, shown_rationale = hidden.score, hidden.rationale
             shown_report, practical_case = hidden.report, hidden.practical
             reviewed = False
+        # The job's other display switches (item 61), for an employer and the shared link only: the
+        # score number (the band and the 1 to 5 ratings stay), the gaps and risks, and the written
+        # assessment. With the scores switched off altogether the band is gone already.
+        display = await self._display_flags(job.id)
+        number_hidden = not scores_hidden and not include_review_history and not display["show_score_number"]
+        if number_hidden:
+            hidden = hide_numbers(rationale=shown_rationale, report=shown_report, practical=practical_case)
+            shown_score, shown_rationale = hidden.score, hidden.rationale
+            shown_report, practical_case = hidden.report, hidden.practical
+        gaps_hidden = not include_review_history and not display["show_gaps"]
+        if gaps_hidden:
+            shown_rationale = strip_gaps(shown_rationale)
+        writeup_hidden = not include_review_history and not display["show_writeup"]
+        if writeup_hidden:
+            shown_rationale = None
         video_url = None
         # While the pieces of the recording are being joined the file on record is only the last
         # piece: showing it would look like the whole interview, so nothing is shown yet.
@@ -1959,6 +1978,8 @@ class InterviewService:
             stored_report.get("record") or {},
             include_panel_decision=include_panel_decision,
         )
+        if gaps_hidden:
+            record["top_gaps"] = []
         # The scorecard as Elevare prints it: built from what is shown (a reviewed rating or total
         # included) and what an admin filled in by hand.
         scorecard = build_scorecard(
@@ -1968,7 +1989,7 @@ class InterviewService:
             top_strengths=record.get("top_strengths") or [],
             panel_decision=((record.get("panel_decision") or {}).get("label")),
             total=shown.score,
-            hidden=scores_hidden,
+            hidden=scores_hidden or number_hidden,
             show_summary=await self._summary_shown(job.id),
         )
 
@@ -1993,6 +2014,9 @@ class InterviewService:
             ai_scored_at=interview.ai_scored_at,
             reviewed=reviewed,
             scores_hidden=scores_hidden,
+            score_number_hidden=number_hidden,
+            gaps_hidden=gaps_hidden,
+            writeup_hidden=writeup_hidden,
             score_review=(
                 self._score_review_history(interview, stored_report, reviews)
                 if include_review_history
@@ -2091,6 +2115,54 @@ class InterviewService:
             "interview scores %s: job=%s by user=%s", "shown" if show_scores else "hidden", job.id, user.id
         )
         return {"show_scores": show_scores}
+
+    async def _display_flags(self, job_id: uuid.UUID) -> dict[str, bool]:
+        """Which parts of the job's interview results an employer and the shared link are shown:
+        the score number, the gaps and risks, the written assessment. All true unless an admin
+        switched one off (and in the seconds of a deploy before the columns exist)."""
+        shown = {"show_score_number": True, "show_gaps": True, "show_writeup": True}
+
+        async def read() -> dict[str, bool]:
+            row = (
+                await self._db.execute(
+                    select(
+                        JobScoreVisibility.show_score_number,
+                        JobScoreVisibility.show_gaps,
+                        JobScoreVisibility.show_writeup,
+                    ).where(JobScoreVisibility.job_id == job_id)
+                )
+            ).one_or_none()
+            if row is None:
+                return shown
+            return dict(zip(shown, (bool(value) for value in row), strict=True))
+
+        return await tolerate_missing(self._db, read, shown)
+
+    async def get_result_display(self, user: User, job_id: uuid.UUID) -> dict:
+        """Which parts of a job's interview results are shown. Elevare admin only."""
+        job = await self._job_for_summary(user, job_id)
+        return await self._display_flags(job.id)
+
+    async def set_result_display(self, user: User, job_id: uuid.UUID, changes: dict[str, bool]) -> dict:
+        """Switch the score number, the gaps and risks and/or the written assessment of a job's
+        interview results on or off (decision item 61); only the fields given change. Elevare admin
+        only. Nothing is deleted: the scores, the gaps and the text are still worked out and kept,
+        and an admin always sees them. Logged."""
+        job = await self._job_for_summary(user, job_id)
+        if not changes:
+            raise ValidationException("Say which setting to change.", code="NOTHING_TO_CHANGE")
+        existing = (
+            await self._db.execute(select(JobScoreVisibility).where(JobScoreVisibility.job_id == job.id))
+        ).scalar_one_or_none()
+        if existing is None:
+            self._db.add(JobScoreVisibility(job_id=job.id, changed_by=user.id, **changes))
+        else:
+            for name, value in changes.items():
+                setattr(existing, name, value)
+            existing.changed_by = user.id
+        await self._db.commit()
+        logger.info("interview result display changed: job=%s by user=%s %s", job.id, user.id, changes)
+        return await self._display_flags(job.id)
 
     async def _summary_shown(self, job_id: uuid.UUID) -> bool:
         """Whether the job's scorecard prints its Evaluation Summary: true unless an admin switched
