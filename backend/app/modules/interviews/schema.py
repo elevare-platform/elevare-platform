@@ -577,6 +577,9 @@ class InterviewDetailResponse(BaseModel):
     score_number_hidden: bool = False
     gaps_hidden: bool = False
     writeup_hidden: bool = False
+    # Only for an Elevare admin: the interview is being scored again (status PENDING), or the last
+    # request did not work (FAILED, or PENDING and ``stale``: lost). None when nothing is open.
+    rescore: dict | None = None
     # Only for an Elevare admin: the system's own score and band and every review of it.
     score_review: dict | None = None
     # The latest attempt's recording (the only one, for an interview never reinstated).

@@ -155,6 +155,13 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
     try {
       await api.post(`/api/v1/interviews/${talentPoolProfileId}/rescore`, null, { params: { job_id: jobId } })
       setRescore('queued')
+      // The window reads the interview again and shows it as being scored again; if that read
+      // fails the message below still says it has started.
+      try {
+        await onChanged?.()
+      } catch {
+        /* the next check of the window picks it up */
+      }
     } catch (err) {
       const message = err?.response?.data?.message
       setRescoreError(
@@ -399,8 +406,8 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
       <div className="space-y-1.5 border-t border-border pt-3" data-testid="rescore">
         {rescore === 'queued' ? (
           <p role="status" className="text-xs text-text-muted">
-            Scoring has started. Close and reopen this window in a minute or two to see the new result. If
-            the score has not changed, it did not go through; you can ask again.
+            Scoring has started. The earlier result is hidden while it runs, and this window shows the new
+            one when it is ready (usually a minute or two).
           </p>
         ) : rescore === 'confirming' || rescore === 'sending' ? (
           <>

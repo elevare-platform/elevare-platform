@@ -30,6 +30,10 @@ from app.modules.interview_list.repository import InterviewListRepository
 from app.modules.interviews.enums import (
     ENDED_STATUSES,
     PANEL_DECISION_LABELS,
+    RESCORE_DONE,
+    RESCORE_FAILED,
+    RESCORE_PENDING,
+    RESCORE_STALE_AFTER,
     InterviewCostComponent,
     InterviewStatus,
     PanelDecision,
@@ -40,6 +44,7 @@ from app.modules.interviews.follow_up import load_follow_up_mode
 from app.modules.interviews.models import (
     Interview,
     InterviewPanelDecision,
+    InterviewRescore,
     InterviewScoreReview,
     InterviewTurn,
     InterviewWeightedScore,
@@ -1725,6 +1730,10 @@ class InterviewService:
         interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
         if interview is None:
             raise InterviewNotFound()
+        # Under the interview's row lock, so two clicks (or two admins) cannot both start a scoring:
+        # the second finds the first still pending and is refused.
+        await self._repo.lock_status(interview.id)
+        await self._db.refresh(interview)
         if interview.status != InterviewStatus.SCORED.value:
             raise ValidationException(
                 "Only a scored interview can be scored again.", code="INTERVIEW_NOT_SCORED"
@@ -1733,10 +1742,56 @@ class InterviewService:
             raise ValidationException(
                 "There is no transcript to score for this interview.", code="INTERVIEW_NO_TRANSCRIPT"
             )
+        now = datetime.now(UTC)
+        row = (
+            await self._db.execute(select(InterviewRescore).where(InterviewRescore.interview_id == interview.id))
+        ).scalar_one_or_none()
+        if row is not None and row.status == RESCORE_PENDING and now - row.requested_at < RESCORE_STALE_AFTER:
+            raise ValidationException(
+                "This interview is already being scored again. Please wait for it to finish.",
+                code="RESCORE_IN_PROGRESS",
+            )
+        if row is None:
+            row = InterviewRescore(interview_id=interview.id, status=RESCORE_PENDING, requested_at=now)
+            self._db.add(row)
+        row.status, row.requested_by, row.requested_at = RESCORE_PENDING, user.id, now
+        row.finished_at, row.error = None, None
+        await self._db.commit()
+
         name = " ".join(f"{user.first_name} {user.last_name}".split()) or user.email
-        rescore_interview_task.delay(str(interview.id), str(user.id), name)
+        try:
+            rescore_interview_task.delay(str(interview.id), str(user.id), name)
+        except Exception:
+            # Never leave a request pending that nothing is working on.
+            logger.exception("interview rescore could not be queued: interview=%s", interview.id)
+            row.status, row.finished_at = RESCORE_FAILED, datetime.now(UTC)
+            row.error = "The request could not be queued. Please try again."
+            await self._db.commit()
+            raise
         logger.info("interview rescore queued: interview=%s by admin=%s", interview.id, user.id)
         return {"queued": True}
+
+    async def _rescore_state(self, interview_id: uuid.UUID) -> dict | None:
+        """For an admin: whether this interview is being scored again (PENDING), the last request
+        did not work (FAILED, or PENDING for so long it was lost: ``stale``), or nothing is open
+        (None, also after a request that finished). Guarded for the seconds of a deploy before the
+        table exists."""
+
+        async def read() -> dict | None:
+            row = (
+                await self._db.execute(select(InterviewRescore).where(InterviewRescore.interview_id == interview_id))
+            ).scalar_one_or_none()
+            if row is None or row.status == RESCORE_DONE:
+                return None
+            stale = row.status == RESCORE_PENDING and datetime.now(UTC) - row.requested_at >= RESCORE_STALE_AFTER
+            return {
+                "status": row.status,
+                "requested_at": row.requested_at,
+                "error": row.error,
+                "stale": stale,
+            }
+
+        return await tolerate_missing(self._db, read, None)
 
     async def get_monthly_cost_summary(self) -> dict:
         """Return the current month's interview cost, broken down by component
@@ -2017,6 +2072,7 @@ class InterviewService:
             score_number_hidden=number_hidden,
             gaps_hidden=gaps_hidden,
             writeup_hidden=writeup_hidden,
+            rescore=await self._rescore_state(interview.id) if include_review_history else None,
             score_review=(
                 self._score_review_history(interview, stored_report, reviews)
                 if include_review_history

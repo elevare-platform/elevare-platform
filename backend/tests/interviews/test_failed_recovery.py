@@ -722,6 +722,22 @@ async def test_a_retake_also_clears_an_elevare_reviewers_score(
 
 
 @pytest.mark.asyncio
+async def test_a_retake_also_clears_a_request_to_score_it_again(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    from app.modules.interviews.models import InterviewRescore
+
+    interview = await scored_interview(client, db_session, clock)
+    db_session.add(InterviewRescore(interview_id=interview.interview.id, status="PENDING", requested_at=datetime.now(UTC)))
+    await db_session.commit()
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+    assert (await db_session.execute(select(InterviewRescore))).scalars().all() == []
+
+
+@pytest.mark.asyncio
 async def test_a_scored_interview_is_not_reopened_or_reinstated_only_started_over(
     client, db_session, fakes, clock, storage, invite_email
 ):

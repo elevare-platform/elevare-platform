@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 vi.mock('@/lib/api', () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }))
 
 import api from '@/lib/api'
-import InterviewDetailModal, { SCORE_POLL_INTERVAL_MS } from './InterviewDetailModal'
+import InterviewDetailModal, { RESCORE_POLL_INTERVAL_MS, SCORE_POLL_INTERVAL_MS } from './InterviewDetailModal'
 
 const BASE = {
   status: 'SCORED',
@@ -786,5 +786,119 @@ describe('InterviewDetailModal: an interview that ended early', () => {
 
     await screen.findByText(/Ended early/)
     expect(screen.queryByRole('button', { name: /generate score/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('InterviewDetailModal, an admin scoring the interview again', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    api.get.mockReset()
+    api.post.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const REPORT = {
+    rows: [{ name: 'Strategy', weight: 100, key: true, rating: 4 }],
+    points: 80, assessed_weight: 100, total_weight: 100, complete: true, score: 80, band: 'Shortlist',
+    bands: { strong: 85, shortlist: 75, hold: 65 }, key_min_rating: 3, key_flags: [], unassessed: [],
+  }
+  const RECORD = {
+    reference: 'EL-1', role: 'Sales', interview_date: null, duration_minutes: 10, interviewer: 'x',
+    top_strengths: ['Owns the numbers'], top_gaps: [], claims_to_verify: [], reference_check_questions: [], panel_decision: null,
+  }
+  const REVIEW = { original_score: 80, original_band: 'Shortlist', original_ratings: { Strategy: 4 }, reviews: [] }
+  const SCORED = {
+    ...BASE, ai_score: 80, ai_rationale: 'Strong on strategy.', score_report: REPORT, record: RECORD, score_review: REVIEW,
+    video_url: 'https://signed.example/v', rescore: null,
+  }
+  const pending = { status: 'PENDING', requested_at: '2026-10-29T10:00:00Z', error: null, stale: false }
+
+  it('hides the earlier result and says it is being scored again, keeping the recording and transcript', async () => {
+    api.get.mockResolvedValue({ data: { ...SCORED, rescore: pending } })
+    renderModal()
+
+    expect(await screen.findByTestId('rescore-pending')).toHaveTextContent('Scoring this interview again')
+    expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Strong on strategy.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Top three demonstrated strengths')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Review score' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/No score is available/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /generate score/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/Hello/)).toBeInTheDocument()
+  })
+
+  it('checks again by itself and fills in the new result when it arrives', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...SCORED, rescore: pending } })
+    api.get.mockResolvedValue({ data: { ...SCORED, ai_score: 71, ai_rationale: 'A fair showing.', rescore: null, score_report: { ...REPORT, score: 71, band: 'Hold for evidence' } } })
+    renderModal()
+    await screen.findByTestId('rescore-pending')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RESCORE_POLL_INTERVAL_MS)
+    })
+
+    expect(await screen.findByTestId('weighted-band')).toHaveTextContent('Hold for evidence')
+    expect(screen.queryByTestId('rescore-pending')).not.toBeInTheDocument()
+    expect(screen.getAllByText('A fair showing.').length).toBeGreaterThan(0)
+  })
+
+  it('keeps waiting when a check fails, and stops checking once it is no longer pending', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...SCORED, rescore: pending } })
+    api.get.mockRejectedValueOnce(new Error('network'))
+    api.get.mockResolvedValue({ data: { ...SCORED, rescore: null } })
+    renderModal()
+    await screen.findByTestId('rescore-pending')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RESCORE_POLL_INTERVAL_MS)
+    })
+    expect(screen.getByTestId('rescore-pending')).toBeInTheDocument()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RESCORE_POLL_INTERVAL_MS)
+    })
+    await screen.findByTestId('weighted-band')
+    const calls = api.get.mock.calls.length
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RESCORE_POLL_INTERVAL_MS * 3)
+    })
+
+    expect(api.get.mock.calls.length).toBe(calls)
+  })
+
+  it('says it did not finish, with the reason, and shows the earlier result and the way to ask again', async () => {
+    api.get.mockResolvedValue({
+      data: { ...SCORED, rescore: { status: 'FAILED', requested_at: '2026-10-29T10:00:00Z', error: 'The scoring did not return a usable result.', stale: false } },
+    })
+    renderModal()
+
+    const notice = await screen.findByTestId('rescore-failed')
+    expect(notice).toHaveTextContent('did not finish')
+    expect(notice).toHaveTextContent('The scoring did not return a usable result.')
+    expect(notice).toHaveTextContent('The earlier result is unchanged')
+    expect(screen.getByTestId('weighted-band')).toHaveTextContent('Shortlist')
+    expect(screen.getByRole('button', { name: 'Score this interview again' })).toBeInTheDocument()
+  })
+
+  it('treats a request that has been pending too long as lost, not as running', async () => {
+    api.get.mockResolvedValue({ data: { ...SCORED, rescore: { ...pending, stale: true } } })
+    renderModal()
+
+    const notice = await screen.findByTestId('rescore-failed')
+    expect(notice).toHaveTextContent('no answer after ten minutes')
+    expect(screen.queryByTestId('rescore-pending')).not.toBeInTheDocument()
+    expect(screen.getByTestId('weighted-band')).toBeInTheDocument()
+  })
+
+  it('shows nothing extra when nothing is open', async () => {
+    api.get.mockResolvedValue({ data: SCORED })
+    renderModal()
+
+    await screen.findByTestId('weighted-band')
+    expect(screen.queryByTestId('rescore-pending')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('rescore-failed')).not.toBeInTheDocument()
   })
 })

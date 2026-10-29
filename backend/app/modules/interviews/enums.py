@@ -23,6 +23,13 @@ STALE_UPLOAD_TIMEOUT = timedelta(days=3)
 # away someone who is working, while one whose laptop froze or whose connection died is not stuck
 # for the two hours it takes the stale sweep to give up.
 IN_PROGRESS_QUIET_AFTER = timedelta(minutes=10)
+# An admin's request to score an interview again that has been PENDING this long is taken to have
+# been lost (a worker restarted mid-run): the window then says it did not finish, and it can be asked
+# again. Scoring one interview takes a minute or two.
+RESCORE_STALE_AFTER = timedelta(minutes=10)
+RESCORE_PENDING = "PENDING"
+RESCORE_FAILED = "FAILED"
+RESCORE_DONE = "DONE"
 
 
 class InterviewStatus(str, Enum):

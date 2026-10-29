@@ -27,6 +27,8 @@ from app.modules.interviews.assessment_text import format_assessment
 from app.modules.interviews.auto_profile import ensure_profile
 from app.modules.interviews.credits import refund_if_unused, refund_interview_credits
 from app.modules.interviews.enums import (
+    RESCORE_DONE,
+    RESCORE_FAILED,
     STALE_INTERVIEW_TIMEOUT,
     STALE_UPLOAD_TIMEOUT,
     InterviewCostComponent,
@@ -34,6 +36,7 @@ from app.modules.interviews.enums import (
     TranscriptCheckStatus,
 )
 from app.modules.interviews.models import (
+    InterviewRescore,
     InterviewScoreReview,
     InterviewWeightedScore,
     StrictInterviewRun,
@@ -902,6 +905,8 @@ async def _rescore_interview_async(
                     "rescore_interview: interview %s is not a scored interview with a transcript — skipping",
                     interview_id,
                 )
+                await _mark_rescore(db, interview_id, RESCORE_FAILED, "The interview is no longer scored.")
+                await db.commit()
                 return False
 
             check = await repo.get_transcript_check(interview.id)
@@ -928,6 +933,9 @@ async def _rescore_interview_async(
             if result.failed:
                 # A failed call is not a score: the earlier one stays as it was.
                 await _record_scoring_cost(repo, interview.id, result)
+                await _mark_rescore(
+                    db, interview_id, RESCORE_FAILED, "The scoring did not return a usable result."
+                )
                 await db.commit()
                 logger.error(
                     "rescore_interview: scoring failed for interview %s — nothing was changed",
@@ -963,6 +971,9 @@ async def _rescore_interview_async(
                     original_band=old_band,
                 )
             )
+            # Marked done in the same transaction as the new result, so a window never sees one
+            # without the other.
+            await _mark_rescore(db, interview_id, RESCORE_DONE)
             await db.commit()
             logger.info(
                 "rescore_interview: interview %s rescored by admin %s: %s -> %s",
@@ -977,9 +988,30 @@ async def _rescore_interview_async(
             logger.exception(
                 "rescore_interview: failed for interview %s — nothing was changed", interview_id
             )
+            # Say so in the window instead of leaving it waiting. Best effort: a problem here must
+            # not hide the original error.
+            try:
+                await _mark_rescore(
+                    db, interview_id, RESCORE_FAILED, "Scoring this interview again hit an error."
+                )
+                await db.commit()
+            except Exception:
+                logger.exception("rescore_interview: could not record the failure for %s", interview_id)
+                await db.rollback()
             raise
         finally:
             await engine.dispose()
+
+
+async def _mark_rescore(db, interview_id: uuid.UUID, status: str, error: str | None = None) -> None:
+    """Record how an admin's request to score an interview again ended. Does not commit. A missing
+    row (a request made before the table existed) is left alone."""
+    row = (
+        await db.execute(select(InterviewRescore).where(InterviewRescore.interview_id == interview_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return
+    row.status, row.finished_at, row.error = status, datetime.now(UTC), error
 
 
 @celery.task

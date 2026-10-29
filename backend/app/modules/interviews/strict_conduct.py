@@ -45,6 +45,7 @@ from app.modules.interviews.enums import (
 from app.modules.interviews.models import (
     Interview,
     InterviewConductEvent,
+    InterviewRescore,
     InterviewScoreReview,
     InterviewTranscriptCheck,
     InterviewTurn,
@@ -551,6 +552,12 @@ class ConductMixin:
             )
 
         await tolerate_missing(self._db, drop_reviews, None)
+
+        # So does a request to score it again that was still open: there is nothing left to score.
+        async def drop_rescore() -> None:
+            await self._db.execute(delete(InterviewRescore).where(InterviewRescore.interview_id == interview.id))
+
+        await tolerate_missing(self._db, drop_rescore, None)
 
         run.rules_version = None
         run.rules_accepted_at = None
