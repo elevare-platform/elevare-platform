@@ -353,6 +353,45 @@ describe('SharedInterviewResultsPage, the list of candidates', () => {
     expect(row.getByText('Strong shortlist')).toBeInTheDocument()
   })
 
+  it('offers only the sorts there is something to sort by, which are the list order and the CV score when scores are off', async () => {
+    const off = (name) => person(name, { interview_score: null, score_report: null })
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [off('Ada Obi'), off('Chidi Okafor')] } })
+    renderPage()
+    await screen.findByRole('list', { name: 'Candidates' })
+
+    const options = within(screen.getByLabelText('Sort candidates by')).getAllByRole('option').map((o) => o.textContent)
+
+    expect(options).toEqual(['Order on the list', 'CV score'])
+  })
+
+  it('offers every sort when the scores are there', async () => {
+    const report = { rows: [], bands: {}, key_flags: [], complete: true, score: 88, band: 'Strong shortlist', unassessed: [] }
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [person('Ada Obi', { score_report: report })] } })
+    renderPage()
+    await screen.findByRole('list', { name: 'Candidates' })
+
+    const options = within(screen.getByLabelText('Sort candidates by')).getAllByRole('option').map((o) => o.textContent)
+
+    expect(options).toEqual(['Order on the list', 'Interview score', 'Weighted score', 'CV score'])
+  })
+
+  it('shows a hidden-score candidate with no score chip, no band and no incomplete notice', async () => {
+    const hidden = {
+      rows: [{ name: 'Strategy', weight: 100, key: true, rating: 4 }],
+      points: 0, assessed_weight: 100, total_weight: 100, complete: true, score: null, band: null, bands: {},
+      key_min_rating: 3, key_flags: [], unassessed: [], hidden: true,
+    }
+    api.get.mockResolvedValueOnce({
+      data: { ...RESULTS, candidates: [person('Ada Obi', { interview_score: null, score_report: hidden, cv_score: null })] },
+    })
+    renderPage()
+
+    const row = within(await screen.findByRole('button', { name: /Ada Obi/ }))
+    expect(row.queryByText(/Interview/)).toBeNull()
+    expect(screen.queryByText(/Incomplete score/)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
+  })
+
   it('shows no tag for a score nobody reviewed', async () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
     renderPage()

@@ -5,6 +5,7 @@ import AdminLayout from '@/components/admin/AdminLayout'
 import { AdminTable, Th, Td } from '@/components/admin/AdminTable'
 import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
 import ReviewedTag from '@/components/employer/ReviewedTag'
+import ScoreVisibilityToggle from '@/components/employer/ScoreVisibilityToggle'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -96,6 +97,8 @@ export default function AdminJobInterviewsPage() {
             Every candidate on this job&apos;s interview list. Open an interview to read it and to review its score.
           </p>
         </div>
+
+        <ScoreVisibilityToggle jobId={jobId} />
 
         {error && (
           <p role="alert" className="text-sm text-red-600">

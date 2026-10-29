@@ -16,6 +16,17 @@ const COMPLETE = {
 }
 
 describe('PracticalCaseCard', () => {
+  it('shows the criteria and ratings but no case total, and no incomplete notice, when the job’s switch has scores off', () => {
+    const hidden = { ...COMPLETE, hidden: true, score: null, complete: false, unassessed: ['Risk'] }
+    render(<PracticalCaseCard report={hidden} />)
+
+    expect(screen.queryByTestId('practical-score')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('practical-incomplete')).not.toBeInTheDocument()
+    expect(screen.queryByText(/No case score/)).not.toBeInTheDocument()
+    expect(screen.getByText('Prioritisation')).toBeInTheDocument()
+    expect(screen.getAllByText('4 of 5')).toHaveLength(2)
+  })
+
   it('shows the case score out of 5 with one decimal, the criteria with their weights and ratings, and the summary', () => {
     render(<PracticalCaseCard report={COMPLETE} />)
 

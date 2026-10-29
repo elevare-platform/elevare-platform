@@ -33,6 +33,7 @@ function mockApi(items, job = { title: 'Regional Sales Manager' }) {
   api.get.mockImplementation(async (url) => {
     if (url === '/api/v1/interview-list') return { data: { items, total: items.length } }
     if (url === '/api/v1/jobs/job-1') return { data: job }
+    if (url === '/api/v1/interviews/jobs/job-1/score-visibility') return { data: { show_scores: true } }
     throw new Error(`unexpected ${url}`)
   })
 }
@@ -130,14 +131,17 @@ describe('AdminJobInterviewsPage', () => {
   })
 
   it('says the job was not found, or that the list could not be loaded', async () => {
-    api.get.mockRejectedValueOnce({ response: { status: 404 } })
-    api.get.mockRejectedValueOnce(new Error('job'))
+    api.get.mockImplementation(async (url) => {
+      if (url === '/api/v1/interview-list') throw { response: { status: 404 } }
+      throw new Error('other')
+    })
     const first = renderPage()
     expect(await screen.findByRole('alert')).toHaveTextContent('That job could not be found.')
     first.unmount()
 
-    api.get.mockRejectedValueOnce(new Error('network'))
-    api.get.mockRejectedValueOnce(new Error('job'))
+    api.get.mockImplementation(async () => {
+      throw new Error('network')
+    })
     renderPage()
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('We could not load this job'))
   })

@@ -47,6 +47,8 @@ from app.modules.interviews.schema import (
     SaveTemplateRequest,
     ScoreReviewRequest,
     ScoreReviewResponse,
+    ScoreVisibilityRequest,
+    ScoreVisibilityResponse,
     ScoringProfileIn,
     ScoringProfileResponse,
     StrictEventRequest,
@@ -492,6 +494,47 @@ async def remove_interview_score_review(
         return await service.review_score(
             current_user, job_id, talent_pool_profile_id, None, None, None, clear=True
         )
+    finally:
+        await service.close()
+
+
+@router.get(
+    "/jobs/{job_id}/score-visibility",
+    response_model=ScoreVisibilityResponse,
+    status_code=200,
+)
+async def get_job_score_visibility(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Whether this job's interview score and provisional band are shown to its employer and on the
+    shared link. For the job's company or an Elevare admin."""
+    service = InterviewService(db)
+    try:
+        return await service.get_score_visibility(current_user, job_id)
+    finally:
+        await service.close()
+
+
+@router.put(
+    "/jobs/{job_id}/score-visibility",
+    response_model=ScoreVisibilityResponse,
+    status_code=200,
+)
+async def set_job_score_visibility(
+    job_id: uuid.UUID,
+    data: ScoreVisibilityRequest,
+    current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Switch this job's interview score and provisional band on or off. Off: the employer's screens
+    and the shared link are not sent the total, the band, the practical case's total or the
+    assessment lines that state them (the competency ratings and evidence stay); an Elevare admin
+    always sees the real values. For the job's company or an admin."""
+    service = InterviewService(db)
+    try:
+        return await service.set_score_visibility(current_user, job_id, data.show_scores)
     finally:
         await service.close()
 

@@ -170,6 +170,16 @@ export default function SharedInterviewResultsPage() {
     return counts
   }, [entries])
 
+  // A score to sort by is only offered when somebody has it: a job whose scores are switched off
+  // sends none, and its page then offers the order on the list and the CV score only.
+  const sortOptions = useMemo(
+    () =>
+      SORTS.filter(
+        (option) => !SORT_KEY[option.value] || entries.some(({ candidate }) => SORT_KEY[option.value](candidate) != null),
+      ),
+    [entries],
+  )
+
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()
     let list = entries.filter(({ candidate }) =>
@@ -321,7 +331,7 @@ export default function SharedInterviewResultsPage() {
                     aria-label="Sort candidates by"
                     className="py-2 pl-2 pr-6 text-sm rounded-lg border border-border bg-white focus:outline-none focus:ring-2 focus:ring-brand-blue"
                   >
-                    {SORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </div>
               </div>
