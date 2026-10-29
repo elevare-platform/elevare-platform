@@ -41,13 +41,16 @@ def build_scorecard(
     panel_decision: str | None,
     total: int | None,
     hidden: bool,
+    show_summary: bool = True,
 ) -> dict | None:
     """The scorecard to show, or None for an interview without competencies (no scoring profile).
 
     ``report`` is the weighted report as shown (a reviewed rating is already in it), ``total`` the
     total shown (a reviewed or typed one), ``admin`` the hand-filled fields of the latest review.
     With ``hidden`` (the job's switch has scores off) the points and totals are left out; the ratings,
-    the evidence, the strengths and the decision stay."""
+    the evidence, the strengths and the decision stay. With ``show_summary`` false (the job's
+    Evaluation Summary switch) the practical case rating, the strengths and the decision are left
+    out for every reader; what an admin filled in stays stored."""
     if not report or not report.get("rows"):
         return None
     admin = admin or {}
@@ -72,17 +75,19 @@ def build_scorecard(
     practical_rating = admin.get("practical_rating")
     if practical_rating is None and practical and practical.get("complete") and not hidden:
         practical_rating = practical.get("score")
-    if hidden:
+    if hidden or not show_summary:
         practical_rating = None
     strengths = [line.strip() for line in (admin.get("strengths") or "").splitlines() if line.strip()]
+    strengths = strengths or [item for item in top_strengths if item]
     return {
         "rows": rows,
         "total_points": None if hidden or not earned else round(sum(earned), 2),
         "max_points": max_points,
         "total_score": None if hidden else total,
         "practical_rating": practical_rating,
-        "strengths": strengths or [item for item in top_strengths if item],
-        "decision": _line(admin.get("decision")) or None,
-        "panel_decision": panel_decision,
+        "strengths": strengths if show_summary else [],
+        "decision": (_line(admin.get("decision")) or None) if show_summary else None,
+        "panel_decision": panel_decision if show_summary else None,
         "hidden": hidden,
+        "show_summary": show_summary,
     }

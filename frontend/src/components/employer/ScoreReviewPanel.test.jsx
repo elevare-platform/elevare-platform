@@ -412,6 +412,26 @@ describe('ScoreReviewPanel, the scorecard and half-point ratings', () => {
     expect(save()).toBeDisabled()
   })
 
+  it('does not offer the summary fields while the job’s Evaluation Summary is off, but keeps the evidence boxes', () => {
+    setup({ ...CARD_DETAIL, scorecard: { ...CARD_DETAIL.scorecard, show_summary: false, practical_rating: null, strengths: [] } })
+
+    expect(evidenceBox('Strategy')).toHaveValue('System evidence for strategy.')
+    expect(screen.queryByLabelText('Practical case rating')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Strengths/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Human decision')).not.toBeInTheDocument()
+  })
+
+  it('sends no summary fields when it is saved while the Evaluation Summary is off', async () => {
+    api.put.mockResolvedValueOnce({ data: {} })
+    setup({ ...CARD_DETAIL, scorecard: { ...CARD_DETAIL.scorecard, show_summary: false, practical_rating: null, strengths: [] } })
+
+    fireEvent.change(evidenceBox('Strategy'), { target: { value: 'New evidence.' } })
+    fireEvent.click(save())
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1].scorecard).toEqual({ evidence: { Strategy: 'New evidence.' } })
+  })
+
   it('has no scorecard fields for an interview scored without competencies', () => {
     setup(PLAIN)
 

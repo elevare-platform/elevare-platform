@@ -1932,6 +1932,7 @@ class InterviewService:
             panel_decision=((record.get("panel_decision") or {}).get("label")),
             total=shown.score,
             hidden=scores_hidden,
+            show_summary=await self._summary_shown(job.id),
         )
 
         # A transcript that did not match the recording is not shown: the
@@ -2053,6 +2054,54 @@ class InterviewService:
             "interview scores %s: job=%s by user=%s", "shown" if show_scores else "hidden", job.id, user.id
         )
         return {"show_scores": show_scores}
+
+    async def _summary_shown(self, job_id: uuid.UUID) -> bool:
+        """Whether the job's scorecard prints its Evaluation Summary: true unless an admin switched
+        it off (and in the seconds of a deploy before the column exists)."""
+
+        async def read() -> bool:
+            row = (
+                await self._db.execute(
+                    select(JobScoreVisibility.show_summary).where(JobScoreVisibility.job_id == job_id)
+                )
+            ).scalar_one_or_none()
+            return True if row is None else bool(row)
+
+        return await tolerate_missing(self._db, read, True)
+
+    async def get_scorecard_summary(self, user: User, job_id: uuid.UUID) -> dict:
+        """Whether a job's scorecard shows its Evaluation Summary. Elevare admin only."""
+        job = await self._job_for_summary(user, job_id)
+        return {"show_summary": await self._summary_shown(job.id)}
+
+    async def set_scorecard_summary(self, user: User, job_id: uuid.UUID, show_summary: bool) -> dict:
+        """Switch a job's scorecard Evaluation Summary on or off (decision item 57). Admin only. What
+        was filled in by hand is kept; this only decides whether the scorecard shows it. Logged."""
+        job = await self._job_for_summary(user, job_id)
+        existing = (
+            await self._db.execute(select(JobScoreVisibility).where(JobScoreVisibility.job_id == job.id))
+        ).scalar_one_or_none()
+        if existing is None:
+            self._db.add(JobScoreVisibility(job_id=job.id, show_summary=show_summary, changed_by=user.id))
+        else:
+            existing.show_summary = show_summary
+            existing.changed_by = user.id
+        await self._db.commit()
+        logger.info(
+            "scorecard summary %s: job=%s by user=%s", "shown" if show_summary else "hidden", job.id, user.id
+        )
+        return {"show_summary": show_summary}
+
+    async def _job_for_summary(self, user: User, job_id: uuid.UUID) -> Job:
+        from app.core.exceptions import JobNotFoundError
+        from app.modules.jobs.repository import JobRepository
+
+        if user.role != UserRole.ADMIN.value:
+            raise PermissionDeniedException("Only an Elevare administrator can change this setting")
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError()
+        return job
 
     async def _job_for_visibility(self, user: User, job_id: uuid.UUID) -> Job:
         from app.core.exceptions import JobNotFoundError
@@ -2259,6 +2308,15 @@ class InterviewService:
                 "That written assessment is the system's own, so there is nothing to change.",
                 code="NOTHING_TO_REVIEW",
             )
+        # With the Evaluation Summary switched off the panel does not offer its fields, and a save
+        # replaces the whole review, so what was filled in before is carried over, not lost. Not on
+        # a removal, which clears the review.
+        if not clear and not await self._summary_shown(job.id):
+            previous = await self._score_reviews(interview.id)
+            earlier = (previous[0].scorecard or {}) if previous else {}
+            for key in ("practical_rating", "strengths", "decision"):
+                if key not in filled and earlier.get(key) not in (None, ""):
+                    filled[key] = earlier[key]
         name = " ".join(f"{user.first_name} {user.last_name}".split()) or user.email
         cleaned_reason = " ".join(reason.split()) if reason else None
         row = InterviewScoreReview(

@@ -335,3 +335,120 @@ async def test_with_the_jobs_scores_off_the_employers_scorecard_has_no_points_or
     assert body["scorecard"]["hidden"] is True and body["scorecard"]["total_points"] is None
     assert all(row["points"] is None and row["rating"] is not None for row in body["scorecard"]["rows"])
     assert body["scorecard"]["rows"][0]["evidence"] == EVIDENCE[0]
+
+
+# ── The Evaluation Summary switch (docs/08_DECISIONS.md, item 57) ────────────────
+
+
+def summary_url(job):
+    return f"/api/v1/interviews/jobs/{job.id}/scorecard-summary"
+
+
+def test_with_the_summary_off_the_practical_rating_strengths_and_decision_are_left_out_for_everyone():
+    scorecard = card(
+        show_summary=False,
+        practical={"complete": True, "score": 4.0},
+        admin={"decision": "Proceed.", "practical_rating": 4.5, "strengths": "Sharp."},
+        panel_decision="Strong Shortlist",
+    )
+
+    assert (scorecard["practical_rating"], scorecard["strengths"], scorecard["decision"], scorecard["panel_decision"]) == (
+        None, [], None, None,
+    )
+    assert scorecard["show_summary"] is False
+    assert scorecard["total_points"] == 37.5 and scorecard["rows"][0]["evidence"] == EVIDENCE[0]
+
+
+def test_the_summary_is_on_unless_switched_off():
+    assert card(admin={"decision": "Proceed."})["show_summary"] is True
+
+
+@pytest.mark.asyncio
+async def test_only_an_admin_can_switch_the_summary_and_everyone_reads_the_result(client, db_session):
+    interview = await scored_like_the_example(db_session)
+    admin = await an_admin(db_session)
+    await db_session.commit()
+    body = {"show_summary": False}
+
+    for who in (headers(interview.employer), {}):
+        assert (await client.put(summary_url(interview.job), json=body, headers=who)).status_code in (401, 403)
+        assert (await client.get(summary_url(interview.job), headers=who)).status_code in (401, 403)
+    by_admin = await client.put(summary_url(interview.job), json=body, headers=headers(admin))
+
+    assert by_admin.status_code == 200 and by_admin.json() == {"show_summary": False}
+    assert (await client.get(summary_url(interview.job), headers=headers(admin))).json() == {"show_summary": False}
+    for who in (interview.employer, admin):
+        seen = (await detail(client, interview, who))["scorecard"]
+        assert seen["show_summary"] is False and seen["strengths"] == [] and seen["decision"] is None
+    await client.put(summary_url(interview.job), json={"show_summary": True}, headers=headers(admin))
+    assert (await detail(client, interview, interview.employer))["scorecard"]["strengths"]
+
+
+@pytest.mark.asyncio
+async def test_the_summary_switch_needs_a_true_or_false_and_a_real_job(client, db_session):
+    from uuid import uuid4
+
+    interview = await scored_like_the_example(db_session)
+    admin = await an_admin(db_session)
+    await db_session.commit()
+
+    for bad in ({}, {"show_summary": "maybe"}, {"show_summary": None}):
+        assert (await client.put(summary_url(interview.job), json=bad, headers=headers(admin))).status_code == 422
+    missing = await client.put(
+        f"/api/v1/interviews/jobs/{uuid4()}/scorecard-summary", json={"show_summary": False}, headers=headers(admin)
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_the_summary_switch_leaves_the_scores_switch_alone_and_the_other_way_round(client, db_session):
+    interview = await scored_like_the_example(db_session)
+    admin = await an_admin(db_session)
+    await db_session.commit()
+
+    await client.put(summary_url(interview.job), json={"show_summary": False}, headers=headers(admin))
+    await client.put(visibility_url(interview.job), json={"show_scores": False}, headers=headers(admin))
+    await client.put(visibility_url(interview.job), json={"show_scores": True}, headers=headers(admin))
+
+    assert (await client.get(summary_url(interview.job), headers=headers(admin))).json() == {"show_summary": False}
+    assert (await client.get(visibility_url(interview.job), headers=headers(admin))).json() == {"show_scores": True}
+
+
+@pytest.mark.asyncio
+async def test_what_an_admin_filled_in_survives_a_save_made_while_the_summary_is_off(client, db_session):
+    interview = await scored_like_the_example(db_session)
+    admin = await an_admin(db_session)
+    await db_session.commit()
+    await client.put(
+        review_url(interview),
+        json={"scorecard": {"decision": "Proceed.", "strengths": "Sharp.", "practical_rating": 4}},
+        headers=headers(admin),
+    )
+    await client.put(summary_url(interview.job), json={"show_summary": False}, headers=headers(admin))
+
+    saved = await client.put(
+        review_url(interview),
+        json={"scorecard": {"evidence": {"sales-force leadership": "Ran the training."}}},
+        headers=headers(admin),
+    )
+    await client.put(summary_url(interview.job), json={"show_summary": True}, headers=headers(admin))
+
+    assert saved.status_code == 200
+    seen = (await detail(client, interview, interview.employer))["scorecard"]
+    assert (seen["decision"], seen["strengths"], seen["practical_rating"]) == ("Proceed.", ["Sharp."], 4)
+    assert seen["rows"][2]["evidence"] == "Ran the training."
+
+
+@pytest.mark.asyncio
+async def test_removing_a_review_while_the_summary_is_off_still_clears_the_summary_fields(client, db_session):
+    interview = await scored_like_the_example(db_session)
+    admin = await an_admin(db_session)
+    await db_session.commit()
+    await client.put(review_url(interview), json={"scorecard": {"decision": "Proceed."}}, headers=headers(admin))
+    await client.put(summary_url(interview.job), json={"show_summary": False}, headers=headers(admin))
+
+    cleared = await client.delete(review_url(interview), headers=headers(admin))
+    await client.put(summary_url(interview.job), json={"show_summary": True}, headers=headers(admin))
+
+    assert cleared.status_code == 200
+    assert (await detail(client, interview, interview.employer))["scorecard"]["decision"] is None

@@ -434,6 +434,18 @@ class ScoreVisibilityResponse(BaseModel):
     show_scores: bool
 
 
+class ScorecardSummaryRequest(BaseModel):
+    """Switch the scorecard's Evaluation Summary on or off for a job."""
+
+    show_summary: bool
+
+
+class ScorecardSummaryResponse(BaseModel):
+    """Whether a job's scorecard shows its Evaluation Summary (true unless an admin switched it off)."""
+
+    show_summary: bool
+
+
 class PracticalCriterionRow(BaseModel):
     """One criterion of the practical case: its weight, the 1 to 5 rating (None when it was not
     covered) and why."""

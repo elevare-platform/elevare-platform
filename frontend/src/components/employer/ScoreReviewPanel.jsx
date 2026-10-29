@@ -252,9 +252,11 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
                 />
               </div>
             ))}
+            {card?.show_summary !== false && (
+            <>
             <div className="flex flex-wrap items-end gap-4">
               <div>
-                <label htmlFor="card-practical" className="block text-[11px] font-medium text-text-muted">
+                <label htmlFor="card-practical"className="block text-[11px] font-medium text-text-muted">
                   Practical case rating
                 </label>
                 <select
@@ -299,6 +301,8 @@ export default function ScoreReviewPanel({ jobId, talentPoolProfileId, detail, o
                 className="mt-1 w-full rounded-lg border border-border px-2.5 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
               />
             </div>
+            </>
+            )}
           </fieldset>
         )}
 
