@@ -2257,6 +2257,97 @@ class InterviewService:
         )
         return {"show_summary": show_summary}
 
+    async def recalculate_bands(self, user: User, job_id: uuid.UUID) -> dict:
+        """Weigh every scored interview of a job again under the job's CURRENT scoring profile
+        (its weights, key marks, minimum key rating and band cut-offs), using the ratings already
+        saved. No model call and no rating changes; the total, the band, the key-competency flags
+        and the lines of the written assessment that state them follow the profile. Elevare admin
+        only (decision item 63). Interviews being scored again right now, and ones with no
+        competency ratings, are skipped. Safe to run twice: the second run changes nothing. An admin's
+        reviewed total, ratings or text are untouched (the band of a reviewed total follows the new
+        cut-offs). Logged."""
+        from app.modules.interviews.band_recalculation import (
+            WEIGHTED_KEYS,
+            recalculate,
+            retarget_text,
+        )
+        from app.modules.interviews.scoring_profile_service import load_profile
+
+        job = await self._job_for_summary(user, job_id)
+        profile = await load_profile(self._db, job.id)
+        if profile is None:
+            raise ValidationException(
+                "This job has no scoring profile, so there is nothing to weigh the ratings by.",
+                code="NO_SCORING_PROFILE",
+            )
+        saved = (
+            await self._db.execute(
+                select(Interview, InterviewWeightedScore)
+                .join(InterviewWeightedScore, InterviewWeightedScore.interview_id == Interview.id)
+                .where(Interview.job_id == job.id, Interview.status == InterviewStatus.SCORED.value)
+                .order_by(Interview.created_at)
+                .limit(2000)
+            )
+        ).all()
+
+        checked = changed = unchanged = incomplete = skipped = 0
+        changes: list[dict] = []
+        now = datetime.now(UTC)
+        for interview, stored in saved:
+            checked += 1
+            # Take the interview's lock, so this and a scoring run take turns, then read it again.
+            await self._repo.lock_status(interview.id)
+            await self._db.refresh(interview)
+            await self._db.refresh(stored)
+            pending = await self._rescore_state(interview.id)
+            if interview.status != InterviewStatus.SCORED.value or (
+                pending and pending["status"] == RESCORE_PENDING and not pending["stale"]
+            ):
+                skipped += 1
+                continue
+            old = stored.report or {}
+            fresh = recalculate(old, profile.competencies, profile.bands, profile.key_min_rating)
+            if fresh is None:
+                skipped += 1
+                continue
+            if all(fresh.get(key) == old.get(key) for key in WEIGHTED_KEYS):
+                unchanged += 1
+                continue
+            changed += 1
+            if not fresh["complete"]:
+                incomplete += 1
+            changes.append(
+                {
+                    "talent_pool_profile_id": interview.talent_pool_profile_id,
+                    "from_score": old.get("score"),
+                    "to_score": fresh["score"],
+                    "from_band": old.get("band"),
+                    "to_band": fresh["band"],
+                }
+            )
+            fresh["recalculated"] = {
+                "at": now.isoformat(),
+                "by": str(user.id),
+                "from_score": old.get("score"),
+                "from_band": old.get("band"),
+            }
+            stored.report = fresh
+            interview.ai_score = fresh["score"]
+            interview.ai_rationale = retarget_text(interview.ai_rationale, fresh)
+        await self._db.commit()
+        logger.info(
+            "interview bands recalculated: job=%s by user=%s checked=%d changed=%d unchanged=%d skipped=%d",
+            job.id, user.id, checked, changed, unchanged, skipped,
+        )
+        return {
+            "checked": checked,
+            "changed": changed,
+            "unchanged": unchanged,
+            "incomplete": incomplete,
+            "skipped": skipped,
+            "changes": changes,
+        }
+
     async def _job_for_summary(self, user: User, job_id: uuid.UUID) -> Job:
         from app.core.exceptions import JobNotFoundError
         from app.modules.jobs.repository import JobRepository

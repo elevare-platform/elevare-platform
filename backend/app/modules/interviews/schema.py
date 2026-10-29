@@ -465,6 +465,30 @@ class ResultDisplayResponse(BaseModel):
     show_writeup: bool
 
 
+class BandChange(BaseModel):
+    """One interview whose total or band changed when it was weighed again."""
+
+    talent_pool_profile_id: uuid.UUID
+    from_score: int | None
+    to_score: int | None
+    from_band: str | None
+    to_band: str | None
+
+
+class RecalculateBandsResponse(BaseModel):
+    """What weighing a job's scored interviews again under its current scoring profile did."""
+
+    checked: int
+    changed: int
+    unchanged: int
+    # Of those changed, how many now have no total or band because the profile has a competency the
+    # interview never assessed (a rescore is the way to fill it).
+    incomplete: int
+    # Not looked at: being scored again right now, or with no competency ratings saved.
+    skipped: int
+    changes: list[BandChange]
+
+
 class PracticalCriterionRow(BaseModel):
     """One criterion of the practical case: its weight, the 1 to 5 rating (None when it was not
     covered) and why."""

@@ -43,6 +43,7 @@ from app.modules.interviews.schema import (
     PanelDecisionOut,
     QuestionLibraryResponse,
     QuestionTemplateApplyRequest,
+    RecalculateBandsResponse,
     RenameTemplateRequest,
     ResultDisplayRequest,
     ResultDisplayResponse,
@@ -650,6 +651,26 @@ async def set_job_result_display(
         return await service.set_result_display(
             current_user, job_id, data.model_dump(exclude_none=True)
         )
+    finally:
+        await service.close()
+
+
+@router.post(
+    "/jobs/{job_id}/recalculate-bands",
+    response_model=RecalculateBandsResponse,
+    status_code=200,
+)
+async def recalculate_job_bands(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Weigh every scored interview of this job again under its current scoring profile (weights,
+    key marks, minimum key rating, band cut-offs), from the ratings already saved. No model call and
+    no rating changes. Elevare admin only."""
+    service = InterviewService(db)
+    try:
+        return await service.recalculate_bands(current_user, job_id)
     finally:
         await service.close()
 
