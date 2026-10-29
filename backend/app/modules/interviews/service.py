@@ -681,7 +681,11 @@ class InterviewService:
         * ``started_over``: a fresh interview with new questions and a new clock, for when the
           recording is gone (``start_over`` true). The unfinished attempt is discarded, its
           recording files included. Also allowed for an interview that ended early or was
-          stopped, when the employer wants a retake rather than a reinstatement.
+          stopped, when the employer wants a retake rather than a reinstatement. Also allowed for
+          an interview still IN_PROGRESS whose candidate has gone quiet for ten minutes (a frozen
+          laptop, a dead connection): it gets a NEW link and the old one stops working; sooner
+          than that it is refused (``INTERVIEW_CANDIDATE_ACTIVE``). Free: the first attempt is
+          still paid.
 
         Organization-level ownership (decision D2). Free while the interview is still paid; one
         whose credits were refunded is charged again, as a resend is. Safe to press twice: the

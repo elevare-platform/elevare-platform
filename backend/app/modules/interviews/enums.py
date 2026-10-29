@@ -17,6 +17,12 @@ STALE_INTERVIEW_TIMEOUT = timedelta(hours=2)
 # The employer's "Resend" and the candidate's retry both work while it is in progress, so it is
 # given this long before it is marked failed.
 STALE_UPLOAD_TIMEOUT = timedelta(days=3)
+# A strict interview that is still IN_PROGRESS can be started over by the employer (a fresh interview
+# on a new link) only once the candidate has not been heard from for this long. A candidate who is
+# answering is heard from at every answer and every page visit, so this keeps a click from throwing
+# away someone who is working, while one whose laptop froze or whose connection died is not stuck
+# for the two hours it takes the stale sweep to give up.
+IN_PROGRESS_QUIET_AFTER = timedelta(minutes=10)
 
 
 class InterviewStatus(str, Enum):

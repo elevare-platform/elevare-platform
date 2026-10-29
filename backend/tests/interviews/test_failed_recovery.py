@@ -525,9 +525,94 @@ async def test_an_interview_the_candidate_is_in_the_middle_of_cannot_be_started_
 
     resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
 
-    assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_NOT_RECOVERABLE"
+    assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_CANDIDATE_ACTIVE"
+    assert "try again in about" in resp.json()["message"]
     assert (await refreshed(db_session, interview)).status == InterviewStatus.IN_PROGRESS.value
     storage.storage.delete_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_who_answered_a_moment_ago_is_not_thrown_away(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview, state = await started(client, db_session)
+    await answer(client, interview.token, state["turn"]["id"])
+    clock.advance(3 * 60)
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 422 and resp.json()["code"] == "INTERVIEW_CANDIDATE_ACTIVE"
+    assert (await refreshed(db_session, interview)).status == InterviewStatus.IN_PROGRESS.value
+    invite_email.delay.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_stuck_in_progress_interview_is_started_over_on_a_new_link(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview, state = await started(client, db_session)
+    await answer(client, interview.token, state["turn"]["id"])
+    old_token = interview.token
+    profile = (
+        await db_session.execute(
+            select(TalentPoolProfiles).where(TalentPoolProfiles.id == interview.interview.talent_pool_profile_id)
+        )
+    ).scalar_one()
+    profile.override_email = "candidate@example.com"
+    await db_session.commit()
+    clock.advance(11 * 60)
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["outcome"] == "started_over" and body["status"] == "PENDING" and body["email_sent"] is True
+    row = await refreshed(db_session, interview)
+    assert row.status == InterviewStatus.PENDING.value and row.started_at is None
+    # A new link: the old one does not lead into the fresh attempt any more.
+    assert row.token != old_token
+    assert body["interview_url"].endswith(f"/interview/{row.token}")
+    assert invite_email.delay.call_args.kwargs["interview_url"].endswith(f"/interview/{row.token}")
+    assert (await start(client, old_token)).status_code != 200
+    # The answers of the stuck attempt are gone, and the fresh one begins with the whole clock.
+    turns = (
+        await db_session.execute(select(InterviewTurn).where(InterviewTurn.interview_id == row.id))
+    ).scalars().all()
+    assert turns == []
+    fresh = (await start(client, row.token)).json()
+    assert fresh["turn"]["number"] == 1 and fresh["seconds_left_total"] == 20 * 60
+
+
+@pytest.mark.asyncio
+async def test_starting_over_a_stuck_interview_does_not_charge_again(
+    client, db_session, fakes, clock, storage, invite_email, monkeypatch
+):
+    interview, _ = await started(client, db_session)
+    clock.advance(11 * 60)
+    charge = AsyncMock()
+    monkeypatch.setattr(service_module.InterviewService, "_charge_for_invite", charge)
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+    charge.assert_awaited_once()
+    assert charge.await_args.kwargs.get("again") is False
+
+
+@pytest.mark.asyncio
+async def test_a_stranger_cannot_start_over_somebody_elses_stuck_interview(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    interview, _ = await started(client, db_session)
+    clock.advance(11 * 60)
+    stranger = make_employer()
+    db_session.add(stranger)
+    await db_session.commit()
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(stranger))
+
+    assert resp.status_code in (403, 404)
+    assert (await refreshed(db_session, interview)).status == InterviewStatus.IN_PROGRESS.value
 
 
 @pytest.mark.asyncio

@@ -298,3 +298,93 @@ describe('ApplicantsPage, Interview List, an interview that failed', () => {
     expect(await screen.findByText(/We could not reach the server/)).toBeInTheDocument()
   })
 })
+
+describe('ApplicantsPage, Interview List, a new link for a candidate who is stuck in the interview', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const newLink = () => screen.getByRole('button', { name: 'Create a new interview link' })
+
+  it('is offered on a row that is in progress, beside Resend, with no need to open the review window', async () => {
+    renderList('IN_PROGRESS')
+
+    expect(await screen.findByRole('button', { name: 'Resend' })).toBeInTheDocument()
+    expect(newLink()).toBeInTheDocument()
+  })
+
+  it('is not offered on a row that was only sent, or whose link expired, where a resend is all it needs', async () => {
+    for (const status of ['PENDING', 'EXPIRED']) {
+      const { unmount } = renderList(status)
+      await screen.findByRole('button', { name: 'Resend' })
+      expect(screen.queryByRole('button', { name: 'Create a new interview link' })).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('is not offered on a completed row, which has its own way to be taken again', async () => {
+    renderList('SCORED')
+    await screen.findByRole('button', { name: 'Let them take it again' })
+
+    expect(screen.queryByRole('button', { name: 'Create a new interview link' })).not.toBeInTheDocument()
+  })
+
+  it('asks first, saying what is deleted, that the old link stops and that nothing is charged again', async () => {
+    renderList('IN_PROGRESS')
+    await screen.findByRole('button', { name: 'Resend' })
+
+    fireEvent.click(newLink())
+
+    const warning = screen.getByRole('alert')
+    expect(warning).toHaveTextContent('deletes the answers and recording so far')
+    expect(warning).toHaveTextContent('old link stops working')
+    expect(warning).toHaveTextContent('Nothing is charged again')
+    expect(api.post).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(newLink()).toBeInTheDocument()
+  })
+
+  it('starts it over once confirmed, says the candidate was sent the new link and shows the row as sent', async () => {
+    api.post.mockResolvedValueOnce(recovered({ outcome: 'started_over' }))
+    renderList('IN_PROGRESS')
+    await screen.findByRole('button', { name: 'Resend' })
+
+    fireEvent.click(newLink())
+    fireEvent.click(screen.getByRole('button', { name: 'Delete and send a new link' }))
+
+    expect(await screen.findByText('The candidate was sent their link again.')).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('/api/v1/interviews/p-1/recover', null, {
+      params: { job_id: 'job-1', start_over: true },
+    })
+    expect(await screen.findByText('Sent: awaiting response')).toBeInTheDocument()
+  })
+
+  it('gives the link to copy when there is no email on file', async () => {
+    api.post.mockResolvedValueOnce(recovered({ outcome: 'started_over', email_sent: false }))
+    renderList('IN_PROGRESS')
+    await screen.findByRole('button', { name: 'Resend' })
+
+    fireEvent.click(newLink())
+    fireEvent.click(screen.getByRole('button', { name: 'Delete and send a new link' }))
+
+    expect(await screen.findByText('There is no email on file. Send them this link:')).toBeInTheDocument()
+    expect(screen.getByLabelText('Interview link')).toHaveValue('https://app.test/interview/abc')
+  })
+
+  it('shows the server’s words when the candidate was active a moment ago, and leaves the row as it was', async () => {
+    api.post.mockRejectedValueOnce({
+      response: {
+        data: {
+          code: 'INTERVIEW_CANDIDATE_ACTIVE',
+          message: 'The candidate was active in this interview a few minutes ago, so it was not started over. If they are stuck, try again in about 6 minutes.',
+        },
+      },
+    })
+    renderList('IN_PROGRESS')
+    await screen.findByRole('button', { name: 'Resend' })
+
+    fireEvent.click(newLink())
+    fireEvent.click(screen.getByRole('button', { name: 'Delete and send a new link' }))
+
+    expect(await screen.findByText(/try again in about 6 minutes/)).toBeInTheDocument()
+    expect(screen.getByText('In progress')).toBeInTheDocument()
+  })
+})
