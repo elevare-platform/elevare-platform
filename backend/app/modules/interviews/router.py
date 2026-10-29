@@ -45,6 +45,8 @@ from app.modules.interviews.schema import (
     QuestionTemplateApplyRequest,
     RenameTemplateRequest,
     SaveTemplateRequest,
+    ScorecardSummaryRequest,
+    ScorecardSummaryResponse,
     ScoreReviewRequest,
     ScoreReviewResponse,
     ScoreVisibilityRequest,
@@ -484,6 +486,28 @@ async def review_interview_score(
         await service.close()
 
 
+@router.post(
+    "/{talent_pool_profile_id}/rescore",
+    response_model=InterviewScoreRequestResponse,
+    status_code=202,
+)
+async def rescore_interview(
+    talent_pool_profile_id: uuid.UUID,
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Score an already scored interview again from its stored transcript, replacing the system's
+    score, assessment and report when it finishes (nothing changes if it fails). An Elevare admin
+    only, for any job. No credits are taken. The earlier system result and any edits stay in the
+    review history, and the new system result is what shows. Runs in the background."""
+    service = InterviewService(db)
+    try:
+        return await service.request_rescore(current_user, job_id, talent_pool_profile_id)
+    finally:
+        await service.close()
+
+
 @router.delete(
     "/{talent_pool_profile_id}/score-review",
     response_model=ScoreReviewResponse,
@@ -542,6 +566,45 @@ async def set_job_score_visibility(
     service = InterviewService(db)
     try:
         return await service.set_score_visibility(current_user, job_id, data.show_scores)
+    finally:
+        await service.close()
+
+
+@router.get(
+    "/jobs/{job_id}/scorecard-summary",
+    response_model=ScorecardSummaryResponse,
+    status_code=200,
+)
+async def get_job_scorecard_summary(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Whether this job's scorecard shows its Evaluation Summary. Elevare admin only."""
+    service = InterviewService(db)
+    try:
+        return await service.get_scorecard_summary(current_user, job_id)
+    finally:
+        await service.close()
+
+
+@router.put(
+    "/jobs/{job_id}/scorecard-summary",
+    response_model=ScorecardSummaryResponse,
+    status_code=200,
+)
+async def set_job_scorecard_summary(
+    job_id: uuid.UUID,
+    data: ScorecardSummaryRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Switch this job's scorecard Evaluation Summary (practical case rating, strengths, human
+    decision) on or off for everyone who reads the scorecard. What an admin filled in is kept.
+    Elevare admin only."""
+    service = InterviewService(db)
+    try:
+        return await service.set_scorecard_summary(current_user, job_id, data.show_summary)
     finally:
         await service.close()
 

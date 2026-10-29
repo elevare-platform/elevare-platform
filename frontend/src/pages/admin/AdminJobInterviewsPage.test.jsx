@@ -34,6 +34,7 @@ function mockApi(items, job = { title: 'Regional Sales Manager' }) {
     if (url === '/api/v1/interview-list') return { data: { items, total: items.length } }
     if (url === '/api/v1/jobs/job-1') return { data: job }
     if (url === '/api/v1/interviews/jobs/job-1/score-visibility') return { data: { show_scores: true } }
+    if (url === '/api/v1/interviews/jobs/job-1/scorecard-summary') return { data: { show_summary: true } }
     throw new Error(`unexpected ${url}`)
   })
 }

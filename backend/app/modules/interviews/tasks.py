@@ -33,7 +33,11 @@ from app.modules.interviews.enums import (
     InterviewStatus,
     TranscriptCheckStatus,
 )
-from app.modules.interviews.models import InterviewWeightedScore, StrictInterviewRun
+from app.modules.interviews.models import (
+    InterviewScoreReview,
+    InterviewWeightedScore,
+    StrictInterviewRun,
+)
 from app.modules.interviews.question_rules import working_brief
 from app.modules.interviews.recording_merge import (
     JoinTimedOut,
@@ -339,6 +343,63 @@ async def _save_weighted_report(db, interview_id, report: dict) -> None:
     await db.flush()
 
 
+def _job_context(job) -> str:
+    """The job's own text, given to the scorer as context only (never as interview evidence)."""
+    parts = [
+        f"Title: {job.title}",
+        f"About the role: {job.about_the_role}" if job.about_the_role else "",
+        f"Key responsibilities: {job.key_responsibilities}" if job.key_responsibilities else "",
+        f"Requirements: {job.requirements}" if job.requirements else "",
+        f"Technical competencies: {job.technical_competencies}" if job.technical_competencies else "",
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+def _transcript_to_score(interview, check) -> str:
+    """The transcript the scorer reads: the one the browser submitted, or, when it did not match
+    the recording, the recording's own transcript."""
+    if (
+        check is not None
+        and check.status == TranscriptCheckStatus.MISMATCH.value
+        and check.server_transcript
+    ):
+        return _UNLABELLED_TRANSCRIPT_NOTE + check.server_transcript
+    return interview.transcript
+
+
+async def _save_scoring_result(db, repo, interview, result) -> int | None:
+    """Keep what a successful scoring produced: the score, the written assessment, the weighted
+    report with the practical case and the assessment record, and the cost of the call. Does not
+    commit. Returns the score (None when it is incomplete)."""
+    # With a scoring profile the score is the weighted total, and only when every competency was
+    # rated: an incomplete score is never stored as a number (the report says what was assessed and
+    # a person decides).
+    score = result.weighted["score"] if result.weighted else result.score
+    await repo.update(
+        interview.id,
+        {
+            "ai_score": score,
+            # The scorecard laid out as the text the employer reads.
+            "ai_rationale": format_assessment(result),
+            "ai_scored_at": datetime.now(UTC),
+        },
+    )
+    # The weighted score, the practical case (reported apart, never part of `ai_score`) and the
+    # content of the assessment record are kept together.
+    report = {**(result.weighted or {})}
+    if result.practical:
+        report["practical"] = result.practical
+    report["record"] = {
+        "strengths": result.strengths,
+        "gaps": result.weaknesses,
+        "claims_to_verify": result.claims_to_verify,
+        "reference_check_questions": result.reference_check_questions,
+    }
+    await _save_weighted_report(db, interview.id, report)
+    await _record_scoring_cost(repo, interview.id, result)
+    return score
+
+
 async def _record_scoring_cost(repo, interview_id, result) -> None:
     """Write the scoring cost row for a call that was actually billed,
     including failed attempts (a response we could not parse still cost tokens)."""
@@ -610,16 +671,9 @@ async def _transcribe_and_score_interview_async(
                 interview = await repo.get_by_id(interview.id)
                 check = await repo.get_transcript_check(interview.id)
 
-            if (
-                check is not None
-                and check.status == TranscriptCheckStatus.MISMATCH.value
-                and check.server_transcript
-            ):
-                # The submitted transcript does not match the recording, so it
-                # is not scored. Score the recording's own transcript instead.
-                transcript = _UNLABELLED_TRANSCRIPT_NOTE + check.server_transcript
-            else:
-                transcript = interview.transcript
+            # A submitted transcript that does not match the recording is not scored: the
+            # recording's own transcript is.
+            transcript = _transcript_to_score(interview, check)
 
             # Scoring is gated to Professional+ — transcript already saved above
             # regardless of plan tier.
@@ -633,20 +687,7 @@ async def _transcribe_and_score_interview_async(
                 )
             else:
                 job = interview.job
-                job_context_parts = [
-                    f"Title: {job.title}",
-                    f"About the role: {job.about_the_role}"
-                    if job.about_the_role
-                    else "",
-                    f"Key responsibilities: {job.key_responsibilities}"
-                    if job.key_responsibilities
-                    else "",
-                    f"Requirements: {job.requirements}" if job.requirements else "",
-                    f"Technical competencies: {job.technical_competencies}"
-                    if job.technical_competencies
-                    else "",
-                ]
-                job_context = "\n\n".join(p for p in job_context_parts if p)
+                job_context = _job_context(job)
 
                 logger.info(
                     "transcribe_and_score_interview: org is Professional+ — scoring "
@@ -697,38 +738,12 @@ async def _transcribe_and_score_interview_async(
                         interview_id,
                     )
                 else:
-                    # With a scoring profile the score is the weighted total, and only when every
-                    # competency was rated: an incomplete score is never stored as a number (the
-                    # report says what was assessed and a person decides).
-                    score = result.weighted["score"] if result.weighted else result.score
+                    score = await _save_scoring_result(db, repo, interview, result)
                     logger.info(
                         "transcribe_and_score_interview: scored interview %s -> %s",
                         interview_id,
                         f"{score}/100" if score is not None else "incomplete",
                     )
-
-                    await repo.update(
-                        interview.id,
-                        {
-                            "ai_score": score,
-                            # The scorecard laid out as the text the employer reads.
-                            "ai_rationale": format_assessment(result),
-                            "ai_scored_at": datetime.now(UTC),
-                        },
-                    )
-                    # The weighted score, the practical case (reported apart, never part of
-                    # `ai_score`) and the content of the assessment record are kept together.
-                    report = {**(result.weighted or {})}
-                    if result.practical:
-                        report["practical"] = result.practical
-                    report["record"] = {
-                        "strengths": result.strengths,
-                        "gaps": result.weaknesses,
-                        "claims_to_verify": result.claims_to_verify,
-                        "reference_check_questions": result.reference_check_questions,
-                    }
-                    await _save_weighted_report(db, interview.id, report)
-                    await _record_scoring_cost(repo, interview.id, result)
                     await db.commit()
 
             await repo.update(interview.id, {"status": InterviewStatus.SCORED.value})
@@ -850,6 +865,119 @@ async def _merge_interview_recording_async(interview_id: uuid.UUID) -> None:
             await _merge_recording_parts(
                 db, repo, interview, reencode_timeout=BACKGROUND_JOIN_SECONDS
             )
+        finally:
+            await engine.dispose()
+
+
+@celery.task
+def rescore_interview_task(interview_id: str, admin_id: str, admin_name: str) -> None:
+    """Score an already scored interview again from its stored transcript (an Elevare admin asked,
+    decision item 58). Not retried by itself: if the call fails nothing changes and the admin can
+    ask again."""
+    asyncio.run(
+        _rescore_interview_async(uuid.UUID(interview_id), uuid.UUID(admin_id), admin_name)
+    )
+
+
+async def _rescore_interview_async(
+    interview_id: uuid.UUID, admin_id: uuid.UUID, admin_name: str
+) -> bool:
+    """Score a SCORED interview again and replace the system's score, assessment and report with
+    the new ones, or change nothing at all if the call fails. The interview stays SCORED the whole
+    time (so a failure can never mark it FAILED or give its credits back), nobody is charged, and
+    the employer is not told. The admin's earlier edits stay in the history: a row is added that
+    takes them away, and it keeps the system's earlier score and band. Returns whether it rescored."""
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, poolclass=NullPool)
+    sessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessionLocal() as db:
+        try:
+            repo = InterviewRepository(db)
+            interview = await repo.get_by_id(interview_id)
+            if (
+                interview is None
+                or interview.status != InterviewStatus.SCORED.value
+                or not interview.transcript
+            ):
+                logger.warning(
+                    "rescore_interview: interview %s is not a scored interview with a transcript — skipping",
+                    interview_id,
+                )
+                return False
+
+            check = await repo.get_transcript_check(interview.id)
+            transcript = _transcript_to_score(interview, check)
+            job = interview.job
+            conditions = await StrictInterviewService(db, repo).interview_conditions(interview.id)
+            ai_service = AnthropicCVExtractionService()
+            try:
+                scoring_profile, question_tags = await _scoring_profile_for(
+                    db, interview, job, ai_service
+                )
+                result = await ai_service.score_interview_transcript(
+                    interview_brief=await _brief_for(db, interview, job),
+                    transcript=transcript,
+                    job_context=_job_context(job),
+                    interview_conditions=conditions,
+                    scoring_profile=scoring_profile,
+                    question_tags=question_tags,
+                    practical_question=await _practical_question_for(db, interview),
+                )
+            finally:
+                await ai_service._client.close()
+
+            if result.failed:
+                # A failed call is not a score: the earlier one stays as it was.
+                await _record_scoring_cost(repo, interview.id, result)
+                await db.commit()
+                logger.error(
+                    "rescore_interview: scoring failed for interview %s — nothing was changed",
+                    interview_id,
+                )
+                return False
+
+            old_score = interview.ai_score
+            old_report = (
+                await db.execute(
+                    select(InterviewWeightedScore.report).where(
+                        InterviewWeightedScore.interview_id == interview.id
+                    )
+                )
+            ).scalar_one_or_none() or {}
+            old_band = old_report.get("band")
+            new_score = await _save_scoring_result(db, repo, interview, result)
+            # Whatever an admin had set was written against the earlier result, so the new system
+            # result is what shows now. Every earlier row stays in the history; this one records
+            # the system's earlier score and band and takes the edits away.
+            db.add(
+                InterviewScoreReview(
+                    interview_id=interview.id,
+                    reason=(
+                        "Scored again by the system. Its earlier result was "
+                        f"{old_score if old_score is not None else 'incomplete'}"
+                        f"{f' ({old_band})' if old_band else ''}."
+                    ),
+                    reviewed_by=admin_id,
+                    reviewed_by_name=admin_name[:200],
+                    reviewed_at=datetime.now(UTC),
+                    original_score=old_score,
+                    original_band=old_band,
+                )
+            )
+            await db.commit()
+            logger.info(
+                "rescore_interview: interview %s rescored by admin %s: %s -> %s",
+                interview_id,
+                admin_id,
+                old_score,
+                new_score,
+            )
+            return True
+        except Exception:
+            await db.rollback()
+            logger.exception(
+                "rescore_interview: failed for interview %s — nothing was changed", interview_id
+            )
+            raise
         finally:
             await engine.dispose()
 

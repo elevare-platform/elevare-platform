@@ -74,6 +74,7 @@ function ScorecardSheet({ scorecard, candidateName, role, date }) {
         </table>
       </div>
 
+      {scorecard.show_summary !== false && (
       <div className="space-y-1.5 text-xs">
         <p className="text-sm font-semibold">Evaluation Summary</p>
         {!hidden && scorecard.practical_rating != null && (
@@ -103,6 +104,7 @@ function ScorecardSheet({ scorecard, candidateName, role, date }) {
           </p>
         )}
       </div>
+      )}
     </div>
   )
 }

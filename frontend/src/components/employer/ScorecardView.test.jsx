@@ -73,6 +73,23 @@ describe('ScorecardView', () => {
     expect(screen.getByTestId('scorecard-decision')).toHaveTextContent('Human Decision: Proceed to Final Interview / Offer Consideration')
   })
 
+  it('leaves out the whole Evaluation Summary when the job’s switch has it off, and keeps the table and the total', () => {
+    view({ scorecard: { ...CARD, show_summary: false, practical_rating: null, strengths: [], decision: null } })
+
+    expect(screen.queryByText('Evaluation Summary')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('scorecard-practical')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('scorecard-strengths')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('scorecard-decision')).not.toBeInTheDocument()
+    expect(screen.getByTestId('scorecard-total')).toHaveTextContent('37.5 / 50 (75/100)')
+    expect(screen.getByText('Sales-force leadership')).toBeInTheDocument()
+  })
+
+  it('shows the Evaluation Summary when the server does not say (an older response)', () => {
+    view()
+
+    expect(screen.getByText('Evaluation Summary')).toBeInTheDocument()
+  })
+
   it('puts the panel’s recorded band beside the wording, or alone when there is no wording', () => {
     const { unmount } = view({ scorecard: { ...CARD, panel_decision: 'Shortlist' } })
     expect(screen.getByTestId('scorecard-decision')).toHaveTextContent('Proceed to Final Interview / Offer Consideration (panel: Shortlist)')
