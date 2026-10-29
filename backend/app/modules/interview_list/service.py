@@ -111,13 +111,18 @@ class InterviewListService:
         )
 
     async def list_for_job(
-        self, employer_id: uuid.UUID, job_id: uuid.UUID
+        self, employer_id: uuid.UUID, job_id: uuid.UUID, *, admin: bool = False
     ) -> InterviewListResponse:
-        """Return the interview list for one job, enriched for display."""
+        """Return the interview list for one job, enriched for display.
+
+        ``admin`` is an Elevare administrator looking at a job of any account: every entry on the
+        job is listed whoever added it, ``employer_id`` is the job's owner (so names and CV access
+        read as they do for the owner), and each scored interview carries the score shown for it
+        (the reviewed one, if an admin reviewed it) so the right candidate can be opened."""
         from app.modules.interviews.repository import InterviewRepository
         from app.modules.talent_pool.service import resolve_match_display_fields
 
-        entries = await self._repo.list_for_job(employer_id, job_id)
+        entries = await self._repo.list_for_job(None if admin else employer_id, job_id)
 
         from app.modules.introductions.repository import IntroductionRepository
 
@@ -126,6 +131,7 @@ class InterviewListService:
         profile_ids = [entry.talent_pool_profile_id for entry in entries]
         interview_statuses = await interview_repo.list_statuses_for_job(job_id, profile_ids)
         unfinished = await interview_repo.list_unfinished_failures_for_job(job_id, profile_ids)
+        shown_scores = await interview_repo.shown_scores_for_job(job_id, profile_ids) if admin else {}
 
         items = []
         for entry in entries:
@@ -167,6 +173,8 @@ class InterviewListService:
                     note=entry.note,
                     added_at=entry.created_at,
                     interview_status=interview_statuses.get(profile.id),
+                    interview_score=shown_scores.get(profile.id, (None, False))[0],
+                    interview_reviewed=shown_scores.get(profile.id, (None, False))[1],
                     interview_failure=(
                         "NEVER_FINISHED"
                         if profile.id in unfinished

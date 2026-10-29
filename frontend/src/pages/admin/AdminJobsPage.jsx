@@ -227,6 +227,10 @@ export default function AdminJobsPage() {
                     className="text-xs text-text-muted hover:text-brand-blue hover:underline">
                     View
                   </button>
+                  <Link to={`/admin/jobs/${j.id}/interviews`}
+                    className="text-xs text-text-muted hover:text-brand-blue hover:underline">
+                    Interviews
+                  </Link>
                   {j.moderation_status === 'PENDING' && (
                     <>
                       <button

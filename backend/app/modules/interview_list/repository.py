@@ -178,14 +178,16 @@ class InterviewListRepository:
         return list(result.scalars().all())
 
     async def list_for_job(
-        self, employer_id: uuid.UUID, job_id: uuid.UUID
+        self, employer_id: uuid.UUID | None, job_id: uuid.UUID
     ) -> list[InterviewListEntry]:
+        """One job's interview list. ``employer_id`` None is every entry on the job whoever added
+        it, for an Elevare admin looking at another account's job."""
+        conditions = [InterviewListEntry.job_id == job_id]
+        if employer_id is not None:
+            conditions.append(InterviewListEntry.employer_id == employer_id)
         result = await self._db.execute(
             select(InterviewListEntry)
-            .where(
-                InterviewListEntry.employer_id == employer_id,
-                InterviewListEntry.job_id == job_id,
-            )
+            .where(*conditions)
             .options(
                 selectinload(InterviewListEntry.talent_pool_profile)
                 .selectinload(TalentPoolProfiles.candidate_profile)
