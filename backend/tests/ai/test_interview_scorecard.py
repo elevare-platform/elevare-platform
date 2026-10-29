@@ -76,6 +76,23 @@ def test_the_prompt_carries_the_fairness_limits_and_says_the_output_is_decision_
     assert "A qualified human reviewer must consider the full application" in text
 
 
+def test_the_prompt_is_fair_not_strict_but_keeps_its_safeguards():
+    text = " ".join(INTERVIEW_SCORING_SYSTEM_PROMPT.split())
+
+    # The tone, and the rules that let borderline answers reach the level they mostly show.
+    assert "strict" not in text.replace("STRICT ANTI-HALLUCINATION RULES", "")
+    assert "When most of the elements of a level are shown, give that level" in text
+    assert "give the higher one" in text
+    assert "earns Limited to Competent credit (2 to 3)" in text
+    assert "A rating of 1 is only for an answer that is absent, unclear or unrelated" in text
+    assert "can earn up to a 4 on its own; a 5 needs evidence that the candidate has actually done it" in text
+    # What stays: no credit from the CV or a bare claim, no invented detail, doubts go to claims to verify.
+    assert "the candidate's CV says they have the skill" in text
+    assert "Do not invent details the candidate did not give" in text
+    assert "doubts about a claim belong in the claims to verify" in text
+    assert "Do not inflate scores because the candidate sounds confident" in text
+
+
 def test_the_prompt_asks_for_every_part_of_the_required_output():
     text = " ".join(INTERVIEW_SCORING_SYSTEM_PROMPT.split())
 
