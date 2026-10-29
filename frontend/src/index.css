@@ -1222,3 +1222,25 @@ h2 {
     transform: none;
   }
 }
+
+/* Printing an interview scorecard: the sheet is copied to the end of the body (so no modal or
+   scrolling box clips it), and while it prints the rest of the page is hidden. On screen the copy
+   is never shown. */
+.scorecard-print-root {
+  display: none;
+}
+@media print {
+  body.printing-scorecard > #root {
+    display: none !important;
+  }
+  body.printing-scorecard .scorecard-print-root {
+    display: block !important;
+    padding: 0;
+    background: #fff;
+    color: #000;
+  }
+  body.printing-scorecard .scorecard-print-root table,
+  body.printing-scorecard .scorecard-print-root tr {
+    page-break-inside: avoid;
+  }
+}

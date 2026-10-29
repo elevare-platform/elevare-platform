@@ -14,6 +14,7 @@ import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
 import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
 import ReviewedTag from '@/components/employer/ReviewedTag'
 import ScoreReviewPanel from '@/components/employer/ScoreReviewPanel'
+import ScorecardView from '@/components/employer/ScorecardView'
 import { showsClips } from '@/lib/recordingClips'
 
 // Scoring runs in the background, so after asking for it we check the interview
@@ -486,6 +487,16 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                 />
                 )}
               </div>
+
+              {/* The scorecard as Elevare prints it, with a button that prints it (or saves a PDF) */}
+              {detail.scorecard && (
+                <ScorecardView
+                  scorecard={detail.scorecard}
+                  candidateName={candidateName ?? 'Candidate'}
+                  role={detail.record?.role}
+                  date={detail.completed_at}
+                />
+              )}
 
               {/* Only an Elevare admin gets this from the server: set the score in place of the
                   system's, with the system's own score and the history kept here */}

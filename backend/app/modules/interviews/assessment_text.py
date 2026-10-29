@@ -9,7 +9,7 @@ human interviewer, then the fixed line that the AI's output is decision support 
 
 from __future__ import annotations
 
-from app.modules.ai.interview_scorecard import RATING_NAMES
+from app.modules.ai.interview_scorecard import format_rating, rating_name
 
 DECISION_SUPPORT_NOTE = (
     "This assessment is decision support only. A qualified human reviewer must consider the "
@@ -78,7 +78,7 @@ def _competency_line(item: dict) -> str:
     if item["score"] is None:
         head = f"- {item['name']}{weight}: not assessed in this interview."
     else:
-        head = f"- {item['name']}{weight}: {item['score']} of 5 ({RATING_NAMES[item['score']]})."
+        head = f"- {item['name']}{weight}: {format_rating(item['score'])} of 5 ({rating_name(item['score'])})."
         if item["coverage"] == "PARTIALLY_ASSESSED":
             head += " Only partly covered."
     parts = [head]

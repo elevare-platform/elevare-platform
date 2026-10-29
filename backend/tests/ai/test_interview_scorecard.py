@@ -436,3 +436,80 @@ async def test_the_models_technical_flags_come_through_and_the_conditions_are_se
     assert result.technical_flags == ["Question 2 was not heard."]
     sent = service._client.messages.create.await_args.kwargs["messages"][0]["content"]
     assert "- The page reloaded 1 time." in sent
+
+
+# ── Half-point ratings and the scorecard's Evidence / Verification text ─────────────────────────
+
+
+def test_a_rating_is_a_whole_number_or_a_half_point_from_1_to_5():
+    from app.modules.ai.interview_scorecard import clean_rating, valid_rating
+
+    for good in (1, 1.5, 2, 3.5, 4.0, 5, 5.0):
+        assert valid_rating(good)
+    for bad in (0, 0.5, 5.5, 6, 3.3, 3.75, -1, "4", None, True, False, float("nan")):
+        assert not valid_rating(bad)
+    assert clean_rating(4.0) == 4 and isinstance(clean_rating(4.0), int)
+    assert clean_rating(3.5) == 3.5 and clean_rating(3.3) is None
+
+
+def test_a_rating_is_written_and_named_whole_or_as_a_half_between_two_levels():
+    from app.modules.ai.interview_scorecard import format_rating, rating_name
+
+    assert [format_rating(v) for v in (4, 4.0, 3.5)] == ["4", "4", "3.5"]
+    assert rating_name(4) == "Strong"
+    assert rating_name(3.5) == "Competent to Strong"
+    assert rating_name(1.5) == "Insufficient evidence to Limited"
+
+
+def test_the_cleaner_keeps_a_half_point_rating_and_the_scorecard_evidence_of_a_rated_competency():
+    cleaned = clean_competencies(
+        [
+            {"name": "Route to market", "score": 3.5, "coverage": "FULLY_ASSESSED", "scorecard_evidence": "  Lagos mapping,   a corridor pilot. To verify: the pilot's results. "},
+            {"name": "Reporting", "score": 3.3, "coverage": "FULLY_ASSESSED", "scorecard_evidence": "Should be dropped with the rating."},
+            {"name": "Forecasting", "score": None, "coverage": "NOT_ASSESSED", "scorecard_evidence": "Nothing to say."},
+        ]
+    )
+
+    assert cleaned[0]["score"] == 3.5
+    assert cleaned[0]["scorecard_evidence"] == "Lagos mapping, a corridor pilot. To verify: the pilot's results."
+    assert cleaned[1]["score"] is None and cleaned[1]["scorecard_evidence"] == ""
+    assert cleaned[2]["scorecard_evidence"] == ""
+
+
+def test_the_cleaner_cuts_a_long_scorecard_evidence_and_tolerates_a_missing_one():
+    cleaned = clean_competencies(
+        [
+            {"name": "A", "score": 4, "coverage": "FULLY_ASSESSED", "scorecard_evidence": "x" * 900},
+            {"name": "B", "score": 4, "coverage": "FULLY_ASSESSED"},
+        ]
+    )
+
+    assert len(cleaned[0]["scorecard_evidence"]) == 500 and cleaned[1]["scorecard_evidence"] == ""
+
+
+def test_the_average_of_half_point_ratings_still_gives_the_overall_score():
+    assert score_from_competencies([{"score": 3.5}, {"score": 4}, {"score": None}]) == round((3.5 + 4) / 2 * 20)
+
+
+def test_the_scoring_prompt_asks_for_half_points_only_between_levels_and_for_the_scorecard_evidence():
+    prompt, _ = build_interview_scoring_prompt("Brief.", "Candidate: hi", SCORECARD_RUBRIC)
+    prompt = " ".join(prompt.split())  # the prompt is wrapped over lines
+
+    assert "half point (for example 3.5)" in prompt
+    assert "Never use any other fraction" in prompt
+    assert '"scorecard_evidence"' in prompt
+    assert "scorecard_evidence is the text of the scorecard's Evidence / Verification" in prompt
+    assert "no score, rating, fit level or recommendation in this" in prompt
+    assert "To verify:" in prompt
+
+
+def test_the_written_assessment_names_a_half_point_rating():
+    result = InterviewScoringResult(
+        score=70,
+        summary="Fine.",
+        competencies=[{"name": "Route to market", "score": 3.5, "coverage": "FULLY_ASSESSED", "rationale": "", "evidence": ""}],
+    )
+
+    text = format_assessment(result)
+
+    assert "- Route to market: 3.5 of 5 (Competent to Strong)." in text

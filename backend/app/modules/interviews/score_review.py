@@ -12,9 +12,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.modules.ai.interview_scorecard import RATING_NAMES
+from app.modules.ai.interview_scorecard import (
+    clean_rating,
+    format_rating,
+    rating_name,
+    valid_rating,
+)
 from app.modules.interviews.assessment_text import weighted_lines
-from app.modules.interviews.scoring_profile import MAX_RATING, MIN_RATING, band_for
+from app.modules.interviews.scoring_profile import MAX_RATING, band_for
 
 MIN_SCORE = 0
 MAX_SCORE = 100
@@ -45,14 +50,12 @@ def _head(row: dict, rating: int | None) -> str:
     weight = f" (weight {row['weight']}%{', key' if row.get('key') else ''})" if row.get("weight") else ""
     if rating is None:
         return f"- {row['name']}{weight}: not assessed in this interview."
-    head = f"- {row['name']}{weight}: {rating} of 5 ({RATING_NAMES[rating]})."
+    head = f"- {row['name']}{weight}: {format_rating(rating)} of 5 ({rating_name(rating)})."
     if row.get("coverage") == "PARTIALLY_ASSESSED":
         head += " Only partly covered."
     return head
 
 
-def valid_rating(value) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and MIN_RATING <= value <= MAX_RATING
 
 
 def apply_review(
@@ -91,7 +94,7 @@ def apply_review(
             return Shown(score=score, rationale=text, report=report, reviewed=bool(review_rationale))
         return Shown(score=review_score, rationale=text, report=report, reviewed=True)
 
-    by_name = {name.casefold(): rating for name, rating in changes.items() if valid_rating(rating)}
+    by_name = {name.casefold(): clean_rating(rating) for name, rating in changes.items() if valid_rating(rating)}
     rows = [
         {**row, "rating": by_name.get(row["name"].casefold(), row.get("rating"))}
         for row in report.get("rows", [])

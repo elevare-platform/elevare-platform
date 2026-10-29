@@ -71,6 +71,9 @@ class SharedCandidate(BaseModel):
     score_report: WeightedScoreReport | None = None
     # The practical case, scored on its own out of 5 (None when the interview had none).
     practical_case: PracticalCaseReport | None = None
+    # The scorecard as Elevare prints it (competencies with weight, rating, weighted points and
+    # evidence, the totals, the practical case rating, the strengths and the human decision).
+    scorecard: dict | None = None
     # The assessment record, without the company's own panel decision.
     record: AssessmentRecord | None = None
 

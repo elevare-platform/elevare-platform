@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/lib/api', () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }))
@@ -133,6 +133,31 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
     expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
     expect(screen.queryByText(/Suggested by the assessment/)).not.toBeInTheDocument()
+  })
+
+  it('shows the scorecard as it is printed, headed with the candidate, the role and the date, with a button to print it', async () => {
+    const scorecard = {
+      rows: [{ name: 'Strategy', weight: 100, key: true, rating: 4, points: 40, evidence: 'Mapped Lagos and ran a pilot.' }],
+      total_points: 40, max_points: 50, total_score: 80, practical_rating: 4, strengths: ['Clear.'], decision: 'Proceed.', panel_decision: null, hidden: false,
+    }
+    api.get.mockResolvedValue({
+      data: { ...BASE, ai_score: 80, ai_rationale: 'Fine.', scorecard, record: { role: 'National Sales Manager', top_strengths: [], top_gaps: [], claims_to_verify: [], reference_check_questions: [], reference: 'EL-1', interview_date: null, duration_minutes: 10, interviewer: 'x', panel_decision: null } },
+    })
+    renderModal()
+
+    const section = await screen.findByRole('region', { name: 'Scorecard' })
+    expect(within(section).getByRole('heading', { name: 'Interview Scorecard: National Sales Manager' })).toBeInTheDocument()
+    expect(within(section).getByText(/Candidate Name:/).parentElement).toHaveTextContent('Candidate Name: Ada')
+    expect(within(section).getByText('Mapped Lagos and ran a pilot.')).toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: /Download PDF/ })).toBeInTheDocument()
+  })
+
+  it('shows no scorecard for an interview scored without competencies', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, ai_score: 62, ai_rationale: 'Fine.', scorecard: null } })
+    renderModal()
+
+    await screen.findByText('Fine.')
+    expect(screen.queryByRole('region', { name: 'Scorecard' })).not.toBeInTheDocument()
   })
 
   it('shows a small Reviewed tag beside the score when a person at Elevare set it, and no admin panel', async () => {

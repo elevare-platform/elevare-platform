@@ -23,6 +23,10 @@ verification.
 5 = Exceptional: structured, commercially grounded answer with strong
     evidence, trade-off analysis and learning.
 
+Use a half point (for example 3.5) only when the evidence clearly sits
+between two of these levels. Otherwise use a whole number. Never use any
+other fraction.
+
 For hypothetical questions, assess reasoning, prioritisation, assumptions,
 risks and proposed measures rather than expecting one exact answer. Look for
 the candidate's own contribution, as distinct from their team's work, and for
@@ -599,7 +603,7 @@ OUTPUT SCHEMA
 
 Return JSON matching this schema exactly:
 
-{{"role_assessed": "Senior Backend Engineer", "score": 70, "recommendation": "Recommend", "summary": "Two to four sentence overall assessment, explicitly noting any significant coverage limitations.", "competencies": [{{"name": "Ownership of delivery", "score": 4, "coverage": "FULLY_ASSESSED", "kind": "EXPERIENCE", "rationale": "One or two sentences.", "evidence": "Situation, task, own actions and results in one or two sentences, then a short direct quote.", "ownership": "What the candidate personally did.", "outcome": "The quantified result, or an empty string.", "confidence": "medium", "verify": "What a human should check, or an empty string."}}], "strengths": ["..."], "weaknesses": ["..."], "missing_evidence": ["..."], "contradictions": ["..."], "claims_to_verify": ["..."], "technical_flags": ["..."], "candidate_reported": ["Notice period: one month"], "follow_up_questions": ["..."]}}
+{{"role_assessed": "Senior Backend Engineer", "score": 70, "recommendation": "Recommend", "summary": "Two to four sentence overall assessment, explicitly noting any significant coverage limitations.", "competencies": [{{"name": "Ownership of delivery", "score": 4, "coverage": "FULLY_ASSESSED", "kind": "EXPERIENCE", "rationale": "One or two sentences.", "scorecard_evidence": "One to three sentences of specific, checkable detail the candidate gave (places, tools, methods, figures, named examples), then To verify: and what a human should check, if anything.", "evidence": "Situation, task, own actions and results in one or two sentences, then a short direct quote.", "ownership": "What the candidate personally did.", "outcome": "The quantified result, or an empty string.", "confidence": "medium", "verify": "What a human should check, or an empty string."}}], "strengths": ["..."], "weaknesses": ["..."], "missing_evidence": ["..."], "contradictions": ["..."], "claims_to_verify": ["..."], "technical_flags": ["..."], "candidate_reported": ["Notice period: one month"], "follow_up_questions": ["..."]}}
 
 Field notes:
 
@@ -607,8 +611,9 @@ Field notes:
 - competencies: one entry for each competency or probe of the interview
   brief that is a real competency (at most 8; group closely related
   probes; leave out the closing question). name says what is tested, not
-  the question number. score is the integer 1 to 5 from the scorecard,
-  or null when coverage is NOT_ASSESSED. coverage is FULLY_ASSESSED,
+  the question number. score is a number from 1 to 5 from the scorecard,
+  a whole number or a half point such as 3.5 (see the rating scale), or
+  null when coverage is NOT_ASSESSED. coverage is FULLY_ASSESSED,
   PARTIALLY_ASSESSED or NOT_ASSESSED. rationale is brief and says why
   that score. kind is EXPERIENCE (what they have done) or HYPOTHETICAL
   (what they would do). evidence summarises situation, task, own actions
@@ -619,6 +624,15 @@ Field notes:
   or an empty string. confidence is "high", "medium" or "low": how well the
   transcript supports this rating (not how confident the candidate
   sounded). verify says what a human should check, or is an empty string.
+  scorecard_evidence is the text of the scorecard's Evidence / Verification
+  column for this competency: one to three short sentences in a
+  recruiter's plain notes, naming the specific, checkable things the
+  candidate actually said (places, tools, methods, figures, named examples
+  or projects), for example "Strong localized knowledge (Lagos mapping, a
+  pilot on one corridor, joint business plans)". Say what they did, not
+  how good it was: no score, rating, fit level or recommendation in this
+  text. If a claim in it should be checked, end with "To verify:" and
+  what to check. An empty string when the competency was not assessed.
 - practical_case: only when the user message has a PRACTICAL CASE. An
   object with criteria, a list of five objects (key, rating, rationale; the
   keys are listed in the user message, in order; rating is an integer 1 to

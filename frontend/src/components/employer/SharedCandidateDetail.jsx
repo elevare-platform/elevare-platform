@@ -9,6 +9,7 @@ import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
 import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
 import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
 import ReviewedTag from '@/components/employer/ReviewedTag'
+import ScorecardView from '@/components/employer/ScorecardView'
 import { BAND_NAMES, BAND_STYLE } from '@/lib/scoringProfile'
 import { STATUS, scoreColour } from '@/lib/sharedResults'
 
@@ -174,6 +175,7 @@ export default function SharedCandidateDetail({ candidate, rank, position, onPre
   const report = candidate.score_report
 
   const tabs = [{ id: 'summary', label: 'Summary' }]
+  if (candidate.scorecard) tabs.push({ id: 'scorecard', label: 'Scorecard' })
   if (report || candidate.practical_case) tabs.push({ id: 'scores', label: 'Scores' })
   if (interviewed || endedEarly) tabs.push({ id: 'conversation', label: 'Conversation' })
   if (candidate.record) tabs.push({ id: 'record', label: 'Assessment record' })
@@ -274,6 +276,15 @@ export default function SharedCandidateDetail({ candidate, rank, position, onPre
                   emptyText="No CV assessment is available for this candidate on this job."
                 />
               </>
+            )}
+
+            {active === 'scorecard' && candidate.scorecard && (
+              <ScorecardView
+                scorecard={candidate.scorecard}
+                candidateName={candidate.name}
+                role={candidate.record?.role}
+                date={candidate.completed_at}
+              />
             )}
 
             {active === 'scores' && (
