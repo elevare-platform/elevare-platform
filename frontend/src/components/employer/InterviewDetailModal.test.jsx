@@ -104,6 +104,64 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     expect(generateButton()).not.toBeInTheDocument()
   })
 
+  it('shows a small Reviewed tag beside the score when a person at Elevare set it, and no admin panel', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, ai_score: 89, ai_rationale: 'Strong answers.', reviewed: true } })
+    renderModal()
+
+    expect(await screen.findByTestId('reviewed-tag')).toHaveTextContent('Reviewed')
+    expect(screen.queryByRole('region', { name: 'Review score' })).not.toBeInTheDocument()
+  })
+
+  it('shows no tag and no admin panel for the system’s own score', async () => {
+    api.get.mockResolvedValue({ data: { ...BASE, ai_score: 62, ai_rationale: 'Fine.' } })
+    renderModal()
+
+    await screen.findByText('Fine.')
+    expect(screen.queryByTestId('reviewed-tag')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Review score' })).not.toBeInTheDocument()
+  })
+
+  it('shows the review panel to an administrator only, which is whoever the server sends the history to', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...BASE,
+        ai_score: 58,
+        ai_rationale: 'Fine.',
+        score_review: { original_score: 58, original_band: null, reviews: [] },
+      },
+    })
+    renderModal()
+
+    expect(await screen.findByRole('region', { name: 'Review score' })).toBeInTheDocument()
+  })
+
+  it('reloads the interview after an administrator saves a score, and shows it tagged', async () => {
+    api.get.mockResolvedValueOnce({
+      data: { ...BASE, ai_score: 58, ai_rationale: 'Fine.', score_review: { original_score: 58, original_band: null, reviews: [] } },
+    })
+    api.put.mockResolvedValue({ data: { score: 89, band: null, reviewed: true } })
+    api.get.mockResolvedValueOnce({
+      data: {
+        ...BASE,
+        ai_score: 89,
+        ai_rationale: 'Fine.',
+        reviewed: true,
+        score_review: { original_score: 58, original_band: null, reviews: [] },
+      },
+    })
+    renderModal()
+
+    fireEvent.change(await screen.findByLabelText(/^Total \(0 to 100\)/), { target: { value: '89' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save score' }))
+
+    expect(await screen.findByTestId('reviewed-tag')).toBeInTheDocument()
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/v1/interviews/profile-1/score-review',
+      { score: 89, ratings: null, reason: null },
+      { params: { job_id: 'job-1' } }
+    )
+  })
+
   it('does not offer it when the interview already has a score', async () => {
     api.get.mockResolvedValue({ data: { ...BASE, ai_score: 82, ai_rationale: 'Strong answers.' } })
     renderModal()

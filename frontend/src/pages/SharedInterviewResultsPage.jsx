@@ -7,6 +7,7 @@ import api from '@/lib/api'
 import { BAND_STYLE } from '@/lib/scoringProfile'
 import { STATUS, hasDetail, scoreColour } from '@/lib/sharedResults'
 import SharedCandidateDetail from '@/components/employer/SharedCandidateDetail'
+import ReviewedTag from '@/components/employer/ReviewedTag'
 
 // Why a link does not open, by the error code the server sends.
 const LINK_PROBLEMS = {
@@ -81,6 +82,7 @@ function CandidateRow({ entry, selected, onSelect }) {
               {report.band}
             </span>
           )}
+          {(candidate.interview_reviewed || report?.reviewed) && <ReviewedTag />}
         </span>
       </span>
     </>

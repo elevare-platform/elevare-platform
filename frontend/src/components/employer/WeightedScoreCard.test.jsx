@@ -102,4 +102,29 @@ describe('WeightedScoreCard', () => {
     expect(screen.getByText('A').closest('tr')).toHaveTextContent('19.8')
     expect(screen.getByText('B').closest('tr')).toHaveTextContent('53.6')
   })
+
+  it('shows a small Reviewed tag, and nothing about who or why, when a person set the score', () => {
+    render(<WeightedScoreCard report={{ ...COMPLETE, score: 89, band: 'Strong shortlist', reviewed: true }} />)
+
+    expect(screen.getByTestId('reviewed-tag')).toHaveTextContent('Reviewed')
+    expect(screen.getByTestId('weighted-total')).toHaveTextContent('89 / 100')
+    expect(screen.getByTestId('weighted-band')).toHaveTextContent('Strong shortlist')
+  })
+
+  it('shows no tag for the system’s own score', () => {
+    render(<WeightedScoreCard report={COMPLETE} />)
+
+    expect(screen.queryByTestId('reviewed-tag')).not.toBeInTheDocument()
+  })
+
+  it('drops the line that says a low key competency holds the band once a person has set the score', () => {
+    const flagged = { ...COMPLETE, key_flags: ['Strategy'] }
+    const { rerender } = render(<WeightedScoreCard report={flagged} />)
+    expect(screen.getByTestId('key-flags')).toHaveTextContent('held at Hold for evidence')
+
+    rerender(<WeightedScoreCard report={{ ...flagged, reviewed: true }} />)
+
+    expect(screen.getByTestId('key-flags')).toHaveTextContent('Key competency rated under 3 of 5: Strategy.')
+    expect(screen.getByTestId('key-flags')).not.toHaveTextContent('held at Hold for evidence')
+  })
 })

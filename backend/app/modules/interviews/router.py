@@ -45,6 +45,8 @@ from app.modules.interviews.schema import (
     QuestionTemplateApplyRequest,
     RenameTemplateRequest,
     SaveTemplateRequest,
+    ScoreReviewRequest,
+    ScoreReviewResponse,
     ScoringProfileIn,
     ScoringProfileResponse,
     StrictEventRequest,
@@ -443,6 +445,52 @@ async def record_panel_decision(
     try:
         return await service.record_panel_decision(
             current_user, job_id, talent_pool_profile_id, data.decision, data.rationale
+        )
+    finally:
+        await service.close()
+
+
+@router.put(
+    "/{talent_pool_profile_id}/score-review",
+    response_model=ScoreReviewResponse,
+    status_code=200,
+)
+async def review_interview_score(
+    talent_pool_profile_id: uuid.UUID,
+    data: ScoreReviewRequest,
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """An Elevare admin changes competency ratings and/or sets the total of a scored interview in
+    place of the system's (reason optional). The total follows the ratings by the system's formula
+    unless one is typed; the band follows the total by the job's cut-offs. The system's own result,
+    who changed it and when are kept. Admin only, for any job."""
+    service = InterviewService(db)
+    try:
+        return await service.review_score(
+            current_user, job_id, talent_pool_profile_id, data.score, data.reason, data.ratings
+        )
+    finally:
+        await service.close()
+
+
+@router.delete(
+    "/{talent_pool_profile_id}/score-review",
+    response_model=ScoreReviewResponse,
+    status_code=200,
+)
+async def remove_interview_score_review(
+    talent_pool_profile_id: uuid.UUID,
+    job_id: uuid.UUID = Query(...),
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Take a reviewed score away, so the system's own is shown again. Recorded like any change."""
+    service = InterviewService(db)
+    try:
+        return await service.review_score(
+            current_user, job_id, talent_pool_profile_id, None, None, None, clear=True
         )
     finally:
         await service.close()

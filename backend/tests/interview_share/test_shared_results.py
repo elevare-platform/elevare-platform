@@ -365,3 +365,14 @@ async def test_a_very_long_list_is_cut_and_the_page_says_so(db_session, monkeypa
     assert len(page.candidates) == 2
     assert page.truncated is True
     assert page.total_candidates == 3
+
+
+@pytest.mark.asyncio
+async def test_a_reviewed_score_is_flagged_on_the_shared_candidate_without_who_or_why(db_session):
+    """The shared page shows the reviewed score and a plain 'reviewed' flag, never who set it, why
+    or the system's own score."""
+    from app.modules.interview_share.schemas import SharedCandidate
+
+    fields = SharedCandidate.model_fields
+    assert fields["interview_reviewed"].default is False
+    assert not any("review" in name and name != "interview_reviewed" for name in fields)

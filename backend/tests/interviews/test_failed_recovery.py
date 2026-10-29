@@ -613,6 +613,30 @@ async def test_a_scored_interview_can_be_taken_again_and_the_first_result_is_rep
 
 
 @pytest.mark.asyncio
+async def test_a_retake_also_clears_an_elevare_reviewers_score(
+    client, db_session, fakes, clock, storage, invite_email
+):
+    from app.modules.interviews.models import InterviewScoreReview
+
+    interview = await scored_interview(client, db_session, clock)
+    db_session.add(
+        InterviewScoreReview(
+            interview_id=interview.interview.id,
+            score=89,
+            reviewed_by_name="Admin",
+            reviewed_at=datetime.now(UTC),
+            original_score=38,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(_recover_url(interview, start_over=True), headers=_headers(interview.employer))
+
+    assert resp.status_code == 200
+    assert (await db_session.execute(select(InterviewScoreReview))).scalars().all() == []
+
+
+@pytest.mark.asyncio
 async def test_a_scored_interview_is_not_reopened_or_reinstated_only_started_over(
     client, db_session, fakes, clock, storage, invite_email
 ):

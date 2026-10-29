@@ -1,6 +1,7 @@
 import { Scale } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { BAND_NAMES, BAND_STYLE } from '@/lib/scoringProfile'
+import ReviewedTag from '@/components/employer/ReviewedTag'
 
 const points = (value) => (Number.isInteger(value) ? String(value) : value.toFixed(1))
 
@@ -21,8 +22,11 @@ export default function WeightedScoreCard({ report, title = 'Interview Assessmen
           <Scale size={12} aria-hidden="true" /> {title}
         </p>
         {complete ? (
-          <span className="rounded-full bg-brand-blue/10 px-2.5 py-0.5 text-xs font-bold text-brand-blue" data-testid="weighted-total">
-            {score} / 100
+          <span className="inline-flex items-center gap-1.5">
+            {report.reviewed && <ReviewedTag />}
+            <span className="rounded-full bg-brand-blue/10 px-2.5 py-0.5 text-xs font-bold text-brand-blue" data-testid="weighted-total">
+              {score} / 100
+            </span>
           </span>
         ) : (
           <span className="rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800" data-testid="weighted-incomplete">
@@ -51,7 +55,7 @@ export default function WeightedScoreCard({ report, title = 'Interview Assessmen
       {keyFlags.length > 0 && (
         <p role="note" data-testid="key-flags" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
           Key competency rated under {report.key_min_rating} of 5: {keyFlags.join(', ')}.
-          {complete ? ' The band is held at Hold for evidence until a person has looked at it.' : ''}
+          {complete && !report.reviewed ? ' The band is held at Hold for evidence until a person has looked at it.' : ''}
         </p>
       )}
 

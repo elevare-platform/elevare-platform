@@ -8,6 +8,7 @@ import RecordingClips from '@/components/employer/RecordingClips'
 import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
 import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
 import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
+import ReviewedTag from '@/components/employer/ReviewedTag'
 import { BAND_NAMES, BAND_STYLE } from '@/lib/scoringProfile'
 import { STATUS, scoreColour } from '@/lib/sharedResults'
 
@@ -30,14 +31,17 @@ function BulletList({ title, items, tone }) {
   )
 }
 
-function Assessment({ title, score, summary, strengths, weaknesses, sections, emptyText }) {
+function Assessment({ title, score, summary, strengths, weaknesses, sections, emptyText, reviewed = false }) {
   const hasContent = score != null || summary?.length || strengths?.length || weaknesses?.length || sections?.length
   return (
     <div className="rounded-lg border border-border bg-white p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-sm font-semibold text-text">{title}</h4>
         {score != null && (
-          <span className={cn('px-2 py-0.5 rounded-full text-xs font-bold', scoreColour(score))}>{score}</span>
+          <span className="inline-flex items-center gap-1.5">
+            {reviewed && <ReviewedTag />}
+            <span className={cn('px-2 py-0.5 rounded-full text-xs font-bold', scoreColour(score))}>{score}</span>
+          </span>
         )}
       </div>
       {!hasContent && <p className="text-xs text-text-muted">{emptyText}</p>}
@@ -211,6 +215,7 @@ export default function SharedCandidateDetail({ candidate, rank, position, onPre
                 {report.band}
               </span>
             )}
+            {(candidate.interview_reviewed || report?.reviewed) && <ReviewedTag />}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -254,6 +259,7 @@ export default function SharedCandidateDetail({ candidate, rank, position, onPre
                   <Assessment
                     title="Interview assessment"
                     score={candidate.interview_score}
+                    reviewed={Boolean(candidate.interview_reviewed)}
                     summary={interview.summary}
                     sections={interview.sections}
                     emptyText="No assessment is available for this interview."

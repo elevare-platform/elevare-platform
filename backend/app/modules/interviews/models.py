@@ -195,6 +195,34 @@ class InterviewPanelDecision(BaseModel):
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class InterviewScoreReview(BaseModel):
+    """The score an Elevare admin sets for a finished interview in place of the one the system
+    worked out (docs/08_DECISIONS.md, item 52), with who set it, when, an optional reason, and the
+    system's own score and band at that moment so the original is never lost. Append-only: the
+    latest row is the one shown, and a row with no ``score`` takes the review away again."""
+
+    __tablename__ = "interview_score_reviews"
+    __table_args__ = (sa.Index("ix_interview_score_reviews_interview", "interview_id", "reviewed_at"),)
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The competency ratings the reviewer changed, {name: 1 to 5}: only those that differ from the
+    # system's own. When there is no ``score`` the total is worked out from the ratings.
+    ratings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_by_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    original_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_band: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+
 class StrictInterviewRun(BaseModel):
     """The state of one interview that uses the strict, text-question style.
 

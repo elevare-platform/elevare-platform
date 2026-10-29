@@ -12,6 +12,8 @@ import RecordingClips from '@/components/employer/RecordingClips'
 import WeightedScoreCard from '@/components/employer/WeightedScoreCard'
 import PracticalCaseCard from '@/components/employer/PracticalCaseCard'
 import AssessmentRecordCard from '@/components/employer/AssessmentRecordCard'
+import ReviewedTag from '@/components/employer/ReviewedTag'
+import ScoreReviewPanel from '@/components/employer/ScoreReviewPanel'
 import { showsClips } from '@/lib/recordingClips'
 
 // Scoring runs in the background, so after asking for it we check the interview
@@ -27,7 +29,7 @@ const SCORE_POLL_MAX_TRIES = 40
  * employer can see where they agree or diverge - e.g. "CV said strong
  * React experience, interview showed shallow answers on it."
  */
-function AssessmentCard({ icon: Icon, title, score, summary, strengths, weaknesses, emptyMessage, action }) {
+function AssessmentCard({ icon: Icon, title, score, summary, strengths, weaknesses, emptyMessage, action, reviewed = false }) {
   if (score == null) {
     return (
       <div className="rounded-xl border border-dashed border-border p-4">
@@ -46,11 +48,14 @@ function AssessmentCard({ icon: Icon, title, score, summary, strengths, weakness
         <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
           <Icon size={12} /> {title}
         </p>
-        <span
-          className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(score).className)}
-          title={`Raw score: ${score}/100`}
-        >
-          {matchScoreBand(score).label}
+        <span className="inline-flex items-center gap-1.5">
+          {reviewed && <ReviewedTag />}
+          <span
+            className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', matchScoreBand(score).className)}
+            title={`Raw score: ${score}/100`}
+          >
+            {matchScoreBand(score).label}
+          </span>
         </span>
       </div>
       {summary && (
@@ -188,6 +193,14 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
     } finally {
       setReinstating(false)
     }
+  }
+
+  // Reads the interview again, after an admin set or removed a reviewed score.
+  const reloadDetail = async () => {
+    const { data } = await api.get('/api/v1/interviews/detail', {
+      params: { job_id: jobId, talent_pool_profile_id: talentPoolProfileId },
+    })
+    setDetail(data)
   }
 
   const handleScore = async () => {
@@ -408,6 +421,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                   icon={Brain}
                   title="Interview Assessment"
                   score={detail.ai_score}
+                  reviewed={detail.reviewed}
                   summary={detail.ai_rationale}
                   emptyMessage={
                     isEndedStatus(detail.status)
@@ -449,6 +463,18 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                 />
                 )}
               </div>
+
+              {/* Only an Elevare admin gets this from the server: set the score in place of the
+                  system's, with the system's own score and the history kept here */}
+              {detail.score_review && detail.status === 'SCORED' && (
+                <ScoreReviewPanel
+                  key={`${detail.ai_score}-${detail.reviewed}`}
+                  jobId={jobId}
+                  talentPoolProfileId={talentPoolProfileId}
+                  detail={detail}
+                  onChanged={reloadDetail}
+                />
+              )}
 
               {/* The candidate assessment record: the header, the top three strengths and gaps,
                   what to verify, and the hiring panel's own decision with its sign-off */}

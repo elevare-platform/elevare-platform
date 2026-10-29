@@ -83,3 +83,12 @@ export function toRequest(rows, bands, keyMinRating, templateCode) {
     template_code: templateCode || null,
   }
 }
+
+/** The band a total falls in, by a job's cut-offs (`{ strong, shortlist, hold }`): the same rule the
+ *  server applies, used to preview a score someone is about to set. */
+export function bandForScore(score, bands) {
+  if (score >= bands.strong) return BAND_NAMES.strong
+  if (score >= bands.shortlist) return BAND_NAMES.shortlist
+  if (score >= bands.hold) return BAND_NAMES.hold
+  return BAND_NAMES.not
+}
