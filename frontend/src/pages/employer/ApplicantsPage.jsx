@@ -41,6 +41,7 @@ import RescoreBar from '@/components/employer/RescoreBar'
 import NewBadge from '@/components/employer/NewBadge'
 import NotOpenedTab from '@/components/employer/NotOpenedTab'
 import CandidateNameEditor from '@/components/employer/CandidateNameEditor'
+import ScoreVisibilityToggle from '@/components/employer/ScoreVisibilityToggle'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -1832,6 +1833,7 @@ function InterviewListTab({ jobId, job, onJobUpdated }) {
   return (
     <div className="space-y-3">
       <ShareInterviewResults jobId={jobId} />
+      {hasInterviewBrief && <ScoreVisibilityToggle jobId={jobId} />}
       {pricingNote && (
         <p className={cn('text-xs', pricingNote.short ? 'text-red-600' : 'text-text-muted')}>
           {pricingNote.text}{' '}

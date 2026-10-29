@@ -381,6 +381,9 @@ class WeightedScoreReport(BaseModel):
     unassessed: list[str] = []
     # True when an Elevare reviewer set the total (the band then follows it).
     reviewed: bool = False
+    # True when the job's switch has the total and the band left out: the rows (competency, weight,
+    # rating) are still sent, ``score`` and ``band`` are not.
+    hidden: bool = False
 
 
 class ScoreReviewRequest(BaseModel):
@@ -399,6 +402,19 @@ class ScoreReviewResponse(BaseModel):
     score: int | None
     band: str | None
     reviewed: bool
+
+
+class ScoreVisibilityRequest(BaseModel):
+    """Switch a job's interview score and provisional band on or off."""
+
+    show_scores: bool
+
+
+class ScoreVisibilityResponse(BaseModel):
+    """Whether a job's interview score and provisional band are shown to its employer and on the
+    shared link (true unless somebody switched them off)."""
+
+    show_scores: bool
 
 
 class PracticalCriterionRow(BaseModel):
@@ -425,6 +441,8 @@ class PracticalCaseReport(BaseModel):
     total_weight: int
     unassessed: list[str] = []
     summary: str = ""
+    # True when the job's switch has this case's total left out (the criteria and ratings are kept).
+    hidden: bool = False
 
 
 PanelDecisionName = Literal["STRONG_SHORTLIST", "SHORTLIST", "HOLD", "DO_NOT_SHORTLIST"]
@@ -500,6 +518,9 @@ class InterviewDetailResponse(BaseModel):
     # True when an Elevare reviewer set the score shown (the small "Reviewed" tag). Shown to every
     # reader of the interview, the shared link included; who and why are not.
     reviewed: bool = False
+    # True when the job's switch has the interview's score and provisional band left out of this
+    # reply (never for an Elevare admin, who always gets the real values).
+    scores_hidden: bool = False
     # Only for an Elevare admin: the system's own score and band and every review of it.
     score_review: dict | None = None
     # The latest attempt's recording (the only one, for an interview never reinstated).

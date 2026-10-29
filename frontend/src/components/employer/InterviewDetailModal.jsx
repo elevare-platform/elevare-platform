@@ -29,7 +29,29 @@ const SCORE_POLL_MAX_TRIES = 40
  * employer can see where they agree or diverge - e.g. "CV said strong
  * React experience, interview showed shallow answers on it."
  */
-function AssessmentCard({ icon: Icon, title, score, summary, strengths, weaknesses, emptyMessage, action, reviewed = false }) {
+function AssessmentCard({
+  icon: Icon,
+  title,
+  score,
+  summary,
+  strengths,
+  weaknesses,
+  emptyMessage,
+  action,
+  reviewed = false,
+  scoreHidden = false,
+}) {
+  // The job's switch has the score left out: the written assessment is still shown, with no score.
+  if (scoreHidden && summary) {
+    return (
+      <div className="rounded-xl border border-border p-4 space-y-2">
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-wide flex items-center gap-1.5">
+          <Icon size={12} /> {title}
+        </p>
+        <p className="text-sm text-text leading-relaxed whitespace-pre-wrap">{summary}</p>
+      </div>
+    )
+  }
   if (score == null) {
     return (
       <div className="rounded-xl border border-dashed border-border p-4">
@@ -422,6 +444,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                   title="Interview Assessment"
                   score={detail.ai_score}
                   reviewed={detail.reviewed}
+                  scoreHidden={detail.scores_hidden}
                   summary={detail.ai_rationale}
                   emptyMessage={
                     isEndedStatus(detail.status)

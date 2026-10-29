@@ -43,6 +43,7 @@ from app.modules.interviews.models import (
     InterviewTurn,
     InterviewWeightedScore,
     JobInterviewQuestion,
+    JobScoreVisibility,
 )
 from app.modules.interviews.recording_merge import attempt_of_key, final_key, part_key
 from app.modules.interviews.repository import InterviewRepository
@@ -62,6 +63,7 @@ from app.modules.interviews.score_review import (
     apply_review,
     valid_rating,
 )
+from app.modules.interviews.score_visibility import hide_scores
 from app.modules.interviews.scoring_access import assert_can_score_interviews
 from app.modules.interviews.strict import StrictInterviewService
 from app.modules.interviews.tasks import (
@@ -1869,6 +1871,19 @@ class InterviewService:
             review_score=reviews[0].score if reviews else None,
             review_ratings=(reviews[0].ratings or {}) if reviews else None,
         )
+        # The job's switch: with scores off, the employer and the shared link are not sent the
+        # total, the band, the practical case's total or the assessment lines that state them. An
+        # Elevare admin (the only reader with the review history) always gets the real values.
+        scores_hidden = not include_review_history and not await self._scores_visible(job.id)
+        shown_score, shown_rationale, shown_report = shown.score, shown.rationale, shown.report
+        reviewed = shown.reviewed
+        if scores_hidden:
+            hidden = hide_scores(
+                rationale=shown.rationale, report=shown.report, practical=practical_case
+            )
+            shown_score, shown_rationale = hidden.score, hidden.rationale
+            shown_report, practical_case = hidden.report, hidden.practical
+            reviewed = False
         video_url = None
         # While the pieces of the recording are being joined the file on record is only the last
         # piece: showing it would look like the whole interview, so nothing is shown yet.
@@ -1921,10 +1936,11 @@ class InterviewService:
             status=interview.status,
             transcript=transcript,
             transcript_check=check.status if check else None,
-            ai_score=shown.score,
-            ai_rationale=shown.rationale,
+            ai_score=shown_score,
+            ai_rationale=shown_rationale,
             ai_scored_at=interview.ai_scored_at,
-            reviewed=shown.reviewed,
+            reviewed=reviewed,
+            scores_hidden=scores_hidden,
             score_review=(
                 self._score_review_history(interview, stored_report, reviews)
                 if include_review_history
@@ -1932,7 +1948,7 @@ class InterviewService:
             ),
             video_url=video_url,
             recordings=clips,
-            score_report=shown.report,
+            score_report=shown_report,
             practical_case=practical_case,
             record=record,
             completed_at=interview.completed_at,
@@ -1979,6 +1995,60 @@ class InterviewService:
             "reference_check_questions": listed("reference_check_questions"),
             "panel_decision": await self._latest_panel_decision(interview.id) if include_panel_decision else None,
         }
+
+    async def _scores_visible(self, job_id: uuid.UUID) -> bool:
+        """Whether the job shows its interview score and provisional band: true unless somebody
+        switched them off (and in the seconds of a deploy before the table exists)."""
+
+        async def read() -> bool:
+            row = (
+                await self._db.execute(
+                    select(JobScoreVisibility.show_scores).where(JobScoreVisibility.job_id == job_id)
+                )
+            ).scalar_one_or_none()
+            return True if row is None else bool(row)
+
+        return await tolerate_missing(self._db, read, True)
+
+    async def get_score_visibility(
+        self, user: User, job_id: uuid.UUID
+    ) -> dict:
+        """Whether a job's interview score and provisional band are shown. For the job's company or
+        an Elevare admin."""
+        job = await self._job_for_visibility(user, job_id)
+        return {"show_scores": await self._scores_visible(job.id)}
+
+    async def set_score_visibility(
+        self, user: User, job_id: uuid.UUID, show_scores: bool
+    ) -> dict:
+        """Switch a job's interview score and provisional band on or off, for the job's company or
+        an Elevare admin (decision item 54). The scores are still worked out and kept; this only
+        decides whether the employer's screens and the shared link are sent them. Logged."""
+        job = await self._job_for_visibility(user, job_id)
+        existing = (
+            await self._db.execute(select(JobScoreVisibility).where(JobScoreVisibility.job_id == job.id))
+        ).scalar_one_or_none()
+        if existing is None:
+            self._db.add(JobScoreVisibility(job_id=job.id, show_scores=show_scores, changed_by=user.id))
+        else:
+            existing.show_scores = show_scores
+            existing.changed_by = user.id
+        await self._db.commit()
+        logger.info(
+            "interview scores %s: job=%s by user=%s", "shown" if show_scores else "hidden", job.id, user.id
+        )
+        return {"show_scores": show_scores}
+
+    async def _job_for_visibility(self, user: User, job_id: uuid.UUID) -> Job:
+        from app.core.exceptions import JobNotFoundError
+        from app.modules.jobs.repository import JobRepository
+
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError()
+        if user.role != UserRole.ADMIN.value and not can_manage_job(user, job):
+            raise PermissionDeniedException("You do not have access to this job")
+        return job
 
     async def _score_reviews(self, interview_id: uuid.UUID) -> list[InterviewScoreReview]:
         """The reviews of an interview's score, newest first (empty in the seconds of a deploy

@@ -63,6 +63,17 @@ const recovered = (extra = {}) => ({
   data: { outcome: 'reopened', status: 'PENDING', interview_url: 'https://app.test/interview/abc', email_sent: true, ...extra },
 })
 
+describe('ApplicantsPage, Interview List, the switch for scores and suggested bands', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('puts the switch on the interview list, reading this job’s setting', async () => {
+    renderList('SCORED')
+
+    expect(await screen.findByRole('switch', { name: 'Show interview scores and suggested bands' })).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/api/v1/interviews/jobs/job-1/score-visibility')
+  })
+})
+
 describe('ApplicantsPage, Interview List, letting a candidate who completed take the interview again', () => {
   beforeEach(() => vi.clearAllMocks())
 

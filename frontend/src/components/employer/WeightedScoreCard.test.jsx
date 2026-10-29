@@ -111,6 +111,21 @@ describe('WeightedScoreCard', () => {
     expect(screen.getByTestId('weighted-band')).toHaveTextContent('Strong shortlist')
   })
 
+  it('shows the competencies and ratings but no total, no band, no points and no incomplete notice when the job’s switch has them off', () => {
+    const hidden = { ...COMPLETE, hidden: true, score: null, band: null, points: 0, bands: {} }
+    render(<WeightedScoreCard report={hidden}>{<p>The written assessment.</p>}</WeightedScoreCard>)
+
+    expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('weighted-incomplete')).not.toBeInTheDocument()
+    expect(screen.queryByText('Points')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Suggested band|provisional/)).not.toBeInTheDocument()
+    const strategy = screen.getByText('Strategy').closest('tr')
+    expect(strategy).toHaveTextContent('25%')
+    expect(strategy).toHaveTextContent('4 of 5')
+    expect(screen.getByText('The written assessment.')).toBeInTheDocument()
+  })
+
   it('shows no tag for the system’s own score', () => {
     render(<WeightedScoreCard report={COMPLETE} />)
 

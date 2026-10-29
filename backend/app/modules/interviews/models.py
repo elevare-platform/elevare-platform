@@ -91,6 +91,25 @@ class JobInterviewSettings(BaseModel):
     follow_up_mode: Mapped[str] = mapped_column(String(12), nullable=False, default="STANDARD")
 
 
+class JobScoreVisibility(BaseModel):
+    """Whether a job's interview score and provisional band are shown to its employer and on the
+    shared link (docs/08_DECISIONS.md, item 54). One row per job that has been switched; a job with
+    no row shows them. A table of its own (migration p22_0041), so no existing table changes."""
+
+    __tablename__ = "job_score_visibility"
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    show_scores: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.true())
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
 class InterviewQuestionTemplate(BaseModel):
     """A set of interview questions a company saved to use again (docs/08_DECISIONS.md, item 46):
     the questions with their probes, times and practical case, the follow-up choice, and, if the

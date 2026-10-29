@@ -16,7 +16,7 @@ export default function PracticalCaseCard({ report }) {
         <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
           <ClipboardList size={12} aria-hidden="true" /> Practical case
         </p>
-        {complete ? (
+        {report.hidden ? null : complete ? (
           <span className="rounded-full bg-brand-blue/10 px-2.5 py-0.5 text-xs font-bold text-brand-blue" data-testid="practical-score">
             {score.toFixed(1)} / 5
           </span>
@@ -31,7 +31,7 @@ export default function PracticalCaseCard({ report }) {
         A scenario the candidate worked through aloud, scored on its own. It is not part of the weighted score.
       </p>
 
-      {!complete && (
+      {!complete && !report.hidden && (
         <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           {rated} of {rows.length} criteria could be rated (not covered: {unassessed.join(', ')}). No case score
           is given. A person decides whether more evidence is needed.

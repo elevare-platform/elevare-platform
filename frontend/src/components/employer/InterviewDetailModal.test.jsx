@@ -104,6 +104,37 @@ describe('InterviewDetailModal: scoring an interview that has no score', () => {
     expect(generateButton()).not.toBeInTheDocument()
   })
 
+  it('shows the written assessment with no score, and not the empty-score message, when the job’s switch has scores off', async () => {
+    api.get.mockResolvedValue({
+      data: { ...BASE, ai_score: null, scores_hidden: true, ai_rationale: 'A steady candidate. Strong on strategy.' },
+    })
+    renderModal()
+
+    expect(await screen.findByText('A steady candidate. Strong on strategy.')).toBeInTheDocument()
+    expect(screen.queryByText(/No score is available/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /generate score/i })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('reviewed-tag')).not.toBeInTheDocument()
+  })
+
+  it('shows the weighted card with ratings only, no total or band, and no suggestion box, when scores are off', async () => {
+    const report = {
+      rows: [{ name: 'Strategy', weight: 100, key: true, rating: 4 }],
+      points: 0, assessed_weight: 100, total_weight: 100, complete: true, score: null, band: null, bands: {},
+      key_min_rating: 3, key_flags: [], unassessed: [], hidden: true,
+    }
+    api.get.mockResolvedValue({
+      data: { ...BASE, ai_score: null, scores_hidden: true, score_report: report, ai_rationale: 'Strong on strategy.',
+        record: { reference: 'EL-1', role: 'Sales', interview_date: null, duration_minutes: 10, interviewer: 'x',
+          top_strengths: [], top_gaps: [], claims_to_verify: [], reference_check_questions: [], panel_decision: null } },
+    })
+    renderModal()
+
+    expect(await screen.findByText('Strategy')).toBeInTheDocument()
+    expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('weighted-band')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Suggested by the assessment/)).not.toBeInTheDocument()
+  })
+
   it('shows a small Reviewed tag beside the score when a person at Elevare set it, and no admin panel', async () => {
     api.get.mockResolvedValue({ data: { ...BASE, ai_score: 89, ai_rationale: 'Strong answers.', reviewed: true } })
     renderModal()

@@ -15,6 +15,43 @@ const points = (value) => (Number.isInteger(value) ? String(value) : value.toFix
 export default function WeightedScoreCard({ report, title = 'Interview Assessment', children }) {
   const { complete, score, band, rows, key_flags: keyFlags = [], unassessed = [] } = report
 
+  // The job's switch has the total and the band left out: only the competencies and their ratings.
+  if (report.hidden) {
+    return (
+      <div className="rounded-xl border border-border p-4 space-y-3" data-testid="weighted-score">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <Scale size={12} aria-hidden="true" /> {title}
+        </p>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border text-left text-text-muted">
+              <th className="py-1.5 pr-2 font-medium">Competency</th>
+              <th className="px-2 py-1.5 text-right font-medium">Weight</th>
+              <th className="pl-2 py-1.5 text-right font-medium">Rating</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.name} className="border-b border-border/60 align-top">
+                <td className="py-1.5 pr-2 text-text">
+                  {row.name}
+                  {row.key && (
+                    <span className="ml-1.5 rounded-full bg-brand-blue/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-blue">Key</span>
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-right text-text-muted">{row.weight}%</td>
+                <td className="pl-2 py-1.5 text-right text-text">
+                  {row.rating == null ? <span className="text-amber-700">Not assessed</span> : `${row.rating} of 5`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {children}
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-xl border border-border p-4 space-y-3" data-testid="weighted-score">
       <div className="flex flex-wrap items-center justify-between gap-2">
