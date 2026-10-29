@@ -1799,7 +1799,9 @@ class InterviewService:
         job = await JobRepository(self._db).get_by_id(job_id)
         if job is None:
             raise JobNotFoundError()
-        if not can_manage_job(user, job):
+        # An Elevare administrator may open any account's interview (to review a score); everyone
+        # else only a job their company manages.
+        if user.role != UserRole.ADMIN.value and not can_manage_job(user, job):
             raise PermissionDeniedException("You do not have access to this job")
 
         interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)

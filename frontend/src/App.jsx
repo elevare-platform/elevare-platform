@@ -63,6 +63,7 @@ const AdminClientsPage = lazy(() => import('@/pages/admin/AdminClientsPage'))
 const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboardPage'))
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'))
 const AdminJobsPage = lazy(() => import('@/pages/admin/AdminJobsPage'))
+const AdminJobInterviewsPage = lazy(() => import('@/pages/admin/AdminJobInterviewsPage'))
 const AdminKycPage = lazy(() => import('@/pages/admin/AdminKycPage'))
 const AdminApplicationsPage = lazy(() => import('@/pages/admin/AdminApplicationsPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/admin/AdminAuditLogPage'))
@@ -178,6 +179,7 @@ function AppRoutes() {
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
+          <Route path="/admin/jobs/:jobId/interviews" element={<AdminJobInterviewsPage />} />
           <Route path="/admin/kyc" element={<AdminKycPage />} />
           <Route path="/admin/applications" element={<AdminApplicationsPage />} />
           <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />

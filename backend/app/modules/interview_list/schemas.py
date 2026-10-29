@@ -61,6 +61,10 @@ class InterviewListEntryResponse(BaseModel):
     added_at: datetime
     interview_status: str | None = None
     """Current ``InterviewStatus`` for this candidate on this job, or ``None`` if never invited."""
+    interview_score: int | None = None
+    """The score shown for a scored interview (the reviewed one, if an admin reviewed it). Only an
+    Elevare administrator's view of the list carries it; it is ``None`` for everyone else."""
+    interview_reviewed: bool = False
     interview_failure: str | None = None
     """Why a FAILED interview failed: ``NEVER_FINISHED`` (the recording never arrived, nothing was
     scored; the employer can reopen it or start it over) or ``SCORING_FAILED`` (the recording

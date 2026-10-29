@@ -15,7 +15,9 @@ from app.modules.interviews.enums import InterviewStatus, compute_display_status
 from app.modules.interviews.models import (
     Interview,
     InterviewCost,
+    InterviewScoreReview,
     InterviewTranscriptCheck,
+    InterviewWeightedScore,
 )
 from app.modules.jobs.models import Job
 from app.modules.talent_pool.models import TalentPoolProfiles
@@ -102,6 +104,65 @@ class InterviewRepository:
         return {
             row[0]: compute_display_status(row[1], row[2]) for row in result.all()
         }
+
+    async def shown_scores_for_job(
+        self, job_id: uuid.UUID, talent_pool_profile_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[int | None, bool]]:
+        """The score shown for each scored interview of a job, keyed by talent_pool_profile_id, as
+        ``(score, reviewed)``: the reviewed score when an Elevare admin reviewed it, else the
+        system's. Three queries for the whole job, not one per candidate. Only SCORED interviews."""
+        from app.core.schema_guard import tolerate_missing
+        from app.modules.interviews.score_review import apply_review
+
+        if not talent_pool_profile_ids:
+            return {}
+        rows = (
+            await self._db.execute(
+                select(Interview.id, Interview.talent_pool_profile_id, Interview.ai_score).where(
+                    Interview.job_id == job_id,
+                    Interview.talent_pool_profile_id.in_(talent_pool_profile_ids),
+                    Interview.status == InterviewStatus.SCORED.value,
+                )
+            )
+        ).all()
+        if not rows:
+            return {}
+        interview_ids = [row[0] for row in rows]
+
+        async def read_reports() -> dict:
+            result = await self._db.execute(
+                select(InterviewWeightedScore.interview_id, InterviewWeightedScore.report).where(
+                    InterviewWeightedScore.interview_id.in_(interview_ids)
+                )
+            )
+            return dict(result.all())
+
+        async def read_reviews() -> dict:
+            result = await self._db.execute(
+                select(InterviewScoreReview)
+                .where(InterviewScoreReview.interview_id.in_(interview_ids))
+                .order_by(InterviewScoreReview.reviewed_at.desc(), InterviewScoreReview.created_at.desc())
+            )
+            latest: dict = {}
+            for review in result.scalars().all():
+                latest.setdefault(review.interview_id, review)  # newest first
+            return latest
+
+        reports = await tolerate_missing(self._db, read_reports, {})
+        reviews = await tolerate_missing(self._db, read_reviews, {})
+        shown: dict[uuid.UUID, tuple[int | None, bool]] = {}
+        for interview_id, profile_id, ai_score in rows:
+            report = reports.get(interview_id)
+            review = reviews.get(interview_id)
+            result = apply_review(
+                score=ai_score,
+                rationale=None,
+                report=report if report and "rows" in report else None,
+                review_score=review.score if review else None,
+                review_ratings=(review.ratings or {}) if review else None,
+            )
+            shown[profile_id] = (result.score, result.reviewed)
+        return shown
 
     async def list_unfinished_failures_for_job(
         self, job_id: uuid.UUID, talent_pool_profile_ids: list[uuid.UUID]

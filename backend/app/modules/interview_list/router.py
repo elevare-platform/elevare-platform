@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db, require_role
+from app.core.exceptions import JobNotFoundError
 from app.core.schemas import SuccessResponse
 from app.modules.interview_list.schemas import (
     InterviewListAddRequest,
@@ -14,6 +15,8 @@ from app.modules.interview_list.schemas import (
     InterviewListResponse,
 )
 from app.modules.interview_list.service import InterviewListService
+from app.modules.jobs.repository import JobRepository
+from app.modules.users.enums import UserRole
 from app.modules.users.models import User
 
 router = APIRouter()
@@ -28,8 +31,15 @@ async def list_interview_list(
     job_id: uuid.UUID = Query(...),
     current_user: User = Depends(require_role("EMPLOYER", "ADMIN")),
     service: InterviewListService = Depends(get_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Return the interview list for one job."""
+    """Return the interview list for one job. An Elevare administrator gets the whole list of any
+    account's job, with the score shown for each scored interview (so a score can be reviewed)."""
+    if current_user.role == UserRole.ADMIN.value:
+        job = await JobRepository(db).get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError()
+        return await service.list_for_job(job.employer_id, job_id, admin=True)
     return await service.list_for_job(current_user.id, job_id)
 
 
