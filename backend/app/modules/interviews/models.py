@@ -232,6 +232,9 @@ class InterviewScoreReview(BaseModel):
     # The competency ratings the reviewer changed, {name: 1 to 5}: only those that differ from the
     # system's own. When there is no ``score`` the total is worked out from the ratings.
     ratings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The written assessment the admin wrote in place of the system's text (``interviews.ai_rationale``,
+    # which is never overwritten). Empty: the system's own text is shown.
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

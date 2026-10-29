@@ -565,3 +565,156 @@ async def test_the_admin_sees_the_systems_ratings_and_the_ratings_of_each_review
     assert history["original_ratings"] == {"Strategy": 3, "P&L": 3}
     assert history["reviews"][0]["ratings"] == {"Strategy": 5}
     assert history["reviews"][0]["score"] is None
+
+
+# ── The written assessment ───────────────────────────────────────────────────────
+
+ADMIN_TEXT = "A confident operator with a clear route to market. The panel read the answers as strong."
+
+
+def test_a_written_assessment_replaces_the_systems_text_whatever_else_changed():
+    report = with_ratings()
+    original = text_for(report)
+
+    only = apply_review(score=60, rationale=original, report=report, review_score=None, review_rationale=ADMIN_TEXT)
+    with_total = apply_review(score=60, rationale=original, report=report, review_score=95, review_rationale=ADMIN_TEXT)
+
+    assert (only.rationale, only.score, only.reviewed) == (ADMIN_TEXT, 60, True)
+    assert only.report == report  # the numbers are the system's own
+    assert (with_total.rationale, with_total.score) == (ADMIN_TEXT, 95)
+
+
+def test_a_written_assessment_alone_counts_as_a_review_for_a_job_without_a_scoring_profile():
+    shown = apply_review(score=70, rationale="system text", report=None, review_score=None, review_rationale=ADMIN_TEXT)
+
+    assert (shown.rationale, shown.score, shown.reviewed) == (ADMIN_TEXT, 70, True)
+
+
+def test_no_written_assessment_leaves_the_text_as_the_system_wrote_it_or_rewritten_for_the_numbers():
+    report = with_ratings()
+    original = text_for(report)
+
+    untouched = apply_review(score=60, rationale=original, report=report, review_score=None, review_rationale=None)
+    rewritten = apply_review(score=60, rationale=original, report=report, review_score=95, review_rationale=None)
+
+    assert untouched.rationale == original
+    assert "Weighted score: 95 of 100" in rewritten.rationale
+
+
+@pytest.mark.asyncio
+async def test_an_admin_writes_the_assessment_and_everyone_reads_it_while_the_systems_text_is_kept(client, db_session):
+    interview = await scored_at(db_session, 60)
+    original = interview.interview.ai_rationale
+    admin = await an_admin(db_session)
+    await db_session.commit()
+
+    resp = await client.put(review_url(interview), json={"rationale": f"  {ADMIN_TEXT}  "}, headers=headers(admin))
+
+    assert resp.status_code == 200 and resp.json()["reviewed"] is True and resp.json()["score"] == 60
+    seen_by_employer = await detail(client, interview, interview.employer)
+    assert seen_by_employer["ai_rationale"] == ADMIN_TEXT and seen_by_employer["reviewed"] is True
+    assert seen_by_employer["ai_score"] == 60
+    await db_session.refresh(interview.interview)
+    assert interview.interview.ai_rationale == original  # the system's text is never overwritten
+    history = (await detail(client, interview, admin))["score_review"]
+    assert history["original_rationale"] == original
+    assert history["reviews"][0]["rationale_changed"] is True
+    assert ADMIN_TEXT not in str(history["reviews"])  # the history says it changed, not the text twice
+
+
+@pytest.mark.asyncio
+async def test_a_written_assessment_can_go_with_ratings_and_a_total(client, db_session):
+    interview = await scored_at(db_session, 60)
+    row = (await db_session.execute(select(InterviewWeightedScore))).scalar_one()
+    row.report = with_ratings()
+    admin = await an_admin(db_session)
+    await db_session.commit()
+
+    resp = await client.put(
+        review_url(interview), json={"ratings": {"Strategy": 5}, "rationale": ADMIN_TEXT}, headers=headers(admin)
+    )
+
+    assert resp.json()["score"] == 84
+    body = await detail(client, interview, interview.employer)
+    assert body["ai_rationale"] == ADMIN_TEXT and body["ai_score"] == 84
+
+
+@pytest.mark.asyncio
+async def test_the_systems_own_text_is_no_change_and_an_empty_one_is_nothing_to_review(client, db_session):
+    interview = await scored_at(db_session, 60)
+    admin = await an_admin(db_session)
+    await db_session.commit()
+    system_text = interview.interview.ai_rationale
+
+    same = await client.put(review_url(interview), json={"rationale": system_text}, headers=headers(admin))
+    blank = await client.put(review_url(interview), json={"rationale": "   "}, headers=headers(admin))
+
+    assert same.json()["code"] == "NOTHING_TO_REVIEW" and blank.json()["code"] == "NOTHING_TO_REVIEW"
+    assert (await db_session.execute(select(InterviewScoreReview))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_a_very_long_written_assessment_is_refused(client, db_session):
+    interview = await scored_at(db_session, 60)
+    admin = await an_admin(db_session)
+    await db_session.commit()
+
+    resp = await client.put(review_url(interview), json={"rationale": "x" * 20001}, headers=headers(admin))
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_the_latest_save_is_the_whole_review_so_leaving_the_text_out_brings_the_systems_back(client, db_session):
+    interview = await scored_at(db_session, 60)
+    system_text = interview.interview.ai_rationale
+    admin = await an_admin(db_session)
+    await db_session.commit()
+    await client.put(review_url(interview), json={"rationale": ADMIN_TEXT}, headers=headers(admin))
+
+    await client.put(review_url(interview), json={"score": 70}, headers=headers(admin))
+    body = await detail(client, interview, interview.employer)
+
+    assert body["ai_score"] == 70 and body["ai_rationale"] != ADMIN_TEXT
+    assert "A steady candidate." in body["ai_rationale"] and system_text.startswith("A steady candidate.")
+
+
+@pytest.mark.asyncio
+async def test_removing_the_review_restores_the_systems_text(client, db_session):
+    interview = await scored_at(db_session, 60)
+    system_text = interview.interview.ai_rationale
+    admin = await an_admin(db_session)
+    await db_session.commit()
+    await client.put(review_url(interview), json={"rationale": ADMIN_TEXT}, headers=headers(admin))
+
+    await client.delete(review_url(interview), headers=headers(admin))
+    body = await detail(client, interview, interview.employer)
+
+    assert body["ai_rationale"] == system_text and body["reviewed"] is False
+
+
+@pytest.mark.asyncio
+async def test_only_an_admin_can_write_the_assessment(client, db_session):
+    interview = await scored_at(db_session, 60)
+
+    resp = await client.put(review_url(interview), json={"rationale": ADMIN_TEXT}, headers=headers(interview.employer))
+
+    assert resp.status_code == 403
+    assert (await db_session.execute(select(InterviewScoreReview))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_a_written_assessment_that_states_a_score_is_still_cleaned_when_the_jobs_scores_are_off(client, db_session):
+    interview = await scored_at(db_session, 60)
+    admin = await an_admin(db_session)
+    await db_session.commit()
+    text = "Strong operator.\n\nWeighted score: 95 of 100. Suggested band (provisional): Strong shortlist.\n\nStrengths:\n- Clear"
+    await client.put(review_url(interview), json={"rationale": text}, headers=headers(admin))
+    await client.put(
+        f"/api/v1/interviews/jobs/{interview.job.id}/score-visibility", json={"show_scores": False}, headers=headers(interview.employer)
+    )
+
+    body = await detail(client, interview, interview.employer)
+
+    assert "Weighted score" not in body["ai_rationale"] and "Suggested band" not in body["ai_rationale"]
+    assert "Strong operator." in body["ai_rationale"] and "- Clear" in body["ai_rationale"]
