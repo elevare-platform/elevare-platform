@@ -39,6 +39,7 @@ from app.modules.interviews.follow_up import load_follow_up_mode
 from app.modules.interviews.models import (
     Interview,
     InterviewPanelDecision,
+    InterviewScoreReview,
     InterviewTurn,
     InterviewWeightedScore,
     JobInterviewQuestion,
@@ -54,6 +55,12 @@ from app.modules.interviews.schema import (
     RecordingClip,
     StrictRecordingPartResponse,
     UploadFailureRequest,
+)
+from app.modules.interviews.score_review import (
+    MAX_SCORE,
+    MIN_SCORE,
+    apply_review,
+    valid_rating,
 )
 from app.modules.interviews.scoring_access import assert_can_score_interviews
 from app.modules.interviews.strict import StrictInterviewService
@@ -1805,7 +1812,9 @@ class InterviewService:
         ):
             raise InterviewNotFound()
 
-        return await self.build_detail(job, interview)
+        return await self.build_detail(
+            job, interview, include_review_history=user.role == UserRole.ADMIN.value
+        )
 
     async def build_detail(
         self,
@@ -1814,6 +1823,7 @@ class InterviewService:
         *,
         video_seconds: int = 3600,
         include_panel_decision: bool = True,
+        include_review_history: bool = False,
     ) -> InterviewDetailResponse:
         """The full detail of a completed interview: recording, transcript, the AI's
         assessment of it and the CV assessment next to it.
@@ -1824,6 +1834,11 @@ class InterviewService:
         link works; a link meant to be passed around uses a much shorter one.
         ``include_panel_decision`` is false for the shared link: the company's own panel
         decision and rationale are internal, not part of what an outside reader is shown.
+        ``include_review_history`` is true only for an Elevare admin: the system's own score and
+        band and who reviewed the score are not shown to anyone else.
+
+        A reviewed score (decision item 52) replaces the system's in the score, the weighted report
+        and the written assessment, for the employer and the shared link alike.
         """
         strict = await self._strict().strict_detail(interview)
         # The weighted score report, for an interview scored with a scoring profile.
@@ -1844,6 +1859,14 @@ class InterviewService:
             else None
         )
         practical_case = stored_report.get("practical")
+        reviews = await self._score_reviews(interview.id)
+        shown = apply_review(
+            score=interview.ai_score,
+            rationale=interview.ai_rationale,
+            report=score_report,
+            review_score=reviews[0].score if reviews else None,
+            review_ratings=(reviews[0].ratings or {}) if reviews else None,
+        )
         video_url = None
         # While the pieces of the recording are being joined the file on record is only the last
         # piece: showing it would look like the whole interview, so nothing is shown yet.
@@ -1896,12 +1919,18 @@ class InterviewService:
             status=interview.status,
             transcript=transcript,
             transcript_check=check.status if check else None,
-            ai_score=interview.ai_score,
-            ai_rationale=interview.ai_rationale,
+            ai_score=shown.score,
+            ai_rationale=shown.rationale,
             ai_scored_at=interview.ai_scored_at,
+            reviewed=shown.reviewed,
+            score_review=(
+                self._score_review_history(interview, stored_report, reviews)
+                if include_review_history
+                else None
+            ),
             video_url=video_url,
             recordings=clips,
-            score_report=score_report,
+            score_report=shown.report,
             practical_case=practical_case,
             record=record,
             completed_at=interview.completed_at,
@@ -1947,6 +1976,163 @@ class InterviewService:
             "claims_to_verify": listed("claims_to_verify"),
             "reference_check_questions": listed("reference_check_questions"),
             "panel_decision": await self._latest_panel_decision(interview.id) if include_panel_decision else None,
+        }
+
+    async def _score_reviews(self, interview_id: uuid.UUID) -> list[InterviewScoreReview]:
+        """The reviews of an interview's score, newest first (empty in the seconds of a deploy
+        before the table exists, so the system's own result is shown)."""
+
+        async def read() -> list[InterviewScoreReview]:
+            result = await self._db.execute(
+                select(InterviewScoreReview)
+                .where(InterviewScoreReview.interview_id == interview_id)
+                .order_by(InterviewScoreReview.reviewed_at.desc(), InterviewScoreReview.created_at.desc())
+            )
+            return list(result.scalars().all())
+
+        return await tolerate_missing(self._db, read, [])
+
+    @staticmethod
+    def _score_review_history(
+        interview: Interview, stored_report: dict, reviews: list[InterviewScoreReview]
+    ) -> dict:
+        """For an Elevare admin only: the system's own score and band, and every review of it.
+        The original is read from what was stored when the interview was scored, so it stays the
+        system's whatever was reviewed since."""
+        return {
+            "original_score": interview.ai_score,
+            "original_band": stored_report.get("band"),
+            # The system's own rating of each competency, to compare the reviewer's against.
+            "original_ratings": {row["name"]: row.get("rating") for row in stored_report.get("rows", [])},
+            "reviews": [
+                {
+                    "score": row.score,
+                    "ratings": row.ratings or {},
+                    "reason": row.reason,
+                    "reviewed_by_name": row.reviewed_by_name,
+                    "reviewed_at": row.reviewed_at,
+                }
+                for row in reviews
+            ],
+        }
+
+    async def review_score(
+        self,
+        user: User,
+        job_id: uuid.UUID,
+        talent_pool_profile_id: uuid.UUID,
+        score: int | None,
+        reason: str | None,
+        ratings: dict | None = None,
+        *,
+        clear: bool = False,
+    ) -> dict:
+        """An Elevare admin changes the competency ratings and/or sets the total of a scored
+        interview in place of the system's, or (``clear``) takes the review away again. The total
+        follows the ratings by the system's formula unless one was typed, and the band follows the
+        total by the job's cut-offs.
+
+        Admin only, for any job (decision item 52). Append-only: each change is a new row with who
+        made it, when, the optional reason, the ratings that differ from the system's and the
+        system's own score and band, and is also written to the log. Only a scored interview:
+        there is nothing to review before that.
+        """
+        from app.core.exceptions import JobNotFoundError
+        from app.modules.jobs.repository import JobRepository
+
+        if user.role != UserRole.ADMIN.value:
+            raise PermissionDeniedException("Only an Elevare administrator can review a score")
+        if score is not None and not (MIN_SCORE <= score <= MAX_SCORE):
+            raise ValidationException(
+                f"The score must be between {MIN_SCORE} and {MAX_SCORE}.", code="INVALID_SCORE"
+            )
+        if not clear and score is None and not ratings:
+            raise ValidationException(
+                "Set a score or change a rating.", code="NOTHING_TO_REVIEW"
+            )
+        job = await JobRepository(self._db).get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError()
+        interview = await self._repo.get_by_job_and_profile(job_id, talent_pool_profile_id)
+        if interview is None:
+            raise InterviewNotFound()
+
+        await self._repo.lock_status(interview.id)
+        await self._db.refresh(interview)
+        if interview.status != InterviewStatus.SCORED.value:
+            raise ValidationException(
+                "Only a scored interview can have its score reviewed.",
+                code="INTERVIEW_NOT_SCORED",
+            )
+
+        report = (
+            await self._db.execute(
+                select(InterviewWeightedScore.report).where(
+                    InterviewWeightedScore.interview_id == interview.id
+                )
+            )
+        ).scalar_one_or_none() or {}
+
+        # Only the ratings that differ from the system's own are kept, under the competency's own
+        # name. A name the job's profile does not have, or a rating outside 1 to 5, is refused.
+        changed: dict[str, int] = {}
+        if ratings:
+            rows = {row["name"].casefold(): row for row in report.get("rows", [])}
+            if not rows:
+                raise ValidationException(
+                    "This interview was not scored on competencies, so there are no ratings to change.",
+                    code="NO_COMPETENCIES",
+                )
+            for given, rating in ratings.items():
+                row = rows.get(str(given).casefold())
+                if row is None:
+                    raise ValidationException(
+                        f"\"{given}\" is not a competency of this interview.", code="UNKNOWN_COMPETENCY"
+                    )
+                if not valid_rating(rating):
+                    raise ValidationException("A rating must be a whole number from 1 to 5.", code="INVALID_RATING")
+                if rating != row.get("rating"):
+                    changed[row["name"]] = rating
+            if score is None and not changed:
+                raise ValidationException(
+                    "Those ratings are the system's own, so there is nothing to change.", code="NOTHING_TO_REVIEW"
+                )
+        name = " ".join(f"{user.first_name} {user.last_name}".split()) or user.email
+        cleaned_reason = " ".join(reason.split()) if reason else None
+        row = InterviewScoreReview(
+            interview_id=interview.id,
+            score=score,
+            ratings=changed or None,
+            reason=cleaned_reason or None,
+            reviewed_by=user.id,
+            reviewed_by_name=name[:200],
+            reviewed_at=datetime.now(UTC),
+            original_score=interview.ai_score,
+            original_band=report.get("band"),
+        )
+        self._db.add(row)
+        await self._db.commit()
+        logger.info(
+            "interview score %s: interview=%s by admin=%s (system score %s, band %s, now score %s, ratings %s)",
+            "review removed" if clear else "reviewed",
+            interview.id,
+            user.id,
+            interview.ai_score,
+            report.get("band"),
+            score,
+            changed or None,
+        )
+        shown = apply_review(
+            score=interview.ai_score,
+            rationale=interview.ai_rationale,
+            report=report if "rows" in report else None,
+            review_score=score,
+            review_ratings=changed,
+        )
+        return {
+            "score": shown.score,
+            "band": (shown.report or {}).get("band"),
+            "reviewed": shown.reviewed,
         }
 
     async def _latest_panel_decision(self, interview_id: uuid.UUID) -> dict | None:

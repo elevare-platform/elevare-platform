@@ -379,6 +379,26 @@ class WeightedScoreReport(BaseModel):
     key_min_rating: int
     key_flags: list[str] = []
     unassessed: list[str] = []
+    # True when an Elevare reviewer set the total (the band then follows it).
+    reviewed: bool = False
+
+
+class ScoreReviewRequest(BaseModel):
+    """An Elevare admin's review of a finished interview: the competency ratings to change
+    (``{name: 1 to 5}``) and/or a total (0 to 100) that wins over the one the ratings give, with an
+    optional reason. At least one of the two is needed."""
+
+    score: int | None = Field(default=None, ge=0, le=100)
+    ratings: dict[str, int] | None = None
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class ScoreReviewResponse(BaseModel):
+    """The score now shown after a review was set or taken away, and the band that follows it."""
+
+    score: int | None
+    band: str | None
+    reviewed: bool
 
 
 class PracticalCriterionRow(BaseModel):
@@ -477,6 +497,11 @@ class InterviewDetailResponse(BaseModel):
     ai_score: int | None
     ai_rationale: str | None
     ai_scored_at: datetime | None
+    # True when an Elevare reviewer set the score shown (the small "Reviewed" tag). Shown to every
+    # reader of the interview, the shared link included; who and why are not.
+    reviewed: bool = False
+    # Only for an Elevare admin: the system's own score and band and every review of it.
+    score_review: dict | None = None
     # The latest attempt's recording (the only one, for an interview never reinstated).
     video_url: str | None
     # Every attempt's recording, oldest first. Only more than one clip for a reinstated

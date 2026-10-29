@@ -32,6 +32,7 @@ from sqlalchemy import delete, select
 
 from app.core.config import settings
 from app.core.exceptions import ValidationException
+from app.core.schema_guard import tolerate_missing
 from app.modules.interviews.enums import (
     END_STOPPED,
     END_TOO_LONG_AWAY,
@@ -43,6 +44,7 @@ from app.modules.interviews.enums import (
 from app.modules.interviews.models import (
     Interview,
     InterviewConductEvent,
+    InterviewScoreReview,
     InterviewTranscriptCheck,
     InterviewTurn,
     InterviewWeightedScore,
@@ -513,6 +515,15 @@ class ConductMixin:
             InterviewWeightedScore,
         ):
             await self._db.execute(delete(model).where(model.interview_id == interview.id))
+
+        # An Elevare reviewer's score belonged to the attempt being discarded. (Skipped in the
+        # seconds of a deploy before its table exists.)
+        async def drop_reviews() -> None:
+            await self._db.execute(
+                delete(InterviewScoreReview).where(InterviewScoreReview.interview_id == interview.id)
+            )
+
+        await tolerate_missing(self._db, drop_reviews, None)
 
         run.rules_version = None
         run.rules_accepted_at = None

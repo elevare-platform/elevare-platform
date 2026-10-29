@@ -328,6 +328,39 @@ describe('SharedInterviewResultsPage, the list of candidates', () => {
     expect(row.getByText('Strong shortlist')).toBeInTheDocument()
   })
 
+  it('flags a reviewed score with a small tag on the row and in the detail, and says nothing about who or why', async () => {
+    const reviewed = person('Ada Obi', { interview_score: 89, interview_reviewed: true })
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [reviewed, person('Chidi Okafor')] } })
+    renderPage()
+
+    const row = within(await screen.findByRole('button', { name: /Ada Obi/ }))
+    expect(row.getByTestId('reviewed-tag')).toBeInTheDocument()
+    expect(within(screen.getByRole('button', { name: /Chidi Okafor/ })).queryByTestId('reviewed-tag')).not.toBeInTheDocument()
+    const detail = within(await screen.findByRole('region', { name: 'Ada Obi, interview details' }))
+    expect(detail.getAllByTestId('reviewed-tag').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Elevare administrator|adjusted|changed by/i)).not.toBeInTheDocument()
+  })
+
+  it('flags a reviewed weighted score on its own tab and on the row', async () => {
+    const report = {
+      rows: [], bands: {}, key_flags: [], complete: true, score: 89, band: 'Strong shortlist', unassessed: [], reviewed: true,
+    }
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [person('Ada Obi', { score_report: report })] } })
+    renderPage()
+
+    const row = within(await screen.findByRole('button', { name: /Ada Obi/ }))
+    expect(row.getByTestId('reviewed-tag')).toBeInTheDocument()
+    expect(row.getByText('Strong shortlist')).toBeInTheDocument()
+  })
+
+  it('shows no tag for a score nobody reviewed', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
+    renderPage()
+    await screen.findByRole('list', { name: 'Candidates' })
+
+    expect(screen.queryByTestId('reviewed-tag')).not.toBeInTheDocument()
+  })
+
   it('steps to the next and previous candidate in the list as it is shown, and stops at the ends', async () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: THREE } })
     renderPage()

@@ -53,6 +53,9 @@ class SharedCandidate(BaseModel):
     # The AI's assessment of the interview.
     interview_score: int | None = None
     interview_assessment: str | None = None
+    # True when an Elevare reviewer set the score shown (the small "Reviewed" tag). Who and why are
+    # not part of the shared page.
+    interview_reviewed: bool = False
 
     # The AI's assessment of the CV for this job, shown alongside.
     cv_score: int | None = None
