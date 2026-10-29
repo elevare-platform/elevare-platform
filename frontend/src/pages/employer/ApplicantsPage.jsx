@@ -1176,7 +1176,9 @@ function AiMatchesTab({
 // Maps the real Interview.status (or null = never invited) to button label + badge.
 const INTERVIEW_STATUS_META = {
   PENDING: { button: 'Resend', badge: 'Sent: awaiting response', badgeClass: 'text-amber-600' },
-  IN_PROGRESS: { button: 'Resend', badge: 'In progress', badgeClass: 'text-blue-600' },
+  // `restart`: a candidate who is stuck (frozen screen, lost connection) can be given a fresh
+  // interview on a new link from the row itself, once they have been quiet for ten minutes.
+  IN_PROGRESS: { button: 'Resend', restart: true, badge: 'In progress', badgeClass: 'text-blue-600' },
   UPLOADED: { button: null, badge: 'Completed', badgeClass: 'text-green-600' },
   SCORED: { button: null, retake: true, badge: 'Completed', badgeClass: 'text-green-600' },
   EXPIRED: { button: 'Resend', badge: 'Link expired', badgeClass: 'text-red-600' },
@@ -1490,6 +1492,39 @@ function InterviewListRow({ item, jobId, hasInterviewBrief, onRemoved, onInvited
             {linkCopied ? <CheckIcon size={11} /> : <Copy size={11} />}
             {copyingLink ? 'Getting link…' : linkCopied ? 'Link copied' : 'Copy link'}
           </button>
+          {statusMeta?.restart && !confirmStartOver && (
+            <button
+              type="button"
+              onClick={() => setConfirmStartOver(true)}
+              disabled={recovering}
+              className="text-[11px] font-medium text-text-muted hover:text-brand-blue transition-colors disabled:opacity-50"
+            >
+              Create a new interview link
+            </button>
+          )}
+          {statusMeta?.restart && confirmStartOver && (
+            <div role="alert" className="max-w-[16rem] rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900 space-y-1.5">
+              <p>
+                Only do this if the candidate is stuck (a frozen screen or a lost connection). It deletes
+                the answers and recording so far, gives them a fresh interview with the full time on a new
+                link, and emails it to them. The old link stops working. Nothing is charged again. If they
+                were active in the last ten minutes this is refused.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setConfirmStartOver(false)} className="font-medium text-text-muted hover:text-text">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRecover(true)}
+                  disabled={recovering}
+                  className="font-semibold text-red-700 hover:underline disabled:opacity-50"
+                >
+                  {recovering ? 'Working…' : 'Delete and send a new link'}
+                </button>
+              </div>
+            </div>
+          )}
           {manualLink && (
             <input
               readOnly

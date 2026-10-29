@@ -38,6 +38,7 @@ from app.modules.interviews.enums import (
     END_TOO_LONG_AWAY,
     END_TOO_MANY_LEAVES,
     ENDED_STATUSES,
+    IN_PROGRESS_QUIET_AFTER,
     ConductEventKind,
     InterviewStatus,
 )
@@ -416,6 +417,7 @@ class ConductMixin:
         *,
         allow_ended: bool = False,
         allow_completed: bool = False,
+        allow_in_progress: bool = False,
     ) -> StrictInterviewRun:
         """The run of an interview that failed before it was finished, with the row locked.
 
@@ -426,7 +428,10 @@ class ConductMixin:
         retake; it is otherwise carried on with by reinstating it. With ``allow_completed`` a
         finished interview (scored, or whose scoring failed) qualifies too, for a retake the
         employer asks for; one still being scored does not, since the scoring would then land
-        on the new attempt.
+        on the new attempt. With ``allow_in_progress`` an interview still IN_PROGRESS qualifies
+        once the candidate has not been heard from for ``IN_PROGRESS_QUIET_AFTER`` (a frozen
+        laptop, a dead connection): sooner than that they may be working, and it is refused with
+        ``INTERVIEW_CANDIDATE_ACTIVE`` and how long to wait.
         """
         status = await self._repo.lock_status(interview.id)
         await self._db.refresh(interview)
@@ -439,7 +444,13 @@ class ConductMixin:
             status == InterviewStatus.SCORED.value
             or (status == InterviewStatus.FAILED.value and interview.completed_at is not None)
         )
-        if not (failed or ended or completed) or run is None or run.started_at is None:
+        in_progress = (
+            allow_in_progress
+            and status == InterviewStatus.IN_PROGRESS.value
+            and run is not None
+            and run.started_at is not None
+        )
+        if not (failed or ended or completed or in_progress) or run is None or run.started_at is None:
             raise ValidationException(
                 "Only an interview that was started and then finished, ended early or failed can be "
                 "started over."
@@ -447,6 +458,18 @@ class ConductMixin:
                 else "Only an interview that was started but never finished can be recovered.",
                 code="INTERVIEW_NOT_RECOVERABLE",
             )
+        if in_progress:
+            # Last sign of the candidate: their latest answer or page visit, else when they began.
+            last_heard = max(m for m in (run.last_seen_at, run.started_at) if m is not None)
+            quiet_for = self._clock() - last_heard
+            if quiet_for < IN_PROGRESS_QUIET_AFTER:
+                wait = max(1, int((IN_PROGRESS_QUIET_AFTER - quiet_for).total_seconds() // 60) + 1)
+                raise ValidationException(
+                    "The candidate was active in this interview a few minutes ago, so it was not "
+                    f"started over. If they are stuck, try again in about {wait} minute"
+                    f"{'s' if wait != 1 else ''}.",
+                    code="INTERVIEW_CANDIDATE_ACTIVE",
+                )
         return run
 
     async def reopen_failed(self, interview: Interview) -> Interview:
@@ -504,9 +527,13 @@ class ConductMixin:
         spend), and the hiring panel's decisions, an append-only record of what the company
         decided at the time (each carries its date)."""
         run = await self._failed_before_finishing(
-            interview, allow_ended=True, allow_completed=True
+            interview, allow_ended=True, allow_completed=True, allow_in_progress=True
         )
         now = self._clock()
+        # An interview taken from a candidate who may still have its page open (it was IN_PROGRESS,
+        # just quiet) gets a NEW link: their old page can then no longer send answers or a
+        # recording into the fresh attempt, and the old link stops working.
+        new_link = interview.status == InterviewStatus.IN_PROGRESS.value
 
         for model in (
             InterviewTurn,
@@ -552,7 +579,7 @@ class ConductMixin:
                 "started_at": None,
                 "completed_at": None,
                 "video_expires_at": None,
-                "token": interview.token or secrets.token_urlsafe(32),
+                "token": secrets.token_urlsafe(32) if new_link else (interview.token or secrets.token_urlsafe(32)),
                 "token_expires_at": now + timedelta(days=REINSTATE_LINK_DAYS),
                 "session_start_count": 0,
                 "reset_requested_at": None,
