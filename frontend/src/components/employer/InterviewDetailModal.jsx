@@ -439,13 +439,13 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{detail.ai_rationale}</p>
                     )}
                   </WeightedScoreCard>
-                ) : (
+                ) : detail.writeup_hidden ? null : (
                 <AssessmentCard
                   icon={Brain}
                   title="Interview Assessment"
                   score={detail.ai_score}
                   reviewed={detail.reviewed}
-                  scoreHidden={detail.scores_hidden}
+                  scoreHidden={detail.scores_hidden || detail.score_number_hidden}
                   summary={detail.ai_rationale}
                   emptyMessage={
                     isEndedStatus(detail.status)
@@ -515,6 +515,7 @@ export default function InterviewDetailModal({ jobId, talentPoolProfileId, candi
               {detail.record && (
                 <AssessmentRecordCard
                   record={detail.record}
+                  gapsHidden={detail.gaps_hidden}
                   onDecide={recordDecision}
                   suggestedBand={detail.score_report?.complete ? detail.score_report.band : null}
                   suggestedScore={detail.score_report?.complete ? detail.score_report.score : null}

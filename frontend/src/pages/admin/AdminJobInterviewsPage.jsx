@@ -5,6 +5,7 @@ import AdminLayout from '@/components/admin/AdminLayout'
 import { AdminTable, Th, Td } from '@/components/admin/AdminTable'
 import InterviewDetailModal from '@/components/employer/InterviewDetailModal'
 import ReviewedTag from '@/components/employer/ReviewedTag'
+import ResultDisplayToggles from '@/components/admin/ResultDisplayToggles'
 import ScorecardSummaryToggle from '@/components/admin/ScorecardSummaryToggle'
 import ScoreVisibilityToggle from '@/components/employer/ScoreVisibilityToggle'
 import api from '@/lib/api'
@@ -101,6 +102,7 @@ export default function AdminJobInterviewsPage() {
 
         <ScoreVisibilityToggle jobId={jobId} />
         <ScorecardSummaryToggle jobId={jobId} />
+        <ResultDisplayToggles jobId={jobId} />
 
         {error && (
           <p role="alert" className="text-sm text-red-600">

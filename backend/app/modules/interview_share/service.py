@@ -245,6 +245,9 @@ class InterviewShareService:
         candidate.interview_score = detail.ai_score
         candidate.interview_assessment = detail.ai_rationale
         candidate.interview_reviewed = detail.reviewed
+        candidate.score_number_hidden = detail.score_number_hidden
+        candidate.gaps_hidden = detail.gaps_hidden
+        candidate.writeup_hidden = detail.writeup_hidden
         candidate.cv_score = detail.cv_score
         candidate.cv_summary = detail.cv_fit_summary
         candidate.cv_strengths = detail.cv_strengths

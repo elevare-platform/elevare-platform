@@ -410,6 +410,26 @@ describe('SharedInterviewResultsPage, the list of candidates', () => {
     expect(within(sheet).getByTestId('scorecard-decision')).toHaveTextContent('Proceed to Final Interview')
   })
 
+  it('leaves out the interview assessment text when the job’s switch has the written assessment off, and says nothing is missing', async () => {
+    api.get.mockResolvedValueOnce({
+      data: { ...RESULTS, candidates: [person('Ada Obi', { writeup_hidden: true, interview_assessment: null, interview_score: 80 })] },
+    })
+    renderPage()
+
+    await screen.findByRole('region', { name: 'Ada Obi, interview details' })
+    expect(screen.queryByRole('heading', { name: 'Interview assessment' })).not.toBeInTheDocument()
+    expect(screen.queryByText('No assessment is available for this interview.')).not.toBeInTheDocument()
+  })
+
+  it('shows the interview assessment as before when the written assessment is on', async () => {
+    api.get.mockResolvedValueOnce({
+      data: { ...RESULTS, candidates: [person('Ada Obi', { interview_assessment: 'A steady candidate.' })] },
+    })
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Interview assessment' })).toBeInTheDocument()
+  })
+
   it('has no Scorecard tab for a candidate whose interview was not scored on competencies', async () => {
     api.get.mockResolvedValueOnce({ data: { ...RESULTS, candidates: [person('Ada Obi', { scorecard: null })] } })
     renderPage()

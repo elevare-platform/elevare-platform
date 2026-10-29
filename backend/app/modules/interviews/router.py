@@ -44,6 +44,8 @@ from app.modules.interviews.schema import (
     QuestionLibraryResponse,
     QuestionTemplateApplyRequest,
     RenameTemplateRequest,
+    ResultDisplayRequest,
+    ResultDisplayResponse,
     SaveTemplateRequest,
     ScorecardSummaryRequest,
     ScorecardSummaryResponse,
@@ -605,6 +607,49 @@ async def set_job_scorecard_summary(
     service = InterviewService(db)
     try:
         return await service.set_scorecard_summary(current_user, job_id, data.show_summary)
+    finally:
+        await service.close()
+
+
+@router.get(
+    "/jobs/{job_id}/result-display",
+    response_model=ResultDisplayResponse,
+    status_code=200,
+)
+async def get_job_result_display(
+    job_id: uuid.UUID,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Which parts of this job's interview results (the score number, the gaps and risks, the
+    written assessment) an employer and the shared link are shown. Elevare admin only."""
+    service = InterviewService(db)
+    try:
+        return await service.get_result_display(current_user, job_id)
+    finally:
+        await service.close()
+
+
+@router.put(
+    "/jobs/{job_id}/result-display",
+    response_model=ResultDisplayResponse,
+    status_code=200,
+)
+async def set_job_result_display(
+    job_id: uuid.UUID,
+    data: ResultDisplayRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Switch the score number, the gaps and risks and/or the written assessment of this job's
+    interview results on or off for employers and the shared link (only the fields sent change).
+    The band and the 1 to 5 ratings stay when the score number is off. An Elevare admin always sees
+    everything. Elevare admin only."""
+    service = InterviewService(db)
+    try:
+        return await service.set_result_display(
+            current_user, job_id, data.model_dump(exclude_none=True)
+        )
     finally:
         await service.close()
 

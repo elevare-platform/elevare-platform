@@ -68,6 +68,13 @@ describe('PracticalCaseCard', () => {
     expect(screen.queryByText('A workable plan.')).not.toBeInTheDocument()
   })
 
+  it('shows the criteria and ratings but no case total when the job’s score number is switched off', () => {
+    render(<PracticalCaseCard report={{ ...COMPLETE, number_hidden: true, score: null }} />)
+
+    expect(screen.queryByTestId('practical-score')).not.toBeInTheDocument()
+    expect(screen.getByText('Prioritisation').closest('tr')).toHaveTextContent('4 of 5')
+  })
+
   it('is written the way the rest of the product is: no dashes, no exclamation marks', () => {
     const { container } = render(<PracticalCaseCard report={COMPLETE} />)
 

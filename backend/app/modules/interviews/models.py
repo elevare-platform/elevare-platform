@@ -107,6 +107,11 @@ class JobScoreVisibility(BaseModel):
     show_scores: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.true())
     # Whether the scorecard prints its Evaluation Summary (item 57, migration p22_0044).
     show_summary: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.true())
+    # Whether the total and points, the gaps and risks and the written assessment are shown (item 61,
+    # migration p22_0045). Off for an employer and the shared link; an admin always sees everything.
+    show_score_number: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.true())
+    show_gaps: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.true())
+    show_writeup: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.true())
     changed_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

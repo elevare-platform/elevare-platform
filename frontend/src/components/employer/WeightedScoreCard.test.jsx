@@ -132,6 +132,27 @@ describe('WeightedScoreCard', () => {
     expect(screen.queryByTestId('reviewed-tag')).not.toBeInTheDocument()
   })
 
+  it('with the score number switched off shows the band and the ratings but no total, no points and no cut-offs', () => {
+    const numberOff = { ...COMPLETE, score: null, points: 0, bands: {}, number_hidden: true }
+    render(<WeightedScoreCard report={numberOff} />)
+
+    expect(screen.getByTestId('weighted-band')).toHaveTextContent('Shortlist')
+    expect(screen.queryByTestId('weighted-total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Points')).not.toBeInTheDocument()
+    const strategy = screen.getByText('Strategy').closest('tr')
+    expect(strategy).toHaveTextContent('4 of 5')
+    expect(strategy).not.toHaveTextContent('20')
+    expect(screen.queryByText(/Points are the rating/)).not.toBeInTheDocument()
+  })
+
+  it('with the number off and a competency not assessed, says so without any point counts', () => {
+    render(<WeightedScoreCard report={{ ...INCOMPLETE, score: null, points: 0, bands: {}, number_hidden: true }} />)
+
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent('Not every competency could be assessed (not assessed: P&L)')
+    expect(note).not.toHaveTextContent('weighted points')
+  })
+
   it('drops the line that says a low key competency holds the band once a person has set the score', () => {
     const flagged = { ...COMPLETE, key_flags: ['Strategy'] }
     const { rerender } = render(<WeightedScoreCard report={flagged} />)
